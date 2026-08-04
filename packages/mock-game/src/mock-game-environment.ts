@@ -1,23 +1,25 @@
 import {
   EnvironmentSnapshotSchema,
-  type EnvironmentEventDraft,
   type EnvironmentRef,
   type EnvironmentSnapshot,
   type JsonObject,
   type JsonValue,
   type StateSnapshot,
+  type V01EnvironmentEventDraft,
 } from "@chronorift/domain";
 import type {
   FrameCommand,
   FrameObservation,
   GameEnvironmentFactoryPort,
   GameEnvironmentPort,
+  RestoreReceipt,
   RuntimeInput,
 } from "@chronorift/gamebranch";
 
 import {
-  DOOR_OPEN_DELAY_US,
   DOOR_OPEN_PATH,
+  DOOR_RECEIVER_CONNECTED_PATH,
+  DOOR_SIGNAL_RECEIVER,
   INITIAL_RNG_STATE,
   INTERACT_SWITCH_ACTION,
   MOCK_GAME_ADAPTER,
@@ -32,21 +34,16 @@ export const MOCK_GAME_ENVIRONMENT_REF: EnvironmentRef = Object.freeze({
   adapter: MOCK_GAME_ADAPTER,
   adapterVersion: MOCK_GAME_ADAPTER_VERSION,
   scene: MOCK_GAME_SCENE,
-  build: "phase-1",
+  build: "v0.1",
 });
-
-interface PendingDoorTimer {
-  readonly openAtUs: number;
-  readonly scheduledTick: number;
-  readonly causedByLocalId: string;
-}
 
 interface MutableRuntimeState {
   nowUs: number;
   nextTick: number;
   switchActive: boolean;
   doorOpen: boolean;
-  pendingDoorTimer: PendingDoorTimer | null;
+  receiverConnected: boolean;
+  receiverInitializationPending: boolean;
   rngState: number;
 }
 
@@ -55,7 +52,8 @@ const INITIAL_RUNTIME_STATE: Readonly<MutableRuntimeState> = Object.freeze({
   nextTick: 0,
   switchActive: false,
   doorOpen: false,
-  pendingDoorTimer: null,
+  receiverConnected: false,
+  receiverInitializationPending: true,
   rngState: INITIAL_RNG_STATE,
 });
 
@@ -91,16 +89,12 @@ const expectBoolean = (value: JsonValue, label: string): boolean => {
   return value;
 };
 
-const expectString = (value: JsonValue, label: string): string => {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new TypeError(`${label} must be a non-empty string`);
-  }
-  return value;
-};
-
 const readState = (
   snapshot: StateSnapshot,
-): Pick<MutableRuntimeState, "switchActive" | "doorOpen"> => ({
+): Pick<
+  MutableRuntimeState,
+  "switchActive" | "doorOpen" | "receiverConnected"
+> => ({
   switchActive: expectBoolean(
     snapshot.values[SWITCH_ACTIVE_PATH] ?? null,
     `state.${SWITCH_ACTIVE_PATH}`,
@@ -109,31 +103,11 @@ const readState = (
     snapshot.values[DOOR_OPEN_PATH] ?? null,
     `state.${DOOR_OPEN_PATH}`,
   ),
+  receiverConnected: expectBoolean(
+    snapshot.values[DOOR_RECEIVER_CONNECTED_PATH] ?? null,
+    `state.${DOOR_RECEIVER_CONNECTED_PATH}`,
+  ),
 });
-
-const readPendingDoorTimer = (
-  pendingEffects: JsonValue,
-): PendingDoorTimer | null => {
-  const value = expectObject(pendingEffects, "pendingEffects").doorTimer;
-  if (value === null) {
-    return null;
-  }
-  const timer = expectObject(value ?? null, "pendingEffects.doorTimer");
-  return {
-    openAtUs: expectNonNegativeInteger(
-      timer.openAtUs ?? null,
-      "pendingEffects.doorTimer.openAtUs",
-    ),
-    scheduledTick: expectNonNegativeInteger(
-      timer.scheduledTick ?? null,
-      "pendingEffects.doorTimer.scheduledTick",
-    ),
-    causedByLocalId: expectString(
-      timer.causedByLocalId ?? null,
-      "pendingEffects.doorTimer.causedByLocalId",
-    ),
-  };
-};
 
 const copyDescriptor = (): EnvironmentRef => ({
   ...MOCK_GAME_ENVIRONMENT_REF,
@@ -142,15 +116,17 @@ const copyDescriptor = (): EnvironmentRef => ({
 const makeStateSnapshot = (
   switchActive: boolean,
   doorOpen: boolean,
+  receiverConnected: boolean,
 ): StateSnapshot => ({
   values: {
     [SWITCH_ACTIVE_PATH]: switchActive,
     [DOOR_OPEN_PATH]: doorOpen,
+    [DOOR_RECEIVER_CONNECTED_PATH]: receiverConnected,
   },
 });
 
 export const createInitialMockSnapshot = (): EnvironmentSnapshot => ({
-  state: makeStateSnapshot(false, false),
+  state: makeStateSnapshot(false, false, false),
   runtimeState: {
     nowUs: INITIAL_RUNTIME_STATE.nowUs,
     nextTick: INITIAL_RUNTIME_STATE.nextTick,
@@ -159,16 +135,17 @@ export const createInitialMockSnapshot = (): EnvironmentSnapshot => ({
     state: INITIAL_RUNTIME_STATE.rngState,
   },
   pendingEffects: {
-    doorTimer: null,
+    receiverInitializationPending: true,
   },
 });
 
 /**
- * A deterministic in-process game with one intentional timing defect.
+ * Deterministic v0.1 fixture with one deliberate initialization-order defect.
  *
- * Inputs are handled at frame start. Timers are checked at frame end, so a
- * 16,000 us delta reaches the 32,000 us deadline in two frames while 16,667
- * us skips from 16,667 to 33,334 us.
+ * Inputs execute before the door connects its signal receiver on the first
+ * tick. A tick-0 interaction therefore emits a signal that is not delivered;
+ * connecting later does not replay it. Delaying only that input to tick 1
+ * makes the same signal deliver and opens the door.
  */
 export class MockGameEnvironment implements GameEnvironmentPort {
   readonly descriptor: EnvironmentRef = copyDescriptor();
@@ -176,12 +153,26 @@ export class MockGameEnvironment implements GameEnvironmentPort {
   private state: MutableRuntimeState = { ...INITIAL_RUNTIME_STATE };
   private disposed = false;
 
-  restore(snapshot: EnvironmentSnapshot): Promise<void> {
+  restore(snapshot: EnvironmentSnapshot): Promise<RestoreReceipt> {
     this.assertNotDisposed();
     const parsed = EnvironmentSnapshotSchema.parse(snapshot);
     const runtime = expectObject(parsed.runtimeState, "runtimeState");
+    const pendingEffects = expectObject(
+      parsed.pendingEffects,
+      "pendingEffects",
+    );
     const rng = expectObject(parsed.rngState, "rngState");
     const state = readState(parsed.state);
+    const receiverInitializationPending = expectBoolean(
+      pendingEffects.receiverInitializationPending ?? null,
+      "pendingEffects.receiverInitializationPending",
+    );
+
+    if (state.receiverConnected === receiverInitializationPending) {
+      throw new Error(
+        "Receiver connection and initialization-pending state are inconsistent",
+      );
+    }
 
     this.state = {
       nowUs: expectNonNegativeInteger(
@@ -194,17 +185,24 @@ export class MockGameEnvironment implements GameEnvironmentPort {
       ),
       switchActive: state.switchActive,
       doorOpen: state.doorOpen,
-      pendingDoorTimer: readPendingDoorTimer(parsed.pendingEffects),
+      receiverConnected: state.receiverConnected,
+      receiverInitializationPending,
       rngState: expectNonNegativeInteger(rng.state ?? null, "rngState.state"),
     };
-    return Promise.resolve();
+
+    return Promise.resolve({
+      restored: true,
+      nextTick: this.state.nextTick,
+      simTimeUs: this.state.nowUs,
+      state: this.currentState(),
+    });
   }
 
   step(command: FrameCommand): Promise<FrameObservation> {
     this.assertNotDisposed();
     this.assertFrameCommand(command);
 
-    const events: EnvironmentEventDraft[] = [];
+    const events: V01EnvironmentEventDraft[] = [];
     const seenInputIds = new Set<string>();
 
     for (const input of command.inputs) {
@@ -215,28 +213,33 @@ export class MockGameEnvironment implements GameEnvironmentPort {
       this.handleInput(command, input, events);
     }
 
+    this.finishReceiverInitialization(command.tick, events);
+
     const frameEndUs = command.simTimeUs + command.deltaUs;
     if (!Number.isSafeInteger(frameEndUs)) {
       throw new RangeError("Frame end time exceeds the safe integer range");
     }
-
     this.state.nowUs = frameEndUs;
-    this.checkDoorTimer(command.tick, events);
     this.state.nextTick = command.tick + 1;
     this.advanceRng();
 
     return Promise.resolve({
       events,
-      state: makeStateSnapshot(this.state.switchActive, this.state.doorOpen),
+      state: this.currentState(),
+      receipt: {
+        requestedTick: command.tick,
+        realizedTick: command.tick,
+        requestedDeltaUs: command.deltaUs,
+        realizedDeltaUs: command.deltaUs,
+        appliedInputOrders: command.inputs.map((input) => input.order),
+      },
     });
   }
 
   snapshot(): Promise<EnvironmentSnapshot> {
     this.assertNotDisposed();
-    const timer = this.state.pendingDoorTimer;
-
     return Promise.resolve({
-      state: makeStateSnapshot(this.state.switchActive, this.state.doorOpen),
+      state: this.currentState(),
       runtimeState: {
         nowUs: this.state.nowUs,
         nextTick: this.state.nextTick,
@@ -245,14 +248,7 @@ export class MockGameEnvironment implements GameEnvironmentPort {
         state: this.state.rngState,
       },
       pendingEffects: {
-        doorTimer:
-          timer === null
-            ? null
-            : {
-                openAtUs: timer.openAtUs,
-                scheduledTick: timer.scheduledTick,
-                causedByLocalId: timer.causedByLocalId,
-              },
+        receiverInitializationPending: this.state.receiverInitializationPending,
       },
     });
   }
@@ -265,7 +261,7 @@ export class MockGameEnvironment implements GameEnvironmentPort {
   private handleInput(
     command: FrameCommand,
     input: RuntimeInput,
-    events: EnvironmentEventDraft[],
+    events: V01EnvironmentEventDraft[],
   ): void {
     if (
       input.action !== INTERACT_SWITCH_ACTION ||
@@ -302,7 +298,7 @@ export class MockGameEnvironment implements GameEnvironmentPort {
     this.state.switchActive = true;
     const propertyLocalId = `mock:${command.tick}:switch.active`;
     const signalLocalId = `mock:${command.tick}:switch.activated`;
-    const scheduleLocalId = `mock:${command.tick}:door.schedule`;
+    const deliveryLocalId = `mock:${command.tick}:switch.delivery`;
 
     events.push({
       kind: "property_changed",
@@ -321,67 +317,63 @@ export class MockGameEnvironment implements GameEnvironmentPort {
       arguments: [],
     });
 
-    const openAtUs = this.state.nowUs + DOOR_OPEN_DELAY_US;
-    this.state.pendingDoorTimer = {
-      openAtUs,
-      scheduledTick: command.tick,
-      causedByLocalId: scheduleLocalId,
-    };
-    events.push({
-      kind: "log",
-      localId: scheduleLocalId,
-      causedByLocalId: signalLocalId,
-      level: "debug",
-      source: "door",
-      message: "Door open timer scheduled",
-      fields: {
-        scheduledAtUs: this.state.nowUs,
-        openAtUs,
-        delayUs: DOOR_OPEN_DELAY_US,
-      },
-    });
-  }
-
-  private checkDoorTimer(tick: number, events: EnvironmentEventDraft[]): void {
-    const timer = this.state.pendingDoorTimer;
-    if (timer === null || this.state.doorOpen) {
+    if (!this.state.receiverConnected) {
+      events.push({
+        kind: "signal_delivery",
+        localId: deliveryLocalId,
+        causedByLocalId: signalLocalId,
+        source: SWITCH_TARGET,
+        name: SWITCH_ACTIVATED_SIGNAL,
+        receiver: DOOR_SIGNAL_RECEIVER,
+        delivered: false,
+        failureReason: "receiver_not_connected",
+      });
       return;
     }
 
-    const checkLocalId = `mock:${tick}:door.check`;
-    const nowUs = this.state.nowUs;
-    const openAtUs = timer.openAtUs;
-    const deadlineMatched = nowUs === openAtUs;
-    const checkEvent: EnvironmentEventDraft = {
-      kind: "log",
-      localId: checkLocalId,
-      level: "debug",
-      source: "door",
-      message: "Door open timer checked",
-      fields: {
-        nowUs,
-        openAtUs,
-        deadlineMatched,
-      },
-      ...(timer.scheduledTick === tick
-        ? { causedByLocalId: timer.causedByLocalId }
-        : {}),
-    };
-    events.push(checkEvent);
+    events.push({
+      kind: "signal_delivery",
+      localId: deliveryLocalId,
+      causedByLocalId: signalLocalId,
+      source: SWITCH_TARGET,
+      name: SWITCH_ACTIVATED_SIGNAL,
+      receiver: DOOR_SIGNAL_RECEIVER,
+      delivered: true,
+    });
+    this.state.doorOpen = true;
+    events.push({
+      kind: "property_changed",
+      localId: `mock:${command.tick}:door.open`,
+      causedByLocalId: deliveryLocalId,
+      path: DOOR_OPEN_PATH,
+      before: false,
+      after: true,
+    });
+  }
 
-    // Intentional Phase 1 bug: a discrete frame can step over the deadline.
-    if (nowUs === openAtUs) {
-      this.state.doorOpen = true;
-      this.state.pendingDoorTimer = null;
-      events.push({
-        kind: "property_changed",
-        localId: `mock:${tick}:door.open`,
-        causedByLocalId: checkLocalId,
-        path: DOOR_OPEN_PATH,
-        before: false,
-        after: true,
-      });
-    }
+  private finishReceiverInitialization(
+    tick: number,
+    events: V01EnvironmentEventDraft[],
+  ): void {
+    if (!this.state.receiverInitializationPending) return;
+
+    this.state.receiverInitializationPending = false;
+    this.state.receiverConnected = true;
+    events.push({
+      kind: "property_changed",
+      localId: `mock:${tick}:door.receiver_connected`,
+      path: DOOR_RECEIVER_CONNECTED_PATH,
+      before: false,
+      after: true,
+    });
+  }
+
+  private currentState(): StateSnapshot {
+    return makeStateSnapshot(
+      this.state.switchActive,
+      this.state.doorOpen,
+      this.state.receiverConnected,
+    );
   }
 
   private assertFrameCommand(command: FrameCommand): void {

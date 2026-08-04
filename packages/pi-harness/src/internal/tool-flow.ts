@@ -1,280 +1,527 @@
+import type {
+  ArtifactReference,
+  DiagnosisProposal,
+  EvidenceCapsule,
+  ExecutionComparison,
+  ExecutionId,
+} from "@chronorift/domain";
+
 import { PiHarnessError } from "../errors.js";
 import type {
-  AgentEvidence,
   AgentGameApi,
+  AgentInterventionResult,
   AgentReplayResult,
-  AgentTimelineBranch,
-  AgentTimelineComparison,
-  CompareTimelinesRequest,
-  DiagnosisReport,
-  ForkTimelineRequest,
-  ReplayTimelineRequest,
 } from "../types.js";
 import {
-  expectNonEmptyString,
-  parseAgentEvidence,
+  parseAgentInterventionResult,
   parseAgentReplayResult,
-  parseAgentTimelineBranch,
-  parseAgentTimelineComparison,
+  parseCapsuleId,
   parseCompareRequest,
-  parseDiagnosisReport,
-  parseForkRequest,
+  parseDiagnosisProposal,
+  parseEvidenceCapsule,
+  parseExecutionComparison,
   parseReplayRequest,
+  parseRunInterventionRequest,
 } from "./contracts.js";
 
-function comparisonKey(
-  baselineBranchId: string,
-  candidateBranchId: string,
-): string {
-  return `${baselineBranchId}\u0000${candidateBranchId}`;
+function asString(value: string): string {
+  return value;
 }
 
 /**
- * Stateful protocol boundary between model tools and GameBranch. It rejects IDs
- * that were not produced by prior tool calls and validates all adapter results.
+ * Stateful capability boundary between model tools and GameBranch. It limits
+ * v0.1 to one replay, one intervention, and one comparison, and rejects every
+ * ID that was not established by an earlier tool result.
  */
 export class HarnessToolFlow {
-  private readonly evidenceById = new Map<string, AgentEvidence>();
-  private readonly knownCheckpointIds = new Set<string>();
-  private readonly knownBranchIds = new Set<string>();
-  private readonly forkedBranchIds = new Set<string>();
-  private readonly replayByBranchId = new Map<string, AgentReplayResult>();
-  private readonly comparisons = new Map<string, AgentTimelineComparison>();
-  private readonly observedEvidenceIds = new Set<string>();
-  private submittedReport: DiagnosisReport | undefined;
+  private capsule: EvidenceCapsule | undefined;
+  private replay: AgentReplayResult | undefined;
+  private intervention: AgentInterventionResult | undefined;
+  private comparison: ExecutionComparison | undefined;
+  private submittedProposal: DiagnosisProposal | undefined;
 
-  constructor(private readonly game: AgentGameApi) {}
+  constructor(
+    private readonly game: AgentGameApi,
+    private readonly initialCapsuleId: string,
+  ) {}
 
   private assertOpen(): void {
-    if (this.submittedReport) {
+    if (this.submittedProposal) {
       throw new PiHarnessError(
         "INVALID_TOOL_FLOW",
-        "The diagnosis has already been submitted; no further tool calls are allowed",
+        "The diagnosis proposal has already been submitted; no further tool calls are allowed",
       );
     }
   }
 
-  async getEvidence(evidenceIdInput: unknown): Promise<AgentEvidence> {
+  async getEvidenceCapsule(capsuleIdInput: unknown): Promise<EvidenceCapsule> {
     this.assertOpen();
-    const evidenceId = expectNonEmptyString(evidenceIdInput, "evidenceId");
-    const raw = await this.game.getEvidence(evidenceId);
+    const capsuleId = parseCapsuleId(capsuleIdInput);
+    if (asString(capsuleId) !== this.initialCapsuleId) {
+      throw new PiHarnessError(
+        "INVALID_TOOL_FLOW",
+        `Cannot read capsule ${capsuleId}; only the initial capsule is in scope`,
+      );
+    }
+    if (this.capsule) return structuredClone(this.capsule);
+
+    const raw = await this.game.getEvidenceCapsule(capsuleId);
     if (raw === null) {
       throw new PiHarnessError(
         "INVALID_ARGUMENT",
-        `Unknown evidenceId: ${evidenceId}`,
+        `Unknown capsuleId: ${capsuleId}`,
       );
     }
-    const evidence = parseAgentEvidence(raw);
-    if (evidence.evidenceId !== evidenceId) {
+    const capsule = parseEvidenceCapsule(raw);
+    if (asString(capsule.capsuleId) !== asString(capsuleId)) {
       throw new PiHarnessError(
         "INVALID_GAME_RESULT",
-        `Evidence adapter returned ${evidence.evidenceId} for requested ${evidenceId}`,
+        `Capsule adapter returned ${capsule.capsuleId} for requested ${capsuleId}`,
       );
     }
-    this.evidenceById.set(evidenceId, evidence);
-    this.observedEvidenceIds.add(evidenceId);
-    this.knownCheckpointIds.add(evidence.checkpointId);
-    this.knownBranchIds.add(evidence.branchId);
-    return evidence;
+    this.capsule = structuredClone(capsule);
+    return structuredClone(capsule);
   }
 
-  async forkTimeline(requestInput: unknown): Promise<AgentTimelineBranch> {
+  async replayExecution(requestInput: unknown): Promise<AgentReplayResult> {
     this.assertOpen();
-    const request: ForkTimelineRequest = parseForkRequest(requestInput);
-    if (!this.knownCheckpointIds.has(request.checkpointId)) {
+    if (this.replay) {
       throw new PiHarnessError(
         "INVALID_TOOL_FLOW",
-        `Cannot fork unknown checkpointId ${request.checkpointId}; read evidence or replay results first`,
+        "v0.1 permits exactly one baseline replay per diagnosis",
       );
     }
-    const branch = parseAgentTimelineBranch(
-      await this.game.forkTimeline(request),
-    );
-    if (branch.checkpointId !== request.checkpointId) {
+    const capsule = this.requireCapsule("replay the baseline");
+    const request = parseReplayRequest(requestInput);
+    if (
+      asString(request.executionId) !== asString(capsule.baselineExecutionId)
+    ) {
       throw new PiHarnessError(
-        "INVALID_GAME_RESULT",
-        `Fork result checkpoint ${branch.checkpointId} does not match requested ${request.checkpointId}`,
+        "INVALID_TOOL_FLOW",
+        `Cannot replay execution ${request.executionId}; the capsule baseline is ${capsule.baselineExecutionId}`,
       );
     }
-    if (this.knownBranchIds.has(branch.branchId)) {
-      throw new PiHarnessError(
-        "INVALID_GAME_RESULT",
-        `Fork returned duplicate branchId ${branch.branchId}`,
-      );
-    }
-    this.knownBranchIds.add(branch.branchId);
-    this.forkedBranchIds.add(branch.branchId);
-    return branch;
-  }
 
-  async replayTimeline(requestInput: unknown): Promise<AgentReplayResult> {
-    this.assertOpen();
-    const request: ReplayTimelineRequest = parseReplayRequest(requestInput);
-    if (!this.knownBranchIds.has(request.branchId)) {
-      throw new PiHarnessError(
-        "INVALID_TOOL_FLOW",
-        `Cannot replay unknown branchId ${request.branchId}`,
-      );
-    }
     const replay = parseAgentReplayResult(
-      await this.game.replayTimeline(request),
+      await this.game.replayExecution(request),
     );
-    if (replay.branchId !== request.branchId) {
+    if (
+      asString(replay.execution.executionId) === asString(request.executionId)
+    ) {
       throw new PiHarnessError(
         "INVALID_GAME_RESULT",
-        `Replay result branch ${replay.branchId} does not match requested ${request.branchId}`,
+        "Replay must produce a new immutable ExecutionLog",
       );
     }
-    this.replayByBranchId.set(replay.branchId, replay);
-    this.knownCheckpointIds.add(replay.finalCheckpointId);
-    replay.evidenceIds.forEach((id) => this.observedEvidenceIds.add(id));
-    return replay;
+    if (asString(replay.execution.runId) !== asString(capsule.runId)) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Replay execution belongs to a different investigation",
+      );
+    }
+    if (
+      asString(replay.execution.contractId) !== asString(capsule.contractId) ||
+      asString(replay.execution.branchId) !== asString(capsule.branchId) ||
+      asString(replay.execution.startCheckpointId) !==
+        asString(capsule.checkpointId)
+    ) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Replay execution does not preserve the capsule Contract, branch, and start checkpoint",
+      );
+    }
+    if (
+      replay.sourceDigest !== capsule.integrity.timelineDigest ||
+      replay.replayDigest !== replay.execution.timelineDigest
+    ) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Replay digest receipt does not match the capsule or replay ExecutionLog",
+      );
+    }
+    if (replay.matches !== (replay.sourceDigest === replay.replayDigest)) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Replay matches flag contradicts its source and replay digests",
+      );
+    }
+    this.replay = structuredClone(replay);
+    return structuredClone(replay);
   }
 
-  async compareTimelines(
+  async runIntervention(
     requestInput: unknown,
-  ): Promise<AgentTimelineComparison> {
+  ): Promise<AgentInterventionResult> {
     this.assertOpen();
-    const request: CompareTimelinesRequest = parseCompareRequest(requestInput);
-    if (request.baselineBranchId === request.candidateBranchId) {
+    if (this.intervention) {
       throw new PiHarnessError(
         "INVALID_TOOL_FLOW",
-        "A branch cannot be compared with itself",
+        "v0.1 permits exactly one intervention per diagnosis",
       );
     }
-    const baseline = this.replayByBranchId.get(request.baselineBranchId);
-    const candidate = this.replayByBranchId.get(request.candidateBranchId);
-    if (!baseline || !candidate) {
+    const capsule = this.requireCapsule("run an intervention");
+    if (!this.replay) {
       throw new PiHarnessError(
         "INVALID_TOOL_FLOW",
-        "Both branches must be replayed before comparison",
+        "Replay the capsule baseline before running the intervention",
       );
     }
-    const comparison = parseAgentTimelineComparison(
-      await this.game.compareTimelines(request),
+    const request = parseRunInterventionRequest(requestInput);
+    if (
+      asString(request.baselineExecutionId) !==
+      asString(capsule.baselineExecutionId)
+    ) {
+      throw new PiHarnessError(
+        "INVALID_TOOL_FLOW",
+        `Cannot intervene on execution ${request.baselineExecutionId}; the capsule baseline is ${capsule.baselineExecutionId}`,
+      );
+    }
+
+    const result = parseAgentInterventionResult(
+      await this.game.runIntervention(request),
     );
     if (
-      comparison.baselineBranchId !== request.baselineBranchId ||
-      comparison.candidateBranchId !== request.candidateBranchId
+      asString(result.execution.executionId) ===
+        asString(capsule.baselineExecutionId) ||
+      asString(result.execution.executionId) ===
+        asString(this.replay.execution.executionId)
     ) {
       throw new PiHarnessError(
         "INVALID_GAME_RESULT",
-        "Comparison result branch IDs do not match the request",
+        "Intervention must produce a new immutable ExecutionLog",
       );
     }
     if (
-      comparison.baselineOutcome !== baseline.outcome ||
-      comparison.candidateOutcome !== candidate.outcome
+      asString(result.branch.branchId) !== asString(result.execution.branchId)
     ) {
       throw new PiHarnessError(
         "INVALID_GAME_RESULT",
-        "Comparison outcomes do not match the replay results",
+        "Intervention BranchSpec and ExecutionLog branch IDs do not match",
       );
     }
-    this.comparisons.set(
-      comparisonKey(request.baselineBranchId, request.candidateBranchId),
-      comparison,
-    );
-    comparison.evidenceIds.forEach((id) => this.observedEvidenceIds.add(id));
-    return comparison;
+    if (
+      asString(result.branch.runId) !== asString(capsule.runId) ||
+      asString(result.execution.runId) !== asString(capsule.runId)
+    ) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Intervention artifacts belong to a different investigation",
+      );
+    }
+    if (
+      result.branch.branchKind !== "intervention" ||
+      result.branch.intervention.kind !== "delay_input" ||
+      result.branch.intervention.deltaTicks !== 1 ||
+      asString(result.branch.parentBranchId) !== asString(capsule.branchId)
+    ) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Intervention BranchSpec does not realize the requested single-tick delay",
+      );
+    }
+    if (
+      asString(result.branch.contractId) !== asString(capsule.contractId) ||
+      asString(result.execution.contractId) !== asString(capsule.contractId) ||
+      asString(result.branch.startCheckpointId) !==
+        asString(capsule.checkpointId) ||
+      asString(result.execution.startCheckpointId) !==
+        asString(capsule.checkpointId) ||
+      asString(result.branch.inputTraceId) !==
+        asString(result.execution.inputTraceId)
+    ) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Intervention artifacts do not preserve Contract, checkpoint, and input-trace lineage",
+      );
+    }
+    this.intervention = structuredClone(result);
+    return structuredClone(result);
   }
 
-  submitDiagnosis(value: unknown): DiagnosisReport {
+  async compareExecutions(requestInput: unknown): Promise<ExecutionComparison> {
     this.assertOpen();
-    const report = parseDiagnosisReport(value);
-
-    if (this.evidenceById.size === 0) {
+    if (this.comparison) {
       throw new PiHarnessError(
         "INVALID_TOOL_FLOW",
-        "Read the initial evidence before submitting a diagnosis",
+        "v0.1 permits exactly one execution comparison per diagnosis",
       );
     }
-    if (this.forkedBranchIds.size === 0) {
+    const capsule = this.requireCapsule("compare executions");
+    if (!this.replay || !this.intervention) {
       throw new PiHarnessError(
         "INVALID_TOOL_FLOW",
-        "Create at least one experimental branch before submitting",
+        "Complete the baseline replay and intervention before comparison",
       );
     }
-    if (this.comparisons.size === 0) {
+    const request = parseCompareRequest(requestInput);
+    if (
+      asString(request.baselineExecutionId) !==
+        asString(this.replay.execution.executionId) ||
+      asString(request.candidateExecutionId) !==
+        asString(this.intervention.execution.executionId)
+    ) {
       throw new PiHarnessError(
         "INVALID_TOOL_FLOW",
-        "Compare replayed branches before submitting",
+        "Comparison must use the replay and intervention executions returned in this diagnosis",
       );
     }
 
-    for (const evidenceId of report.evidenceIds) {
-      if (!this.observedEvidenceIds.has(evidenceId)) {
-        throw new PiHarnessError(
-          "INVALID_DIAGNOSIS",
-          `Diagnosis references evidenceId ${evidenceId} that no tool returned`,
-        );
-      }
-    }
-
-    let includesForkedExperiment = false;
-    for (const experiment of report.experiments) {
-      const replay = this.replayByBranchId.get(experiment.branchId);
-      if (!replay) {
-        throw new PiHarnessError(
-          "INVALID_DIAGNOSIS",
-          `Experiment references branchId ${experiment.branchId} that was not replayed`,
-        );
-      }
-      if (replay.outcome !== experiment.outcome) {
-        throw new PiHarnessError(
-          "INVALID_DIAGNOSIS",
-          `Experiment outcome for ${experiment.branchId} is ${experiment.outcome}, but replay returned ${replay.outcome}`,
-        );
-      }
-      const replayEvidenceIds = new Set(replay.evidenceIds);
-      for (const evidenceId of experiment.evidenceIds) {
-        if (!this.observedEvidenceIds.has(evidenceId)) {
-          throw new PiHarnessError(
-            "INVALID_DIAGNOSIS",
-            `Experiment references evidenceId ${evidenceId} that no tool returned`,
-          );
-        }
-        if (!replayEvidenceIds.has(evidenceId)) {
-          throw new PiHarnessError(
-            "INVALID_DIAGNOSIS",
-            `Experiment references evidenceId ${evidenceId} that was not returned by replay ${experiment.branchId}`,
-          );
-        }
-      }
-      includesForkedExperiment ||= this.forkedBranchIds.has(
-        experiment.branchId,
+    const comparison = parseExecutionComparison(
+      await this.game.compareExecutions(request),
+    );
+    if (
+      asString(comparison.baselineExecutionId) !==
+        asString(request.baselineExecutionId) ||
+      asString(comparison.candidateExecutionId) !==
+        asString(request.candidateExecutionId)
+    ) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Comparison result execution IDs do not match the request",
       );
     }
-    if (!includesForkedExperiment) {
+    if (asString(comparison.runId) !== asString(capsule.runId)) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Comparison belongs to a different investigation",
+      );
+    }
+    const replayOutcome =
+      this.replay.execution.status === "completed"
+        ? this.replay.execution.evaluation.status
+        : "incomplete";
+    const candidateOutcome =
+      this.intervention.execution.status === "completed"
+        ? this.intervention.execution.evaluation.status
+        : "incomplete";
+    if (
+      asString(comparison.contractId) !== asString(capsule.contractId) ||
+      asString(comparison.commonCheckpointId) !==
+        asString(capsule.checkpointId) ||
+      asString(comparison.baselineBranchId) !==
+        asString(this.replay.execution.branchId) ||
+      asString(comparison.candidateBranchId) !==
+        asString(this.intervention.execution.branchId) ||
+      comparison.intervention.kind !== "delay_input" ||
+      comparison.intervention.deltaTicks !== 1 ||
+      comparison.baselineOutcome !== replayOutcome ||
+      comparison.candidateOutcome !== candidateOutcome
+    ) {
+      throw new PiHarnessError(
+        "INVALID_GAME_RESULT",
+        "Comparison result contradicts the Contract, checkpoint, branches, intervention, or execution outcomes",
+      );
+    }
+    this.comparison = structuredClone(comparison);
+    return structuredClone(comparison);
+  }
+
+  submitDiagnosisProposal(value: unknown): DiagnosisProposal {
+    this.assertOpen();
+    const capsule = this.requireCapsule("submit a proposal");
+    const proposal = parseDiagnosisProposal(value);
+
+    if (
+      asString(proposal.runId) !== asString(capsule.runId) ||
+      asString(proposal.capsuleId) !== asString(capsule.capsuleId) ||
+      asString(proposal.baselineExecutionId) !==
+        asString(capsule.baselineExecutionId)
+    ) {
       throw new PiHarnessError(
         "INVALID_DIAGNOSIS",
-        "At least one experiment must reference a branch created during this diagnosis",
+        "Proposal run, capsule, or baseline execution reference is not the capsule observed in this session",
       );
     }
 
-    for (const comparison of report.comparisons) {
+    if (proposal.claim.kind === "unknown") {
       if (
-        !this.comparisons.has(
-          comparisonKey(
-            comparison.baselineBranchId,
-            comparison.candidateBranchId,
-          ),
-        )
+        (proposal.blockers.length === 0 && proposal.unknowns.length === 0) ||
+        proposal.nextExperiment === null
       ) {
         throw new PiHarnessError(
           "INVALID_DIAGNOSIS",
-          `Diagnosis references comparison ${comparison.baselineBranchId} -> ${comparison.candidateBranchId} that was not performed`,
+          "An unknown proposal requires blockers or unknowns and a smallest next experiment",
+        );
+      }
+      this.assertOptionalExperimentReferences(proposal);
+    } else {
+      const replay = this.requireReplay();
+      const intervention = this.requireIntervention();
+      const comparison = this.requireComparison();
+      if (
+        asString(proposal.replayExecutionId ?? "") !==
+          asString(replay.execution.executionId) ||
+        asString(proposal.candidateExecutionId ?? "") !==
+          asString(intervention.execution.executionId) ||
+        asString(proposal.comparisonId ?? "") !==
+          asString(comparison.comparisonId)
+      ) {
+        throw new PiHarnessError(
+          "INVALID_DIAGNOSIS",
+          "Mechanism proposal must reference the replay, intervention, and comparison returned in this session",
         );
       }
     }
 
-    this.submittedReport = structuredClone(report);
-    return structuredClone(report);
+    for (const fact of proposal.observedFacts) {
+      for (const reference of fact.references) {
+        this.assertObservedReference(reference);
+      }
+    }
+
+    this.submittedProposal = structuredClone(proposal);
+    return structuredClone(proposal);
   }
 
-  getSubmittedReport(): DiagnosisReport | undefined {
-    return this.submittedReport
-      ? structuredClone(this.submittedReport)
+  getSubmittedProposal(): DiagnosisProposal | undefined {
+    return this.submittedProposal
+      ? structuredClone(this.submittedProposal)
       : undefined;
   }
+
+  private assertOptionalExperimentReferences(
+    proposal: DiagnosisProposal,
+  ): void {
+    if (
+      proposal.replayExecutionId !== undefined &&
+      asString(proposal.replayExecutionId) !==
+        asString(this.replay?.execution.executionId ?? "")
+    ) {
+      throw new PiHarnessError(
+        "INVALID_DIAGNOSIS",
+        "Unknown proposal references a replay execution not returned in this session",
+      );
+    }
+    if (
+      proposal.candidateExecutionId !== undefined &&
+      asString(proposal.candidateExecutionId) !==
+        asString(this.intervention?.execution.executionId ?? "")
+    ) {
+      throw new PiHarnessError(
+        "INVALID_DIAGNOSIS",
+        "Unknown proposal references a candidate execution not returned in this session",
+      );
+    }
+    if (
+      proposal.comparisonId !== undefined &&
+      asString(proposal.comparisonId) !==
+        asString(this.comparison?.comparisonId ?? "")
+    ) {
+      throw new PiHarnessError(
+        "INVALID_DIAGNOSIS",
+        "Unknown proposal references a comparison not returned in this session",
+      );
+    }
+  }
+
+  private assertObservedReference(reference: ArtifactReference): void {
+    const capsule = this.requireCapsule("validate proposal references");
+    const known = new Set<string>();
+    const add = (kind: ArtifactReference["artifactKind"], id: string): void => {
+      known.add(`${kind}\u0000${id}`);
+    };
+
+    add("capsule", capsule.capsuleId);
+    add("contract", capsule.contractId);
+    add("branch", capsule.branchId);
+    add("checkpoint", capsule.checkpointId);
+    add("execution", capsule.baselineExecutionId);
+    for (const event of capsule.eventChain) add("event", event.eventId);
+
+    for (const execution of [
+      this.replay?.execution,
+      this.intervention?.execution,
+    ]) {
+      if (!execution) continue;
+      add("execution", execution.executionId);
+      add("branch", execution.branchId);
+      add("contract", execution.contractId);
+      add("checkpoint", execution.startCheckpointId);
+      if (execution.status === "completed") {
+        add("checkpoint", execution.finalCheckpointId);
+      }
+      for (const event of execution.events) add("event", event.eventId);
+    }
+    if (this.intervention) add("branch", this.intervention.branch.branchId);
+    if (this.comparison) {
+      add("comparison", this.comparison.comparisonId);
+      add("contract", this.comparison.contractId);
+      add("checkpoint", this.comparison.commonCheckpointId);
+      add("branch", this.comparison.baselineBranchId);
+      add("branch", this.comparison.candidateBranchId);
+      add("execution", this.comparison.baselineExecutionId);
+      add("execution", this.comparison.candidateExecutionId);
+    }
+
+    const entry = (() => {
+      switch (reference.artifactKind) {
+        case "contract":
+          return [reference.artifactKind, reference.contractId] as const;
+        case "branch":
+          return [reference.artifactKind, reference.branchId] as const;
+        case "checkpoint":
+          return [reference.artifactKind, reference.checkpointId] as const;
+        case "execution":
+          return [reference.artifactKind, reference.executionId] as const;
+        case "capsule":
+          return [reference.artifactKind, reference.capsuleId] as const;
+        case "comparison":
+          return [reference.artifactKind, reference.comparisonId] as const;
+        case "event":
+          return [reference.artifactKind, reference.eventId] as const;
+      }
+    })();
+    if (!known.has(`${entry[0]}\u0000${entry[1]}`)) {
+      throw new PiHarnessError(
+        "INVALID_DIAGNOSIS",
+        `Proposal references ${entry[0]} ${entry[1]} that no tool returned`,
+      );
+    }
+  }
+
+  private requireCapsule(action: string): EvidenceCapsule {
+    if (!this.capsule) {
+      throw new PiHarnessError(
+        "INVALID_TOOL_FLOW",
+        `Read the initial Evidence Capsule before attempting to ${action}`,
+      );
+    }
+    return this.capsule;
+  }
+
+  private requireReplay(): AgentReplayResult {
+    if (!this.replay) {
+      throw new PiHarnessError(
+        "INVALID_TOOL_FLOW",
+        "Mechanism proposal requires the baseline replay",
+      );
+    }
+    return this.replay;
+  }
+
+  private requireIntervention(): AgentInterventionResult {
+    if (!this.intervention) {
+      throw new PiHarnessError(
+        "INVALID_TOOL_FLOW",
+        "Mechanism proposal requires the one-tick intervention",
+      );
+    }
+    return this.intervention;
+  }
+
+  private requireComparison(): ExecutionComparison {
+    if (!this.comparison) {
+      throw new PiHarnessError(
+        "INVALID_TOOL_FLOW",
+        "Mechanism proposal requires an execution comparison",
+      );
+    }
+    return this.comparison;
+  }
+}
+
+export function executionIdOf(result: {
+  readonly execution: { readonly executionId: ExecutionId };
+}): ExecutionId {
+  return result.execution.executionId;
 }

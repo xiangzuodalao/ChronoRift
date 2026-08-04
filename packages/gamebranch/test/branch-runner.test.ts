@@ -44,6 +44,7 @@ import {
   type GameEnvironmentFactoryPort,
   type GameEnvironmentPort,
   type IdGeneratorPort,
+  type RestoreReceipt,
 } from "../src/index.js";
 
 const runId = asRunId("run-1");
@@ -93,7 +94,7 @@ class TimingBugEnvironment implements GameEnvironmentPort {
   private doorOpen = false;
   private openAtUs: number | null = null;
 
-  public async restore(snapshot: EnvironmentSnapshot): Promise<void> {
+  public async restore(snapshot: EnvironmentSnapshot): Promise<RestoreReceipt> {
     if (
       snapshot.runtimeState === null ||
       Array.isArray(snapshot.runtimeState) ||
@@ -105,6 +106,12 @@ class TimingBugEnvironment implements GameEnvironmentPort {
     this.doorOpen = getBoolean(snapshot.runtimeState, "doorOpen");
     const openAtUs = snapshot.runtimeState.openAtUs;
     this.openAtUs = typeof openAtUs === "number" ? openAtUs : null;
+    return {
+      restored: true,
+      nextTick: 0,
+      simTimeUs: 0,
+      state: this.state(),
+    };
   }
 
   public async step(command: FrameCommand): Promise<FrameObservation> {
@@ -158,7 +165,17 @@ class TimingBugEnvironment implements GameEnvironmentPort {
         after: true,
       });
     }
-    return { events, state: this.state() };
+    return {
+      events,
+      state: this.state(),
+      receipt: {
+        requestedTick: command.tick,
+        realizedTick: command.tick,
+        requestedDeltaUs: command.deltaUs,
+        realizedDeltaUs: command.deltaUs,
+        appliedInputOrders: command.inputs.map((input) => input.order),
+      },
+    };
   }
 
   public async snapshot(): Promise<EnvironmentSnapshot> {

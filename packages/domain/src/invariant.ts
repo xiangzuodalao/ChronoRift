@@ -79,7 +79,17 @@ export const StateValueObservationSchema: z.ZodType<StateValueObservation> = z
     present: z.boolean(),
     value: JsonValueSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((observation, context) => {
+    if (observation.present !== (observation.value !== undefined)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "A present observation requires a value; an absent observation cannot contain one",
+        path: ["value"],
+      });
+    }
+  });
 
 export interface InvariantEvaluation {
   readonly schemaVersion: 1;

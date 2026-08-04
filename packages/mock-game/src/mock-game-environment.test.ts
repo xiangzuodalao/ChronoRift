@@ -1,6 +1,6 @@
 import type {
-  EnvironmentEventDraft,
   EnvironmentSnapshot,
+  V01EnvironmentEventDraft,
 } from "@chronorift/domain";
 import type {
   FrameCommand,
@@ -11,8 +11,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   BASELINE_DELTA_US,
-  CANDIDATE_DELTA_US,
   DOOR_OPEN_PATH,
+  DOOR_RECEIVER_CONNECTED_PATH,
   INTERACT_SWITCH_ACTION,
   SWITCH_ACTIVE_PATH,
   SWITCH_TARGET,
@@ -31,18 +31,16 @@ const interactionInput = {
   payload: {},
 } as const;
 
-const eventKey = (event: EnvironmentEventDraft): string => {
+const eventKey = (event: V01EnvironmentEventDraft): string => {
   switch (event.kind) {
     case "property_changed":
       return `${event.kind}:${event.path}`;
     case "signal":
       return `${event.kind}:${event.name}`;
+    case "signal_delivery":
+      return `${event.kind}:${event.delivered ? "delivered" : (event.failureReason ?? "failed")}`;
     case "log":
       return `${event.kind}:${event.message}`;
-    default: {
-      const unreachable: never = event;
-      return unreachable;
-    }
   }
 };
 
@@ -51,12 +49,27 @@ const createRestoredEnvironment = async (): Promise<GameEnvironmentPort> => {
   const environment = await new MockGameEnvironmentFactory().create(
     scenario.environment,
   );
-  await environment.restore(scenario.initialCheckpointContent.snapshot);
+  const receipt = await environment.restore(
+    scenario.initialCheckpointContent.snapshot,
+  );
+  expect(receipt).toMatchObject({
+    restored: true,
+    nextTick: 0,
+    simTimeUs: 0,
+    state: {
+      values: {
+        [SWITCH_ACTIVE_PATH]: false,
+        [DOOR_OPEN_PATH]: false,
+        [DOOR_RECEIVER_CONNECTED_PATH]: false,
+      },
+    },
+  });
   return environment;
 };
 
 const runTwoFrames = async (
   deltaUs: number,
+  inputTick: 0 | 1,
 ): Promise<{
   readonly observations: readonly FrameObservation[];
   readonly snapshot: EnvironmentSnapshot;
@@ -70,7 +83,7 @@ const runTwoFrames = async (
       tick,
       simTimeUs,
       deltaUs,
-      inputs: tick === 0 ? [interactionInput] : [],
+      inputs: tick === inputTick ? [interactionInput] : [],
     });
     observations.push(observation);
     simTimeUs += deltaUs;
@@ -89,7 +102,7 @@ describe("MockGameEnvironment", () => {
     expect(first).toMatch(/^trace:sha256:[a-f0-9]{64}$/u);
   });
 
-  it("emits the causal switch, signal, schedule, and check sequence", async () => {
+  it("emits but cannot deliver the tick-0 signal before receiver initialization", async () => {
     const environment = await createRestoredEnvironment();
 
     const observation = await environment.step({
@@ -102,86 +115,96 @@ describe("MockGameEnvironment", () => {
     expect(observation.events.map(eventKey)).toEqual([
       `property_changed:${SWITCH_ACTIVE_PATH}`,
       "signal:switch.activated",
-      "log:Door open timer scheduled",
-      "log:Door open timer checked",
+      "signal_delivery:receiver_not_connected",
+      `property_changed:${DOOR_RECEIVER_CONNECTED_PATH}`,
     ]);
-
-    const [property, signal, schedule, check] = observation.events;
+    const [property, signal, delivery, connection] = observation.events;
     expect(property?.causedByLocalId).toBe(interactionInput.localId);
     expect(signal?.causedByLocalId).toBe(property?.localId);
-    expect(schedule?.causedByLocalId).toBe(signal?.localId);
-    expect(check?.causedByLocalId).toBe(schedule?.localId);
+    expect(delivery?.causedByLocalId).toBe(signal?.localId);
+    expect(connection?.causedByLocalId).toBeUndefined();
     expect(observation.state.values).toEqual({
       [SWITCH_ACTIVE_PATH]: true,
       [DOOR_OPEN_PATH]: false,
+      [DOOR_RECEIVER_CONNECTED_PATH]: true,
+    });
+    expect(observation.receipt).toEqual({
+      requestedTick: 0,
+      realizedTick: 0,
+      requestedDeltaUs: BASELINE_DELTA_US,
+      realizedDeltaUs: BASELINE_DELTA_US,
+      appliedInputOrders: [0],
     });
 
     await environment.dispose();
   });
 
-  it("keeps the door closed when 16,667 us frames skip the deadline", async () => {
-    const result = await runTwoFrames(BASELINE_DELTA_US);
+  it("does not replay the missed signal after the receiver connects", async () => {
+    const result = await runTwoFrames(BASELINE_DELTA_US, 0);
 
-    expect(result.observations[0]?.state.values[DOOR_OPEN_PATH]).toBe(false);
-    expect(result.observations[1]?.state.values[DOOR_OPEN_PATH]).toBe(false);
-    expect(result.snapshot.state.values).toEqual({
-      [SWITCH_ACTIVE_PATH]: true,
-      [DOOR_OPEN_PATH]: false,
-    });
-    expect(result.snapshot.runtimeState).toEqual({
-      nowUs: 33_334,
-      nextTick: 2,
-    });
+    expect(result.observations[1]?.events).toEqual([]);
+    expect(result.snapshot.state.values[DOOR_OPEN_PATH]).toBe(false);
     expect(result.snapshot.pendingEffects).toEqual({
-      doorTimer: {
-        openAtUs: 32_000,
-        scheduledTick: 0,
-        causedByLocalId: "mock:0:door.schedule",
-      },
+      receiverInitializationPending: false,
     });
   });
 
-  it("opens the door when 16,000 us frames hit the deadline", async () => {
-    const result = await runTwoFrames(CANDIDATE_DELTA_US);
+  it("opens the door when only the interaction is delayed by one tick", async () => {
+    const result = await runTwoFrames(BASELINE_DELTA_US, 1);
 
-    expect(result.observations[0]?.state.values[DOOR_OPEN_PATH]).toBe(false);
-    expect(result.observations[1]?.state.values[DOOR_OPEN_PATH]).toBe(true);
+    expect(result.observations[0]?.events.map(eventKey)).toEqual([
+      `property_changed:${DOOR_RECEIVER_CONNECTED_PATH}`,
+    ]);
     expect(result.observations[1]?.events.map(eventKey)).toEqual([
-      "log:Door open timer checked",
+      `property_changed:${SWITCH_ACTIVE_PATH}`,
+      "signal:switch.activated",
+      "signal_delivery:delivered",
       `property_changed:${DOOR_OPEN_PATH}`,
     ]);
-    expect(result.snapshot.runtimeState).toEqual({
-      nowUs: 32_000,
-      nextTick: 2,
+    expect(result.snapshot.state.values).toEqual({
+      [SWITCH_ACTIVE_PATH]: true,
+      [DOOR_OPEN_PATH]: true,
+      [DOOR_RECEIVER_CONNECTED_PATH]: true,
     });
-    expect(result.snapshot.pendingEffects).toEqual({ doorTimer: null });
   });
 
-  it("restores time, state, pending timer, and RNG deterministically", async () => {
+  it("is insensitive to frame delta for the same tick-0 input", async () => {
+    const baseline = await runTwoFrames(BASELINE_DELTA_US, 0);
+    const alternate = await runTwoFrames(16_000, 0);
+
+    expect(baseline.snapshot.state.values[DOOR_OPEN_PATH]).toBe(false);
+    expect(alternate.snapshot.state.values[DOOR_OPEN_PATH]).toBe(false);
+    expect(
+      baseline.observations.flatMap((observation) =>
+        observation.events.map(eventKey),
+      ),
+    ).toEqual(
+      alternate.observations.flatMap((observation) =>
+        observation.events.map(eventKey),
+      ),
+    );
+  });
+
+  it("restores connection state, pending initialization, time, and RNG", async () => {
     const original = await createRestoredEnvironment();
     await original.step({
       tick: 0,
       simTimeUs: 0,
       deltaUs: BASELINE_DELTA_US,
-      inputs: [interactionInput],
+      inputs: [],
     });
     const checkpoint = await original.snapshot();
 
     expect(checkpoint).toMatchObject({
       state: {
         values: {
-          [SWITCH_ACTIVE_PATH]: true,
+          [SWITCH_ACTIVE_PATH]: false,
           [DOOR_OPEN_PATH]: false,
+          [DOOR_RECEIVER_CONNECTED_PATH]: true,
         },
       },
       runtimeState: { nowUs: 16_667, nextTick: 1 },
-      pendingEffects: {
-        doorTimer: {
-          openAtUs: 32_000,
-          scheduledTick: 0,
-          causedByLocalId: "mock:0:door.schedule",
-        },
-      },
+      pendingEffects: { receiverInitializationPending: false },
       rngState: { state: 3_388_403_996 },
     });
 
@@ -189,7 +212,7 @@ describe("MockGameEnvironment", () => {
       tick: 1,
       simTimeUs: 16_667,
       deltaUs: BASELINE_DELTA_US,
-      inputs: [],
+      inputs: [interactionInput],
     };
     const expectedObservation = await original.step(nextCommand);
     const expectedSnapshot = await original.snapshot();
@@ -197,10 +220,15 @@ describe("MockGameEnvironment", () => {
     const restored = await new MockGameEnvironmentFactory().create(
       MOCK_GAME_ENVIRONMENT_REF,
     );
-    await restored.restore(checkpoint);
+    const restoreReceipt = await restored.restore(checkpoint);
     const actualObservation = await restored.step(nextCommand);
     const actualSnapshot = await restored.snapshot();
 
+    expect(restoreReceipt).toMatchObject({
+      restored: true,
+      nextTick: 1,
+      simTimeUs: 16_667,
+    });
     expect(actualObservation).toEqual(expectedObservation);
     expect(actualSnapshot).toEqual(expectedSnapshot);
 

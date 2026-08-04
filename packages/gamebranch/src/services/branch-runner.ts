@@ -337,8 +337,28 @@ export class BranchRunner {
             );
           }
           const eventId = asEventId(`${branchId}:${seq}`);
+          // The legacy BranchRun schema predates typed signal-delivery facts.
+          // Preserve compatibility without widening that stored schema; the
+          // v0.1 Execution runner records this draft as its typed event.
+          const legacyDraft: EnvironmentEventDraft =
+            draft.kind === "signal_delivery"
+              ? {
+                  kind: "log",
+                  localId: draft.localId,
+                  causedByLocalId: draft.causedByLocalId,
+                  level: "debug",
+                  source: draft.source,
+                  message: "Signal delivery observed",
+                  fields: {
+                    signal: draft.name,
+                    receiver: draft.receiver,
+                    delivered: draft.delivered,
+                    failureReason: draft.failureReason ?? null,
+                  },
+                }
+              : draft;
           const event = draftToEvent(
-            draft,
+            legacyDraft,
             {
               eventId,
               runId: original.runId,

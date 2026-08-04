@@ -1,130 +1,95 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentGameApi, RestrictedSourceAccess } from "../src/types.js";
 import { createPiTools, PI_TOOL_NAMES } from "../src/internal/pi-tools.js";
 import { HarnessToolFlow } from "../src/internal/tool-flow.js";
-
-const source: RestrictedSourceAccess = {
-  root: "/fixture",
-  async read() {
-    return {
-      path: "door.ts",
-      content: "elapsedUs === thresholdUs",
-      startLine: 1,
-      endLine: 1,
-      totalLines: 1,
-      truncated: false,
-    };
-  },
-  async search(request) {
-    return {
-      query: request.query,
-      matches: [],
-      scannedFiles: 0,
-      truncated: false,
-    };
-  },
-};
-
-function gameApi(): AgentGameApi {
-  return {
-    async getEvidence(evidenceId) {
-      return {
-        schemaVersion: 1,
-        evidenceId,
-        summary: "failure",
-        checkpointId: "checkpoint",
-        branchId: "baseline",
-        eventIds: [],
-        details: {},
-      };
-    },
-    async forkTimeline(request) {
-      return {
-        schemaVersion: 1,
-        branchId: "candidate",
-        checkpointId: request.checkpointId,
-        controls: request.controls,
-      };
-    },
-    async replayTimeline({ branchId }) {
-      return {
-        schemaVersion: 1,
-        branchId,
-        outcome: branchId === "baseline" ? "fail" : "pass",
-        evidenceIds: [`replay-${branchId}`],
-        finalCheckpointId: `final-${branchId}`,
-        summary: "replayed",
-        details: {},
-      };
-    },
-    async compareTimelines({ baselineBranchId, candidateBranchId }) {
-      return {
-        schemaVersion: 1,
-        baselineBranchId,
-        candidateBranchId,
-        baselineOutcome: "fail",
-        candidateOutcome: "pass",
-        evidenceIds: ["comparison"],
-        firstDivergenceTick: 1,
-        summary: "different",
-        details: {},
-      };
-    },
-  };
-}
+import { FIXTURE_CAPSULE_ID, createV01AgentFixtureApi } from "./v01-fixture.js";
 
 describe("Pi custom tools", () => {
-  it("registers only the expected tools and serializes every execution", () => {
-    const tools = createPiTools(new HarnessToolFlow(gameApi()), source);
+  it("registers only the five v0.1 tools", () => {
+    const fixture = createV01AgentFixtureApi();
+    const tools = createPiTools(
+      new HarnessToolFlow(fixture.api, FIXTURE_CAPSULE_ID),
+    );
 
     expect(tools.map((tool) => tool.name)).toEqual(PI_TOOL_NAMES);
     expect(tools.every((tool) => tool.executionMode === "sequential")).toBe(
       true,
     );
-    expect(tools.map((tool) => tool.name)).not.toContain("bash");
-    expect(tools.map((tool) => tool.name)).not.toContain("write");
-    expect(tools.map((tool) => tool.name)).not.toContain("edit");
+    expect(tools.map((tool) => tool.name)).not.toEqual(
+      expect.arrayContaining(["bash", "read", "source_read", "write", "edit"]),
+    );
   });
 
-  it("returns terminate only after a valid canonical submission", async () => {
-    const flow = new HarnessToolFlow(gameApi());
-    await flow.getEvidence("evidence");
-    await flow.replayTimeline({ branchId: "baseline" });
-    await flow.forkTimeline({ checkpointId: "checkpoint", controls: {} });
-    await flow.replayTimeline({ branchId: "candidate" });
-    await flow.compareTimelines({
-      baselineBranchId: "baseline",
-      candidateBranchId: "candidate",
+  it("terminates only after a schema-valid grounded proposal", async () => {
+    const fixture = createV01AgentFixtureApi();
+    const flow = new HarnessToolFlow(fixture.api, FIXTURE_CAPSULE_ID);
+    const capsule = await flow.getEvidenceCapsule(FIXTURE_CAPSULE_ID);
+    const replay = await flow.replayExecution({
+      executionId: capsule.baselineExecutionId,
     });
-    const submit = createPiTools(flow, source).find(
-      (tool) => tool.name === "submit_diagnosis",
+    const intervention = await flow.runIntervention({
+      baselineExecutionId: capsule.baselineExecutionId,
+      deltaTicks: 1,
+    });
+    const comparison = await flow.compareExecutions({
+      baselineExecutionId: replay.execution.executionId,
+      candidateExecutionId: intervention.execution.executionId,
+    });
+    const submit = createPiTools(flow).find(
+      (tool) => tool.name === "submit_diagnosis_proposal",
     );
     if (!submit) throw new Error("submit tool missing");
 
     const result = await submit.execute(
-      "call-submit",
+      "chronorift-call-submit",
       {
         schemaVersion: 1,
-        conclusion: "exact equality is frame-rate dependent",
-        confidence: 0.9,
-        evidenceIds: ["evidence", "comparison"],
-        experiments: [
+        proposalId: "proposal-tool-test",
+        runId: capsule.runId,
+        capsuleId: capsule.capsuleId,
+        baselineExecutionId: capsule.baselineExecutionId,
+        replayExecutionId: replay.execution.executionId,
+        candidateExecutionId: intervention.execution.executionId,
+        comparisonId: comparison.comparisonId,
+        claim: {
+          kind: "mechanism",
+          summary: "Signal precedes receiver connection.",
+          mechanism: "Missed Signals are not replayed.",
+          category: "signal_ordering",
+          mechanismCode: "signal_before_receiver_connection",
+          assertion: {
+            signal: {
+              kind: "signal",
+              source: "switch",
+              name: "switch.activated",
+            },
+            receiver: "door",
+            failedDeliveryReason: "receiver_not_connected",
+            expectedEffect: {
+              kind: "property_equals",
+              path: "door.open",
+              value: true,
+            },
+            intervention: { kind: "delay_input", deltaTicks: 1 },
+          },
+        },
+        observedFacts: [
           {
-            branchId: "candidate",
-            outcome: "pass",
-            evidenceIds: ["replay-candidate"],
-            observation: "candidate passed",
+            statement: "The isolated comparison changed fail to pass.",
+            references: [
+              {
+                artifactKind: "comparison",
+                comparisonId: comparison.comparisonId,
+              },
+            ],
           },
         ],
-        comparisons: [
-          {
-            baselineBranchId: "baseline",
-            candidateBranchId: "candidate",
-            finding: "outcome changed",
-          },
-        ],
-        suggestedFix: "use a greater-than-or-equal threshold",
+        hypotheses: ["Initialization order controls Signal delivery."],
+        unknowns: [],
+        attemptedActions: ["replay", "intervention", "compare"],
+        blockers: [],
+        nextExperiment: null,
+        confidence: 0,
       },
       undefined,
       undefined,
@@ -132,6 +97,6 @@ describe("Pi custom tools", () => {
     );
 
     expect(result.terminate).toBe(true);
-    expect(flow.getSubmittedReport()?.confidence).toBe(0.9);
+    expect(flow.getSubmittedProposal()?.confidence).toBe(0);
   });
 });

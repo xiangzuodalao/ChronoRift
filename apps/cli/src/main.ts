@@ -3,26 +3,34 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { asBranchId } from "@chronorift/domain";
-import { JsonArtifactRepository } from "@chronorift/json-artifacts";
+import { asExecutionId, type DiagnosisProposal } from "@chronorift/domain";
+import { V01JsonArtifactRepository } from "@chronorift/json-artifacts";
 import {
   listAvailablePiModels,
   persistPiApiKey,
+  runDeterministicPiDiagnosis,
   runPiDiagnosis,
+  type PiDiagnosisRunResult,
 } from "@chronorift/pi-harness";
 
-import { ChronoRiftAgentGameApi } from "./agent-game-api.js";
-import { persistPiDiagnosis } from "./diagnosis.js";
-import { createBranchRunner, createMockRun } from "./runtime.js";
+import { persistV01PiDiagnosis } from "./diagnosis.js";
+import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
+import {
+  createV01GameBranchService,
+  createV01MockRun,
+  type V01MockRunContext,
+} from "./v01-runtime.js";
 
 interface Arguments {
   readonly command: string;
-  readonly flags: ReadonlyMap<string, string>;
+  readonly flags: ReadonlyMap<string, string | true>;
 }
+
+const booleanFlags = new Set(["json"]);
 
 function parseArguments(argv: readonly string[]): Arguments {
   const [command = "help", ...rest] = argv;
-  const flags = new Map<string, string>();
+  const flags = new Map<string, string | true>();
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
     if (token === "--") continue;
@@ -31,14 +39,23 @@ function parseArguments(argv: readonly string[]): Arguments {
     }
     const equals = token.indexOf("=");
     if (equals > 2) {
-      flags.set(token.slice(2, equals), token.slice(equals + 1));
+      const name = token.slice(2, equals);
+      if (booleanFlags.has(name)) {
+        throw new Error(`Boolean flag --${name} does not accept a value`);
+      }
+      flags.set(name, token.slice(equals + 1));
+      continue;
+    }
+    const name = token.slice(2);
+    if (booleanFlags.has(name)) {
+      flags.set(name, true);
       continue;
     }
     const value = rest[index + 1];
     if (value === undefined || value.startsWith("--")) {
       throw new Error(`Missing value for ${token}`);
     }
-    flags.set(token.slice(2), value);
+    flags.set(name, value);
     index += 1;
   }
   return { command, flags };
@@ -49,10 +66,15 @@ function flag(
   name: string,
   environmentName?: string,
 ): string | undefined {
+  const value = args.flags.get(name);
   return (
-    args.flags.get(name) ??
+    (typeof value === "string" ? value : undefined) ??
     (environmentName === undefined ? undefined : process.env[environmentName])
   );
+}
+
+function hasFlag(args: Arguments, name: string): boolean {
+  return args.flags.get(name) === true;
 }
 
 function requiredFlag(
@@ -73,53 +95,117 @@ function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function runDemo(cwd: string, artifactRoot?: string): Promise<void> {
-  const context = await createMockRun({
+async function diagnosisOutput(
+  context: V01MockRunContext,
+  result: PiDiagnosisRunResult,
+): Promise<Readonly<Record<string, unknown>>> {
+  const persisted = await persistV01PiDiagnosis(context, result.proposal);
+  const proposal = persisted.proposal;
+  const replay = await optionalExecution(context, proposal.replayExecutionId);
+  const candidate = await optionalExecution(
+    context,
+    proposal.candidateExecutionId,
+  );
+  const comparison =
+    proposal.comparisonId === undefined
+      ? null
+      : await context.repository.getExecutionComparison(proposal.comparisonId);
+
+  return {
+    schemaVersion: 1,
+    runId: context.runId,
+    artifactRoot: context.artifactRoot,
+    runDirectory: context.runDirectory,
+    contract: context.contract,
+    baselineBranch: context.baselineBranch,
+    originalBaseline: context.baselineExecution,
+    evidenceCapsule: context.evidenceCapsule,
+    baselineReplay: replay,
+    interventionExecution: candidate,
+    comparison,
+    proposal,
+    verdict: persisted.verdict,
+    piSession: result.piSession,
+  };
+}
+
+function optionalExecution(
+  context: V01MockRunContext,
+  executionId: DiagnosisProposal["replayExecutionId"],
+) {
+  return executionId === undefined
+    ? Promise.resolve(null)
+    : context.repository.getExecutionLog(executionId);
+}
+
+function printHumanDiagnosis(output: Readonly<Record<string, unknown>>): void {
+  const proposal = output["proposal"] as DiagnosisProposal;
+  const verdict = output["verdict"] as {
+    readonly status: string;
+    readonly summary: string;
+  };
+  const original = output["originalBaseline"] as {
+    readonly executionId: string;
+    readonly status: string;
+    readonly evaluation?: { readonly status: string };
+  };
+  const replay = output["baselineReplay"] as {
+    readonly executionId: string;
+    readonly evaluation?: { readonly status: string };
+  } | null;
+  const candidate = output["interventionExecution"] as {
+    readonly executionId: string;
+    readonly evaluation?: { readonly status: string };
+  } | null;
+  const session = output["piSession"] as {
+    readonly provider: string;
+    readonly model: string;
+    readonly sessionFile: string;
+  };
+
+  process.stdout.write(`ChronoRift v0.1 — ${verdict.status}\n`);
+  process.stdout.write(`${verdict.summary}\n\n`);
+  process.stdout.write(
+    `Original baseline: ${original.executionId} (${original.evaluation?.status ?? original.status})\n`,
+  );
+  process.stdout.write(
+    `Strict replay:     ${replay?.executionId ?? "not run"} (${replay?.evaluation?.status ?? "n/a"})\n`,
+  );
+  process.stdout.write(
+    `Intervention:      ${candidate?.executionId ?? "not run"} (${candidate?.evaluation?.status ?? "n/a"})\n`,
+  );
+  process.stdout.write(
+    `Agent confidence:  ${proposal.confidence} (advisory; ignored by the Gate)\n`,
+  );
+  process.stdout.write(
+    `Pi model:          ${session.provider}/${session.model}\n`,
+  );
+  process.stdout.write(`Pi session:        ${session.sessionFile}\n`);
+  process.stdout.write(
+    `Artifacts:         ${String(output["artifactRoot"])}/v0.1\n`,
+  );
+}
+
+async function runDemo(args: Arguments, cwd: string): Promise<void> {
+  const artifactRoot = flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT");
+  const context = await createV01MockRun({
     cwd,
     ...(artifactRoot === undefined ? {} : { artifactRoot }),
   });
-  const replay = await context.runner.replayStrict(
-    context.baselineBranch.branchId,
+  const game = new ChronoRiftV01AgentGameApi(
+    context.runId,
+    context.repository,
+    context.gameBranch,
   );
-  const candidateBranch = await context.runner.createFork({
-    parentBranchId: context.baselineBranch.branchId,
-    controls: {
-      deltaUs: context.scenario.controls.candidate.deltaUs,
-    },
-    replayMode: "experiment",
+  const result = await runDeterministicPiDiagnosis({
+    cwd,
+    runDir: context.runDirectory,
+    initialCapsuleId: context.evidenceCapsule.capsuleId,
+    game,
   });
-  const candidateRun = await context.runner.run(candidateBranch.branchId);
-  const comparison = await context.runner.compare(
-    context.baselineBranch.branchId,
-    candidateBranch.branchId,
-  );
-
-  printJson({
-    runId: context.runId,
-    runDirectory: context.repository.resolveRunDirectory(context.runId),
-    baseline: {
-      branchId: context.baselineBranch.branchId,
-      outcome: context.baselineRun.evaluations[0]?.status,
-      evidenceId: context.initialEvidence.evidenceId,
-      signalRecorded: context.baselineRun.events.some(
-        (event) => event.kind === "signal" && event.name === "switch.activated",
-      ),
-      switchChanged: context.baselineRun.events.some(
-        (event) =>
-          event.kind === "property_changed" && event.path === "switch.active",
-      ),
-      doorOpen: context.baselineRun.frames.at(-1)?.state.values["door.open"],
-    },
-    strictReplay: replay,
-    experiment: {
-      branchId: candidateBranch.branchId,
-      deltaUs: candidateBranch.controls.deltaUs,
-      outcome: candidateRun.evaluations[0]?.status,
-      doorOpen: candidateRun.frames.at(-1)?.state.values["door.open"],
-    },
-    comparison,
-    evidence: context.initialEvidence,
-  });
+  const output = await diagnosisOutput(context, result);
+  if (hasFlag(args, "json")) printJson(output);
+  else printHumanDiagnosis(output);
 }
 
 async function runDiagnosisCommand(
@@ -129,50 +215,37 @@ async function runDiagnosisCommand(
   const provider = requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER");
   const model = requiredFlag(args, "model", "CHRONORIFT_PI_MODEL");
   const artifactRoot = flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT");
-  const context = await createMockRun({
+  const context = await createV01MockRun({
     cwd,
     ...(artifactRoot === undefined ? {} : { artifactRoot }),
-    model: { piSessionId: null, provider, model },
   });
-  const game = new ChronoRiftAgentGameApi(
+  const game = new ChronoRiftV01AgentGameApi(
     context.runId,
-    context.baselineBranch.branchId,
     context.repository,
-    context.runner,
+    context.gameBranch,
   );
   const result = await runPiDiagnosis({
     cwd,
-    sourceRoot: resolve(cwd, "packages/mock-game/src"),
-    runDir: context.repository.resolveRunDirectory(context.runId),
+    runDir: context.runDirectory,
     provider,
     model,
-    initialEvidenceId: context.initialEvidence.evidenceId,
+    initialCapsuleId: context.evidenceCapsule.capsuleId,
     game,
-    additionalInstructions:
-      "The baseline uses deltaUs=16667. Test exactly one timing variable by forking the evidence checkpoint with frameRate=62.5 (equivalent to deltaUs=16000). Read mock-game-environment.ts and cite only returned artifact IDs.",
   });
-  const report = await persistPiDiagnosis(
-    context,
-    result.report,
-    result.piSession,
-  );
-  printJson({
-    runId: context.runId,
-    runDirectory: context.repository.resolveRunDirectory(context.runId),
-    piSession: result.piSession,
-    report,
-  });
+  const output = await diagnosisOutput(context, result);
+  if (hasFlag(args, "json")) printJson(output);
+  else printHumanDiagnosis(output);
 }
 
 async function replayCommand(args: Arguments, cwd: string): Promise<void> {
-  const branchId = asBranchId(requiredFlag(args, "branch"));
+  const executionId = asExecutionId(requiredFlag(args, "execution"));
   const artifactRoot = resolve(
     cwd,
     flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") ?? ".chronorift",
   );
-  const repository = new JsonArtifactRepository(artifactRoot);
-  const result = await createBranchRunner(repository).replayStrict(branchId);
-  printJson(result);
+  const repository = new V01JsonArtifactRepository(artifactRoot);
+  const gameBranch = createV01GameBranchService(repository);
+  printJson(await gameBranch.replayExecution({ executionId }));
 }
 
 async function modelsCommand(args: Arguments): Promise<void> {
@@ -199,15 +272,15 @@ async function persistVolcengineAuthCommand(): Promise<void> {
 }
 
 function printHelp(): void {
-  process.stdout.write(`ChronoRift\n\n`);
-  process.stdout.write(`  pnpm demo [--artifacts PATH]\n`);
+  process.stdout.write(`ChronoRift v0.1\n\n`);
+  process.stdout.write(`  pnpm demo [--artifacts PATH] [--json]\n`);
   process.stdout.write(
-    `  pnpm diagnose -- --provider PROVIDER --model MODEL [--artifacts PATH]\n`,
+    `  pnpm diagnose -- --provider PROVIDER --model MODEL [--artifacts PATH] [--json]\n`,
   );
   process.stdout.write(`  pnpm models [-- --provider PROVIDER]\n`);
   process.stdout.write(`  pnpm auth:volcengine\n`);
   process.stdout.write(
-    `  pnpm replay -- --branch BRANCH_ID [--artifacts PATH]\n`,
+    `  pnpm replay -- --execution EXECUTION_ID [--artifacts PATH]\n`,
   );
 }
 
@@ -216,7 +289,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const cwd = process.cwd();
   switch (args.command) {
     case "demo":
-      await runDemo(cwd, flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT"));
+      await runDemo(args, cwd);
       return;
     case "diagnose":
       await runDiagnosisCommand(args, cwd);

@@ -1,59 +1,81 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { JsonArtifactRepository } from "@chronorift/json-artifacts";
 import { describe, expect, it } from "vitest";
 
-import { ChronoRiftAgentGameApi } from "./agent-game-api.js";
-import { createMockRun } from "./runtime.js";
+import { runDeterministicPiDiagnosis } from "@chronorift/pi-harness";
 
-describe("ChronoRift composition", () => {
-  it("persists evidence and exposes branch/replay/compare through the Agent port", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "chronorift-e2e-"));
-    const context = await createMockRun({ cwd });
-    const game = new ChronoRiftAgentGameApi(
+import { persistV01PiDiagnosis } from "./diagnosis.js";
+import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
+import { createV01MockRun } from "./v01-runtime.js";
+
+describe("ChronoRift v0.1 composition", () => {
+  it("runs the full real Pi/faux-model experiment and Gate offline", async () => {
+    const artifactRoot = await mkdtemp(join(tmpdir(), "chronorift-v01-e2e-"));
+    const context = await createV01MockRun({
+      cwd: process.cwd(),
+      artifactRoot,
+    });
+    const game = new ChronoRiftV01AgentGameApi(
       context.runId,
-      context.baselineBranch.branchId,
       context.repository,
-      context.runner,
+      context.gameBranch,
     );
 
-    const evidence = await game.getEvidence(context.initialEvidence.evidenceId);
-    expect(evidence?.details["stateDiff"]).toBeDefined();
-    const baseline = await game.replayTimeline({
-      branchId: context.baselineBranch.branchId,
+    const result = await runDeterministicPiDiagnosis({
+      cwd: process.cwd(),
+      runDir: context.runDirectory,
+      initialCapsuleId: context.evidenceCapsule.capsuleId,
+      game,
     });
-    expect(baseline.outcome).toBe("fail");
+    const diagnosis = await persistV01PiDiagnosis(context, result.proposal);
+
+    expect(context.baselineExecution).toMatchObject({
+      status: "completed",
+      evaluation: { status: "fail" },
+    });
+    const replayId = result.proposal.replayExecutionId;
+    const candidateId = result.proposal.candidateExecutionId;
+    const comparisonId = result.proposal.comparisonId;
+    expect(replayId).toBeDefined();
+    expect(candidateId).toBeDefined();
+    expect(comparisonId).toBeDefined();
+    if (
+      replayId === undefined ||
+      candidateId === undefined ||
+      comparisonId === undefined
+    ) {
+      throw new Error(
+        "Deterministic Pi omitted required experiment references",
+      );
+    }
     await expect(
-      game.forkTimeline({
-        checkpointId: context.initialEvidence.checkpointId,
-        controls: {},
-      }),
-    ).rejects.toThrow("exactly one control");
+      context.repository.getExecutionLog(replayId),
+    ).resolves.toMatchObject({
+      status: "completed",
+      evaluation: { status: "fail" },
+    });
+    await expect(
+      context.repository.getExecutionLog(candidateId),
+    ).resolves.toMatchObject({
+      status: "completed",
+      evaluation: { status: "pass" },
+    });
+    await expect(
+      context.repository.getExecutionComparison(comparisonId),
+    ).resolves.toMatchObject({
+      comparable: true,
+      baselineOutcome: "fail",
+      candidateOutcome: "pass",
+      intervention: { kind: "delay_input", deltaTicks: 1 },
+    });
+    expect(diagnosis.verdict.status).toBe("confirmed");
+    expect(result.proposal.confidence).toBe(0);
 
-    const candidate = await game.forkTimeline({
-      checkpointId: context.initialEvidence.checkpointId,
-      controls: { frameRate: 62.5 },
-    });
-    const candidateReplay = await game.replayTimeline({
-      branchId: candidate.branchId,
-    });
-    expect(candidateReplay.outcome).toBe("pass");
-
-    const comparison = await game.compareTimelines({
-      baselineBranchId: baseline.branchId,
-      candidateBranchId: candidate.branchId,
-    });
-    expect(comparison.baselineOutcome).toBe("fail");
-    expect(comparison.candidateOutcome).toBe("pass");
-    expect(comparison.details["changedControls"]).toEqual([
-      { name: "deltaUs", before: 16_667, after: 16_000 },
-    ]);
-
-    const reopened = new JsonArtifactRepository(context.artifactRoot);
-    await expect(reopened.getManifest(context.runId)).resolves.toMatchObject({
-      runId: context.runId,
-    });
+    const sessionText = await readFile(result.piSession.sessionFile, "utf8");
+    expect(sessionText).toContain("game_get_evidence_capsule");
+    expect(sessionText).toContain("submit_diagnosis_proposal");
+    expect(sessionText).not.toContain('"toolName":"bash"');
   });
 });

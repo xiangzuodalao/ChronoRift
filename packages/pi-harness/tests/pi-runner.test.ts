@@ -1,184 +1,236 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, expect, test, vi } from "vitest";
-
-import type { AgentGameApi } from "../src/types.js";
-import { PI_TOOL_NAMES } from "../src/internal/pi-tools.js";
 import {
-  persistPiApiKeyWithSdk,
-  runPiDiagnosisWithSdk,
-} from "../src/internal/pi-runner.js";
+  InMemoryCredentialStore,
+  fauxAssistantMessage,
+  fauxProvider,
+} from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-const sdkState = vi.hoisted(() => ({
-  disposed: false,
-  activeTools: [] as string[],
-  excludedTools: [] as string[],
-  noTools: undefined as unknown,
-  persistedCredential: undefined as
-    { provider: string; type: "api_key"; key: string } | undefined,
-}));
+import { PiHarnessError } from "../src/errors.js";
+import { runDeterministicPiDiagnosis } from "../src/harness.js";
+import { runPiDiagnosisWithRuntime } from "../src/internal/pi-runner.js";
+import {
+  FIXTURE_CAPSULE_ID,
+  createV01AgentFixtureApi,
+  fixtureCandidateExecution,
+  fixtureCapsule,
+} from "./v01-fixture.js";
 
-vi.mock("@earendil-works/pi-coding-agent", () => {
-  const model = {
-    provider: "mock-provider",
-    id: "mock-model",
-    name: "Mock model",
-    reasoning: false,
-    input: ["text"],
-  };
-
-  return {
-    defineTool: <T>(definition: T): T => definition,
-    getAgentDir: (): string => "/mock/pi-agent",
-    ModelRuntime: class MockModelRuntime {
-      static async create(): Promise<MockModelRuntime> {
-        return new MockModelRuntime();
-      }
-
-      getModel(provider: string, modelId: string) {
-        return provider === model.provider && modelId === model.id
-          ? model
-          : undefined;
-      }
-
-      getModels(provider?: string) {
-        return provider === undefined || provider === model.provider
-          ? [model]
-          : [];
-      }
-
-      async getAvailable(provider?: string) {
-        return this.getModels(provider);
-      }
-
-      getProvider(provider: string) {
-        return provider === model.provider ? { id: provider } : undefined;
-      }
-
-      async login(
-        provider: string,
-        type: "api_key" | "oauth",
-        interaction: {
-          prompt(prompt: { type: "secret"; message: string }): Promise<string>;
-        },
-      ) {
-        if (type !== "api_key") throw new Error("Unexpected auth type");
-        const key = await interaction.prompt({
-          type: "secret",
-          message: "Enter API key",
-        });
-        sdkState.persistedCredential = { provider, type, key };
-        return { type, key };
-      }
-
-      async listCredentials() {
-        const credential = sdkState.persistedCredential;
-        return credential === undefined
-          ? []
-          : [{ providerId: credential.provider, type: credential.type }];
-      }
-    },
-    SettingsManager: {
-      inMemory: (): object => ({}),
-    },
-    DefaultResourceLoader: class MockResourceLoader {
-      async reload(): Promise<void> {}
-    },
-    SessionManager: {
-      create: (): object => ({}),
-    },
-    createAgentSession: async (options: {
-      tools?: string[];
-      excludeTools?: string[];
-      noTools?: unknown;
-    }) => {
-      sdkState.activeTools = options.tools ?? [];
-      sdkState.excludedTools = options.excludeTools ?? [];
-      sdkState.noTools = options.noTools;
-      return {
-        extensionsResult: { extensions: [], errors: [] },
-        session: {
-          sessionId: "session-offline",
-          sessionFile: "/mock/session.jsonl",
-          thinkingLevel: "medium",
-          agent: { state: { errorMessage: "mock agent stopped" } },
-          getActiveToolNames: (): string[] => [...sdkState.activeTools],
-          prompt: async (): Promise<void> => {},
-          dispose: (): void => {
-            sdkState.disposed = true;
-          },
-        },
-      };
-    },
-  };
-});
-
-const unusedGameApi: AgentGameApi = {
-  async getEvidence() {
-    throw new Error("The mock agent must not invoke game tools");
-  },
-  async forkTimeline() {
-    throw new Error("The mock agent must not invoke game tools");
-  },
-  async replayTimeline() {
-    throw new Error("The mock agent must not invoke game tools");
-  },
-  async compareTimelines() {
-    throw new Error("The mock agent must not invoke game tools");
-  },
-};
-
-let fixtureRoot: string | undefined;
+const fixtureRoots: string[] = [];
 
 afterEach(async () => {
-  if (fixtureRoot) {
-    await rm(fixtureRoot, { recursive: true, force: true });
-    fixtureRoot = undefined;
-  }
-  sdkState.disposed = false;
-  sdkState.persistedCredential = undefined;
-});
-
-test("persists an API key through Pi's credential store", async () => {
-  await expect(
-    persistPiApiKeyWithSdk({
-      provider: "mock-provider",
-      apiKey: "test-secret",
-    }),
-  ).resolves.toEqual({
-    provider: "mock-provider",
-    credentialType: "api_key",
-  });
-  expect(sdkState.persistedCredential).toEqual({
-    provider: "mock-provider",
-    type: "api_key",
-    key: "test-secret",
-  });
-});
-
-test("isolates tools and rejects an agent run without a submitted report", async () => {
-  fixtureRoot = await mkdtemp(join(tmpdir(), "chronorift-pi-runner-"));
-
-  await expect(
-    runPiDiagnosisWithSdk({
-      cwd: fixtureRoot,
-      runDir: join(fixtureRoot, "run"),
-      provider: "mock-provider",
-      model: "mock-model",
-      initialEvidenceId: "evidence-initial",
-      game: unusedGameApi,
-    }),
-  ).rejects.toMatchObject({
-    code: "REPORT_MISSING",
-    message: "Pi ended without a diagnosis: mock agent stopped",
-  });
-
-  expect(sdkState.activeTools).toEqual(PI_TOOL_NAMES);
-  expect(sdkState.excludedTools).toEqual(
-    expect.arrayContaining(["bash", "edit", "write"]),
+  vi.unstubAllGlobals();
+  await Promise.all(
+    fixtureRoots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true })),
   );
-  expect(sdkState.noTools).toBe("all");
-  expect(sdkState.disposed).toBe(true);
+});
+
+async function fixtureRoot(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "chronorift-pi-v01-"));
+  fixtureRoots.push(root);
+  return root;
+}
+
+describe("real Pi Session with deterministic faux model", () => {
+  it("runs the real Agent Loop offline and persists every v0.1 tool exchange", async () => {
+    const root = await fixtureRoot();
+    const fixture = createV01AgentFixtureApi();
+    const network = vi.fn(() => {
+      throw new Error("network access is forbidden in the faux test");
+    });
+    vi.stubGlobal("fetch", network);
+
+    const result = await runDeterministicPiDiagnosis({
+      cwd: root,
+      runDir: join(root, "run"),
+      initialCapsuleId: FIXTURE_CAPSULE_ID,
+      game: fixture.api,
+    });
+
+    expect(result.proposal.claim.kind).toBe("mechanism");
+    if (result.proposal.claim.kind !== "mechanism") {
+      throw new Error("Expected a mechanism claim");
+    }
+    expect(result.proposal.claim).toMatchObject({
+      mechanismCode: "signal_before_receiver_connection",
+      assertion: {
+        signal: {
+          kind: "signal",
+          source: "switch",
+          name: "switch.activated",
+        },
+        receiver: "door",
+        failedDeliveryReason: "receiver_not_connected",
+        expectedEffect: {
+          kind: "property_equals",
+          path: "door.open",
+          value: true,
+        },
+        intervention: { kind: "delay_input", deltaTicks: 1 },
+      },
+    });
+    expect(
+      result.proposal.observedFacts.flatMap((fact) => fact.references),
+    ).toContainEqual({
+      artifactKind: "event",
+      eventId: fixtureCapsule.signalDeliveryEventId,
+    });
+    expect(result.proposal.confidence).toBe(0);
+    expect(result.piSession.provider).toBe("chronorift-faux");
+    expect(result.piSession.model).toBe("switch-door-v0.1");
+    expect(result.piSession.thinkingLevel).toBe("off");
+    expect(fixture.state.calls).toEqual([
+      `capsule:${FIXTURE_CAPSULE_ID}`,
+      "replay:execution-baseline",
+      "intervention:execution-baseline:1",
+      "compare:execution-baseline-replay:execution-candidate",
+    ]);
+    expect(network).not.toHaveBeenCalled();
+
+    await expect(access(result.piSession.sessionFile)).resolves.toBeUndefined();
+    const sessionJsonl = await readFile(result.piSession.sessionFile, "utf8");
+    for (const toolName of [
+      "game_get_evidence_capsule",
+      "game_replay_execution",
+      "game_run_intervention",
+      "game_compare_executions",
+      "submit_diagnosis_proposal",
+    ]) {
+      expect(sessionJsonl).toContain(toolName);
+    }
+  });
+
+  it("uses an unknown proposal when replay quality is insufficient", async () => {
+    const root = await fixtureRoot();
+    const fixture = createV01AgentFixtureApi({ replayMatches: false });
+
+    const result = await runDeterministicPiDiagnosis({
+      cwd: root,
+      runDir: join(root, "run"),
+      initialCapsuleId: FIXTURE_CAPSULE_ID,
+      game: fixture.api,
+    });
+
+    expect(result.proposal).toMatchObject({
+      claim: { kind: "unknown" },
+      confidence: 1,
+    });
+    expect(result.proposal.blockers).not.toHaveLength(0);
+    expect(result.proposal.nextExperiment).toBeTypeOf("string");
+  });
+
+  it("abstains when the named receiver connection event is not for the failed receiver", async () => {
+    const root = await fixtureRoot();
+    const contradictoryCapsule = {
+      ...fixtureCapsule,
+      eventChain: fixtureCapsule.eventChain.map((event) =>
+        event.eventId === fixtureCapsule.receiverConnectedEventId &&
+        event.kind === "property_changed"
+          ? { ...event, path: "other.receiver_connected" }
+          : event,
+      ),
+    };
+    const fixture = createV01AgentFixtureApi({
+      capsule: contradictoryCapsule,
+    });
+
+    const result = await runDeterministicPiDiagnosis({
+      cwd: root,
+      runDir: join(root, "run"),
+      initialCapsuleId: FIXTURE_CAPSULE_ID,
+      game: fixture.api,
+    });
+
+    expect(result.proposal.claim.kind).toBe("unknown");
+    expect(result.proposal.blockers).not.toHaveLength(0);
+  });
+
+  it("abstains when the intervention connects the receiver after Signal emission", async () => {
+    const root = await fixtureRoot();
+    const [connection, input, signal, delivery, effect] =
+      fixtureCandidateExecution.events;
+    if (
+      connection?.kind !== "property_changed" ||
+      input?.kind !== "input" ||
+      signal?.kind !== "signal" ||
+      delivery?.kind !== "signal_delivery" ||
+      effect?.kind !== "property_changed"
+    ) {
+      throw new Error("Unexpected candidate fixture event order");
+    }
+    const candidateExecution = {
+      ...fixtureCandidateExecution,
+      events: [
+        { ...input, seq: 0 },
+        { ...signal, seq: 1 },
+        {
+          ...connection,
+          seq: 2,
+          tick: signal.tick,
+          simTimeUs: signal.simTimeUs,
+        },
+        { ...delivery, seq: 3 },
+        { ...effect, seq: 4 },
+      ],
+    };
+    const fixture = createV01AgentFixtureApi({ candidateExecution });
+
+    const result = await runDeterministicPiDiagnosis({
+      cwd: root,
+      runDir: join(root, "run"),
+      initialCapsuleId: FIXTURE_CAPSULE_ID,
+      game: fixture.api,
+    });
+
+    expect(result.proposal.claim.kind).toBe("unknown");
+    expect(result.proposal.blockers).not.toHaveLength(0);
+  });
+
+  it("returns a diagnosable error when a real Pi loop never submits", async () => {
+    const root = await fixtureRoot();
+    const fixture = createV01AgentFixtureApi();
+    const faux = fauxProvider({
+      api: "chronorift-failure-api",
+      provider: "chronorift-failure",
+      models: [{ id: "no-submit", input: ["text"] }],
+      tokenSize: { min: 4, max: 4 },
+    });
+    faux.setResponses([
+      fauxAssistantMessage("I will not call a tool.", {
+        timestamp: 1_735_689_600_000,
+      }),
+    ]);
+    const modelRuntime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      modelsPath: null,
+      allowModelNetwork: false,
+    });
+    modelRuntime.registerNativeProvider(faux.provider);
+    const model = modelRuntime.getModel("chronorift-failure", "no-submit");
+    if (!model) throw new Error("failure model was not registered");
+
+    const failure: unknown = await runPiDiagnosisWithRuntime(
+      {
+        cwd: root,
+        runDir: join(root, "run"),
+        initialCapsuleId: FIXTURE_CAPSULE_ID,
+        game: fixture.api,
+        thinkingLevel: "off",
+      },
+      { modelRuntime, model },
+    ).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(PiHarnessError);
+    if (!(failure instanceof PiHarnessError)) {
+      throw new Error("Expected PiHarnessError");
+    }
+    expect(failure.code).toBe("PROPOSAL_MISSING");
+    expect(failure.message).toContain("submit_diagnosis_proposal");
+    expect(faux.getPendingResponseCount()).toBe(0);
+  });
 });

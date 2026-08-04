@@ -1,6 +1,11 @@
 import { join } from "node:path";
 
 import {
+  InMemoryCredentialStore,
+  type Api,
+  type Model,
+} from "@earendil-works/pi-ai";
+import {
   createAgentSession,
   DefaultResourceLoader,
   getAgentDir,
@@ -10,9 +15,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { PiHarnessError } from "../errors.js";
-import { createRestrictedSourceAccess } from "../source-access.js";
 import type {
   AvailablePiModel,
+  DeterministicPiHarnessOptions,
   ListAvailablePiModelsOptions,
   PersistPiApiKeyOptions,
   PersistPiApiKeyResult,
@@ -21,6 +26,11 @@ import type {
   PiThinkingLevel,
 } from "../types.js";
 import { expectNonEmptyString } from "./contracts.js";
+import {
+  createDeterministicFauxProvider,
+  DETERMINISTIC_PI_MODEL,
+  DETERMINISTIC_PI_PROVIDER,
+} from "./faux-model.js";
 import { createPiTools, PI_TOOL_NAMES } from "./pi-tools.js";
 import {
   buildInvestigationPrompt,
@@ -37,6 +47,15 @@ const BUILTIN_TOOL_NAMES = [
   "find",
   "ls",
 ] as const;
+
+interface InjectedPiRuntime {
+  readonly modelRuntime: ModelRuntime;
+  readonly model: Model<Api>;
+}
+
+interface SessionRunOptions extends DeterministicPiHarnessOptions {
+  readonly thinkingLevel?: PiThinkingLevel;
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -60,14 +79,14 @@ function normalizeThinkingLevel(value: string): PiThinkingLevel {
   );
 }
 
-async function createModelRuntime(): Promise<ModelRuntime> {
+async function createProductionModelRuntime(): Promise<ModelRuntime> {
   return ModelRuntime.create({ allowModelNetwork: false });
 }
 
 export async function listAvailablePiModelsWithSdk(
   options: ListAvailablePiModelsOptions,
 ): Promise<readonly AvailablePiModel[]> {
-  const modelRuntime = await createModelRuntime();
+  const modelRuntime = await createProductionModelRuntime();
   const models = await modelRuntime.getAvailable(options.provider);
   return models
     .map((model): AvailablePiModel => ({
@@ -91,7 +110,7 @@ export async function persistPiApiKeyWithSdk(
   const apiKey = expectNonEmptyString(options.apiKey, "apiKey");
 
   try {
-    const modelRuntime = await createModelRuntime();
+    const modelRuntime = await createProductionModelRuntime();
     if (modelRuntime.getProvider(provider) === undefined) {
       throw new PiHarnessError(
         "AUTH_FAILED",
@@ -136,55 +155,21 @@ export async function persistPiApiKeyWithSdk(
   }
 }
 
-export async function runPiDiagnosisWithSdk(
-  options: PiHarnessOptions,
+/** Shared real Pi Session/Agent Loop runner used by production and faux models. */
+export async function runPiDiagnosisWithRuntime(
+  options: SessionRunOptions,
+  runtime: InjectedPiRuntime,
 ): Promise<PiDiagnosisRunResult> {
-  const provider = expectNonEmptyString(options.provider, "provider");
-  const modelId = expectNonEmptyString(options.model, "model");
-  const initialEvidenceId = expectNonEmptyString(
-    options.initialEvidenceId,
-    "initialEvidenceId",
+  const initialCapsuleId = expectNonEmptyString(
+    options.initialCapsuleId,
+    "initialCapsuleId",
   );
   expectNonEmptyString(options.cwd, "cwd");
   expectNonEmptyString(options.runDir, "runDir");
 
   try {
-    const modelRuntime = await createModelRuntime();
-    const model = modelRuntime.getModel(provider, modelId);
-    if (!model) {
-      const providerModels = modelRuntime
-        .getModels(provider)
-        .map((candidate) => candidate.id)
-        .sort();
-      const suffix =
-        providerModels.length > 0
-          ? ` Available model IDs: ${providerModels.join(", ")}`
-          : "";
-      throw new PiHarnessError(
-        "MODEL_NOT_FOUND",
-        `Pi model ${provider}/${modelId} is not registered.${suffix}`,
-      );
-    }
-
-    const available = await modelRuntime.getAvailable(provider);
-    if (!available.some((candidate) => candidate.id === modelId)) {
-      const availableIds = available.map((candidate) => candidate.id).sort();
-      const suffix =
-        availableIds.length > 0
-          ? ` Authenticated model IDs: ${availableIds.join(", ")}`
-          : " No authenticated models are available for this provider.";
-      throw new PiHarnessError(
-        "MODEL_UNAVAILABLE",
-        `Pi model ${provider}/${modelId} has no usable authentication.${suffix}`,
-      );
-    }
-
-    const source = await createRestrictedSourceAccess({
-      root: options.sourceRoot ?? options.cwd,
-    });
-    const flow = new HarnessToolFlow(options.game);
-    const customTools = createPiTools(flow, source);
-
+    const flow = new HarnessToolFlow(options.game, initialCapsuleId);
+    const customTools = createPiTools(flow);
     const settingsManager = SettingsManager.inMemory({
       compaction: { enabled: false },
       retry: { enabled: true, maxRetries: 2 },
@@ -210,8 +195,8 @@ export async function runPiDiagnosisWithSdk(
     const { session, extensionsResult } = await createAgentSession({
       cwd: options.cwd,
       agentDir: getAgentDir(),
-      modelRuntime,
-      model,
+      modelRuntime: runtime.modelRuntime,
+      model: runtime.model,
       thinkingLevel: options.thinkingLevel ?? "medium",
       noTools: "all",
       tools: [...PI_TOOL_NAMES],
@@ -249,18 +234,18 @@ export async function runPiDiagnosisWithSdk(
         );
       }
 
-      await session.prompt(buildInvestigationPrompt(initialEvidenceId), {
+      await session.prompt(buildInvestigationPrompt(initialCapsuleId), {
         expandPromptTemplates: false,
       });
 
-      const report = flow.getSubmittedReport();
-      if (!report) {
+      const proposal = flow.getSubmittedProposal();
+      if (!proposal) {
         const agentError = session.agent.state.errorMessage;
         throw new PiHarnessError(
-          "REPORT_MISSING",
+          "PROPOSAL_MISSING",
           agentError
-            ? `Pi ended without a diagnosis: ${agentError}`
-            : "Pi ended without calling submit_diagnosis",
+            ? `Pi ended without a diagnosis proposal: ${agentError}`
+            : "Pi ended without calling submit_diagnosis_proposal",
         );
       }
       const sessionFile = session.sessionFile;
@@ -272,12 +257,12 @@ export async function runPiDiagnosisWithSdk(
       }
 
       return {
-        report,
+        proposal,
         piSession: {
           sessionId: session.sessionId,
           sessionFile,
-          provider: model.provider,
-          model: model.id,
+          provider: runtime.model.provider,
+          model: runtime.model.id,
           thinkingLevel: normalizeThinkingLevel(session.thinkingLevel),
         },
       };
@@ -292,4 +277,90 @@ export async function runPiDiagnosisWithSdk(
       { cause: error },
     );
   }
+}
+
+export async function runPiDiagnosisWithSdk(
+  options: PiHarnessOptions,
+): Promise<PiDiagnosisRunResult> {
+  const provider = expectNonEmptyString(options.provider, "provider");
+  const modelId = expectNonEmptyString(options.model, "model");
+
+  try {
+    const modelRuntime = await createProductionModelRuntime();
+    const model = modelRuntime.getModel(provider, modelId);
+    if (!model) {
+      const providerModels = modelRuntime
+        .getModels(provider)
+        .map((candidate) => candidate.id)
+        .sort();
+      const suffix =
+        providerModels.length > 0
+          ? ` Available model IDs: ${providerModels.join(", ")}`
+          : "";
+      throw new PiHarnessError(
+        "MODEL_NOT_FOUND",
+        `Pi model ${provider}/${modelId} is not registered.${suffix}`,
+      );
+    }
+
+    const available = await modelRuntime.getAvailable(provider);
+    if (!available.some((candidate) => candidate.id === modelId)) {
+      const availableIds = available.map((candidate) => candidate.id).sort();
+      const suffix =
+        availableIds.length > 0
+          ? ` Authenticated model IDs: ${availableIds.join(", ")}`
+          : " No authenticated models are available for this provider.";
+      throw new PiHarnessError(
+        "MODEL_UNAVAILABLE",
+        `Pi model ${provider}/${modelId} has no usable authentication.${suffix}`,
+      );
+    }
+
+    return runPiDiagnosisWithRuntime(options, { modelRuntime, model });
+  } catch (error) {
+    if (error instanceof PiHarnessError) throw error;
+    throw new PiHarnessError(
+      "AGENT_FAILED",
+      `Pi diagnosis failed: ${errorMessage(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+export async function runDeterministicPiDiagnosisWithSdk(
+  options: DeterministicPiHarnessOptions,
+): Promise<PiDiagnosisRunResult> {
+  const initialCapsuleId = expectNonEmptyString(
+    options.initialCapsuleId,
+    "initialCapsuleId",
+  );
+  const faux = createDeterministicFauxProvider(initialCapsuleId);
+  const modelRuntime = await ModelRuntime.create({
+    credentials: new InMemoryCredentialStore(),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
+  modelRuntime.registerNativeProvider(faux.provider);
+  const model = modelRuntime.getModel(
+    DETERMINISTIC_PI_PROVIDER,
+    DETERMINISTIC_PI_MODEL,
+  );
+  if (!model) {
+    throw new PiHarnessError(
+      "MODEL_NOT_FOUND",
+      "The deterministic faux model was not registered with Pi",
+    );
+  }
+
+  const result = await runPiDiagnosisWithRuntime(
+    { ...options, thinkingLevel: "off" },
+    { modelRuntime, model },
+  );
+  if (faux.getPendingResponseCount() !== 0 || faux.state.callCount !== 5) {
+    throw new PiHarnessError(
+      "AGENT_FAILED",
+      `Deterministic faux response script was not consumed exactly: ${faux.getPendingResponseCount()} pending after ${faux.state.callCount} calls`,
+    );
+  }
+  return result;
 }

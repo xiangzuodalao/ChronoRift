@@ -4,59 +4,141 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import type { RestrictedSourceAccess } from "../types.js";
 import type { HarnessToolFlow } from "./tool-flow.js";
 
 const strictObject = { additionalProperties: false } as const;
 const IdSchema = Type.String({ minLength: 1 });
-const JsonObjectInputSchema = Type.Record(Type.String(), Type.Unknown());
-const OutcomeSchema = Type.Union([
-  Type.Literal("pass"),
-  Type.Literal("fail"),
-  Type.Literal("incomplete"),
-  Type.Literal("mixed"),
+
+const ArtifactReferenceToolSchema = Type.Union([
+  Type.Object(
+    { artifactKind: Type.Literal("contract"), contractId: IdSchema },
+    strictObject,
+  ),
+  Type.Object(
+    { artifactKind: Type.Literal("branch"), branchId: IdSchema },
+    strictObject,
+  ),
+  Type.Object(
+    { artifactKind: Type.Literal("checkpoint"), checkpointId: IdSchema },
+    strictObject,
+  ),
+  Type.Object(
+    { artifactKind: Type.Literal("execution"), executionId: IdSchema },
+    strictObject,
+  ),
+  Type.Object(
+    { artifactKind: Type.Literal("capsule"), capsuleId: IdSchema },
+    strictObject,
+  ),
+  Type.Object(
+    { artifactKind: Type.Literal("comparison"), comparisonId: IdSchema },
+    strictObject,
+  ),
+  Type.Object(
+    { artifactKind: Type.Literal("event"), eventId: IdSchema },
+    strictObject,
+  ),
 ]);
 
-const DiagnosisExperimentSchema = Type.Object(
+const ObservedFactToolSchema = Type.Object(
   {
-    branchId: IdSchema,
-    outcome: OutcomeSchema,
-    evidenceIds: Type.Array(IdSchema),
-    observation: Type.String({ minLength: 1 }),
+    statement: Type.String({ minLength: 1 }),
+    references: Type.Array(ArtifactReferenceToolSchema, { minItems: 1 }),
   },
   strictObject,
 );
 
-const DiagnosisComparisonSchema = Type.Object(
-  {
-    baselineBranchId: IdSchema,
-    candidateBranchId: IdSchema,
-    finding: Type.String({ minLength: 1 }),
-  },
-  strictObject,
-);
+const ClaimToolSchema = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal("mechanism"),
+      summary: Type.String({ minLength: 1 }),
+      mechanism: Type.String({ minLength: 1 }),
+      category: Type.Union([
+        Type.Literal("signal_ordering"),
+        Type.Literal("state"),
+        Type.Literal("input"),
+        Type.Literal("unknown"),
+      ]),
+      mechanismCode: Type.Union([
+        Type.Literal("signal_before_receiver_connection"),
+        Type.Literal("signal_rejected_by_connected_receiver"),
+        Type.Literal("input_not_applied"),
+      ]),
+      assertion: Type.Object(
+        {
+          signal: Type.Object(
+            {
+              kind: Type.Literal("signal"),
+              source: Type.String({ minLength: 1 }),
+              name: Type.String({ minLength: 1 }),
+            },
+            strictObject,
+          ),
+          receiver: Type.String({ minLength: 1 }),
+          failedDeliveryReason: Type.Union([
+            Type.Literal("receiver_not_connected"),
+            Type.Literal("receiver_rejected"),
+            Type.Literal("unknown"),
+          ]),
+          expectedEffect: Type.Object(
+            {
+              kind: Type.Literal("property_equals"),
+              path: Type.String({ minLength: 1 }),
+              value: Type.Unknown(),
+            },
+            strictObject,
+          ),
+          intervention: Type.Object(
+            {
+              kind: Type.Literal("delay_input"),
+              deltaTicks: Type.Literal(1),
+            },
+            strictObject,
+          ),
+        },
+        strictObject,
+      ),
+    },
+    strictObject,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal("unknown"),
+      summary: Type.String({ minLength: 1 }),
+    },
+    strictObject,
+  ),
+]);
 
-export const DiagnosisReportToolSchema = Type.Object(
+export const DiagnosisProposalToolSchema = Type.Object(
   {
     schemaVersion: Type.Literal(1),
-    conclusion: Type.String({ minLength: 1 }),
+    proposalId: IdSchema,
+    runId: IdSchema,
+    capsuleId: IdSchema,
+    baselineExecutionId: IdSchema,
+    replayExecutionId: Type.Optional(IdSchema),
+    candidateExecutionId: Type.Optional(IdSchema),
+    comparisonId: Type.Optional(IdSchema),
+    claim: ClaimToolSchema,
+    observedFacts: Type.Array(ObservedFactToolSchema, { minItems: 1 }),
+    hypotheses: Type.Array(Type.String({ minLength: 1 })),
+    unknowns: Type.Array(Type.String({ minLength: 1 })),
+    attemptedActions: Type.Array(Type.String({ minLength: 1 })),
+    blockers: Type.Array(Type.String({ minLength: 1 })),
+    nextExperiment: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
     confidence: Type.Number({ minimum: 0, maximum: 1 }),
-    evidenceIds: Type.Array(IdSchema, { minItems: 1 }),
-    experiments: Type.Array(DiagnosisExperimentSchema, { minItems: 1 }),
-    comparisons: Type.Array(DiagnosisComparisonSchema, { minItems: 1 }),
-    suggestedFix: Type.String({ minLength: 1 }),
   },
   strictObject,
 );
 
 export const PI_TOOL_NAMES = [
-  "game_get_evidence",
-  "game_fork_timeline",
-  "game_replay_timeline",
-  "game_compare_timelines",
-  "source_read",
-  "source_search",
-  "submit_diagnosis",
+  "game_get_evidence_capsule",
+  "game_replay_execution",
+  "game_run_intervention",
+  "game_compare_executions",
+  "submit_diagnosis_proposal",
 ] as const;
 
 function abortIfRequested(signal: AbortSignal | undefined): void {
@@ -67,183 +149,107 @@ function jsonContent(value: unknown): [{ type: "text"; text: string }] {
   return [{ type: "text", text: JSON.stringify(value, null, 2) }];
 }
 
-export function createPiTools(
-  flow: HarnessToolFlow,
-  source: RestrictedSourceAccess,
-): ToolDefinition[] {
-  const getEvidence = defineTool({
-    name: "game_get_evidence",
-    label: "Get game evidence",
+export function createPiTools(flow: HarnessToolFlow): ToolDefinition[] {
+  const getEvidenceCapsule = defineTool({
+    name: "game_get_evidence_capsule",
+    label: "Get Evidence Capsule",
     description:
-      "Read compiled state differences, causal events, and anomaly evidence by evidence ID.",
-    promptSnippet: "Read a compiled game anomaly evidence record",
-    parameters: Type.Object({ evidenceId: IdSchema }, strictObject),
+      "Read the immutable v0.1 switch-door Evidence Capsule. The capsule identifies the only admissible baseline execution.",
+    promptSnippet: "Read the frozen game-runtime evidence capsule",
+    parameters: Type.Object({ capsuleId: IdSchema }, strictObject),
     executionMode: "sequential",
     execute: async (_toolCallId, params, signal) => {
       abortIfRequested(signal);
-      const evidence = await flow.getEvidence(params.evidenceId);
+      const capsule = await flow.getEvidenceCapsule(params.capsuleId);
       abortIfRequested(signal);
-      return {
-        content: jsonContent(evidence),
-        details: evidence,
-      };
+      return { content: jsonContent(capsule), details: capsule };
     },
   });
 
-  const forkTimeline = defineTool({
-    name: "game_fork_timeline",
-    label: "Fork game timeline",
+  const replayExecution = defineTool({
+    name: "game_replay_execution",
+    label: "Replay baseline execution",
     description:
-      "Create an experimental branch from a checkpoint returned by evidence or replay. Controls must change only the variable under test.",
-    promptSnippet: "Fork an experiment from an observed game checkpoint",
+      "Restore and replay the baseline Execution named by the capsule. v0.1 permits one replay and returns a new sealed ExecutionLog plus digest match receipt.",
+    promptSnippet: "Replay the capsule baseline from its checkpoint",
+    parameters: Type.Object({ executionId: IdSchema }, strictObject),
+    executionMode: "sequential",
+    execute: async (_toolCallId, params, signal) => {
+      abortIfRequested(signal);
+      const replay = await flow.replayExecution(params);
+      abortIfRequested(signal);
+      return { content: jsonContent(replay), details: replay };
+    },
+  });
+
+  const runIntervention = defineTool({
+    name: "game_run_intervention",
+    label: "Run one-tick intervention",
+    description:
+      "Create and execute the sole v0.1 intervention: delay the fixture's only switch interaction by exactly one tick. The Harness verifies the realized single-variable change.",
+    promptSnippet: "Run the one-tick switch-input intervention",
     parameters: Type.Object(
       {
-        checkpointId: IdSchema,
-        controls: JsonObjectInputSchema,
-        label: Type.Optional(Type.String({ minLength: 1 })),
+        baselineExecutionId: IdSchema,
+        deltaTicks: Type.Literal(1),
       },
       strictObject,
     ),
     executionMode: "sequential",
     execute: async (_toolCallId, params, signal) => {
       abortIfRequested(signal);
-      const branch = await flow.forkTimeline(params);
+      const result = await flow.runIntervention(params);
       abortIfRequested(signal);
-      return {
-        content: jsonContent(branch),
-        details: branch,
-      };
+      return { content: jsonContent(result), details: result };
     },
   });
 
-  const replayTimeline = defineTool({
-    name: "game_replay_timeline",
-    label: "Replay game timeline",
+  const compareExecutions = defineTool({
+    name: "game_compare_executions",
+    label: "Compare executions",
     description:
-      "Replay a baseline or experimental branch and return its evaluated outcome and evidence IDs.",
-    promptSnippet: "Replay and evaluate a known game branch",
-    parameters: Type.Object({ branchId: IdSchema }, strictObject),
-    executionMode: "sequential",
-    execute: async (_toolCallId, params, signal) => {
-      abortIfRequested(signal);
-      const replay = await flow.replayTimeline(params);
-      abortIfRequested(signal);
-      return {
-        content: jsonContent(replay),
-        details: replay,
-      };
-    },
-  });
-
-  const compareTimelines = defineTool({
-    name: "game_compare_timelines",
-    label: "Compare game timelines",
-    description:
-      "Compare two branches after both were replayed, including their outcomes and first divergence.",
-    promptSnippet: "Compare two replayed game branches",
+      "Compare the returned baseline replay and one-tick intervention executions using the Harness comparator.",
+    promptSnippet: "Compare the replay and intervention executions",
     parameters: Type.Object(
       {
-        baselineBranchId: IdSchema,
-        candidateBranchId: IdSchema,
+        baselineExecutionId: IdSchema,
+        candidateExecutionId: IdSchema,
       },
       strictObject,
     ),
     executionMode: "sequential",
     execute: async (_toolCallId, params, signal) => {
       abortIfRequested(signal);
-      const comparison = await flow.compareTimelines(params);
+      const comparison = await flow.compareExecutions(params);
       abortIfRequested(signal);
-      return {
-        content: jsonContent(comparison),
-        details: comparison,
-      };
+      return { content: jsonContent(comparison), details: comparison };
     },
   });
 
-  const sourceRead = defineTool({
-    name: "source_read",
-    label: "Read source",
+  const submitProposal = defineTool({
+    name: "submit_diagnosis_proposal",
+    label: "Submit diagnosis proposal",
     description:
-      "Read a UTF-8 source file under the configured repository root. Absolute paths and paths escaping the root are rejected.",
-    promptSnippet: "Read a repository-confined source file",
-    parameters: Type.Object(
-      {
-        path: Type.String({ minLength: 1 }),
-        offset: Type.Optional(Type.Integer({ minimum: 1 })),
-        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
-      },
-      strictObject,
-    ),
-    executionMode: "sequential",
-    execute: async (_toolCallId, params, signal) => {
-      abortIfRequested(signal);
-      const result = await source.read(params);
-      abortIfRequested(signal);
-      return {
-        content: jsonContent(result),
-        details: result,
-      };
-    },
-  });
-
-  const sourceSearch = defineTool({
-    name: "source_search",
-    label: "Search source",
-    description:
-      "Search literal text in UTF-8 files under the configured repository root without invoking a shell.",
-    promptSnippet: "Search repository-confined source text",
-    parameters: Type.Object(
-      {
-        query: Type.String({ minLength: 1, maxLength: 500 }),
-        path: Type.Optional(Type.String({ minLength: 1 })),
-        includeSuffixes: Type.Optional(
-          Type.Array(Type.String({ minLength: 2, maxLength: 32 }), {
-            minItems: 1,
-          }),
-        ),
-        caseSensitive: Type.Optional(Type.Boolean()),
-        maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
-      },
-      strictObject,
-    ),
-    executionMode: "sequential",
-    execute: async (_toolCallId, params, signal) => {
-      abortIfRequested(signal);
-      const result = await source.search(params);
-      abortIfRequested(signal);
-      return {
-        content: jsonContent(result),
-        details: result,
-      };
-    },
-  });
-
-  const submitDiagnosis = defineTool({
-    name: "submit_diagnosis",
-    label: "Submit diagnosis",
-    description:
-      "Validate and submit the canonical diagnosis. Call this alone in the final tool batch after experiments and comparison.",
-    promptSnippet: "Submit the final evidence-backed diagnosis",
-    parameters: DiagnosisReportToolSchema,
+      "Submit the Agent's evidence-linked proposal, never a canonical verdict. A mechanism claim requires this session's replay, intervention, and comparison. An unknown claim may abstain with blockers and a next experiment.",
+    promptSnippet: "Submit an evidence-linked diagnosis proposal",
+    parameters: DiagnosisProposalToolSchema,
     executionMode: "sequential",
     execute: (_toolCallId, params, signal) => {
       abortIfRequested(signal);
-      const report = flow.submitDiagnosis(params);
+      const proposal = flow.submitDiagnosisProposal(params);
       return Promise.resolve({
-        content: [{ type: "text", text: "Diagnosis accepted." }],
-        details: { accepted: true, report },
+        content: [{ type: "text", text: "Diagnosis proposal accepted." }],
+        details: { accepted: true, proposal },
         terminate: true,
       });
     },
   });
 
   return [
-    getEvidence,
-    forkTimeline,
-    replayTimeline,
-    compareTimelines,
-    sourceRead,
-    sourceSearch,
-    submitDiagnosis,
+    getEvidenceCapsule,
+    replayExecution,
+    runIntervention,
+    compareExecutions,
+    submitProposal,
   ];
 }

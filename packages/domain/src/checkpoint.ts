@@ -72,3 +72,16 @@ export const CheckpointSchema: z.ZodType<Checkpoint> = z
     content: CheckpointContentSchema,
   })
   .strict();
+
+/** Explicitly versioned persistence envelope used by the v0.1 repository. */
+export interface V01CheckpointArtifact {
+  readonly schemaVersion: 1;
+  readonly checkpoint: Checkpoint;
+}
+
+export const V01CheckpointArtifactSchema: z.ZodType<V01CheckpointArtifact> = z
+  .object({
+    schemaVersion: z.literal(1),
+    checkpoint: CheckpointSchema,
+  })
+  .strict();

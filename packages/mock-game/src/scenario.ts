@@ -4,6 +4,7 @@ import {
   type BranchControls,
   type CheckpointContent,
   type EnvironmentRef,
+  type FrozenContract,
   type InputTrace,
   type TemporalInvariant,
 } from "@chronorift/domain";
@@ -33,6 +34,39 @@ export interface MockSwitchDoorScenario {
   };
   readonly invariant: TemporalInvariant;
 }
+
+export interface V01SwitchDoorFixture {
+  readonly environment: EnvironmentRef;
+  readonly contractInput: Omit<FrozenContract, "contractId">;
+  readonly initialCheckpointContent: CheckpointContent;
+  readonly inputTrace: InputTrace;
+  readonly controls: BranchControls;
+}
+
+/** The complete, serializable fixture required by the v0.1 vertical slice. */
+export const buildV01SwitchDoorFixture = (): V01SwitchDoorFixture => {
+  const scenario = buildMockSwitchDoorScenario();
+  return {
+    environment: scenario.environment,
+    contractInput: {
+      schemaVersion: 1,
+      fixture: "switch-door",
+      authority: {
+        status: "frozen",
+        approvedBy: "chronorift.fixture.switch-door.v0.1",
+      },
+      rule: {
+        trigger: scenario.invariant.trigger,
+        expectation: scenario.invariant.expectation,
+        withinTicks: 1,
+        inclusive: true,
+      },
+    },
+    initialCheckpointContent: scenario.initialCheckpointContent,
+    inputTrace: scenario.trace,
+    controls: scenario.controls.baseline,
+  };
+};
 
 /** A fresh serializable scenario DTO; callers may safely persist its values. */
 export const buildMockSwitchDoorScenario = (): MockSwitchDoorScenario => {
@@ -80,7 +114,7 @@ export const buildMockSwitchDoorScenario = (): MockSwitchDoorScenario => {
     invariant: {
       schemaVersion: 1,
       invariantId: asInvariantId("invariant:door-opens-after-switch"),
-      description: "Door opens within two ticks after switch activation",
+      description: "Door opens within one tick after switch activation",
       severity: "error",
       trigger: {
         kind: "signal",
@@ -92,7 +126,7 @@ export const buildMockSwitchDoorScenario = (): MockSwitchDoorScenario => {
         path: DOOR_OPEN_PATH,
         value: true,
       },
-      withinTicks: 2,
+      withinTicks: 1,
       inclusive: true,
     },
   };

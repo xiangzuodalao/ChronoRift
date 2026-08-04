@@ -10,7 +10,7 @@ export type PiHarnessErrorCode =
   | "MODEL_UNAVAILABLE"
   | "AUTH_FAILED"
   | "AGENT_FAILED"
-  | "REPORT_MISSING";
+  | "PROPOSAL_MISSING";
 
 export class PiHarnessError extends Error {
   readonly code: PiHarnessErrorCode;

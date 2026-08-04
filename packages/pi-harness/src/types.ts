@@ -1,3 +1,13 @@
+import type {
+  BranchSpec,
+  CapsuleId,
+  DiagnosisProposal,
+  EvidenceCapsule,
+  ExecutionComparison,
+  ExecutionId,
+  ExecutionLog,
+} from "@chronorift/domain";
+
 export type JsonPrimitive = boolean | number | string | null;
 export type JsonArray = readonly JsonValue[];
 export interface JsonObject {
@@ -5,116 +15,65 @@ export interface JsonObject {
 }
 export type JsonValue = JsonPrimitive | JsonArray | JsonObject;
 
-export type AgentOutcome = "pass" | "fail" | "incomplete" | "mixed";
-
-/**
- * Compact, JSON-friendly evidence exposed to the model. The adapter is
- * responsible for compiling raw telemetry into this representation.
- */
-export interface AgentEvidence {
-  readonly schemaVersion: 1;
-  readonly evidenceId: string;
-  readonly summary: string;
-  readonly checkpointId: string;
-  readonly branchId: string;
-  readonly eventIds: readonly string[];
-  readonly details: JsonObject;
-}
-
-export interface ForkTimelineRequest {
-  readonly checkpointId: string;
-  readonly controls: JsonObject;
-  readonly label?: string;
-}
-
-export interface AgentTimelineBranch {
-  readonly schemaVersion: 1;
-  readonly branchId: string;
-  readonly checkpointId: string;
-  readonly controls: JsonObject;
-}
-
-export interface ReplayTimelineRequest {
-  readonly branchId: string;
+export interface ReplayExecutionRequest {
+  readonly executionId: ExecutionId;
 }
 
 export interface AgentReplayResult {
-  readonly schemaVersion: 1;
-  readonly branchId: string;
-  readonly outcome: AgentOutcome;
-  readonly evidenceIds: readonly string[];
-  readonly finalCheckpointId: string;
-  readonly summary: string;
-  readonly details: JsonObject;
+  readonly execution: ExecutionLog;
+  readonly matches: boolean;
+  readonly sourceDigest: string;
+  readonly replayDigest: string;
 }
 
-export interface CompareTimelinesRequest {
-  readonly baselineBranchId: string;
-  readonly candidateBranchId: string;
+export interface RunInterventionRequest {
+  readonly baselineExecutionId: ExecutionId;
+  readonly deltaTicks: 1;
 }
 
-export interface AgentTimelineComparison {
-  readonly schemaVersion: 1;
-  readonly baselineBranchId: string;
-  readonly candidateBranchId: string;
-  readonly baselineOutcome: AgentOutcome;
-  readonly candidateOutcome: AgentOutcome;
-  readonly evidenceIds: readonly string[];
-  readonly firstDivergenceTick: number | null;
-  readonly summary: string;
-  readonly details: JsonObject;
+export interface AgentInterventionResult {
+  readonly branch: BranchSpec;
+  readonly execution: ExecutionLog;
+}
+
+export interface CompareExecutionsRequest {
+  readonly baselineExecutionId: ExecutionId;
+  readonly candidateExecutionId: ExecutionId;
 }
 
 /**
- * GameBranch-facing port. All requests and responses are serializable JSON so
- * the real GameBranch package can adapt to it without importing Pi SDK types.
+ * SDK-neutral boundary exposed to the Pi adapter. Implementations may compose
+ * GameBranch services and repositories, but Pi types never cross this port.
  */
 export interface AgentGameApi {
-  getEvidence(evidenceId: string): Promise<AgentEvidence | null>;
-  forkTimeline(request: ForkTimelineRequest): Promise<AgentTimelineBranch>;
-  replayTimeline(request: ReplayTimelineRequest): Promise<AgentReplayResult>;
-  compareTimelines(
-    request: CompareTimelinesRequest,
-  ): Promise<AgentTimelineComparison>;
-}
-
-export interface DiagnosisExperiment {
-  readonly branchId: string;
-  readonly outcome: AgentOutcome;
-  readonly evidenceIds: readonly string[];
-  readonly observation: string;
-}
-
-export interface DiagnosisComparison {
-  readonly baselineBranchId: string;
-  readonly candidateBranchId: string;
-  readonly finding: string;
-}
-
-export interface DiagnosisReport {
-  readonly schemaVersion: 1;
-  readonly conclusion: string;
-  readonly confidence: number;
-  readonly evidenceIds: readonly string[];
-  readonly experiments: readonly DiagnosisExperiment[];
-  readonly comparisons: readonly DiagnosisComparison[];
-  readonly suggestedFix: string;
+  getEvidenceCapsule(capsuleId: CapsuleId): Promise<EvidenceCapsule | null>;
+  replayExecution(request: ReplayExecutionRequest): Promise<AgentReplayResult>;
+  runIntervention(
+    request: RunInterventionRequest,
+  ): Promise<AgentInterventionResult>;
+  compareExecutions(
+    request: CompareExecutionsRequest,
+  ): Promise<ExecutionComparison>;
 }
 
 export type PiThinkingLevel =
   "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
-export interface PiHarnessOptions {
+interface PiHarnessBaseOptions {
   readonly cwd: string;
-  readonly sourceRoot?: string;
   readonly runDir: string;
-  readonly provider: string;
-  readonly model: string;
-  readonly thinkingLevel?: PiThinkingLevel;
-  readonly initialEvidenceId: string;
+  readonly initialCapsuleId: string;
   readonly game: AgentGameApi;
   readonly additionalInstructions?: string;
 }
+
+export interface PiHarnessOptions extends PiHarnessBaseOptions {
+  readonly provider: string;
+  readonly model: string;
+  readonly thinkingLevel?: PiThinkingLevel;
+}
+
+export type DeterministicPiHarnessOptions = PiHarnessBaseOptions;
 
 export interface PiSessionReference {
   readonly sessionId: string;
@@ -125,7 +84,7 @@ export interface PiSessionReference {
 }
 
 export interface PiDiagnosisRunResult {
-  readonly report: DiagnosisReport;
+  readonly proposal: DiagnosisProposal;
   readonly piSession: PiSessionReference;
 }
 

@@ -1,5 +1,6 @@
 import type {
   AvailablePiModel,
+  DeterministicPiHarnessOptions,
   ListAvailablePiModelsOptions,
   PersistPiApiKeyOptions,
   PersistPiApiKeyResult,
@@ -13,6 +14,15 @@ export async function runPiDiagnosis(
 ): Promise<PiDiagnosisRunResult> {
   const { runPiDiagnosisWithSdk } = await import("./internal/pi-runner.js");
   return runPiDiagnosisWithSdk(options);
+}
+
+/** Run the real Pi Session/Agent Loop with ChronoRift's offline faux model. */
+export async function runDeterministicPiDiagnosis(
+  options: DeterministicPiHarnessOptions,
+): Promise<PiDiagnosisRunResult> {
+  const { runDeterministicPiDiagnosisWithSdk } =
+    await import("./internal/pi-runner.js");
+  return runDeterministicPiDiagnosisWithSdk(options);
 }
 
 /** List models whose provider authentication is currently usable by Pi. */

@@ -1,8 +1,9 @@
 # v0.3 Reproduction Protocol
 
 本流程把“代码/协议验证”和“需要付费 provider 的正式执行”分开。不要把 explore 或 fake-model
-结果复制成 formal report。当前 `benchmark-spec.v2.json` 与正式 report 均为 pending；下述 spec/freeze
-步骤由维护者在实现定稿后执行一次，不应在普通复现中重新生成。
+结果复制成 formal report。`benchmark-spec.v2.json` 已与 `v0.3.0-benchmark-freeze` 冻结；首个正式
+report 已发布并通过完整性验证，但 Gate 失败。下述 spec/freeze 步骤记录维护者已执行的流程，不应在
+普通复现中重新生成，也不得删除 first-execution selection 后另跑同一定义来替换负结果。
 
 ## 1. 维护者准备 machine spec 与 freeze
 

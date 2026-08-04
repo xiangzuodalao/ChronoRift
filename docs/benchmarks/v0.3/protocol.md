@@ -1,8 +1,9 @@
 # ChronoRift v0.3 Formal Benchmark Protocol
 
-本文档冻结 v0.3 的正式评测语义。最终生成并与 freeze commit/tag 一起提交的
+本文档冻结 v0.3 的正式评测语义。与 freeze commit/tag 一起提交的
 `benchmark-spec.v2.json`（strict `BenchmarkSuiteSpecV2`）是机器权威；本文解释其设计，不替代
-strict schema 或 Harness 重算。当前机器 spec 与正式结果均为 pending。
+strict schema 或 Harness 重算。首个正式 execution 已完成并发布：report integrity 通过，但 36/36
+cells 均为 `proposal_missing`，预注册 Gate 失败；详见 [results.md](results.md)。
 
 ## 评测问题与范围
 

@@ -4,9 +4,8 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 可干预、可重放、可比较的实验，并由 Harness 根据运行时证据裁决结论，而不是相信模型置信度。
 
 > 当前版本：**v0.3 benchmark evidence release**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容；
-> v0.3 已实现可冻结的三组对照协议、可审计执行账本与报告完整性/Gate 分离。机器权威
-> `benchmark-spec.v2.json` 与正式 GLM-5.2 36-cell 结果尚未生成；在 spec 冻结、报告发布前，
-> 本仓库不声称 benchmark 优势。
+> v0.3 已冻结三组对照协议，并发布首个 36-cell 正式执行。该执行完整、报告完整性验证通过，但
+> 36/36 cells 均以 `proposal_missing` 结束，冻结 Gate 未通过；本仓库不声称 benchmark 或模型优势。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)。
@@ -77,6 +76,21 @@ Agent 视图。隐藏 oracle 只在提交后用于评分，不会进入 prompt�
 
 其他 arm 的 incorrect confirmations、mechanism accuracy、source grounding、token、工具/游戏调用和
 wall time 均报告，但不改变该 Gate。模型 confidence 不参与评分。
+
+### 首次正式结果（负结果）
+
+[已验证报告](docs/benchmarks/v0.3/benchmark-report.v2.json)对应一个 `complete` execution：36/36 cells
+均完成并封存，但全部是 `diagnostic_failure/proposal_missing`。每个 cell 只完成 1 次 baseline；三组
+分别为 0/12 grounded success，总计 token 0、工具调用 0、游戏执行 36，incorrect confirmation 为 0。
+因此完整性 verifier 通过，而预注册 Gate 失败。可读汇总与预选案例分别见
+[results.md](docs/benchmarks/v0.3/results.md)和
+[physics case study](docs/benchmarks/v0.3/case-study-physics-tunneling.md)。
+
+公开的 sanitized report 只能证明没有形成 proposal，不能单独证明 provider 侧的具体根因。本地忽略的
+raw ledger 在 36 个 finished manifests 中均记录 `PiHarnessError/PROPOSAL_MISSING: Connection error.`；
+相同环境下两次独立 `corepack pnpm test:live` 也返回 `Connection error`。这些本地观测一致并强烈指向
+连接路径，但不应改写为公开 report 已证明的 provider 归因。当前结果不能用于评价 GLM-5.2 的诊断
+质量或比较三种 arm 的效果。
 
 离线 `benchmark` 是保留的 V1 deterministic smoke，验证 Agent 工具流、权限、预算、基本矩阵和
 Gate 编排，不作为产品优势数据。formal v2 selection、progress journal、retry/recovery 与 ledger
@@ -283,9 +297,10 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
 - suite 在同一四个 Fixture 上校准，不能用于统计显著性、跨项目泛化或与 Claude Code 的比较。
 - provider 没有 sampling seed；三次 repetition 不是独立、可复现实验随机样本。
 - report verifier 是本地可重算的完整性检查，不是签名、CI attestation 或 provider attestation。
-- benchmark 只有生成、发布并通过 sanitized formal report 后才构成这四个 Fixture 上的正面证据；
-  当前正式结果仍为 pending。
+- 首个 formal execution 虽完整并通过 report integrity verification，但 36/36 cells 均未产生 proposal，
+  因而不能衡量三组 treatment 或模型诊断效果，冻结 Gate 已失败。
 
-下一步是先按冻结 spec 运行并如实发布 formal report（无论正面、负面或 incomplete），再接入一个
-仓库外真实 Godot 项目，验证 Addon API、checkpoint coverage 与源码根边界是否足够；不会因为
-四个校准 Fixture 跑通就直接外推完整 Target Architecture。
+下一步先在 formal suite 外隔离并修复 provider 连接路径，用独立 smoke 取得至少一次非零 token 的真实
+Pi Session；不得删除 selection 或重跑已冻结 execution 来筛掉本次负结果。随后接入一个仓库外真实
+Godot 项目，验证 Addon API、checkpoint coverage 与源码根边界是否足够；不会因为四个校准 Fixture
+跑通就直接外推完整 Target Architecture。

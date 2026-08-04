@@ -3,3 +3,8 @@ dist/
 coverage/
 .chronorift/
 pnpm-lock.yaml
+
+# Write-once formal evidence is formatted and verified by the benchmark publisher.
+docs/benchmarks/v0.3/benchmark-report.v2.json
+docs/benchmarks/v0.3/case-physics-tunneling-full-r1.json
+docs/benchmarks/v0.3/results.md

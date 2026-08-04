@@ -1,7 +1,7 @@
 # ChronoRift Game-native Agent Harness 总体架构
 
 > 状态：目标架构（Target Architecture）；决策日期：2026-08-04；当前实现：ChronoRift v0.3
-> 受控 Godot 诊断/评测垂直切片（正式 GLM-5.2 report pending）。本文同时定义尚未实现的完整
+> 受控 Godot 诊断/评测垂直切片（首个正式报告完整性有效、Gate 失败）。本文同时定义尚未实现的完整
 > Godot、修复与验证能力。
 >
 > 关键词：Godot-first、Runtime Experiment、Game Contract、Checkpoint、Replay、Causal Evidence
@@ -947,20 +947,20 @@ domain + gamebranch + agent-protocol ← GameBranch bridge
 `EvidenceAccessReceiptV1`、`DiagnosisProposalV3` 与 Benchmark spec/result/report v2；这些路径不静默
 迁移或覆盖历史 artifact。
 
-| 目标能力     | v0.3 当前锚点                                     | 已实现状态                                                                      | 下一步                                      |
-| ------------ | ------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------- |
-| Contract     | `FrozenContractV2`、content-addressed ID          | 四个 Fixture 各一个冻结 temporal property Contract                              | 从真实项目提取最小 Contract bundle          |
-| Runtime port | `GameEnvironmentPort`、Godot Protocol v2          | 独立 Godot 4.7.1 进程、能力握手、realized controls                              | 仓库外真实项目验证 adapter API              |
-| Checkpoint   | certificate + participant/state-provider registry | Fixture L2 语义恢复；entity Fixture 额外捕获 pending effects/sequence           | restore divergence characterization         |
-| Replay       | sealed `V03ExecutionLog` + semantic digest        | confirmed 要求一次 matching strict replay                                       | 重复 replay 与 Determinism Certificate      |
-| GameBranch   | immutable v2 BranchSpec + intervention            | baseline、两候选目录、最多两个单变量分支、canonical comparison                  | matched pair 边界搜索                       |
-| Telemetry    | v2 typed event ledger                             | input/signal/delivery/property/lifecycle/spatial/pending-effect + health/clocks | async/resource 与更细 input phase           |
-| Evidence     | `EvidenceCapsuleV2`                               | Contract window 加递归 causal ancestors，保留 expected/actual 与 loss flag      | 通用 causal slice，不先实现完整 World Graph |
-| Agent        | `FailureBriefV1` + 三组盲化 Pi tool flow          | byte-identical prompt；neutral source view；content-addressed access receipts   | egress audit 与 prompt-injection suite      |
-| Verdict      | `DiagnosisProposalV3` → v0.3 Conclusion Gate      | 重验 receipt/candidate/replay/compare/lineage/mechanism；confidence 无裁决权    | 更一般机制策略                              |
-| Benchmark    | `BenchmarkSuiteSpecV2` / `BenchmarkReportV2`      | formal/explore 分离、36-cell block order、重试/恢复、完整性与 Gate 分离         | 运行并发布冻结 GLM-5.2 报告                 |
-| Artifact     | run repository + append-only benchmark ledger     | strict write-once path、attempt hash chain、sanitized publisher                 | 外部签名或 CI attestation                   |
-| Patch        | 无                                                | 未实现                                                                          | 证据稳定后再引入 worktree/sandbox           |
+| 目标能力     | v0.3 当前锚点                                     | 已实现状态                                                                                | 下一步                                      |
+| ------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Contract     | `FrozenContractV2`、content-addressed ID          | 四个 Fixture 各一个冻结 temporal property Contract                                        | 从真实项目提取最小 Contract bundle          |
+| Runtime port | `GameEnvironmentPort`、Godot Protocol v2          | 独立 Godot 4.7.1 进程、能力握手、realized controls                                        | 仓库外真实项目验证 adapter API              |
+| Checkpoint   | certificate + participant/state-provider registry | Fixture L2 语义恢复；entity Fixture 额外捕获 pending effects/sequence                     | restore divergence characterization         |
+| Replay       | sealed `V03ExecutionLog` + semantic digest        | confirmed 要求一次 matching strict replay                                                 | 重复 replay 与 Determinism Certificate      |
+| GameBranch   | immutable v2 BranchSpec + intervention            | baseline、两候选目录、最多两个单变量分支、canonical comparison                            | matched pair 边界搜索                       |
+| Telemetry    | v2 typed event ledger                             | input/signal/delivery/property/lifecycle/spatial/pending-effect + health/clocks           | async/resource 与更细 input phase           |
+| Evidence     | `EvidenceCapsuleV2`                               | Contract window 加递归 causal ancestors，保留 expected/actual 与 loss flag                | 通用 causal slice，不先实现完整 World Graph |
+| Agent        | `FailureBriefV1` + 三组盲化 Pi tool flow          | byte-identical prompt；neutral source view；content-addressed access receipts             | egress audit 与 prompt-injection suite      |
+| Verdict      | `DiagnosisProposalV3` → v0.3 Conclusion Gate      | 重验 receipt/candidate/replay/compare/lineage/mechanism；confidence 无裁决权              | 更一般机制策略                              |
+| Benchmark    | `BenchmarkSuiteSpecV2` / `BenchmarkReportV2`      | formal/explore 分离、36-cell block order、重试/恢复、完整性与 Gate 分离；首份负结果已发布 | 修复 provider smoke 后设计新的预注册评测    |
+| Artifact     | run repository + append-only benchmark ledger     | strict write-once path、attempt hash chain、sanitized publisher                           | 外部签名或 CI attestation                   |
+| Patch        | 无                                                | 未实现                                                                                    | 证据稳定后再引入 worktree/sandbox           |
 
 v0.3 仍有以下明确限制：
 
@@ -975,7 +975,8 @@ v0.3 仍有以下明确限制：
    另用 append-only attempt ledger。
 8. report hash/验证器可发现内部不一致，但不是 provider attestation，也不能抵抗同权限重写整个证据包。
 9. 三次 repetition 没有 provider sampling seed；四个 Fixture 又参与实现校准，不能声称统计显著性或
-   跨项目泛化。正式 GLM-5.2 report 当前仍 pending。
+   跨项目泛化。首个正式 report 的 36/36 cells 均为 `proposal_missing`、Gate 失败，不能评价模型诊断
+   质量或 treatment 差异。
 10. 没有自动修复、worktree、Verification Lattice、视觉、多 Agent、容器或复杂 UI。
 
 这些限制是目标架构与可执行 v0.3 之间的 backlog，不应描述成已经完成的能力。
@@ -1065,7 +1066,9 @@ v0.3 仍有以下明确限制：
 
 验收：四个 full-arm fake-model Fixture 均 baseline fail、matching replay fail、正确单变量候选 pass，
 由 Harness confirmed；高 confidence 缺少实验仍 inconclusive；v0.1/v0.2 回归保持通过。正式 GLM-5.2
-36-cell 结果在独立 freeze tag 后运行并如实发布，当前状态 pending。
+36-cell execution 已从独立 freeze tag 完成并如实发布：报告完整性验证通过，但所有 cell 都在一次
+baseline 后以 `proposal_missing` 结束，三组 grounded success 均为 0/12，Gate 失败。该结果验收了
+formal ledger/publisher 的负结果路径，没有验收真实模型的诊断能力。
 
 ### Phase 2.5：非确定性与自适应实验
 
@@ -1109,8 +1112,11 @@ intervention 2、总游戏执行 4 的冻结上限；tool availability 是唯一
 v0.3 主指标不是模型自报 confidence 或单独 mechanism accuracy，而是
 `groundedSuccess = mechanismCorrect && canonical verdict == confirmed`。预注册 Gate 要求 full arm 至少
 9/12 grounded successes、full 相对 generic 至少 +0.20，且 full incorrect confirmations 为 0。完整性
-验证与 Gate 使用不同命令；有效负面/incomplete report 仍应发布。当前正式 GLM-5.2 report pending，
-因此没有可发布的优势结论。
+验证与 Gate 使用不同命令；有效负面/incomplete report 仍应发布。首个正式 GLM-5.2 report 已发布并
+通过内部完整性验证，但 36/36 cells 都是 `proposal_missing`，full 与 generic 均为 0/12，Gate 失败，
+因此没有可发布的优势结论。本地 raw ledger 的 36 个 finished manifests 与两次独立 live smoke 均记录
+`Connection error`，强烈指向连接路径；但 sanitized formal report 本身只证明 proposal 缺失，不能把
+公开 terminal code 强行归因为 provider 根因。
 
 Bug 集至少覆盖 frame/timer、Signal 生命周期和顺序、Node 复用与 scene reload、
 physics/contact 边界、RNG、异步资源、input sampling 和 save/restore。

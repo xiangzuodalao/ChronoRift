@@ -1,6 +1,6 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3 evidence release（代码收口，machine spec / 正式结果 pending）
+## 当前里程碑：v0.3 evidence release（正式负结果已发布）
 
 本里程碑先修复评测有效性，再运行真实 provider：
 
@@ -16,19 +16,27 @@
   journal 与 append-only attempt ledger；status、publish、verify 与 Gate 使用独立命令；
 - evidence package 预注册 physics/full/repetition-1 案例，无论正面、负面或 incomplete 都发布。
 
-v0.1 Mock 与 v0.2 switch-door 路径继续作为兼容回归。**正式 36-cell report 尚未生成，当前不能声称
-优势。** 下一步按 `v0.3.0-benchmark-freeze` 运行并发布报告，再用一个仓库外真实 Godot 项目验证
-Addon 接入成本、checkpoint coverage 和 probe API。
+v0.1 Mock 与 v0.2 switch-door 路径继续作为兼容回归。首个正式 execution 已完成，sanitized report
+通过完整性验证，但 36/36 cells 均为 `diagnostic_failure/proposal_missing`：每个 cell 只有一次 baseline，
+token 与工具调用均为 0，三组 grounded success 均为 0/12，incorrect confirmation 为 0，冻结 Gate
+失败。这个负结果证明发布/验证链可以如实保留失败，**不能证明模型诊断效果或 ChronoRift 优势**。
 
-### v0.3 完成顺序
+本地 raw ledger 的 36 个 finished manifests 均记录
+`PiHarnessError/PROPOSAL_MISSING: Connection error.`，同一环境两次独立 `test:live` 也返回
+`Connection error`；这些本地观测强烈指向连接路径。但公开 formal report 只证明
+`proposal_missing`，不能据此强行归因 provider。下一步先在正式 suite 外用 smoke 隔离连接路径，取得
+非零 token 的真实 Pi Session，再用一个仓库外真实 Godot 项目验证 Addon 接入成本、checkpoint coverage
+和 probe API。既有 first-execution selection 与本次负结果必须保留，不能通过删除 ledger 或另跑同一定义
+来筛选结果。
 
-1. `corepack pnpm check`、`corepack pnpm test:godot`、离线 fake benchmark 与必要的 provider smoke；
-2. 用 `benchmark:spec` 生成并人工复核 machine spec；
-3. 将最终实现与 spec 一起 commit，再创建并推送 freeze tag；
-4. 从干净 freeze checkout 用 `benchmark:status` 确认 selection，运行或恢复唯一 formal execution；
-5. 无论 Gate 结果如何，发布 sealed execution 的 sanitized JSON、Markdown 表与预选 case bundle；
-6. 独立运行 report integrity verifier 与 Gate；
-7. 只用 artifact 支持的措辞更新案例和 release notes。
+### v0.3 已完成发布顺序
+
+1. `corepack pnpm check`、`corepack pnpm test:godot` 与离线 fake benchmark；
+2. 生成并人工复核 machine spec，与最终实现一起冻结在 `v0.3.0-benchmark-freeze`；
+3. 从干净 freeze checkout 持久化唯一 first-execution selection 并完成 36-cell execution；
+4. 发布 sealed execution 的 sanitized JSON、Markdown 表与预选 case bundle；
+5. report integrity verifier 通过，独立 Gate 返回 fail；
+6. 保留负结果并只使用 artifact 支持的措辞更新案例和 release notes。
 
 ## Phase 1：Mock Game 闭环
 

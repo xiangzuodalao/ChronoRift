@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.3.0 — Unreleased
+## v0.3.0 — 2026-08-05
 
 ChronoRift v0.3 turns the single Godot demo into a benchmark-first diagnostic harness while preserving
 the v0.1 Mock and v0.2 switch-door paths.
@@ -30,12 +30,22 @@ the v0.1 Mock and v0.2 switch-door paths.
 
 ### Evidence status
 
-- The machine benchmark spec and formal GLM-5.2 report are pending; no model-advantage claim is made yet.
+- Froze and published the machine benchmark spec plus the first formal 36-cell execution. The execution
+  is complete and the sanitized report passes integrity verification, but the pre-registered Gate fails.
+- All 36 cells terminated as `diagnostic_failure/proposal_missing` after one baseline each. Every arm
+  scored 0/12 grounded successes; the run recorded zero model tokens and zero tool calls, with zero
+  incorrect confirmations. These data do not measure model diagnostic quality or treatment advantage.
+- All 36 locally retained raw finished manifests recorded
+  `PiHarnessError/PROPOSAL_MISSING: Connection error.`, and two separate `test:live` infrastructure
+  smokes also returned `Connection error`. Those local observations strongly implicate the connection
+  path, but the sanitized public report proves only `proposal_missing` and does not establish a
+  provider-side root cause.
 - The offline deterministic `BenchmarkReportV1` smoke validates orchestration, contracts, permission
   boundaries and basic Gate recomputation. Formal v2 selection/recovery/ledger behavior is covered by
   offline tests, not by that fake report.
-- The preselected public case is physics tunneling / full arm / repetition 1; it will not be replaced
-  after results are known.
+- The preselected public case remains physics tunneling / full arm / repetition 1. Its partial evidence
+  bundle preserves the baseline but contains no replay, candidate, comparison, access receipt or proposal;
+  it was not replaced after the negative result.
 
 ### Known limitations
 

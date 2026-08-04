@@ -1,5 +1,6 @@
 export { PiHarnessError, type PiHarnessErrorCode } from "./errors.js";
 export {
+  assertPiModelCapabilities,
   listAvailablePiModels,
   persistPiApiKey,
   runDeterministicPiDiagnosis,
@@ -7,11 +8,22 @@ export {
   runV03PiDiagnosis,
   runDeterministicV03PiDiagnosis,
 } from "./harness.js";
-export { createRestrictedSourceAccess } from "./source-access.js";
+export {
+  createRestrictedSourceAccess,
+  createVirtualSourceAccess,
+} from "./source-access.js";
+export {
+  auditV03BlindPrompt,
+  buildV03BlindSystemPrompt,
+  buildV03BlindUserPrompt,
+  v03FailureBriefReceiptId,
+  type V03BlindPromptAudit,
+} from "./internal/v03-prompt.js";
 export type {
   AgentGameApi,
   AgentInterventionResult,
   AgentReplayResult,
+  AssertPiModelCapabilitiesOptions,
   AvailablePiModel,
   CompareExecutionsRequest,
   DeterministicPiHarnessOptions,
@@ -35,5 +47,7 @@ export type {
   SourceSearchMatch,
   SourceSearchRequest,
   SourceSearchResult,
+  VirtualSourceAccessOptions,
+  VirtualSourceFile,
 } from "./types.js";
 export type * from "./v03-types.js";

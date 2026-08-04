@@ -1,5 +1,16 @@
 import { createHash } from "node:crypto";
-import { cp, lstat, mkdir, readdir, readFile, stat } from "node:fs/promises";
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -34,6 +45,7 @@ export const GODOT_CAPABILITIES = Object.freeze([
   "checkpoint.l0_restart",
   "checkpoint.fixture_semantic",
   "observe.entity_lifecycle",
+  "observe.pending_effect",
   "observe.dynamic_property_registry",
   "control.physics_ticks_per_second",
   "control.fixture_allowlist",
@@ -64,7 +76,10 @@ const assertContained = (parent: string, child: string): void => {
   }
 };
 
-const collectFiles = async (root: string): Promise<readonly string[]> => {
+const collectFiles = async (
+  root: string,
+  ignoredRootDirectories: ReadonlySet<string> = new Set(),
+): Promise<readonly string[]> => {
   const result: string[] = [];
   const visit = async (directory: string): Promise<void> => {
     assertContained(root, directory);
@@ -76,6 +91,13 @@ const collectFiles = async (root: string): Promise<readonly string[]> => {
           `ChronoRift source trees may not contain symlinks: ${path}`,
         );
       }
+      if (
+        metadata.isDirectory() &&
+        directory === root &&
+        ignoredRootDirectories.has(entry.name)
+      ) {
+        continue;
+      }
       if (metadata.isDirectory()) await visit(path);
       else if (metadata.isFile()) result.push(path);
     }
@@ -84,7 +106,16 @@ const collectFiles = async (root: string): Promise<readonly string[]> => {
   return result.sort();
 };
 
+const assertDirectoryRoot = async (path: string): Promise<string> => {
+  const metadata = await lstat(path);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+    throw new Error(`Godot source root must be a real directory: ${path}`);
+  }
+  return realpath(path);
+};
+
 const hashTree = async (root: string): Promise<string> => {
+  await assertDirectoryRoot(root);
   const hash = createHash("sha256");
   for (const path of await collectFiles(root)) {
     hash.update(relative(root, path).split(sep).join("/"));
@@ -93,6 +124,174 @@ const hashTree = async (root: string): Promise<string> => {
     hash.update("\0");
   }
   return hash.digest("hex");
+};
+
+export const fingerprintGodotSourceTrees = async (options: {
+  readonly fixtureSource: string;
+  readonly addonSource: string;
+}): Promise<{
+  readonly fixtureHash: string;
+  readonly addonHash: string;
+  readonly projectHash: string;
+}> => {
+  const [fixtureHash, addonHash] = await Promise.all([
+    hashTree(resolve(options.fixtureSource)),
+    hashTree(resolve(options.addonSource)),
+  ]);
+  return {
+    fixtureHash,
+    addonHash,
+    projectHash: createHash("sha256")
+      .update(`${fixtureHash}\0${addonHash}`)
+      .digest("hex"),
+  };
+};
+
+const hashSelectedFiles = async (
+  root: string,
+  files: readonly string[],
+): Promise<string> => {
+  const hash = createHash("sha256");
+  for (const path of files) {
+    hash.update(relative(root, path).split(sep).join("/"));
+    hash.update("\0");
+    hash.update(await readFile(path));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+};
+
+/**
+ * Re-hashes the exact staged Fixture and Addon source trees. Godot's generated
+ * top-level `.godot/` cache is excluded, but no other extra source path is.
+ */
+export const verifyStagedGodotProject = async (
+  projectDirectoryInput: string,
+  expected: { readonly projectHash: string; readonly addonHash: string },
+): Promise<void> => {
+  const projectDirectory = resolve(projectDirectoryInput);
+  const addonDirectory = resolve(projectDirectory, "addons", "chronorift");
+  const [canonicalProject, canonicalAddon] = await Promise.all([
+    assertDirectoryRoot(projectDirectory),
+    assertDirectoryRoot(addonDirectory),
+  ]);
+  assertContained(canonicalProject, canonicalAddon);
+  const [projectFiles, addonFiles] = await Promise.all([
+    collectFiles(projectDirectory, new Set([".godot"])),
+    collectFiles(addonDirectory),
+  ]);
+  const addonPrefix = `${addonDirectory}${sep}`;
+  const fixtureFiles = projectFiles.filter(
+    (path) => path !== addonDirectory && !path.startsWith(addonPrefix),
+  );
+  const [fixtureHash, addonHash] = await Promise.all([
+    hashSelectedFiles(projectDirectory, fixtureFiles),
+    hashSelectedFiles(addonDirectory, addonFiles),
+  ]);
+  const projectHash = createHash("sha256")
+    .update(`${fixtureHash}\0${addonHash}`)
+    .digest("hex");
+  if (
+    addonHash !== expected.addonHash ||
+    projectHash !== expected.projectHash
+  ) {
+    throw new Error(
+      `Staged Godot project integrity mismatch: expected ${expected.projectHash}/${expected.addonHash}, received ${projectHash}/${addonHash}`,
+    );
+  }
+};
+
+/**
+ * Removes only Godot's generated project-local cache after the staged source
+ * tree has been verified. Formal launches must not consume an unattested
+ * cache left by an earlier process.
+ */
+export const clearGeneratedGodotCache = async (
+  projectDirectoryInput: string,
+): Promise<void> => {
+  const projectDirectory = resolve(projectDirectoryInput);
+  const canonicalProject = await assertDirectoryRoot(projectDirectory);
+  const cacheDirectory = resolve(canonicalProject, ".godot");
+  assertContained(canonicalProject, cacheDirectory);
+  if (!(await pathExists(cacheDirectory))) return;
+  const metadata = await lstat(cacheDirectory);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+    throw new Error(
+      `Godot generated cache must be a real directory: ${cacheDirectory}`,
+    );
+  }
+  await rm(cacheDirectory, { recursive: true, force: false });
+};
+
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+};
+
+export const stageGodotProject = async (options: {
+  readonly artifactRoot: string;
+  readonly directoryName: string;
+  readonly fixtureSource: string;
+  readonly addonSource: string;
+  readonly projectHash: string;
+  readonly addonHash: string;
+}): Promise<string> => {
+  const artifactRoot = resolve(options.artifactRoot);
+  const projectsRoot = resolve(artifactRoot, "godot-projects");
+  const projectDirectory = resolve(projectsRoot, options.directoryName);
+  await mkdir(artifactRoot, { recursive: true });
+  const canonicalArtifactRoot = await assertDirectoryRoot(artifactRoot);
+  await mkdir(projectsRoot, { recursive: true });
+  const canonicalProjectsRoot = await assertDirectoryRoot(projectsRoot);
+  assertContained(canonicalArtifactRoot, canonicalProjectsRoot);
+  assertContained(projectsRoot, projectDirectory);
+  if (await pathExists(projectDirectory)) {
+    const canonicalProject = await realpath(projectDirectory);
+    assertContained(canonicalProjectsRoot, canonicalProject);
+    await verifyStagedGodotProject(projectDirectory, options);
+    return projectDirectory;
+  }
+
+  const temporary = await mkdtemp(join(projectsRoot, ".stage-"));
+  const stagedProject = join(temporary, "project");
+  try {
+    await cp(options.fixtureSource, stagedProject, {
+      recursive: true,
+      force: false,
+      errorOnExist: true,
+    });
+    const addonTarget = join(stagedProject, "addons", "chronorift");
+    await mkdir(join(stagedProject, "addons"), { recursive: true });
+    await cp(options.addonSource, addonTarget, {
+      recursive: true,
+      force: false,
+      errorOnExist: true,
+    });
+    await verifyStagedGodotProject(stagedProject, options);
+    try {
+      await rename(stagedProject, projectDirectory);
+    } catch (error) {
+      if (!(await pathExists(projectDirectory))) throw error;
+      await verifyStagedGodotProject(projectDirectory, options);
+    }
+  } finally {
+    if (await pathExists(temporary)) {
+      await rm(temporary, { recursive: true, force: true });
+    }
+  }
+  await verifyStagedGodotProject(projectDirectory, options);
+  return projectDirectory;
 };
 
 const initialParticipantState = Object.freeze({
@@ -156,35 +355,21 @@ export const prepareGodotSwitchDoorFixture = async (
     if (!metadata.isDirectory())
       throw new Error(`Missing source directory: ${source}`);
   }
-  const [addonHash, fixtureHash, doctor] = await Promise.all([
-    hashTree(addonSource),
-    hashTree(fixtureSource),
+  const [sourceFingerprint, doctor] = await Promise.all([
+    fingerprintGodotSourceTrees({ fixtureSource, addonSource }),
     doctorGodot({
       cwd,
       ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
     }),
   ]);
-  const projectHash = createHash("sha256")
-    .update(`${fixtureHash}\0${addonHash}`)
-    .digest("hex");
-  const projectDirectory = resolve(
+  const { addonHash, projectHash } = sourceFingerprint;
+  const projectDirectory = await stageGodotProject({
     artifactRoot,
-    "godot-projects",
-    `switch-door-${projectHash.slice(0, 16)}`,
-  );
-  assertContained(artifactRoot, projectDirectory);
-  await mkdir(projectDirectory, { recursive: true });
-  await cp(fixtureSource, projectDirectory, {
-    recursive: true,
-    force: false,
-    errorOnExist: false,
-  });
-  const addonTarget = join(projectDirectory, "addons", "chronorift");
-  await mkdir(join(projectDirectory, "addons"), { recursive: true });
-  await cp(addonSource, addonTarget, {
-    recursive: true,
-    force: false,
-    errorOnExist: false,
+    directoryName: `switch-door-${projectHash.slice(0, 16)}`,
+    fixtureSource,
+    addonSource,
+    projectHash,
+    addonHash,
   });
 
   const fingerprint: RuntimeFingerprintV1 = RuntimeFingerprintV1Schema.parse({

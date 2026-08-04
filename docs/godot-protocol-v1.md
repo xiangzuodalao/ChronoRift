@@ -71,6 +71,10 @@ receiver callback 和 property transition，不声称 GDScript 能全局拦截�
 - host monotonic interval；
 - emitted/dropped/truncated event、backpressure、buffer 和 probe overhead。
 
+其中 `probeOverheadUs` 只累计当前已插桩的 Signal、property、pending-effect 与 input 调用，是采样下界；
+它不包含全部 lifecycle/spatial、state serialization、JSON 和 transport 成本，不能解释为完整 observer
+overhead。
+
 绝对 engine frame、host time 和 probe overhead 不参与 semantic replay digest；phase、frame/tick
 数量、实际 delta、输入 receipt 和 event-loss health 参与。
 

@@ -52,6 +52,12 @@ import {
   type ObservationHealthV1,
   type RuntimeFingerprintV1,
 } from "./runtime.js";
+import {
+  RestoreReceiptSchema,
+  StepReceiptSchema,
+  type RestoreReceipt,
+  type StepReceipt,
+} from "./execution.js";
 import { StateSnapshotSchema, type StateSnapshot } from "./telemetry.js";
 import { MicrosecondsSchema, TickSchema } from "./time.js";
 import { BranchControlsSchema, type BranchControls } from "./timeline.js";
@@ -321,6 +327,16 @@ export type V03TelemetryEvent =
       readonly position: readonly [number, number];
     })
   | (V03EventBase & {
+      readonly kind: "pending_effect";
+      readonly action: "scheduled" | "restored" | "applied" | "discarded";
+      readonly effectId: string;
+      readonly target: EntityRefV1;
+      readonly resolvedTarget?: EntityRefV1 | undefined;
+      readonly dueTick: number;
+      readonly reason?:
+        "owner_destroyed" | "target_missing" | "stale_incarnation" | undefined;
+    })
+  | (V03EventBase & {
       readonly kind: "log";
       readonly level: "debug" | "info" | "warn" | "error";
       readonly source: string;
@@ -404,6 +420,20 @@ export const V03TelemetryEventSchema: z.ZodType<V03TelemetryEvent> =
         kind: z.literal("spatial_sample"),
         entity: EntityRefV1Schema,
         position: z.tuple([z.number().finite(), z.number().finite()]),
+      })
+      .strict(),
+    z
+      .object({
+        ...v03EventBase,
+        kind: z.literal("pending_effect"),
+        action: z.enum(["scheduled", "restored", "applied", "discarded"]),
+        effectId: z.string().min(1),
+        target: EntityRefV1Schema,
+        resolvedTarget: EntityRefV1Schema.optional(),
+        dueTick: TickSchema,
+        reason: z
+          .enum(["owner_destroyed", "target_missing", "stale_incarnation"])
+          .optional(),
       })
       .strict(),
     z
@@ -496,6 +526,8 @@ export interface V03ExecutionLog {
   readonly inputTraceId: InputTraceId;
   readonly status: "completed";
   readonly evaluation: ContractEvaluationV2;
+  readonly restoreReceipt: RestoreReceipt;
+  readonly stepReceipts: readonly StepReceipt[];
   readonly controlReceipt: RealizedControlReceiptV1;
   readonly observationHealth: ObservationHealthV1;
   readonly events: readonly V03TelemetryEvent[];
@@ -517,6 +549,8 @@ export const V03ExecutionLogSchema: z.ZodType<V03ExecutionLog> = z
     inputTraceId: InputTraceIdSchema,
     status: z.literal("completed"),
     evaluation: ContractEvaluationV2Schema,
+    restoreReceipt: RestoreReceiptSchema,
+    stepReceipts: z.array(StepReceiptSchema).nonempty(),
     controlReceipt: RealizedControlReceiptV1Schema,
     observationHealth: ObservationHealthV1Schema,
     events: z.array(V03TelemetryEventSchema),
@@ -527,6 +561,46 @@ export const V03ExecutionLogSchema: z.ZodType<V03ExecutionLog> = z
   })
   .strict()
   .superRefine((execution, context) => {
+    if (
+      execution.restoreReceipt.requestedCheckpointId !==
+        execution.startCheckpointId ||
+      execution.restoreReceipt.restoredCheckpointId !==
+        execution.startCheckpointId
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Restore receipt does not match the execution checkpoint",
+        path: ["restoreReceipt"],
+      });
+    }
+    if (
+      execution.runtimeFingerprint !== undefined &&
+      (execution.restoreReceipt.runtimeValidation === undefined ||
+        execution.restoreReceipt.runtimeValidation.validations.length === 0 ||
+        execution.restoreReceipt.runtimeValidation.validations.some(
+          (validation) => validation.status !== "pass",
+        ))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Runtime-backed executions require successful restore validation",
+        path: ["restoreReceipt", "runtimeValidation"],
+      });
+    }
+    const firstTick = execution.stepReceipts[0]?.requestedTick ?? 0;
+    for (const [index, receipt] of execution.stepReceipts.entries()) {
+      if (
+        receipt.requestedTick !== firstTick + index ||
+        receipt.realizedTick !== firstTick + index
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Step receipts must cover contiguous logical ticks",
+          path: ["stepReceipts", index],
+        });
+      }
+    }
     const ids = new Set<string>();
     for (const [index, event] of execution.events.entries()) {
       if (
@@ -569,6 +643,7 @@ export interface EvidenceLinkV2 {
     | "state_transition"
     | "lifecycle"
     | "spatial_sample"
+    | "pending_effect"
     | "runtime_log";
   readonly eventId: EventId;
 }
@@ -581,6 +656,7 @@ export const EvidenceLinkV2Schema: z.ZodType<EvidenceLinkV2> = z
       "state_transition",
       "lifecycle",
       "spatial_sample",
+      "pending_effect",
       "runtime_log",
     ]),
     eventId: EventIdSchema,

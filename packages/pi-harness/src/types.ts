@@ -92,12 +92,26 @@ export interface ListAvailablePiModelsOptions {
   readonly provider?: string;
 }
 
+export interface AssertPiModelCapabilitiesOptions {
+  readonly provider: string;
+  readonly model: string;
+  readonly contextWindow: number;
+  readonly maxTokens: number;
+  readonly thinkingLevel: PiThinkingLevel;
+  readonly mappedThinkingValue: string;
+}
+
 export interface AvailablePiModel {
   readonly provider: string;
   readonly model: string;
   readonly name: string;
   readonly reasoning: boolean;
   readonly input: readonly string[];
+  readonly contextWindow: number;
+  readonly maxTokens: number;
+  readonly thinkingLevelMap: Readonly<
+    Partial<Record<PiThinkingLevel, string | null>>
+  >;
 }
 
 export interface PersistPiApiKeyOptions {
@@ -152,6 +166,17 @@ export interface RestrictedSourceAccessOptions {
   readonly maxFileBytes?: number;
   readonly maxReadLines?: number;
   readonly maxSearchFiles?: number;
+}
+
+export interface VirtualSourceFile {
+  /** Agent-visible POSIX path. Formal benchmark views use `case/main.gd`. */
+  readonly path: string;
+  readonly content: string;
+}
+
+export interface VirtualSourceAccessOptions {
+  readonly files: readonly VirtualSourceFile[];
+  readonly maxReadLines?: number;
 }
 
 export interface RestrictedSourceAccess {

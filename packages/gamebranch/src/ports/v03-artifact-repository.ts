@@ -6,6 +6,7 @@ import type {
   ComparisonId,
   ContractId,
   DiagnosisProposalV2,
+  DiagnosisProposalV3,
   DiagnosisVerdictV2,
   EvidenceCapsuleV2,
   ExecutionId,
@@ -37,6 +38,8 @@ export interface V03ArtifactRepositoryPort {
   getComparison(comparisonId: ComparisonId): Promise<V03ExecutionComparison>;
   putProposal(proposal: DiagnosisProposalV2): Promise<void>;
   getProposal(proposalId: ProposalId): Promise<DiagnosisProposalV2>;
+  putProposalV3(proposal: DiagnosisProposalV3): Promise<void>;
+  getProposalV3(proposalId: ProposalId): Promise<DiagnosisProposalV3>;
   putVerdict(verdict: DiagnosisVerdictV2): Promise<void>;
   getVerdict(verdictId: VerdictId): Promise<DiagnosisVerdictV2>;
 }

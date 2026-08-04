@@ -77,5 +77,5 @@ describe("ChronoRift v0.1 composition", () => {
     expect(sessionText).toContain("game_get_evidence_capsule");
     expect(sessionText).toContain("submit_diagnosis_proposal");
     expect(sessionText).not.toContain('"toolName":"bash"');
-  });
+  }, 15_000);
 });

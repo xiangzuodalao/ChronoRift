@@ -1,10 +1,12 @@
 import type {
   BenchmarkArmV1,
   CapsuleId,
-  DiagnosisProposalV2,
+  DiagnosisProposalV3,
+  EvidenceAccessReceiptV1,
   EvidenceCapsuleV2,
   ExecutionId,
   ExperimentCandidateV1,
+  FailureBriefV1,
   InterventionId,
   V03ExecutionComparison,
   V03ExecutionLog,
@@ -43,6 +45,17 @@ export interface V03AgentGameApi {
   ): Promise<V03ExecutionComparison>;
 }
 
+export interface V03PiProgressSnapshot {
+  readonly progressObserved: boolean;
+  readonly toolCalls: number;
+  readonly tokens: {
+    readonly input: number;
+    readonly output: number;
+    readonly total: number;
+  };
+  readonly wallTimeMs: number;
+}
+
 interface V03HarnessBaseOptions {
   readonly cwd: string;
   readonly runDir: string;
@@ -51,9 +64,17 @@ interface V03HarnessBaseOptions {
   readonly baselineExecutionId: string;
   readonly game: V03AgentGameApi;
   readonly source: RestrictedSourceAccess;
+  /** Frozen, arm-independent input shown byte-for-byte to every treatment. */
+  readonly failureBrief: FailureBriefV1;
   readonly thinkingLevel?: PiThinkingLevel | undefined;
+  /** Formal runs disable Pi-internal retries so the outer attempt ledger owns them. */
+  readonly sdkRetry?: boolean | undefined;
   readonly additionalInstructions?: string | undefined;
   readonly timeoutMs?: number | undefined;
+  /** Deterministic evidence-receipt timestamp for preregistered runs. */
+  readonly receiptIssuedAt?: string | undefined;
+  readonly onProgress?:
+    ((snapshot: V03PiProgressSnapshot) => Promise<void>) | undefined;
 }
 
 export interface V03PiHarnessOptions extends V03HarnessBaseOptions {
@@ -73,10 +94,21 @@ export interface V03PiSessionReference extends PiSessionReference {
     };
     readonly cost: number;
   };
+  readonly modelMetadata: {
+    readonly name: string;
+    readonly contextWindow: number;
+    readonly maxTokens: number;
+    readonly mappedThinkingValue: string | null;
+  };
+  readonly promptHashes: {
+    readonly system: string;
+    readonly user: string;
+  };
 }
 
 export interface V03PiDiagnosisRunResult {
-  readonly proposal: DiagnosisProposalV2;
+  readonly proposal: DiagnosisProposalV3;
+  readonly accessReceipts: readonly EvidenceAccessReceiptV1[];
   readonly piSession: V03PiSessionReference;
   readonly wallTimeMs: number;
 }

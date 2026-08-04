@@ -1,15 +1,18 @@
 import { createHash } from "node:crypto";
-import { cp, lstat, mkdir, readdir, readFile, stat } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { stat } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import {
   CheckpointCertificateV1Schema,
   EnvironmentRefSchema,
   EnvironmentSnapshotSchema,
   RuntimeFingerprintV1Schema,
+  asBranchId,
   asCheckpointId,
+  asExecutionId,
   asFixtureId,
   asInterventionId,
+  asRunId,
   type CheckpointCertificateV1,
   type EnvironmentRef,
   type EnvironmentSnapshot,
@@ -28,10 +31,13 @@ import {
   GODOT_ADAPTER,
   GODOT_ADAPTER_VERSION,
   GODOT_CAPABILITIES,
+  fingerprintGodotSourceTrees,
+  stageGodotProject,
   type PreparedGodotFixture,
   type PrepareGodotFixtureOptions,
 } from "./fixture.js";
 import { doctorGodot } from "./installer.js";
+import { GodotGameEnvironmentFactory } from "./godot-environment.js";
 
 export const V03_FIXTURE_IDS = Object.freeze([
   "signal-ordering",
@@ -77,7 +83,12 @@ const experiment = (
   intervention: V03FixtureDefinition["experiments"][number]["intervention"],
 ): V03FixtureDefinition["experiments"][number] => ({
   schemaVersion: 1,
-  interventionId: asInterventionId(`intervention:${caseId}:${suffix}`),
+  interventionId: asInterventionId(
+    `intervention:v03:${createHash("sha256")
+      .update(`${caseId}\0${suffix}`)
+      .digest("hex")
+      .slice(0, 24)}`,
+  ),
   label,
   intervention,
 });
@@ -151,14 +162,23 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
     scene: "frame-input-window",
     trigger: { source: "player", name: "player.left_ledge" },
     expectation: { path: "player.jumping", value: true },
-    withinTicks: 8,
+    withinTicks: 10,
     participantId: "case-02-state",
-    participantState: { started: false, jumping: false, leftFrame: -1 },
-    stateValues: { "player.jumping": false, "player.window_open": false },
+    participantState: {
+      started: false,
+      jumping: false,
+      leftFrame: -1,
+      processCallbacks: 0,
+    },
+    stateValues: {
+      "player.jumping": false,
+      "player.window_open": false,
+      "player.process_callbacks": 0,
+    },
     inputs: [
       {
         scheduleBasis: "relative_sim_time_us",
-        relativeTimeUs: 50_000,
+        relativeTimeUs: 75_000,
         order: 0,
         action: "attempt_jump",
         target: "player",
@@ -170,7 +190,11 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
       maxTicks: 10,
       variables: { fixed_fps: 120 },
     },
-    probeProperties: ["player.jumping", "player.window_open"],
+    probeProperties: [
+      "player.jumping",
+      "player.window_open",
+      "player.process_callbacks",
+    ],
     experiments: [
       experiment("case-02", "physics-120", "Run physics at 120 TPS", {
         kind: "set_runtime_control",
@@ -200,7 +224,12 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
     expectation: { path: "target.hit", value: true },
     withinTicks: 3,
     participantId: "case-03-state",
-    participantState: { fired: false, projectileX: 0.0, targetHit: false },
+    participantState: {
+      fired: false,
+      fireEventAnchor: "",
+      projectileX: 0.0,
+      targetHit: false,
+    },
     stateValues: { "projectile.x": 0, "target.hit": false },
     inputs: [
       {
@@ -213,9 +242,9 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
       },
     ],
     controls: {
-      deltaUs: 16_667,
+      deltaUs: 33_333,
       maxTicks: 4,
-      variables: { physics_ticks_per_second: 30 },
+      variables: { fixed_fps: 30, physics_ticks_per_second: 30 },
     },
     probeProperties: ["projectile.x", "target.hit"],
     experiments: [
@@ -251,10 +280,18 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
     expectation: { path: "enemy.health", value: 100 },
     withinTicks: 2,
     participantId: "case-04-state",
-    participantState: { health: 100, generation: 1 },
+    participantState: {
+      health: 100,
+      generation: 1,
+      effectSequence: 0,
+      pendingEffects: [],
+      lastProcessedTick: -1,
+    },
     stateValues: {
       "enemy.health": 100,
       "enemy.incarnation": 1,
+      "enemy.effect_sequence": 0,
+      "enemy.pending_effect_count": 0,
       "control.pooling_enabled": true,
     },
     inputs: [
@@ -271,6 +308,8 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
     probeProperties: [
       "enemy.health",
       "enemy.incarnation",
+      "enemy.effect_sequence",
+      "enemy.pending_effect_count",
       "control.pooling_enabled",
     ],
     experiments: [
@@ -294,45 +333,9 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
     oracle: {
       mechanismCode: "stale_effect_crossed_entity_incarnation",
       sourcePath: "entity_reuse.gd",
-      sourceSymbol: "_recycle_enemy",
+      sourceSymbol: "_resolve_pending_effect",
     },
   },
-};
-
-const assertContained = (parent: string, child: string): void => {
-  const path = relative(parent, child);
-  if (path === "" || path === ".") return;
-  if (path === ".." || path.startsWith(`..${sep}`) || path.startsWith(sep)) {
-    throw new Error(`Path escapes expected root: ${child}`);
-  }
-};
-
-const collectFiles = async (root: string): Promise<readonly string[]> => {
-  const files: string[] = [];
-  const visit = async (directory: string): Promise<void> => {
-    assertContained(root, directory);
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name);
-      const metadata = await lstat(path);
-      if (metadata.isSymbolicLink())
-        throw new Error(`Symlink rejected: ${path}`);
-      if (metadata.isDirectory()) await visit(path);
-      else if (metadata.isFile()) files.push(path);
-    }
-  };
-  await visit(root);
-  return files.sort();
-};
-
-const hashTree = async (root: string): Promise<string> => {
-  const hash = createHash("sha256");
-  for (const path of await collectFiles(root)) {
-    hash.update(relative(root, path).split(sep).join("/"));
-    hash.update("\0");
-    hash.update(await readFile(path));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
 };
 
 const platformName = (): string => {
@@ -366,10 +369,155 @@ export const v03FixtureNameForId = (value: string): V03FixtureName => {
   return entry[0] as V03FixtureName;
 };
 
+interface ObservedInitialCheckpoint {
+  readonly environment: EnvironmentRef;
+  readonly snapshot: EnvironmentSnapshot;
+  readonly certificate: CheckpointCertificateV1;
+}
+
+const initialCheckpointCaptures = new Map<
+  string,
+  Promise<ObservedInitialCheckpoint>
+>();
+
+const jsonRecord = (
+  value: JsonValue,
+): Readonly<Record<string, JsonValue>> | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : undefined;
+
+export const observedCheckpointValidationMatchesSnapshot = (
+  snapshot: EnvironmentSnapshot,
+  certificate: CheckpointCertificateV1,
+): boolean => {
+  const runtimeState = jsonRecord(snapshot.runtimeState);
+  const participants =
+    runtimeState === undefined
+      ? undefined
+      : jsonRecord(runtimeState["participants"] ?? null);
+  if (participants === undefined) return false;
+  const participantIds = Object.keys(participants).sort();
+  const validations = certificate.restoreValidation;
+  if (
+    participantIds.length === 0 ||
+    validations.length !== participantIds.length ||
+    new Set(validations.map((entry) => entry.participantId)).size !==
+      validations.length
+  ) {
+    return false;
+  }
+  return participantIds.every((participantId) => {
+    const validation = validations.find(
+      (entry) => entry.participantId === participantId,
+    );
+    const state = participants[participantId];
+    return (
+      validation?.status === "pass" &&
+      state !== undefined &&
+      validation.stateHash === payloadHash(state) &&
+      certificate.coveredStateDomains.includes(`participant.${participantId}`)
+    );
+  });
+};
+
+const captureInitialCheckpoint = async (options: {
+  readonly cacheKey: string;
+  readonly binary: string;
+  readonly projectDirectory: string;
+  readonly runtimeRoot: string;
+  readonly environment: EnvironmentRef;
+  readonly fingerprint: RuntimeFingerprintV1;
+  readonly blueprint: FixtureBlueprint;
+  readonly expectedSnapshot: EnvironmentSnapshot;
+}): Promise<ObservedInitialCheckpoint> => {
+  const existing = initialCheckpointCaptures.get(options.cacheKey);
+  if (existing !== undefined) return structuredClone(await existing);
+  const pending = (async (): Promise<ObservedInitialCheckpoint> => {
+    const factory = new GodotGameEnvironmentFactory({
+      binary: options.binary,
+      projectDirectory: options.projectDirectory,
+      runtimeRoot: options.runtimeRoot,
+    });
+    const environment = await factory.create({
+      environment: options.environment,
+      runId: asRunId(`run:v03:capture:${options.blueprint.fixtureId}`),
+      branchId: asBranchId(`branch:v03:capture:${options.blueprint.fixtureId}`),
+      executionId: asExecutionId(
+        `execution:v03:capture:${options.blueprint.fixtureId}`,
+      ),
+      controls: options.blueprint.controls,
+      requiredCapabilities: options.fingerprint.capabilities,
+      probePlan: {
+        schemaVersion: 1,
+        signals: [options.blueprint.trigger],
+        properties: options.blueprint.probeProperties,
+      },
+    });
+    try {
+      const captured = await environment.snapshot();
+      if (
+        payloadHash(captured.snapshot as unknown as JsonValue) !==
+        payloadHash(options.expectedSnapshot as unknown as JsonValue)
+      ) {
+        throw new Error(
+          `Godot initial capture differs from the frozen ${options.blueprint.name} blueprint`,
+        );
+      }
+      const certificate = captured.certificate;
+      if (
+        certificate === undefined ||
+        certificate.level !== "fixture_semantic_l2" ||
+        certificate.captureConsistencyModel !== "frame_end_barrier" ||
+        certificate.adapterSemanticBarrier !==
+          "chronorift.frame_end_deferred" ||
+        certificate.restoreRecipeHash !==
+          payloadHash(captured.snapshot as unknown as JsonValue) ||
+        certificate.restoreValidation.length === 0 ||
+        certificate.restoreValidation.some(
+          (validation) => validation.status !== "pass",
+        ) ||
+        !observedCheckpointValidationMatchesSnapshot(
+          captured.snapshot,
+          certificate,
+        )
+      ) {
+        throw new Error(
+          `Godot did not return an admissible observed checkpoint for ${options.blueprint.name}`,
+        );
+      }
+      return {
+        environment: EnvironmentRefSchema.parse(environment.descriptor),
+        snapshot: captured.snapshot,
+        certificate,
+      };
+    } finally {
+      await environment.dispose();
+    }
+  })();
+  initialCheckpointCaptures.set(options.cacheKey, pending);
+  try {
+    return structuredClone(await pending);
+  } catch (error) {
+    if (initialCheckpointCaptures.get(options.cacheKey) === pending) {
+      initialCheckpointCaptures.delete(options.cacheKey);
+    }
+    throw error;
+  }
+};
+
 export const prepareV03GodotFixture = async (
   fixtureName: V03FixtureName,
   options: PrepareGodotFixtureOptions,
 ): Promise<PreparedV03GodotFixture> => {
+  if (
+    options.checkpointLevel !== undefined &&
+    options.checkpointLevel !== "fixture_semantic_l2"
+  ) {
+    throw new Error(
+      "ChronoRift v0.3 requires an observed fixture_semantic_l2 checkpoint",
+    );
+  }
   const blueprint = blueprints[fixtureName];
   const cwd = resolve(options.cwd);
   const artifactRoot = resolve(options.artifactRoot);
@@ -379,35 +527,21 @@ export const prepareV03GodotFixture = async (
     if (!(await stat(source)).isDirectory())
       throw new Error(`Missing source: ${source}`);
   }
-  const [addonHash, fixtureHash, doctor] = await Promise.all([
-    hashTree(addonSource),
-    hashTree(fixtureSource),
+  const [sourceFingerprint, doctor] = await Promise.all([
+    fingerprintGodotSourceTrees({ fixtureSource, addonSource }),
     doctorGodot({
       cwd,
       ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
     }),
   ]);
-  const projectHash = createHash("sha256")
-    .update(`${fixtureHash}\0${addonHash}`)
-    .digest("hex");
-  const projectDirectory = resolve(
+  const { addonHash, projectHash } = sourceFingerprint;
+  const projectDirectory = await stageGodotProject({
     artifactRoot,
-    "godot-projects",
-    `${fixtureName}-${projectHash.slice(0, 16)}`,
-  );
-  assertContained(artifactRoot, projectDirectory);
-  await mkdir(projectDirectory, { recursive: true });
-  await cp(fixtureSource, projectDirectory, {
-    recursive: true,
-    force: false,
-    errorOnExist: false,
-  });
-  const addonTarget = join(projectDirectory, "addons", "chronorift");
-  await mkdir(join(projectDirectory, "addons"), { recursive: true });
-  await cp(addonSource, addonTarget, {
-    recursive: true,
-    force: false,
-    errorOnExist: false,
+    directoryName: `${fixtureName}-${projectHash.slice(0, 16)}`,
+    fixtureSource,
+    addonSource,
+    projectHash,
+    addonHash,
   });
   const defaultFixedFps =
     typeof blueprint.controls.variables["fixed_fps"] === "number"
@@ -448,54 +582,44 @@ export const prepareV03GodotFixture = async (
       ]),
     ),
   };
-  const snapshot: EnvironmentSnapshot = EnvironmentSnapshotSchema.parse({
-    state: { values: stateValues },
-    runtimeState: {
-      nowUs: 0,
-      nextTick: 0,
-      participants: { [blueprint.participantId]: blueprint.participantState },
+  const expectedSnapshot: EnvironmentSnapshot = EnvironmentSnapshotSchema.parse(
+    {
+      state: { values: stateValues },
+      runtimeState: {
+        nowUs: 0,
+        nextTick: 0,
+        participants: { [blueprint.participantId]: blueprint.participantState },
+      },
+      rngState: {},
+      pendingEffects:
+        blueprint.name === "entity-reuse"
+          ? {
+              deferredCallsDrained: false,
+              participants: {
+                [blueprint.participantId]: {
+                  effectSequence: 0,
+                  pendingEffects: [],
+                },
+              },
+            }
+          : { deferredCallsDrained: false, participants: {} },
     },
-    rngState: {},
-    pendingEffects: { deferredCallsDrained: false },
+  );
+  const observedCheckpoint = await captureInitialCheckpoint({
+    cacheKey: `${projectDirectory}\0${defaultFixedFps}\0${defaultPhysicsTps}`,
+    binary: doctor.binary,
+    projectDirectory,
+    runtimeRoot: resolve(artifactRoot, "godot-capture-runtime"),
+    environment,
+    fingerprint,
+    blueprint,
+    expectedSnapshot,
   });
-  const certificate: CheckpointCertificateV1 =
-    CheckpointCertificateV1Schema.parse({
-      schemaVersion: 1,
-      level: options.checkpointLevel ?? "fixture_semantic_l2",
-      captureConsistencyModel: "frame_end_barrier",
-      adapterSemanticBarrier: "chronorift.frame_end_deferred",
-      environmentFingerprint: fingerprint,
-      coveredStateDomains: [
-        ...blueprint.coverage,
-        "logical_clock",
-        "input_schedule",
-      ],
-      missingStateDomains: [
-        "godot.physics_internal",
-        "godot.timers_tweens_coroutines",
-        "godot.threads",
-        "godot.unregistered_rng",
-        "godot.resource_caches",
-        "external_services",
-      ],
-      externalDependencies: [],
-      rngDomains: [],
-      pendingAsyncOperations: ["untracked_deferred_calls"],
-      restoreRecipeHash: payloadHash(snapshot as unknown as JsonValue),
-      restoreValidation: [
-        {
-          participantId: blueprint.participantId,
-          status: "pass",
-          stateHash: payloadHash(blueprint.participantState),
-          message: "Initial Fixture participant state is canonical",
-        },
-      ],
-      portability: "same_build_only",
-      limitations: [
-        `Only registered participant ${blueprint.participantId} is restored`,
-        "Godot engine internals are not checkpointed",
-      ],
-    });
+  const snapshot = observedCheckpoint.snapshot;
+  const certificate = CheckpointCertificateV1Schema.parse(
+    observedCheckpoint.certificate,
+  );
+  const observedEnvironment = observedCheckpoint.environment;
   const traceWithoutId = {
     schemaVersion: 2 as const,
     inputs: blueprint.inputs,
@@ -521,7 +645,7 @@ export const prepareV03GodotFixture = async (
     },
     initialCheckpointContent: {
       schemaVersion: 1,
-      environment,
+      environment: observedEnvironment,
       nextTick: 0,
       simTimeUs: 0,
       snapshot,
@@ -547,7 +671,7 @@ export const prepareV03GodotFixture = async (
     addonHash,
     projectHash,
     doctor,
-    environment,
+    environment: observedEnvironment,
     initialCheckpointContent: fixture.initialCheckpointContent,
     checkpointId,
     fixture,

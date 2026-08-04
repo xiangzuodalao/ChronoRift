@@ -1,4 +1,5 @@
 import type {
+  AssertPiModelCapabilitiesOptions,
   AvailablePiModel,
   DeterministicPiHarnessOptions,
   ListAvailablePiModelsOptions,
@@ -37,6 +38,15 @@ export async function listAvailablePiModels(
   const { listAvailablePiModelsWithSdk } =
     await import("./internal/pi-runner.js");
   return listAvailablePiModelsWithSdk(options);
+}
+
+/** Validate frozen model metadata and credentials before a formal provider call. */
+export async function assertPiModelCapabilities(
+  options: AssertPiModelCapabilitiesOptions,
+): Promise<AvailablePiModel> {
+  const { assertPiModelCapabilitiesWithSdk } =
+    await import("./internal/pi-runner.js");
+  return assertPiModelCapabilitiesWithSdk(options);
 }
 
 /** Persist an API key through Pi's user-level credential store. */

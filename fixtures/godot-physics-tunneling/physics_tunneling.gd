@@ -9,6 +9,7 @@ const TARGET_HALF_WIDTH := 0.5
 
 var projectile_ref: Dictionary = {}
 var fired_state := false
+var fire_event_anchor := ""
 var projectile_x := 0.0
 var target_hit := false
 
@@ -38,7 +39,7 @@ func _input(event: InputEvent) -> void:
 		return
 	var input_event := ChronoProbe.consume_input_local_id(event.action)
 	fired_state = true
-	ChronoProbe.emit_observed_signal(
+	fire_event_anchor = ChronoProbe.emit_observed_signal(
 		self,
 		"fired",
 		"projectile",
@@ -57,6 +58,7 @@ func _physics_process(delta: float) -> void:
 		"projectile.x",
 		before,
 		projectile_x,
+		fire_event_anchor,
 	)
 	var sample_event := ChronoProbe.record_spatial_sample(
 		projectile_ref,
@@ -71,6 +73,7 @@ func _physics_process(delta: float) -> void:
 func chronorift_capture() -> Dictionary:
 	return {
 		"fired": fired_state,
+		"fireEventAnchor": fire_event_anchor,
 		"projectileX": projectile_x,
 		"targetHit": target_hit,
 	}
@@ -78,6 +81,7 @@ func chronorift_capture() -> Dictionary:
 
 func chronorift_restore(state: Dictionary) -> void:
 	fired_state = bool(state.get("fired", false))
+	fire_event_anchor = str(state.get("fireEventAnchor", ""))
 	projectile_x = float(state.get("projectileX", 0.0))
 	target_hit = bool(state.get("targetHit", false))
 

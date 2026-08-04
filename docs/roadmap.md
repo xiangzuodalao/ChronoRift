@@ -1,16 +1,34 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3 benchmark-first Godot harness（已实现）
+## 当前里程碑：v0.3 evidence release（代码收口，machine spec / 正式结果 pending）
 
-- 四个真实 Godot runtime-Bug Fixture 与 Protocol v2；
-- Contract/Execution/Evidence/Proposal v2、checkpoint/replay、两个候选单变量实验与 Conclusion Gate；
-- generic、evidence-only、chronorift-full 三组同预算 Pi Agent arm；
-- 离线 fake-model matrix 与可恢复的 36-cell live benchmark；
-- sanitized report 的完整性与优势门槛验证。
+本里程碑先修复评测有效性，再运行真实 provider：
 
-v0.1 Mock 与 v0.2 switch-door 路径继续作为兼容回归。下一步不是直接实现完整 Target
-Architecture，而是先发布真实模型报告，再用一个仓库外真实 Godot 项目验证 Addon 接入成本、
-checkpoint coverage 和 probe API。
+- 保留四个真实 Godot runtime-Bug Fixture 与 Protocol v2；`entity-reuse` 改为真正跨 tick 的
+  pending-effect / incarnation 污染，并覆盖 checkpoint/restore 与因果祖先证据；
+- 新增 `FailureBriefV1`、`EvidenceAccessReceiptV1`、`DiagnosisProposalV3` 和 Benchmark spec/cell/
+  report v2；Harness 重验所有引用，confidence 不参与 verdict；
+- generic、evidence-only、chronorift-full 接收 byte-identical prompt 和 Failure Brief，只通过 active
+  tools 区分；源码使用 neutral `case/main.gd` view 与 content-addressed receipt；
+- 冻结 4 × 3 × 3、GLM-5.2 `max`、并发 1、block-randomized order、预算、retry/resume 和
+  grounded-success Gate；
+- 将 exploratory 与 formal runner 分开，formal 使用 durable first-execution selection、三阶段 progress
+  journal 与 append-only attempt ledger；status、publish、verify 与 Gate 使用独立命令；
+- evidence package 预注册 physics/full/repetition-1 案例，无论正面、负面或 incomplete 都发布。
+
+v0.1 Mock 与 v0.2 switch-door 路径继续作为兼容回归。**正式 36-cell report 尚未生成，当前不能声称
+优势。** 下一步按 `v0.3.0-benchmark-freeze` 运行并发布报告，再用一个仓库外真实 Godot 项目验证
+Addon 接入成本、checkpoint coverage 和 probe API。
+
+### v0.3 完成顺序
+
+1. `corepack pnpm check`、`corepack pnpm test:godot`、离线 fake benchmark 与必要的 provider smoke；
+2. 用 `benchmark:spec` 生成并人工复核 machine spec；
+3. 将最终实现与 spec 一起 commit，再创建并推送 freeze tag；
+4. 从干净 freeze checkout 用 `benchmark:status` 确认 selection，运行或恢复唯一 formal execution；
+5. 无论 Gate 结果如何，发布 sealed execution 的 sanitized JSON、Markdown 表与预选 case bundle；
+6. 独立运行 report integrity verifier 与 Gate；
+7. 只用 artifact 支持的措辞更新案例和 release notes。
 
 ## Phase 1：Mock Game 闭环
 

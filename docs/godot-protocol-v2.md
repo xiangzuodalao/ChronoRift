@@ -40,6 +40,7 @@ runtime → shutdown_ack
 v2 在 v1 基础上实际增加：
 
 - `observe.entity_lifecycle`
+- `observe.pending_effect`
 - `observe.dynamic_property_registry`
 - `control.physics_ticks_per_second`
 - `control.fixture_allowlist`
@@ -56,12 +57,14 @@ register_state_property(path, object, property)
 register_state_provider(path, callable)
 register_entity(stable_id, node) → { stableId, incarnation }
 record_entity_lifecycle(action, entity_ref)
+record_pending_effect(action, effect_id, target_entity_ref, due_tick, reason)
 record_spatial_sample(entity_ref, position)
 ```
 
 `stableId + incarnation` 区分对象池复用前后的逻辑实体。Signal emission 与 receiver delivery 是两个
-事件；delivery 必须引用更早的 emission。Host 把允许的结构化 runtime log 编译为 lifecycle/spatial
-事件，未知日志仍作为不可信数据保留。
+事件；delivery 必须引用更早的 emission。pending-effect 遥测显式记录 schedule、apply 或 discard，
+并保留最初目标与实际解析目标的 incarnation。Host 把允许的结构化 runtime log 编译为
+lifecycle、pending-effect 与 spatial 事件，未知日志仍作为不可信数据保留。
 
 Addon 不进行全局 Signal/property 拦截。只采集 configure allowlist 与 Fixture 主动插桩的边界。
 

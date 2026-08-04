@@ -33,6 +33,23 @@ const execution = {
     deadlineTick: 1,
     observed: { present: true as const, value: false },
   },
+  restoreReceipt: {
+    requestedCheckpointId: asCheckpointId("checkpoint"),
+    restoredCheckpointId: asCheckpointId("checkpoint"),
+    restored: true as const,
+    nextTick: 0,
+    simTimeUs: 0,
+    stateDigest: "b".repeat(64),
+  },
+  stepReceipts: [
+    {
+      requestedTick: 0,
+      realizedTick: 0,
+      requestedDeltaUs: 16_667,
+      realizedDeltaUs: 16_667,
+      appliedInputOrders: [],
+    },
+  ],
   controlReceipt: {
     schemaVersion: 1 as const,
     requested: { fixed_fps: 60 },

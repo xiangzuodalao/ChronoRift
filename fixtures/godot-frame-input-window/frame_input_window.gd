@@ -9,12 +9,14 @@ var started := false
 var jumping := false
 var window_open := false
 var left_frame := -1
+var process_callbacks := 0
 
 
 func _ready() -> void:
 	ChronoProbe.register_entity("player", self)
 	ChronoProbe.register_state_property("player.jumping", self, "jumping")
 	ChronoProbe.register_state_property("player.window_open", self, "window_open")
+	ChronoProbe.register_state_property("player.process_callbacks", self, "process_callbacks")
 	ChronoProbe.register_checkpoint_participant(PARTICIPANT_ID, self)
 	ChronoProbe.connect_observed_signal(
 		self,
@@ -33,6 +35,7 @@ func _on_left_ledge() -> void:
 func _process(_delta: float) -> void:
 	if not ChronoProbe.execution_active:
 		return
+	process_callbacks += 1
 	if not started:
 		started = true
 		left_frame = 0
@@ -69,6 +72,7 @@ func chronorift_capture() -> Dictionary:
 		"started": started,
 		"jumping": jumping,
 		"leftFrame": left_frame,
+		"processCallbacks": process_callbacks,
 	}
 
 
@@ -76,6 +80,7 @@ func chronorift_restore(state: Dictionary) -> void:
 	started = bool(state.get("started", false))
 	jumping = bool(state.get("jumping", false))
 	left_frame = int(state.get("leftFrame", -1))
+	process_callbacks = int(state.get("processCallbacks", 0))
 	window_open = false
 
 

@@ -6,3 +6,4 @@ export * from "./services/v01-canonical.js";
 export * from "./services/v01-gamebranch-service.js";
 export * from "./services/v03-gamebranch-service.js";
 export * from "./services/v03-benchmark-service.js";
+export * from "./services/v03-benchmark-v2-service.js";

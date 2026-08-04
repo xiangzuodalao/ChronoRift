@@ -12,6 +12,7 @@ const CAPABILITIES := [
 	"checkpoint.l0_restart",
 	"checkpoint.fixture_semantic",
 	"observe.entity_lifecycle",
+	"observe.pending_effect",
 	"observe.dynamic_property_registry",
 	"control.physics_ticks_per_second",
 	"control.fixture_allowlist",
@@ -31,11 +32,14 @@ var _entity_incarnations: Dictionary = {}
 var _state_providers: Dictionary = {}
 var _observed_connections: Dictionary = {}
 var _events: Array = []
+var _restored_events: Array = []
+var _pending_effect_event_sequence := 0
 var _current_input_local_id := ""
 var _pending_input_local_ids: Dictionary = {}
 var _current_signal_local_id := ""
 var _current_delta_us := 16667
 var _pending_step: Dictionary = {}
+var _pending_snapshot_request_id := ""
 var _step_physics_start := 0
 var step_activation_frame := -1
 var _probe_overhead_us := 0
@@ -107,6 +111,14 @@ func entity_ref(stable_id: String) -> Dictionary:
 	return {} if incarnation <= 0 else {"stableId": stable_id, "incarnation": incarnation}
 
 
+func restore_entity_ref(stable_id: String, entity: Node, incarnation: int) -> Dictionary:
+	if stable_id.is_empty() or incarnation <= 0 or _entities.get(stable_id) != entity:
+		push_error("Invalid restored ChronoRift entity ref: %s#%d" % [stable_id, incarnation])
+		return {}
+	_entity_incarnations[stable_id] = incarnation
+	return {"stableId": stable_id, "incarnation": incarnation}
+
+
 func register_state_property(path: String, entity: Object, property_name: String) -> void:
 	if path.is_empty() or _state_providers.has(path):
 		push_error("Duplicate or empty ChronoRift state path: %s" % path)
@@ -124,6 +136,12 @@ func register_state_provider(path: String, provider: Callable) -> void:
 
 func fixture_control(name: String, fallback: Variant) -> Variant:
 	return _fixture_controls.get(name, fallback)
+
+
+func current_step_tick() -> int:
+	if not _pending_step.is_empty():
+		return int((_pending_step.get("payload", {}) as Dictionary).get("tick", _next_tick))
+	return _next_tick
 
 
 func record_entity_lifecycle(action: String, entity: Dictionary, caused_by := "") -> String:
@@ -147,6 +165,51 @@ func record_entity_lifecycle(action: String, entity: Dictionary, caused_by := ""
 	if not caused_by.is_empty():
 		event["causedByLocalId"] = caused_by
 	_events.append(event)
+	return local_id
+
+
+func record_pending_effect(
+	action: String,
+	effect: Dictionary,
+	resolved_target := {},
+	reason := "",
+	caused_by := "",
+) -> String:
+	var probe_started_us := Time.get_ticks_usec()
+	if not ["scheduled", "restored", "applied", "discarded"].has(action):
+		push_error("Invalid pending effect action: %s" % action)
+		return caused_by
+	var target: Dictionary = effect.get("target", {})
+	var local_id := "godot:%d:pending:%d" % [Engine.get_process_frames(), _pending_effect_event_sequence]
+	_pending_effect_event_sequence += 1
+	var fields := {
+		"chronoriftEvent": "pending_effect",
+		"action": action,
+		"effectId": effect.get("effectId", ""),
+		"targetStableId": target.get("stableId", ""),
+		"targetIncarnation": int(target.get("incarnation", 0)),
+		"dueTick": int(effect.get("dueTick", -1)),
+	}
+	if resolved_target is Dictionary and not resolved_target.is_empty():
+		fields["resolvedStableId"] = resolved_target.get("stableId", "")
+		fields["resolvedIncarnation"] = int(resolved_target.get("incarnation", 0))
+	if not reason.is_empty():
+		fields["reason"] = reason
+	var event := {
+		"kind": "log",
+		"localId": local_id,
+		"level": "info",
+		"source": "ChronoProbe",
+		"message": "pending effect",
+		"fields": fields,
+	}
+	if not caused_by.is_empty():
+		event["causedByLocalId"] = caused_by
+	if action == "restored" and not execution_active:
+		_restored_events.append(event)
+	else:
+		_events.append(event)
+	_probe_overhead_us += maxi(0, Time.get_ticks_usec() - probe_started_us)
 	return local_id
 
 
@@ -349,13 +412,20 @@ func _handle_restore(request_id: String, payload: Dictionary) -> void:
 		_send_error(request_id, "INVALID_COMMAND", "Probe is not configured")
 		return
 	var snapshot: Dictionary = payload.get("snapshot", {})
+	var certificate: Dictionary = payload.get("certificate", {})
+	if (
+		not certificate.is_empty()
+		and certificate.get("restoreRecipeHash", "") != payload_hash(snapshot)
+	):
+		_send_error(request_id, "RESTORE_FAILED", "Snapshot does not match the checkpoint restore recipe hash")
+		return
 	_next_tick = int(payload.get("nextTick", 0))
 	_sim_time_us = int(payload.get("simTimeUs", 0))
 	var runtime_state: Dictionary = snapshot.get("runtimeState", {})
 	var participant_states: Dictionary = runtime_state.get("participants", {})
-	var certificate: Dictionary = payload.get("certificate", {})
 	var checkpoint_level: String = certificate.get("level", "fixture_semantic_l2")
 	var validations: Array = []
+	_restored_events = []
 	for participant_id in _participants.keys():
 		var participant: Node = _participants[participant_id]
 		if not participant_states.has(participant_id):
@@ -363,9 +433,22 @@ func _handle_restore(request_id: String, payload: Dictionary) -> void:
 			return
 		if checkpoint_level == "fixture_semantic_l2":
 			participant.chronorift_restore(participant_states[participant_id])
+		if participant.has_method("chronorift_pending_effect_state"):
+			var pending_domains: Dictionary = snapshot.get("pendingEffects", {})
+			var pending_participants: Dictionary = pending_domains.get("participants", {})
+			if not pending_participants.has(participant_id):
+				_send_error(request_id, "RESTORE_FAILED", "Missing pending-effect state: %s" % participant_id)
+				return
+			if payload_hash(participant.chronorift_pending_effect_state()) != payload_hash(pending_participants[participant_id]):
+				_send_error(request_id, "RESTORE_FAILED", "Pending-effect state differs: %s" % participant_id)
+				return
 		validations.append(participant.chronorift_validate(participant_states[participant_id]))
 		if validations[-1].get("status") != "pass":
-			_send_error(request_id, "RESTORE_FAILED", "Participant validation failed: %s" % participant_id)
+			_send_error(
+				request_id,
+				"RESTORE_FAILED",
+				"Participant validation failed: %s (%s)" % [participant_id, validations[-1].get("message", "no detail")],
+			)
 			return
 	_send("restored", {
 		"restored": true,
@@ -385,7 +468,8 @@ func _handle_step(request_id: String, payload: Dictionary) -> void:
 	if not _pending_step.is_empty():
 		_send_error(request_id, "INVALID_COMMAND", "A step is already pending")
 		return
-	_events = []
+	_events = _restored_events.duplicate(true)
+	_restored_events = []
 	_probe_overhead_us = 0
 	_step_physics_start = Engine.get_physics_frames()
 	_pending_step = {"requestId": request_id, "payload": payload}
@@ -398,8 +482,10 @@ func _handle_step(request_id: String, payload: Dictionary) -> void:
 
 func _complete_step_after_process_frame() -> void:
 	await get_tree().process_frame
-	await get_tree().process_frame
-	_complete_step()
+	# `SceneTree.process_frame` is emitted immediately before Nodes receive
+	# `_process`. Finish as a deferred call so the one realized frame belongs
+	# to the game, while still rejecting any second frame below.
+	call_deferred("_complete_step")
 
 
 func _inject_input(input: Dictionary) -> void:
@@ -428,6 +514,12 @@ func _complete_step() -> void:
 		return
 	var payload: Dictionary = _pending_step["payload"]
 	var request_id: String = _pending_step["requestId"]
+	var idle_frames := maxi(0, Engine.get_process_frames() - step_activation_frame)
+	if idle_frames != 1:
+		_pending_step = {}
+		execution_active = false
+		_send_error(request_id, "RUNTIME_FAILURE", "Logical step executed %d process frames" % idle_frames)
+		return
 	var physics_ticks := maxi(0, Engine.get_physics_frames() - _step_physics_start)
 	var physics_deltas: Array = []
 	for ignored in range(physics_ticks):
@@ -457,7 +549,7 @@ func _complete_step() -> void:
 			"runtime": {
 				"schemaVersion": 1,
 				"phase": "process_frame_start",
-				"idleFramesExecuted": 1,
+				"idleFramesExecuted": idle_frames,
 				"physicsTicksExecuted": physics_ticks,
 				"actualIdleDeltasUs": [_current_delta_us],
 				"actualPhysicsDeltasUs": physics_deltas,
@@ -483,12 +575,32 @@ func _complete_step() -> void:
 
 
 func _handle_snapshot(request_id: String) -> void:
+	if not _pending_step.is_empty() or not _pending_snapshot_request_id.is_empty():
+		_send_error(request_id, "INVALID_COMMAND", "A step or snapshot is already pending")
+		return
+	_pending_snapshot_request_id = request_id
+	_complete_snapshot_after_process_frame()
+
+
+func _complete_snapshot_after_process_frame() -> void:
+	await get_tree().process_frame
+	call_deferred("_complete_snapshot")
+
+
+func _complete_snapshot() -> void:
+	if _pending_snapshot_request_id.is_empty():
+		return
+	var request_id := _pending_snapshot_request_id
+	_pending_snapshot_request_id = ""
 	var participant_states := {}
+	var pending_effect_states := {}
 	var validations: Array = []
 	for participant_id in _participants.keys():
 		var participant: Node = _participants[participant_id]
 		var state: Variant = participant.chronorift_capture()
 		participant_states[participant_id] = state
+		if participant.has_method("chronorift_pending_effect_state"):
+			pending_effect_states[participant_id] = participant.chronorift_pending_effect_state()
 		validations.append(participant.chronorift_validate(state))
 	var snapshot := {
 		"state": current_state(),
@@ -500,6 +612,7 @@ func _handle_snapshot(request_id: String) -> void:
 		"rngState": {},
 		"pendingEffects": {
 			"deferredCallsDrained": false,
+			"participants": pending_effect_states,
 		},
 	}
 	var covered_domains: Array = [
@@ -511,6 +624,8 @@ func _handle_snapshot(request_id: String) -> void:
 	participant_ids.sort()
 	for participant_id in participant_ids:
 		covered_domains.append("participant.%s" % participant_id)
+	if not pending_effect_states.is_empty():
+		covered_domains.append("pending_effects")
 	var certificate := {
 		"schemaVersion": 1,
 		"level": "fixture_semantic_l2",

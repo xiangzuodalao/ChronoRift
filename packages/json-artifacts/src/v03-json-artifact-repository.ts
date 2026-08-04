@@ -13,6 +13,7 @@ import {
   CheckpointContentSchema,
   CheckpointSchema,
   DiagnosisProposalV2Schema,
+  DiagnosisProposalV3Schema,
   DiagnosisVerdictV2Schema,
   EvidenceCapsuleV2Schema,
   FrozenContractV2Schema,
@@ -29,6 +30,7 @@ import {
   type ComparisonId,
   type ContractId,
   type DiagnosisProposalV2,
+  type DiagnosisProposalV3,
   type DiagnosisVerdictV2,
   type EvidenceCapsuleV2,
   type ExecutionId,
@@ -214,12 +216,23 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     kind: string,
     id: string,
     schema: RuntimeSchema<T>,
+    identity: (value: T) => string,
+    validateIntegrity?: (value: T) => void,
   ): Promise<T> {
     const path = this.path(kind, id);
     try {
       await access(path, constants.R_OK);
       await this.assertRegularArtifact(path);
-      return schema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
+      const parsed = schema.parse(
+        JSON.parse(await readFile(path, "utf8")) as unknown,
+      );
+      if (identity(parsed) !== id) {
+        throw new ArtifactIntegrityError(
+          `${kind}:${id}: stored identity does not match requested identity`,
+        );
+      }
+      validateIntegrity?.(parsed);
+      return parsed;
     } catch (error) {
       if (
         error instanceof ArtifactPathSecurityError ||
@@ -250,7 +263,22 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
   }
 
   public getCheckpoint(id: CheckpointId): Promise<Checkpoint> {
-    return this.get("checkpoints", id, CheckpointSchema);
+    return this.get(
+      "checkpoints",
+      id,
+      CheckpointSchema,
+      (value) => value.checkpointId,
+      (value) => {
+        const expected = asCheckpointId(
+          `checkpoint:v03:${contentHash(value.content as unknown as JsonValue)}`,
+        );
+        if (value.checkpointId !== expected) {
+          throw new ArtifactIntegrityError(
+            `checkpoints:${id}: content-addressed identity is invalid`,
+          );
+        }
+      },
+    );
   }
   public putContract(value: FrozenContractV2): Promise<void> {
     return this.put(
@@ -261,19 +289,34 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     );
   }
   public getContract(id: ContractId): Promise<FrozenContractV2> {
-    return this.get("contracts", id, FrozenContractV2Schema);
+    return this.get(
+      "contracts",
+      id,
+      FrozenContractV2Schema,
+      (value) => value.contractId,
+    );
   }
   public putInputTrace(value: InputTraceV2): Promise<void> {
     return this.put("traces", value.inputTraceId, InputTraceV2Schema, value);
   }
   public getInputTrace(id: InputTraceId): Promise<InputTraceV2> {
-    return this.get("traces", id, InputTraceV2Schema);
+    return this.get(
+      "traces",
+      id,
+      InputTraceV2Schema,
+      (value) => value.inputTraceId,
+    );
   }
   public putBranch(value: V03BranchSpec): Promise<void> {
     return this.put("branches", value.branchId, V03BranchSpecSchema, value);
   }
   public getBranch(id: BranchId): Promise<V03BranchSpec> {
-    return this.get("branches", id, V03BranchSpecSchema);
+    return this.get(
+      "branches",
+      id,
+      V03BranchSpecSchema,
+      (value) => value.branchId,
+    );
   }
   public putExecution(value: V03ExecutionLog): Promise<void> {
     return this.put(
@@ -284,7 +327,12 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     );
   }
   public getExecution(id: ExecutionId): Promise<V03ExecutionLog> {
-    return this.get("executions", id, V03ExecutionLogSchema);
+    return this.get(
+      "executions",
+      id,
+      V03ExecutionLogSchema,
+      (value) => value.executionId,
+    );
   }
   public putCapsule(value: EvidenceCapsuleV2): Promise<void> {
     return this.put(
@@ -295,7 +343,12 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     );
   }
   public getCapsule(id: CapsuleId): Promise<EvidenceCapsuleV2> {
-    return this.get("capsules", id, EvidenceCapsuleV2Schema);
+    return this.get(
+      "capsules",
+      id,
+      EvidenceCapsuleV2Schema,
+      (value) => value.capsuleId,
+    );
   }
   public putComparison(value: V03ExecutionComparison): Promise<void> {
     return this.put(
@@ -306,7 +359,12 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     );
   }
   public getComparison(id: ComparisonId): Promise<V03ExecutionComparison> {
-    return this.get("comparisons", id, V03ExecutionComparisonSchema);
+    return this.get(
+      "comparisons",
+      id,
+      V03ExecutionComparisonSchema,
+      (value) => value.comparisonId,
+    );
   }
   public putProposal(value: DiagnosisProposalV2): Promise<void> {
     return this.put(
@@ -317,7 +375,28 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     );
   }
   public getProposal(id: ProposalId): Promise<DiagnosisProposalV2> {
-    return this.get("proposals", id, DiagnosisProposalV2Schema);
+    return this.get(
+      "proposals",
+      id,
+      DiagnosisProposalV2Schema,
+      (value) => value.proposalId,
+    );
+  }
+  public putProposalV3(value: DiagnosisProposalV3): Promise<void> {
+    return this.put(
+      "proposals-v3",
+      value.proposalId,
+      DiagnosisProposalV3Schema,
+      value,
+    );
+  }
+  public getProposalV3(id: ProposalId): Promise<DiagnosisProposalV3> {
+    return this.get(
+      "proposals-v3",
+      id,
+      DiagnosisProposalV3Schema,
+      (value) => value.proposalId,
+    );
   }
   public putVerdict(value: DiagnosisVerdictV2): Promise<void> {
     return this.put(
@@ -328,6 +407,11 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     );
   }
   public getVerdict(id: VerdictId): Promise<DiagnosisVerdictV2> {
-    return this.get("verdicts", id, DiagnosisVerdictV2Schema);
+    return this.get(
+      "verdicts",
+      id,
+      DiagnosisVerdictV2Schema,
+      (value) => value.verdictId,
+    );
   }
 }

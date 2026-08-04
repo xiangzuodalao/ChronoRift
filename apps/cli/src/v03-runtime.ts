@@ -4,12 +4,14 @@ import { resolve } from "node:path";
 import {
   asRunId,
   type EvidenceCapsuleV2,
+  type FailureBriefV1,
   type FrozenContractV2,
   type RunId,
   type V03BranchSpec,
   type V03ExecutionLog,
 } from "@chronorift/domain";
 import {
+  buildFailureBriefV1,
   V03GameBranchService,
   type ClockPort,
   type V03IdGeneratorPort,
@@ -43,6 +45,7 @@ export interface V03RunContext {
   readonly baselineBranch: V03BranchSpec;
   readonly baselineExecution: V03ExecutionLog;
   readonly evidenceCapsule: EvidenceCapsuleV2;
+  readonly failureBrief: FailureBriefV1;
 }
 
 export interface CreateV03RunOptions {
@@ -87,6 +90,11 @@ export async function createV03Run(
   const evidenceCapsule = await gameBranch.compileEvidence(
     baselineExecution.executionId,
   );
+  const failureBrief = buildFailureBriefV1({
+    contract: initialized.contract,
+    capsule: evidenceCapsule,
+    execution: baselineExecution,
+  });
   return {
     runId,
     artifactRoot,
@@ -98,5 +106,6 @@ export async function createV03Run(
     baselineBranch: initialized.branch,
     baselineExecution,
     evidenceCapsule,
+    failureBrief,
   };
 }

@@ -4,7 +4,10 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createRestrictedSourceAccess } from "../src/source-access.js";
+import {
+  createRestrictedSourceAccess,
+  createVirtualSourceAccess,
+} from "../src/source-access.js";
 
 describe("restricted source access", () => {
   let fixtureRoot: string;
@@ -91,5 +94,53 @@ describe("restricted source access", () => {
     const result = await source.search({ query: "must-not-leak" });
     expect(result.matches).toEqual([]);
     expect(result.scannedFiles).toBe(1);
+  });
+});
+
+describe("virtual source access", () => {
+  it("exposes only neutral aliases and supports deterministic reads and searches", async () => {
+    const source = createVirtualSourceAccess({
+      files: [
+        {
+          path: "case/main.gd",
+          content: "extends Node\n\nfunc _resolve_pending_effects():\n\tpass\n",
+        },
+      ],
+    });
+
+    await expect(source.read({ path: "case/main.gd" })).resolves.toMatchObject({
+      path: "case/main.gd",
+      startLine: 1,
+    });
+    await expect(
+      source.search({ query: "_resolve_pending_effects", path: "case" }),
+    ).resolves.toMatchObject({
+      scannedFiles: 1,
+      matches: [{ path: "case/main.gd", line: 3 }],
+    });
+    await expect(
+      source.read({ path: "entity_reuse.gd" }),
+    ).rejects.toMatchObject({
+      code: "SOURCE_NOT_FOUND",
+    });
+    await expect(source.read({ path: "../secret.gd" })).rejects.toMatchObject({
+      code: "SOURCE_OUT_OF_BOUNDS",
+    });
+  });
+
+  it("rejects duplicate or non-normalized aliases", () => {
+    expect(() =>
+      createVirtualSourceAccess({
+        files: [
+          { path: "case/main.gd", content: "one" },
+          { path: "case/main.gd", content: "two" },
+        ],
+      }),
+    ).toThrow(/Duplicate virtual source path/u);
+    expect(() =>
+      createVirtualSourceAccess({
+        files: [{ path: "case/../secret.gd", content: "secret" }],
+      }),
+    ).toThrow(/normalized relative POSIX/u);
   });
 });

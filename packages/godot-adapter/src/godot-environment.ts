@@ -1,7 +1,7 @@
-import { randomBytes, randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { lstat, mkdir, realpath } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
-import { resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
 
@@ -40,6 +40,8 @@ import {
   GODOT_ADAPTER,
   GODOT_ADAPTER_VERSION,
   GODOT_FIXTURE_SCENE,
+  clearGeneratedGodotCache,
+  verifyStagedGodotProject,
 } from "./fixture.js";
 
 const CONNECTION_TIMEOUT_MS = 30_000;
@@ -331,6 +333,11 @@ const launchRuntime = async (options: {
       "Godot EnvironmentRef requires a runtime fingerprint",
     );
   }
+  await verifyStagedGodotProject(options.projectDirectory, {
+    projectHash: expected.projectHash,
+    addonHash: expected.addonHash,
+  });
+  await clearGeneratedGodotCache(options.projectDirectory);
   const server = createServer();
   const fixedFps = positiveControl(
     options.request.controls.variables["fixed_fps"],
@@ -346,8 +353,39 @@ const launchRuntime = async (options: {
     server.once("connection", resolveSocket);
     server.once("error", rejectSocket);
   });
-  const processRoot = resolve(options.runtimeRoot, options.request.executionId);
-  await mkdir(processRoot, { recursive: true });
+  const runtimeRoot = resolve(options.runtimeRoot);
+  await mkdir(runtimeRoot, { recursive: true });
+  const runtimeRootMetadata = await lstat(runtimeRoot);
+  if (
+    runtimeRootMetadata.isSymbolicLink() ||
+    !runtimeRootMetadata.isDirectory()
+  ) {
+    throw new GodotAdapterError(
+      "PROCESS_FAILED",
+      `Godot runtime root must be a real directory: ${runtimeRoot}`,
+    );
+  }
+  const canonicalRuntimeRoot = await realpath(runtimeRoot);
+  const executionKey = createHash("sha256")
+    .update(options.request.executionId)
+    .digest("hex")
+    .slice(0, 24);
+  const processRoot = resolve(
+    canonicalRuntimeRoot,
+    `execution-${executionKey}-${randomUUID()}`,
+  );
+  const processRelative = relative(canonicalRuntimeRoot, processRoot);
+  if (
+    processRelative === ".." ||
+    processRelative.startsWith(`..${sep}`) ||
+    processRelative.startsWith(sep)
+  ) {
+    throw new GodotAdapterError(
+      "PROCESS_FAILED",
+      "Godot runtime process path escaped its root",
+    );
+  }
+  await mkdir(processRoot, { recursive: false });
   const child: GodotChild = spawn(
     options.binary,
     [

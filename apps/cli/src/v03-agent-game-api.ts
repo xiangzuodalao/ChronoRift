@@ -16,6 +16,7 @@ import type { V03RunContext } from "./v03-runtime.js";
 /** Run-scoped adapter. It intentionally exposes no arbitrary artifact lookup. */
 export class ChronoRiftV03AgentGameApi implements V03AgentGameApi {
   private executionCount = 1;
+  private accessCount = 0;
 
   public constructor(private readonly context: V03RunContext) {}
 
@@ -23,14 +24,21 @@ export class ChronoRiftV03AgentGameApi implements V03AgentGameApi {
     return this.executionCount;
   }
 
+  /** Used only to distinguish no-progress infrastructure timeouts. */
+  public get progressObserved(): boolean {
+    return this.accessCount > 0;
+  }
+
   public async getEvidenceCapsule(
     capsuleId: CapsuleId,
   ): Promise<EvidenceCapsuleV2 | null> {
+    this.accessCount += 1;
     if (capsuleId !== this.context.evidenceCapsule.capsuleId) return null;
     return this.context.repository.getCapsule(asCapsuleId(capsuleId));
   }
 
   public async getRawBaseline(executionId: ExecutionId): Promise<unknown> {
+    this.accessCount += 1;
     if (executionId !== this.context.baselineExecution.executionId) {
       throw new Error("Raw baseline request is outside this investigation");
     }
@@ -43,6 +51,7 @@ export class ChronoRiftV03AgentGameApi implements V03AgentGameApi {
   }
 
   public async replayExecution(executionId: ExecutionId) {
+    this.accessCount += 1;
     if (executionId !== this.context.baselineExecution.executionId) {
       throw new Error("Replay request is outside this investigation");
     }
@@ -51,6 +60,7 @@ export class ChronoRiftV03AgentGameApi implements V03AgentGameApi {
   }
 
   public listExperiments(): Promise<readonly ExperimentCandidateV1[]> {
+    this.accessCount += 1;
     return Promise.resolve(this.context.gameBranch.listExperiments());
   }
 
@@ -58,6 +68,7 @@ export class ChronoRiftV03AgentGameApi implements V03AgentGameApi {
     baselineExecutionId: ExecutionId,
     interventionId: InterventionId,
   ) {
+    this.accessCount += 1;
     if (baselineExecutionId !== this.context.baselineExecution.executionId) {
       throw new Error("Experiment baseline is outside this investigation");
     }
@@ -73,6 +84,7 @@ export class ChronoRiftV03AgentGameApi implements V03AgentGameApi {
     baselineExecutionId: ExecutionId,
     candidateExecutionId: ExecutionId,
   ): Promise<V03ExecutionComparison> {
+    this.accessCount += 1;
     return this.context.gameBranch.compareExecutions(
       asExecutionId(baselineExecutionId),
       asExecutionId(candidateExecutionId),

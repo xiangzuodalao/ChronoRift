@@ -16,6 +16,7 @@ import {
 
 import { PiHarnessError } from "../errors.js";
 import type {
+  AssertPiModelCapabilitiesOptions,
   AvailablePiModel,
   DeterministicPiHarnessOptions,
   ListAvailablePiModelsOptions,
@@ -95,12 +96,46 @@ export async function listAvailablePiModelsWithSdk(
       name: model.name,
       reasoning: model.reasoning,
       input: model.input.map((input) => String(input)),
+      contextWindow: model.contextWindow,
+      maxTokens: model.maxTokens,
+      thinkingLevelMap: { ...model.thinkingLevelMap },
     }))
     .sort((left, right) =>
       `${left.provider}/${left.model}`.localeCompare(
         `${right.provider}/${right.model}`,
       ),
     );
+}
+
+export async function assertPiModelCapabilitiesWithSdk(
+  options: AssertPiModelCapabilitiesOptions,
+): Promise<AvailablePiModel> {
+  const models = await listAvailablePiModelsWithSdk({
+    provider: options.provider,
+  });
+  const model = models.find(
+    (candidate) =>
+      candidate.provider === options.provider &&
+      candidate.model === options.model,
+  );
+  if (model === undefined) {
+    throw new PiHarnessError(
+      "MODEL_UNAVAILABLE",
+      `Pi model ${options.provider}/${options.model} is unavailable or unauthenticated`,
+    );
+  }
+  const mapped = model.thinkingLevelMap[options.thinkingLevel];
+  if (
+    model.contextWindow !== options.contextWindow ||
+    model.maxTokens !== options.maxTokens ||
+    mapped !== options.mappedThinkingValue
+  ) {
+    throw new PiHarnessError(
+      "MODEL_CONFIGURATION",
+      `Pi model metadata mismatch for ${options.provider}/${options.model}: contextWindow=${model.contextWindow}, maxTokens=${model.maxTokens}, ${options.thinkingLevel}=${String(mapped)}`,
+    );
+  }
+  return model;
 }
 
 export async function persistPiApiKeyWithSdk(

@@ -10,6 +10,7 @@ import type {
   SourceSearchMatch,
   SourceSearchRequest,
   SourceSearchResult,
+  VirtualSourceAccessOptions,
 } from "./types.js";
 
 const DEFAULT_MAX_FILE_BYTES = 1024 * 1024;
@@ -415,4 +416,206 @@ export async function createRestrictedSourceAccess(
     );
   }
   return new FileSystemSourceAccess(root, options);
+}
+
+const normalizeVirtualPath = (value: string): string => {
+  const normalized = normalizeRelativeInput(value, "path").replaceAll(
+    "\\",
+    "/",
+  );
+  const segments = normalized.split("/");
+  if (
+    normalized === "." ||
+    normalized.startsWith("/") ||
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === "..",
+    )
+  ) {
+    throw new PiHarnessError(
+      "SOURCE_OUT_OF_BOUNDS",
+      "Virtual source paths must be normalized relative POSIX paths",
+    );
+  }
+  return normalized;
+};
+
+/**
+ * Builds an in-memory, alias-only source view. It never exposes the host source
+ * root or follows filesystem paths, which keeps benchmark case filenames blind.
+ */
+export function createVirtualSourceAccess(
+  options: VirtualSourceAccessOptions,
+): RestrictedSourceAccess {
+  const maxReadLines = assertPositiveInteger(
+    options.maxReadLines,
+    DEFAULT_MAX_READ_LINES,
+    5_000,
+    "maxReadLines",
+  );
+  if (options.files.length === 0) {
+    throw new PiHarnessError(
+      "INVALID_ARGUMENT",
+      "Virtual source view requires at least one file",
+    );
+  }
+  const files = new Map<string, string>();
+  for (const file of options.files) {
+    const path = normalizeVirtualPath(file.path);
+    if (files.has(path)) {
+      throw new PiHarnessError(
+        "INVALID_ARGUMENT",
+        `Duplicate virtual source path: ${path}`,
+      );
+    }
+    if (Buffer.byteLength(file.content, "utf8") > DEFAULT_MAX_FILE_BYTES) {
+      throw new PiHarnessError(
+        "INVALID_ARGUMENT",
+        `${path} exceeds the virtual source size limit`,
+      );
+    }
+    files.set(
+      path,
+      file.content.replaceAll("\r\n", "\n").replaceAll("\r", "\n"),
+    );
+  }
+
+  const resolveSelection = (
+    input: string | undefined,
+  ): readonly [string, string][] => {
+    if (input === undefined || input === ".") {
+      return [...files.entries()].sort(([left], [right]) =>
+        left.localeCompare(right),
+      );
+    }
+    const path = normalizeVirtualPath(input);
+    const exact = files.get(path);
+    if (exact !== undefined) return [[path, exact]];
+    const prefix = `${path}/`;
+    const selected = [...files.entries()]
+      .filter(([candidate]) => candidate.startsWith(prefix))
+      .sort(([left], [right]) => left.localeCompare(right));
+    if (selected.length === 0) {
+      throw new PiHarnessError(
+        "SOURCE_NOT_FOUND",
+        `Virtual source path does not exist: ${path}`,
+      );
+    }
+    return selected;
+  };
+
+  return {
+    root: "virtual:chronorift-case",
+    read(request): Promise<SourceReadResult> {
+      return Promise.resolve().then(() => {
+        const path = normalizeVirtualPath(request.path);
+        const content = files.get(path);
+        if (content === undefined) {
+          throw new PiHarnessError(
+            "SOURCE_NOT_FOUND",
+            `Virtual source path does not exist: ${path}`,
+          );
+        }
+        const lines = content.split("\n");
+        const offset = assertPositiveInteger(
+          request.offset,
+          1,
+          Number.MAX_SAFE_INTEGER,
+          "offset",
+        );
+        const limit = assertPositiveInteger(
+          request.limit,
+          Math.min(200, maxReadLines),
+          maxReadLines,
+          "limit",
+        );
+        if (offset > lines.length) {
+          throw new PiHarnessError(
+            "INVALID_ARGUMENT",
+            `offset ${offset} exceeds ${lines.length} lines in ${path}`,
+          );
+        }
+        const selected = lines.slice(offset - 1, offset - 1 + limit);
+        return {
+          path,
+          content: selected.join("\n"),
+          startLine: offset,
+          endLine: offset + selected.length - 1,
+          totalLines: lines.length,
+          truncated: offset - 1 + selected.length < lines.length,
+        };
+      });
+    },
+    search(request): Promise<SourceSearchResult> {
+      return Promise.resolve().then(() => {
+        if (request.query.trim().length === 0 || request.query.length > 500) {
+          throw new PiHarnessError(
+            "INVALID_ARGUMENT",
+            request.query.length > 500
+              ? "query must not exceed 500 characters"
+              : "query must not be empty",
+          );
+        }
+        const maxResults = assertPositiveInteger(
+          request.maxResults,
+          DEFAULT_MAX_SEARCH_RESULTS,
+          MAX_SEARCH_RESULTS,
+          "maxResults",
+        );
+        const suffixes =
+          request.includeSuffixes === undefined
+            ? undefined
+            : [...new Set(request.includeSuffixes)];
+        if (
+          suffixes?.some(
+            (suffix) =>
+              !suffix.startsWith(".") ||
+              suffix.includes("/") ||
+              suffix.includes("\\") ||
+              suffix.length > 32,
+          )
+        ) {
+          throw new PiHarnessError("INVALID_ARGUMENT", "Invalid source suffix");
+        }
+        const selected = resolveSelection(request.path).filter(
+          ([path]) =>
+            suffixes === undefined ||
+            suffixes.some((suffix) => path.endsWith(suffix)),
+        );
+        const needle = request.caseSensitive
+          ? request.query
+          : request.query.toLocaleLowerCase("en-US");
+        const matches: SourceSearchMatch[] = [];
+        let truncated = false;
+        for (const [path, content] of selected) {
+          for (const [index, line] of content.split("\n").entries()) {
+            const haystack = request.caseSensitive
+              ? line
+              : line.toLocaleLowerCase("en-US");
+            const column = haystack.indexOf(needle);
+            if (column === -1) continue;
+            matches.push({
+              path,
+              line: index + 1,
+              column: column + 1,
+              text:
+                line.length <= MAX_MATCH_TEXT_LENGTH
+                  ? line
+                  : `${line.slice(0, MAX_MATCH_TEXT_LENGTH)}…`,
+            });
+            if (matches.length >= maxResults) {
+              truncated = true;
+              break;
+            }
+          }
+          if (truncated) break;
+        }
+        return {
+          query: request.query,
+          matches,
+          scannedFiles: selected.length,
+          truncated,
+        };
+      });
+    },
+  };
 }

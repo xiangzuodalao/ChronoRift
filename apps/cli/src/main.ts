@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
   asExecutionId,
   type DiagnosisProposal,
-  type DiagnosisProposalV2,
+  type DiagnosisProposalV3,
   type DiagnosisVerdictV2,
   type V03ExecutionLog,
 } from "@chronorift/domain";
@@ -17,15 +18,18 @@ import {
   installGodot,
   prepareGodotSwitchDoorFixture,
 } from "@chronorift/godot-adapter";
-import { V01JsonArtifactRepository } from "@chronorift/json-artifacts";
+import {
+  V01JsonArtifactRepository,
+  V03BenchmarkJsonArtifactRepository,
+} from "@chronorift/json-artifacts";
 import {
   listAvailablePiModels,
   persistPiApiKey,
-  createRestrictedSourceAccess,
   runDeterministicPiDiagnosis,
   runDeterministicV03PiDiagnosis,
   runPiDiagnosis,
   runV03PiDiagnosis,
+  type PiThinkingLevel,
   type PiDiagnosisRunResult,
 } from "@chronorift/pi-harness";
 
@@ -34,15 +38,24 @@ import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
 import { ChronoRiftV03AgentGameApi } from "./v03-agent-game-api.js";
 import {
   runV03Benchmark,
-  verifySanitizedV03BenchmarkReport,
   writeSanitizedV03BenchmarkReport,
 } from "./v03-benchmark.js";
+import {
+  publishFormalBenchmark,
+  verifyFormalBenchmarkReport,
+} from "./v03-formal-publication.js";
+import { runFormalBenchmark } from "./v03-formal-runtime.js";
+import {
+  buildFormalBenchmarkSuiteSpecV2,
+  parseFormalBenchmarkSuiteSpecV2,
+} from "./v03-formal-suite.js";
 import {
   createV01GameBranchServiceForEnvironment,
   createV01MockRun,
   type V01MockRunContext,
 } from "./v01-runtime.js";
 import { createV03Run, type V03RunContext } from "./v03-runtime.js";
+import { createV03NeutralSourceAccess } from "./v03-source-view.js";
 
 interface Arguments {
   readonly command: string;
@@ -100,6 +113,15 @@ function hasFlag(args: Arguments, name: string): boolean {
   return args.flags.get(name) === true;
 }
 
+function assertOnlyFlags(args: Arguments, allowed: readonly string[]): void {
+  const permitted = new Set(allowed);
+  for (const name of args.flags.keys()) {
+    if (!permitted.has(name)) {
+      throw new Error(`Unsupported --${name} for ${args.command}`);
+    }
+  }
+}
+
 function requiredFlag(
   args: Arguments,
   name: string,
@@ -138,6 +160,25 @@ function positiveIntegerFlag(
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`--${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function thinkingLevelFlag(
+  args: Arguments,
+  fallback: PiThinkingLevel,
+): PiThinkingLevel {
+  const value = flag(args, "thinking") ?? fallback;
+  if (
+    value !== "off" &&
+    value !== "minimal" &&
+    value !== "low" &&
+    value !== "medium" &&
+    value !== "high" &&
+    value !== "xhigh" &&
+    value !== "max"
+  ) {
+    throw new Error(`Unsupported --thinking ${value}`);
   }
   return value;
 }
@@ -299,9 +340,12 @@ async function v03DiagnosisOutput(
   context: V03RunContext,
   result: Awaited<ReturnType<typeof runDeterministicV03PiDiagnosis>>,
 ): Promise<Readonly<Record<string, unknown>>> {
-  const verdict = await context.gameBranch.conclude(result.proposal);
+  const verdict = await context.gameBranch.concludeV3(
+    result.proposal,
+    result.accessReceipts,
+  );
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     fixture: context.preparedFixture.fixtureName,
     runId: context.runId,
     artifactRoot: context.artifactRoot,
@@ -311,6 +355,7 @@ async function v03DiagnosisOutput(
     baselineExecution: context.baselineExecution,
     evidenceCapsule: context.evidenceCapsule,
     proposal: result.proposal,
+    accessReceipts: result.accessReceipts,
     verdict,
     piSession: result.piSession,
   };
@@ -319,7 +364,7 @@ async function v03DiagnosisOutput(
 function printHumanV03Diagnosis(
   output: Readonly<Record<string, unknown>>,
 ): void {
-  const proposal = output["proposal"] as DiagnosisProposalV2;
+  const proposal = output["proposal"] as DiagnosisProposalV3;
   const verdict = output["verdict"] as DiagnosisVerdictV2;
   const baseline = output["baselineExecution"] as V03ExecutionLog;
   const session = output["piSession"] as {
@@ -364,9 +409,7 @@ async function runV03DiagnosisCommand(
     ...(godotBin === undefined ? {} : { godotBin }),
   });
   const game = new ChronoRiftV03AgentGameApi(context);
-  const source = await createRestrictedSourceAccess({
-    root: context.preparedFixture.sourceDirectory,
-  });
+  const source = await createV03NeutralSourceAccess(context);
   const common = {
     cwd,
     runDir: context.runDirectory,
@@ -375,6 +418,7 @@ async function runV03DiagnosisCommand(
     baselineExecutionId: context.baselineExecution.executionId,
     game,
     source,
+    failureBrief: context.failureBrief,
   };
   const result =
     mode === "deterministic"
@@ -407,6 +451,7 @@ async function runBenchmarkCommand(
       ? {
           provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
           model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
+          thinkingLevel: thinkingLevelFlag(args, "low"),
         }
       : {}),
     ...(flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") === undefined
@@ -428,16 +473,157 @@ async function runBenchmarkCommand(
   });
 }
 
-async function verifyBenchmarkCommand(
+const formalSpecPath = (args: Arguments, cwd: string): string =>
+  resolve(
+    cwd,
+    flag(args, "spec") ?? "docs/benchmarks/v0.3/benchmark-spec.v2.json",
+  );
+
+const formalArtifactRoot = (cwd: string): string => resolve(cwd, ".chronorift");
+
+async function runFormalBenchmarkCommand(
   args: Arguments,
   cwd: string,
 ): Promise<void> {
-  const path = resolve(
+  assertOnlyFlags(args, ["spec", "resume", "godot-bin"]);
+  const result = await runFormalBenchmark({
     cwd,
-    flag(args, "report") ?? "docs/benchmarks/v0.3-live.json",
+    specPath: formalSpecPath(args, cwd),
+    artifactRoot: formalArtifactRoot(cwd),
+    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+      ? {}
+      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
+    ...(flag(args, "resume") === undefined
+      ? {}
+      : { resumeExecutionId: flag(args, "resume") }),
+    onExecutionSelected: (executionId) => {
+      process.stderr.write(
+        `${JSON.stringify({ executionId, status: "execution_identified" })}\n`,
+      );
+    },
+  });
+  printJson({
+    executionId: result.report.executionId,
+    status: result.report.status,
+    recoverable: result.recoverable,
+    reportHash: result.report.reportHash,
+  });
+  if (result.recoverable || result.report.status === "incomplete") {
+    process.exitCode = 2;
+  } else if (result.report.status === "invalid") {
+    process.exitCode = 1;
+  }
+}
+
+async function buildFormalSpecCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["artifacts", "godot-bin"]);
+  printJson(
+    await buildFormalBenchmarkSuiteSpecV2({
+      cwd,
+      artifactRoot: resolve(
+        cwd,
+        flag(args, "artifacts") ?? ".chronorift/formal-spec-build",
+      ),
+      ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+        ? {}
+        : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
+    }),
   );
-  const report = await verifySanitizedV03BenchmarkReport(path);
-  printJson({ verified: true, reportPath: path, advantage: report.advantage });
+}
+
+async function formalBenchmarkStatusCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["spec"]);
+  const suite = parseFormalBenchmarkSuiteSpecV2(
+    JSON.parse(await readFile(formalSpecPath(args, cwd), "utf8")) as unknown,
+  );
+  const repository = new V03BenchmarkJsonArtifactRepository(
+    formalArtifactRoot(cwd),
+  );
+  const selection = await repository.getExecutionSelection(suite.definitionId);
+  if (selection === null) {
+    printJson({
+      definitionId: suite.definitionId,
+      selected: false,
+      executionId: null,
+    });
+    return;
+  }
+  const [started, completed] = await Promise.all([
+    repository.getExecutionStarted(suite.definitionId, selection.executionId),
+    repository.getCompleted(suite.definitionId, selection.executionId),
+  ]);
+  printJson({
+    definitionId: suite.definitionId,
+    selected: true,
+    executionId: selection.executionId,
+    selectionHash: selection.selectionHash,
+    started: started !== null,
+    status: completed?.status ?? (started === null ? "selected" : "running"),
+    reportHash: completed?.reportHash ?? null,
+  });
+}
+
+async function publishFormalBenchmarkCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["spec", "execution", "output"]);
+  const files = await publishFormalBenchmark({
+    cwd,
+    artifactRoot: formalArtifactRoot(cwd),
+    specPath: formalSpecPath(args, cwd),
+    executionId: requiredFlag(args, "execution"),
+    outputDirectory: resolve(cwd, requiredFlag(args, "output")),
+  });
+  printJson({ published: true, files });
+}
+
+async function verifyFormalBenchmarkCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["spec", "report"]);
+  const path = resolve(cwd, requiredFlag(args, "report"));
+  const verification = await verifyFormalBenchmarkReport({
+    reportPath: path,
+    specPath: formalSpecPath(args, cwd),
+  });
+  printJson({
+    verified: verification.valid,
+    reportPath: path,
+    gate: verification.gate,
+    issues: verification.issues,
+  });
+  if (!verification.valid) process.exitCode = 1;
+}
+
+async function gateFormalBenchmarkCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["spec", "report"]);
+  const path = resolve(cwd, requiredFlag(args, "report"));
+  const verification = await verifyFormalBenchmarkReport({
+    reportPath: path,
+    specPath: formalSpecPath(args, cwd),
+  });
+  printJson({
+    verified: verification.valid,
+    reportPath: path,
+    gate: verification.gate,
+    issues: verification.issues,
+  });
+  process.exitCode = verification.valid
+    ? verification.gate.status === "pass"
+      ? 0
+      : 2
+    : 1;
 }
 
 async function replayCommand(args: Arguments, cwd: string): Promise<void> {
@@ -542,9 +728,18 @@ function printHelp(): void {
     `  pnpm benchmark [-- --repetitions N --seed SEED --report PATH]\n`,
   );
   process.stdout.write(
-    `  pnpm benchmark:live -- --provider PROVIDER --model MODEL [--repetitions 3 --report PATH]\n`,
+    `  pnpm benchmark:explore -- --provider PROVIDER --model MODEL [--thinking LEVEL --repetitions 3 --report PATH]\n`,
   );
-  process.stdout.write(`  pnpm benchmark:verify [-- --report PATH]\n`);
+  process.stdout.write(
+    `  pnpm benchmark:formal -- --spec PATH [--resume EXECUTION_ID]\n`,
+  );
+  process.stdout.write(`  pnpm benchmark:spec\n`);
+  process.stdout.write(`  pnpm benchmark:status [-- --spec PATH]\n`);
+  process.stdout.write(
+    `  pnpm benchmark:publish -- --execution EXECUTION_ID --output DIR\n`,
+  );
+  process.stdout.write(`  pnpm benchmark:verify -- --report PATH\n`);
+  process.stdout.write(`  pnpm benchmark:gate -- --report PATH\n`);
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -570,10 +765,26 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       await runBenchmarkCommand(args, cwd, "deterministic");
       return;
     case "benchmark-live":
+    case "benchmark-explore":
       await runBenchmarkCommand(args, cwd, "live");
       return;
+    case "benchmark-formal":
+      await runFormalBenchmarkCommand(args, cwd);
+      return;
+    case "benchmark-spec":
+      await buildFormalSpecCommand(args, cwd);
+      return;
+    case "benchmark-status":
+      await formalBenchmarkStatusCommand(args, cwd);
+      return;
+    case "benchmark-publish":
+      await publishFormalBenchmarkCommand(args, cwd);
+      return;
     case "benchmark-verify":
-      await verifyBenchmarkCommand(args, cwd);
+      await verifyFormalBenchmarkCommand(args, cwd);
+      return;
+    case "benchmark-gate":
+      await gateFormalBenchmarkCommand(args, cwd);
       return;
     case "models":
       await modelsCommand(args);

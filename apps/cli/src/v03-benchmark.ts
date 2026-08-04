@@ -28,13 +28,14 @@ import {
 } from "@chronorift/godot-adapter";
 import { canonicalJson, contentHash } from "@chronorift/json-artifacts";
 import {
-  createRestrictedSourceAccess,
   runDeterministicV03PiDiagnosis,
   runV03PiDiagnosis,
+  type PiThinkingLevel,
 } from "@chronorift/pi-harness";
 
 import { ChronoRiftV03AgentGameApi } from "./v03-agent-game-api.js";
 import { createV03Run } from "./v03-runtime.js";
+import { createV03NeutralSourceAccess } from "./v03-source-view.js";
 
 const ARMS: readonly BenchmarkArmV1[] = [
   "generic",
@@ -75,6 +76,7 @@ export interface RunV03BenchmarkOptions {
   readonly artifactRoot?: string | undefined;
   readonly godotBin?: string | undefined;
   readonly timeoutMs?: number | undefined;
+  readonly thinkingLevel?: PiThinkingLevel | undefined;
 }
 
 interface RawCellManifest {
@@ -290,7 +292,7 @@ const sourceLocationCorrect = (
 ): boolean | null => {
   if (proposal.suspectedSource === undefined) return null;
   return (
-    proposal.suspectedSource.path.replaceAll("\\", "/") === oracle.sourcePath &&
+    proposal.suspectedSource.path.replaceAll("\\", "/") === "case/main.gd" &&
     proposal.suspectedSource.symbol === oracle.sourceSymbol
   );
 };
@@ -300,7 +302,7 @@ async function runCell(
   id: ReturnType<typeof asBenchmarkRunId>,
   provider: string,
   model: string,
-  thinkingLevel: "off" | "low",
+  thinkingLevel: PiThinkingLevel,
   suiteHash: string,
   artifactRoot: string,
   spec: BenchmarkCellSpec,
@@ -337,9 +339,7 @@ async function runCell(
     ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
   });
   const game = new ChronoRiftV03AgentGameApi(context);
-  const source = await createRestrictedSourceAccess({
-    root: context.preparedFixture.sourceDirectory,
-  });
+  const source = await createV03NeutralSourceAccess(context);
   const harnessOptions = {
     cwd: options.cwd,
     runDir: context.runDirectory,
@@ -348,6 +348,7 @@ async function runCell(
     baselineExecutionId: context.baselineExecution.executionId,
     game,
     source,
+    failureBrief: context.failureBrief,
     thinkingLevel,
     ...(options.timeoutMs === undefined
       ? {}
@@ -357,7 +358,10 @@ async function runCell(
     options.mode === "deterministic"
       ? await runDeterministicV03PiDiagnosis(harnessOptions)
       : await runV03PiDiagnosis({ ...harnessOptions, provider, model });
-  const verdict = await context.gameBranch.conclude(diagnosis.proposal);
+  const verdict = await context.gameBranch.concludeV3(
+    diagnosis.proposal,
+    diagnosis.accessReceipts,
+  );
   const expectedMechanism = context.preparedFixture.oracle.mechanismCode;
   const mechanismCorrect =
     diagnosis.proposal.mechanismCode === expectedMechanism;
@@ -370,6 +374,7 @@ async function runCell(
     repetition: spec.repetition,
     runId: context.runId,
     proposal: diagnosis.proposal,
+    accessReceipts: diagnosis.accessReceipts,
     verdict,
     piSession: diagnosis.piSession,
     gameExecutions: game.gameExecutions,
@@ -421,7 +426,8 @@ export async function runV03Benchmark(
     options.cwd,
     options.artifactRoot ?? ".chronorift",
   );
-  const thinkingLevel = options.mode === "deterministic" ? "off" : "low";
+  const thinkingLevel =
+    options.mode === "deterministic" ? "off" : (options.thinkingLevel ?? "low");
   const suiteHash = await benchmarkSuiteHash(options.cwd);
   const id = benchmarkId(
     options.seed,

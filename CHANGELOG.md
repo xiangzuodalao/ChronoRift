@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.3.0 — 2026-08-04
+## v0.3.0 — Unreleased
 
 ChronoRift v0.3 turns the single Godot demo into a benchmark-first diagnostic harness while preserving
 the v0.1 Mock and v0.2 switch-door paths.
@@ -9,20 +9,40 @@ the v0.1 Mock and v0.2 switch-door paths.
 
 - Added four real Godot runtime Bug Fixtures: Signal/receiver ordering, frame-count input windows,
   discrete-physics tunneling, and stale effects crossing pooled entity incarnations.
+- Reworked entity reuse into a delayed pending effect: incarnation 1 is recycled before the effect is
+  resolved, the Bug applies it to incarnation 2 by stable ID, and the pooling-off intervention discards
+  it as `owner_destroyed`; checkpoint/restore preserves the in-flight effect and sequence.
 - Added Protocol v2 dynamic property registration, entity/incarnation lifecycle evidence, spatial
-  samples, physics-TPS controls, and allowlisted Fixture controls.
-- Added versioned Contract/InputTrace/Execution/Evidence Capsule/DiagnosisProposal DTOs, run-scoped
-  write-once artifacts, strict replay, two-candidate single-variable experiments, comparisons, and a
-  mechanism-specific Conclusion Gate.
-- Added three Pi benchmark arms with equal source and game budgets. The full arm uses Capsule, replay,
-  experiment, and compare tools; no arm receives shell or write access.
-- Added deterministic Pi fake-model coverage and a resumable 4 × 3 × 3 live benchmark runner with strict
-  sanitized reports and a 75% / zero-false-confirmation / +20pp advantage Gate.
+  samples, typed pending-effect events, physics-TPS controls, and allowlisted Fixture controls.
+- Added `FailureBriefV1`, content-addressed `EvidenceAccessReceiptV1`, `DiagnosisProposalV3`, and strict
+  Benchmark Suite/Attempt/Cell/Report v2 contracts. The Harness revalidates candidate, comparison,
+  replay, event and receipt references; model confidence remains non-authoritative.
+- Made the three Pi benchmark arms blind to their treatment: byte-identical prompt/Failure Brief,
+  opaque case IDs, neutral `case/main.gd` source view, fixed budgets, and differences only in active
+  evidence/experiment tools. No arm receives shell or write access.
+- Added deterministic fake-model coverage plus separate exploratory and frozen formal runners. Formal
+  runs use GLM-5.2 `max`, a 4 × 3 × 3 block-randomized matrix, typed retry/resume, and an append-only
+  attempt hash chain. A durable first-execution selection and `benchmark:status` prevent accidental
+  second executions; three progress stages distinguish baseline cost, validated Fixture material, and
+  non-retryable Agent progress.
+- Added write-once sanitized publication, integrity-only verification, and a separate Gate based on
+  grounded success: full ≥9/12, full−generic ≥0.20, and zero full-arm incorrect confirmations.
+
+### Evidence status
+
+- The machine benchmark spec and formal GLM-5.2 report are pending; no model-advantage claim is made yet.
+- The offline deterministic `BenchmarkReportV1` smoke validates orchestration, contracts, permission
+  boundaries and basic Gate recomputation. Formal v2 selection/recovery/ledger behavior is covered by
+  offline tests, not by that fake report.
+- The preselected public case is physics tunneling / full arm / repetition 1; it will not be replaced
+  after results are known.
 
 ### Known limitations
 
 - The four Fixtures are explicit instrumentation, not general Godot project support.
-- The deterministic benchmark validates orchestration and does not claim model advantage.
+- The suite was calibrated on these same four Fixtures, has no provider sampling seed, and cannot
+  establish statistical significance or cross-project generalization.
+- Report verification checks internal integrity, not provider execution or external attestation.
 - No automatic patching, general World Graph, Experiment DAG, complete Determinism Certificate, visual
   input, multi-Agent orchestration, container sandbox, or complex artifact service is implemented.
 

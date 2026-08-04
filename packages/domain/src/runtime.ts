@@ -12,6 +12,7 @@ export const RuntimeCapabilitySchema = z.enum([
   "checkpoint.l0_restart",
   "checkpoint.fixture_semantic",
   "observe.entity_lifecycle",
+  "observe.pending_effect",
   "observe.dynamic_property_registry",
   "control.physics_ticks_per_second",
   "control.fixture_allowlist",

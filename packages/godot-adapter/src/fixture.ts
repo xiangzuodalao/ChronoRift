@@ -20,7 +20,7 @@ import { payloadHash } from "@chronorift/godot-protocol";
 import { doctorGodot, type GodotDoctorReport } from "./installer.js";
 
 export const GODOT_ADAPTER = "chronorift.godot";
-export const GODOT_ADAPTER_VERSION = "0.2.0";
+export const GODOT_ADAPTER_VERSION = "0.3.0";
 export const GODOT_FIXTURE_SCENE = "switch-door-signal-ordering";
 export const GODOT_FIXED_FPS = 60;
 
@@ -33,6 +33,10 @@ export const GODOT_CAPABILITIES = Object.freeze([
   "launch.fixed_fps",
   "checkpoint.l0_restart",
   "checkpoint.fixture_semantic",
+  "observe.entity_lifecycle",
+  "observe.dynamic_property_registry",
+  "control.physics_ticks_per_second",
+  "control.fixture_allowlist",
 ] as const);
 
 const requiredCoverage = Object.freeze([
@@ -188,7 +192,7 @@ export const prepareGodotSwitchDoorFixture = async (
     engine: "godot",
     engineVersion: "4.7.1-stable (official)",
     adapterVersion: GODOT_ADAPTER_VERSION,
-    protocolVersion: 1,
+    protocolVersion: 2,
     platform: platformName(),
     renderer: "gl_compatibility",
     physicsTicksPerSecond: 60,

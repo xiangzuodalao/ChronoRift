@@ -4,3 +4,5 @@ export * from "./services/canonical.js";
 export * from "./services/evidence-compiler.js";
 export * from "./services/v01-canonical.js";
 export * from "./services/v01-gamebranch-service.js";
+export * from "./services/v03-gamebranch-service.js";
+export * from "./services/v03-benchmark-service.js";

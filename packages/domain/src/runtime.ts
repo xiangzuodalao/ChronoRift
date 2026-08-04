@@ -11,6 +11,10 @@ export const RuntimeCapabilitySchema = z.enum([
   "launch.fixed_fps",
   "checkpoint.l0_restart",
   "checkpoint.fixture_semantic",
+  "observe.entity_lifecycle",
+  "observe.dynamic_property_registry",
+  "control.physics_ticks_per_second",
+  "control.fixture_allowlist",
 ]);
 
 export type RuntimeCapability = z.infer<typeof RuntimeCapabilitySchema>;
@@ -20,7 +24,7 @@ export interface RuntimeFingerprintV1 {
   readonly engine: string;
   readonly engineVersion: string;
   readonly adapterVersion: string;
-  readonly protocolVersion: 1;
+  readonly protocolVersion: 1 | 2;
   readonly platform: string;
   readonly renderer: string;
   readonly physicsTicksPerSecond: number;
@@ -36,7 +40,7 @@ export const RuntimeFingerprintV1Schema: z.ZodType<RuntimeFingerprintV1> = z
     engine: z.string().min(1),
     engineVersion: z.string().min(1),
     adapterVersion: z.string().min(1),
-    protocolVersion: z.literal(1),
+    protocolVersion: z.union([z.literal(1), z.literal(2)]),
     platform: z.string().min(1),
     renderer: z.string().min(1),
     physicsTicksPerSecond: z.number().int().positive(),

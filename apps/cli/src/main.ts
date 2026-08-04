@@ -3,8 +3,16 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { asExecutionId, type DiagnosisProposal } from "@chronorift/domain";
 import {
+  asExecutionId,
+  type DiagnosisProposal,
+  type DiagnosisProposalV2,
+  type DiagnosisVerdictV2,
+  type V03ExecutionLog,
+} from "@chronorift/domain";
+import {
+  V03_FIXTURE_IDS,
+  asV03FixtureName,
   doctorGodot,
   installGodot,
   prepareGodotSwitchDoorFixture,
@@ -13,18 +21,28 @@ import { V01JsonArtifactRepository } from "@chronorift/json-artifacts";
 import {
   listAvailablePiModels,
   persistPiApiKey,
+  createRestrictedSourceAccess,
   runDeterministicPiDiagnosis,
+  runDeterministicV03PiDiagnosis,
   runPiDiagnosis,
+  runV03PiDiagnosis,
   type PiDiagnosisRunResult,
 } from "@chronorift/pi-harness";
 
 import { persistV01PiDiagnosis } from "./diagnosis.js";
 import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
+import { ChronoRiftV03AgentGameApi } from "./v03-agent-game-api.js";
+import {
+  runV03Benchmark,
+  verifySanitizedV03BenchmarkReport,
+  writeSanitizedV03BenchmarkReport,
+} from "./v03-benchmark.js";
 import {
   createV01GameBranchServiceForEnvironment,
   createV01MockRun,
   type V01MockRunContext,
 } from "./v01-runtime.js";
+import { createV03Run, type V03RunContext } from "./v03-runtime.js";
 
 interface Arguments {
   readonly command: string;
@@ -108,6 +126,20 @@ function environmentKind(args: Arguments): "mock" | "godot" {
 
 function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function positiveIntegerFlag(
+  args: Arguments,
+  name: string,
+  fallback: number,
+): number {
+  const raw = flag(args, name);
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`--${name} must be a positive integer`);
+  }
+  return value;
 }
 
 async function diagnosisOutput(
@@ -263,6 +295,151 @@ async function runDiagnosisCommand(
   else printHumanDiagnosis(output);
 }
 
+async function v03DiagnosisOutput(
+  context: V03RunContext,
+  result: Awaited<ReturnType<typeof runDeterministicV03PiDiagnosis>>,
+): Promise<Readonly<Record<string, unknown>>> {
+  const verdict = await context.gameBranch.conclude(result.proposal);
+  return {
+    schemaVersion: 2,
+    fixture: context.preparedFixture.fixtureName,
+    runId: context.runId,
+    artifactRoot: context.artifactRoot,
+    runDirectory: context.runDirectory,
+    contract: context.contract,
+    baselineBranch: context.baselineBranch,
+    baselineExecution: context.baselineExecution,
+    evidenceCapsule: context.evidenceCapsule,
+    proposal: result.proposal,
+    verdict,
+    piSession: result.piSession,
+  };
+}
+
+function printHumanV03Diagnosis(
+  output: Readonly<Record<string, unknown>>,
+): void {
+  const proposal = output["proposal"] as DiagnosisProposalV2;
+  const verdict = output["verdict"] as DiagnosisVerdictV2;
+  const baseline = output["baselineExecution"] as V03ExecutionLog;
+  const session = output["piSession"] as {
+    readonly provider: string;
+    readonly model: string;
+    readonly sessionFile: string;
+  };
+  process.stdout.write(`ChronoRift v0.3 — ${verdict.status}\n`);
+  process.stdout.write(`${verdict.summary}\n\n`);
+  process.stdout.write(`Fixture:           ${String(output["fixture"])}\n`);
+  process.stdout.write(
+    `Baseline:          ${baseline.executionId} (${baseline.evaluation.status})\n`,
+  );
+  process.stdout.write(`Mechanism:         ${proposal.mechanismCode}\n`);
+  process.stdout.write(
+    `Agent confidence:  ${proposal.confidence} (advisory; ignored by the Gate)\n`,
+  );
+  process.stdout.write(
+    `Pi model:          ${session.provider}/${session.model}\n`,
+  );
+  process.stdout.write(`Pi session:        ${session.sessionFile}\n`);
+  process.stdout.write(
+    `Artifacts:         ${String(output["runDirectory"])}\n`,
+  );
+  if (verdict.blockers.length > 0) {
+    process.stdout.write(`Blockers:          ${verdict.blockers.join("; ")}\n`);
+  }
+}
+
+async function runV03DiagnosisCommand(
+  args: Arguments,
+  cwd: string,
+  mode: "deterministic" | "live",
+): Promise<void> {
+  const fixture = asV03FixtureName(flag(args, "fixture") ?? "signal-ordering");
+  const artifactRoot = flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT");
+  const godotBin = flag(args, "godot-bin", "GODOT_BIN");
+  const context = await createV03Run({
+    cwd,
+    fixture,
+    ...(artifactRoot === undefined ? {} : { artifactRoot }),
+    ...(godotBin === undefined ? {} : { godotBin }),
+  });
+  const game = new ChronoRiftV03AgentGameApi(context);
+  const source = await createRestrictedSourceAccess({
+    root: context.preparedFixture.sourceDirectory,
+  });
+  const common = {
+    cwd,
+    runDir: context.runDirectory,
+    arm: "chronorift-full" as const,
+    initialCapsuleId: context.evidenceCapsule.capsuleId,
+    baselineExecutionId: context.baselineExecution.executionId,
+    game,
+    source,
+  };
+  const result =
+    mode === "deterministic"
+      ? await runDeterministicV03PiDiagnosis(common)
+      : await runV03PiDiagnosis({
+          ...common,
+          provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
+          model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
+        });
+  const output = await v03DiagnosisOutput(context, result);
+  if (hasFlag(args, "json")) printJson(output);
+  else printHumanV03Diagnosis(output);
+}
+
+async function runBenchmarkCommand(
+  args: Arguments,
+  cwd: string,
+  mode: "deterministic" | "live",
+): Promise<void> {
+  const report = await runV03Benchmark({
+    cwd,
+    mode,
+    repetitions: positiveIntegerFlag(
+      args,
+      "repetitions",
+      mode === "live" ? 3 : 1,
+    ),
+    seed: flag(args, "seed") ?? "chronorift-v0.3",
+    ...(mode === "live"
+      ? {
+          provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
+          model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
+        }
+      : {}),
+    ...(flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") === undefined
+      ? {}
+      : { artifactRoot: flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") }),
+    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+      ? {}
+      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
+  });
+  const output =
+    flag(args, "report") ??
+    (mode === "live" ? "docs/benchmarks/v0.3-live.json" : undefined);
+  if (output !== undefined) {
+    await writeSanitizedV03BenchmarkReport(resolve(cwd, output), report);
+  }
+  printJson({
+    ...report,
+    ...(output === undefined ? {} : { reportPath: output }),
+  });
+}
+
+async function verifyBenchmarkCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  const path = resolve(
+    cwd,
+    flag(args, "report") ?? "docs/benchmarks/v0.3-live.json",
+  );
+  const report = await verifySanitizedV03BenchmarkReport(path);
+  printJson({ verified: true, reportPath: path, advantage: report.advantage });
+}
+
 async function replayCommand(args: Arguments, cwd: string): Promise<void> {
   const executionId = asExecutionId(requiredFlag(args, "execution"));
   const artifactRoot = resolve(
@@ -340,7 +517,7 @@ async function persistVolcengineAuthCommand(): Promise<void> {
 }
 
 function printHelp(): void {
-  process.stdout.write(`ChronoRift v0.2\n\n`);
+  process.stdout.write(`ChronoRift v0.3\n\n`);
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
   );
@@ -354,6 +531,20 @@ function printHelp(): void {
   process.stdout.write(
     `  pnpm replay -- --execution EXECUTION_ID [--godot-bin PATH] [--artifacts PATH]\n`,
   );
+  process.stdout.write(`  pnpm fixtures\n`);
+  process.stdout.write(
+    `  pnpm demo:v03 -- --fixture FIXTURE [--godot-bin PATH] [--json]\n`,
+  );
+  process.stdout.write(
+    `  pnpm diagnose:v03 -- --fixture FIXTURE --provider PROVIDER --model MODEL [--json]\n`,
+  );
+  process.stdout.write(
+    `  pnpm benchmark [-- --repetitions N --seed SEED --report PATH]\n`,
+  );
+  process.stdout.write(
+    `  pnpm benchmark:live -- --provider PROVIDER --model MODEL [--repetitions 3 --report PATH]\n`,
+  );
+  process.stdout.write(`  pnpm benchmark:verify [-- --report PATH]\n`);
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -365,6 +556,24 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     case "diagnose":
       await runDiagnosisCommand(args, cwd);
+      return;
+    case "demo-v03":
+      await runV03DiagnosisCommand(args, cwd, "deterministic");
+      return;
+    case "diagnose-v03":
+      await runV03DiagnosisCommand(args, cwd, "live");
+      return;
+    case "fixtures":
+      printJson({ schemaVersion: 1, fixtures: V03_FIXTURE_IDS });
+      return;
+    case "benchmark":
+      await runBenchmarkCommand(args, cwd, "deterministic");
+      return;
+    case "benchmark-live":
+      await runBenchmarkCommand(args, cwd, "live");
+      return;
+    case "benchmark-verify":
+      await verifyBenchmarkCommand(args, cwd);
       return;
     case "models":
       await modelsCommand(args);

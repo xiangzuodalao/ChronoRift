@@ -1,5 +1,17 @@
 # ChronoRift 路线图
 
+## 当前里程碑：v0.3 benchmark-first Godot harness（已实现）
+
+- 四个真实 Godot runtime-Bug Fixture 与 Protocol v2；
+- Contract/Execution/Evidence/Proposal v2、checkpoint/replay、两个候选单变量实验与 Conclusion Gate；
+- generic、evidence-only、chronorift-full 三组同预算 Pi Agent arm；
+- 离线 fake-model matrix 与可恢复的 36-cell live benchmark；
+- sanitized report 的完整性与优势门槛验证。
+
+v0.1 Mock 与 v0.2 switch-door 路径继续作为兼容回归。下一步不是直接实现完整 Target
+Architecture，而是先发布真实模型报告，再用一个仓库外真实 Godot 项目验证 Addon 接入成本、
+checkpoint coverage 和 probe API。
+
 ## Phase 1：Mock Game 闭环
 
 目标是用最小场景验证可恢复、可分支、可由真实 Agent 操作的诊断架构。

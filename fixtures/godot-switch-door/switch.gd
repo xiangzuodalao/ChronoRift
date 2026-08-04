@@ -7,6 +7,7 @@ var active := false
 
 func _ready() -> void:
 	ChronoProbe.register_entity("switch", self)
+	ChronoProbe.register_state_property("switch.active", self, "active")
 	pressed.connect(_activate)
 
 

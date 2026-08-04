@@ -941,40 +941,36 @@ domain + gamebranch + agent-protocol ← GameBranch bridge
 
 ## 21. 当前实现映射与已知缺口
 
-旧 Phase 1 的 `RunManifest`、`BranchRecord/BranchRun`、`EvidenceBundle` 与
-`DiagnosisReport` 暂时保留兼容。v0.1 新路径不再把 Branch 和 Execution 混为一个生命周期，
-也不再将 Agent 输出当作权威 verdict。
+旧 Phase 1 的 `RunManifest`、`BranchRecord/BranchRun`、`EvidenceBundle` 与 `DiagnosisReport` 保留
+兼容。v0.3 使用并行的 schema v2 路径，不静默迁移或覆盖历史 artifact。
 
-| 目标能力     | v0.2 当前锚点                                      | 当前状态                                                            | 下一步                                              |
-| ------------ | -------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------- |
-| Contract     | `FrozenContract`、`contractIdFor`                  | 一个 content-addressed switch-door Contract                         | 通用版本化 Contract AST/bundle                      |
-| Runtime port | `GameEnvironmentPort`、`godot-adapter/protocol`    | Mock + 独立 Godot 4.7.1 进程、能力握手、realized receipt            | 第二类真实 Bug 验证 port 泛化程度                   |
-| Checkpoint   | `CheckpointCertificateV1`、participant registry    | L0 fresh scene + switch-door fixture-specific L2                    | 更多 participant、兼容性与 failure characterization |
-| Replay       | sealed `ExecutionLog` + semantic runtime digest    | 一次严格 baseline replay，排除 host/绝对 engine counter 噪声        | 重复 replay 与 Determinism Certificate              |
-| GameBranch   | 2 个 immutable `BranchSpec`、3 个 Execution        | baseline + 一个 one-tick input intervention                         | matched-pair 服务、边界搜索、Experiment DAG         |
-| Telemetry    | input/signal/delivery/property + runtime health    | allowlist、process/physics/logical/host clock 与 event-loss health  | entity lifecycle、更多 input phase                  |
-| Evidence     | `EvidenceCapsule`                                  | Godot closed window、因果链、state diff、integrity                  | World Graph causal slice 与质量证书                 |
-| Agent        | 真实 Pi Session/Loop、5 个受限工具                 | faux/production model 共用 flow；Godot 不扩大 Agent 权限            | SDK-neutral agent protocol 与预算/egress audit      |
-| Verdict      | `DiagnosisProposal` → Conclusion Gate → `Verdict`  | certificate/health/lineage gate 与 confidence 隔离                  | 更一般的 Contract/Gate policy                       |
-| Artifact     | `V01JsonArtifactRepository` + additive runtime DTO | 历史 v0.1 可读；新 Godot fingerprint/receipt/certificate write-once | v0.2 envelope migration 与 CAS history              |
-| Patch        | 无                                                 | 未实现                                                              | worktree manager、sandbox 与 verification           |
+| 目标能力     | v0.3 当前锚点                                     | 已实现状态                                                              | 下一步                                         |
+| ------------ | ------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
+| Contract     | `FrozenContractV2`、content-addressed ID          | 四个 Fixture 各一个冻结 temporal property Contract                      | 从真实项目提取最小 Contract bundle             |
+| Runtime port | `GameEnvironmentPort`、Godot Protocol v2          | 独立 Godot 4.7.1 进程、能力握手、realized controls                      | 仓库外真实项目验证 adapter API                 |
+| Checkpoint   | certificate + participant/state-provider registry | 四个 Fixture 的 L2 语义恢复；missing domains 显式                       | restore corruption/divergence characterization |
+| Replay       | sealed `V03ExecutionLog` + semantic digest        | 每个完整诊断要求一次 matching strict replay                             | 重复 replay 与 Determinism Certificate         |
+| GameBranch   | immutable v2 BranchSpec + intervention            | baseline、两候选目录、最多两个单变量分支、结构化 comparison             | matched pair 与边界搜索                        |
+| Telemetry    | v2 typed event ledger                             | input/signal/delivery/property/lifecycle/spatial + health/clocks        | async/resource 与更细 input phase              |
+| Evidence     | `EvidenceCapsuleV2`                               | Contract 窗口内 causal references、expected/actual、loss flag           | 通用 causal slice，不先实现完整 World Graph    |
+| Agent        | 三组 Pi tool flow                                 | real Session/Loop；无 shell/write；Fixture-root source budget           | budget/egress audit 与 prompt-injection suite  |
+| Verdict      | `DiagnosisProposalV2` → v0.3 Conclusion Gate      | replay、comparison、lineage、引用、mechanism validator；忽略 confidence | 更一般机制策略                                 |
+| Benchmark    | 4 × 3 × repetition runner                         | seed 排序、可恢复 raw cell、sanitized report、严格 advantage Gate       | 发布并分析 GLM-5.2 live report                 |
+| Artifact     | `V03JsonArtifactRepository`                       | run-scoped strict schema、write-once、path/symlink boundary             | manifest/CAS revision history                  |
+| Patch        | 无                                                | 未实现                                                                  | 证据稳定后再引入 worktree/sandbox              |
 
-v0.2 仍有以下明确限制：
+v0.3 仍有以下明确限制：
 
-1. Contract、intervention、Gate 和遥测词汇只支持一个 switch-door Fixture，不是通用游戏模型。
-2. Godot checkpoint 已描述覆盖与缺失域，但只恢复 switch-door participant，不恢复物理、线程、
-   resource cache、异步和未注册 RNG。
-3. confirmed 只要求一次 matching baseline replay；这不是完整 Determinism Certificate。
-4. 已建模 logical/process/physics/host clock receipt，但没有 rendered/presented frame，也不承诺
-   引擎级精确单步。
-5. v0.1 Capsule 是扁平 execution event chain，不是双层 World Graph 或通用 causal slice。
-6. Pi 工具已无 shell、source-read 和写入能力，但完整 token/time/egress audit 与 OS sandbox 仍属
-   后续安全工作。
-7. 旧 Phase 1 JSON/JSONL 覆盖写 artifact 仍留在代码中兼容，但不进入新的 Conclusion Gate。
-8. Addon 依赖显式 allowlist 与项目插桩，不具备全局 Signal/property interception。
-9. 没有源码修改、候选 patch、Git worktree、build sandbox、OS sandbox 或 Verification Lattice。
+1. 四个小型 Fixture 依赖显式插桩，不构成任意 Godot 项目的通用运行时模型。
+2. checkpoint 不恢复物理内部、线程、异步、cache、外部服务或未注册 RNG。
+3. confirmed 只要求一次 matching replay 与一次通过的单变量干预，不是完整 Determinism Certificate。
+4. logical/process/physics/host clocks 已区分，但没有 rendered/presented frame，也不承诺精确单步。
+5. Capsule 仍是 Contract 窗口事件链，不是双层 World Graph。
+6. source read/search 受 Fixture 根和调用预算限制，但尚无完整 egress audit 或 OS sandbox。
+7. 旧 Phase 1 覆盖写 artifact 留作兼容；v0.3 Conclusion Gate 只使用新的 write-once 路径。
+8. 没有自动修复、worktree、Verification Lattice、视觉、多 Agent、容器或复杂 UI。
 
-这些限制是目标架构与可执行 v0.1 之间的 backlog，不应被描述成已经完成的能力。
+这些限制是目标架构与可执行 v0.3 之间的 backlog，不应描述成已经完成的能力。
 
 ## 22. 失败与降级策略
 
@@ -1044,6 +1040,19 @@ v0.2 仍有以下明确限制：
 验收：真实 Godot 进程完成 Contract → Capsule → fork → replay → canonical diagnosis，且采集
 开销与 observer-effect 数据可见。
 
+### ChronoRift v0.3：benchmark-first 多机制垂直切片（已实现）
+
+- Protocol v2 与四个真实 Godot Fixture：Signal 顺序、frame/time、physics sampling、entity reuse；
+- Contract/Trace/Execution/Capsule/Proposal v2 与 run-scoped write-once artifact；
+- stable entity incarnation、lifecycle/spatial evidence、fixed FPS/physics TPS/Fixture control receipt；
+- 每 Fixture 两个 allowlisted 单变量候选，Agent 最多运行两个；
+- generic、evidence-only、chronorift-full 三组真实 Pi Session tool flow，游戏与源码预算对齐；
+- 4 × 3 × N 可恢复 benchmark、隐藏 oracle、sanitized report 与严格 advantage Gate；
+- 默认 fake model 离线验编排；真实 provider report 非默认 CI gate。
+
+验收：四个 full-arm fake-model Fixture 均 baseline fail、matching replay fail、正确单变量候选 pass，
+由 Harness confirmed；高 confidence 缺少实验仍 inconclusive；v0.1/v0.2 回归保持通过。
+
 ### Phase 2.5：非确定性与自适应实验
 
 - 在真实 Godot 上实现重复 replay、首次漂移、稳定投影、容差和分布比较；
@@ -1076,9 +1085,10 @@ ChronoRift 与通用 Agent 使用：
 - 相同的 Contract 设计意图文本，避免 ChronoRift 组独占答案提示；
 - 统计插件安装、Contract 编写和 benchmark 维护成本。
 
-至少设置三组：通用 Agent、同模型接入 ChronoRift 工具、以及关闭关键 ChronoRift 能力的
-ablation 组。这样才能区分模型能力、Contract 提示和 runtime experiment infrastructure 的
-真实贡献。
+v0.3 已设置三组：`generic`（raw runtime + replay/experiment）、`evidence-only`（Capsule + replay）
+和 `chronorift-full`（Capsule + replay/experiment/compare）。三组使用同一模型、Fixture 源码根、
+source 调用预算和 baseline + 3 最大游戏执行预算。v0.3 尚未衡量插件接入与 Contract 编写的人力
+成本，因此 live report 只能证明这四个 Fixture 上的诊断差异。
 
 Bug 集至少覆盖 frame/timer、Signal 生命周期和顺序、Node 复用与 scene reload、
 physics/contact 边界、RNG、异步资源、input sampling 和 save/restore。

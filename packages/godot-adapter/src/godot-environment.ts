@@ -39,13 +39,30 @@ import {
 import {
   GODOT_ADAPTER,
   GODOT_ADAPTER_VERSION,
-  GODOT_FIXED_FPS,
+  GODOT_FIXTURE_SCENE,
 } from "./fixture.js";
 
 const CONNECTION_TIMEOUT_MS = 30_000;
 const COMMAND_TIMEOUT_MS = 10_000;
 const EXECUTION_TIMEOUT_MS = 60_000;
 const MAX_PROCESS_OUTPUT_BYTES = 1024 * 1024;
+
+const positiveControl = (
+  value: JsonValue | undefined,
+  fallback: number,
+): number =>
+  typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : fallback;
+
+const fixtureControls = (
+  variables: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> =>
+  Object.fromEntries(
+    Object.entries(variables)
+      .filter(([key]) => key.startsWith("fixture."))
+      .map(([key, value]) => [key.slice("fixture.".length), value]),
+  );
 
 export class GodotAdapterError extends Error {
   public override readonly name = "GodotAdapterError";
@@ -79,7 +96,10 @@ class WirePeer {
   private outgoingSequence = 0;
   private failure: Error | undefined;
 
-  public constructor(private readonly socket: Socket) {
+  public constructor(
+    private readonly socket: Socket,
+    private readonly protocolVersion: 1 | 2,
+  ) {
     socket.on("data", (chunk) => {
       try {
         for (const json of this.decoder.push(chunk)) {
@@ -123,6 +143,7 @@ class WirePeer {
     const message = makeGodotWireMessage({
       sequence: this.outgoingSequence,
       kind,
+      protocolVersion: this.protocolVersion,
       ...(requestId === undefined ? {} : { requestId }),
       payload: payload as JsonValue,
     });
@@ -311,6 +332,14 @@ const launchRuntime = async (options: {
     );
   }
   const server = createServer();
+  const fixedFps = positiveControl(
+    options.request.controls.variables["fixed_fps"],
+    expected.fixedFps,
+  );
+  const physicsTicksPerSecond = positiveControl(
+    options.request.controls.variables["physics_ticks_per_second"],
+    expected.physicsTicksPerSecond,
+  );
   const port = await listen(server);
   const token = randomBytes(32).toString("hex");
   const socketPromise = new Promise<Socket>((resolveSocket, rejectSocket) => {
@@ -326,7 +355,7 @@ const launchRuntime = async (options: {
       "--path",
       options.projectDirectory,
       "--fixed-fps",
-      String(GODOT_FIXED_FPS),
+      String(fixedFps),
       "--rendering-method",
       "gl_compatibility",
       "--audio-driver",
@@ -342,7 +371,13 @@ const launchRuntime = async (options: {
         CHRONORIFT_HOST: "127.0.0.1",
         CHRONORIFT_PORT: String(port),
         CHRONORIFT_TOKEN: token,
-        CHRONORIFT_FIXED_FPS: String(GODOT_FIXED_FPS),
+        CHRONORIFT_FIXED_FPS: String(fixedFps),
+        CHRONORIFT_PHYSICS_TPS: String(physicsTicksPerSecond),
+        CHRONORIFT_PROTOCOL_VERSION: String(expected.protocolVersion),
+        CHRONORIFT_ADAPTER_VERSION: expected.adapterVersion,
+        CHRONORIFT_FIXTURE_CONTROLS: JSON.stringify(
+          fixtureControls(options.request.controls.variables),
+        ),
         CHRONORIFT_PROJECT_HASH: expected.projectHash,
         CHRONORIFT_ADDON_HASH: expected.addonHash,
       },
@@ -382,7 +417,7 @@ const launchRuntime = async (options: {
     throw error;
   }
   server.close();
-  const peer = new WirePeer(socket);
+  const peer = new WirePeer(socket, expected.protocolVersion);
   try {
     const hello = await peer.waitFor(
       (message) => message.kind === "hello",
@@ -408,8 +443,8 @@ const launchRuntime = async (options: {
       protocolVersion: expected.protocolVersion,
       platform: expected.platform,
       renderer: expected.renderer,
-      physicsTicksPerSecond: expected.physicsTicksPerSecond,
-      fixedFps: expected.fixedFps,
+      physicsTicksPerSecond,
+      fixedFps,
       projectHash: expected.projectHash,
       addonHash: expected.addonHash,
     };
@@ -446,16 +481,20 @@ const launchRuntime = async (options: {
     await peer.request(
       "configure",
       {
-        probePlan: {
-          ...options.request.probePlan,
-          properties: [
-            ...new Set([
-              ...options.request.probePlan.properties,
-              "switch.active",
-              "door.receiver_connected",
-            ]),
-          ],
-        },
+        probePlan:
+          options.request.environment.scene === GODOT_FIXTURE_SCENE
+            ? {
+                ...options.request.probePlan,
+                properties: [
+                  ...new Set([
+                    ...options.request.probePlan.properties,
+                    "switch.active",
+                    "door.open",
+                    "door.receiver_connected",
+                  ]),
+                ],
+              }
+            : options.request.probePlan,
       },
       "configured",
     );
@@ -483,7 +522,9 @@ export class GodotGameEnvironmentFactory implements GameEnvironmentFactoryPort {
   ): Promise<GameEnvironmentPort> {
     if (
       request.environment.adapter !== GODOT_ADAPTER ||
-      request.environment.adapterVersion !== GODOT_ADAPTER_VERSION
+      !["0.2.0", GODOT_ADAPTER_VERSION].includes(
+        request.environment.adapterVersion,
+      )
     ) {
       throw new GodotAdapterError(
         "PROTOCOL_ERROR",

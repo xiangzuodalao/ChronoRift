@@ -9,6 +9,8 @@ var initialization_pending := true
 
 func _ready() -> void:
 	ChronoProbe.register_entity("door", self)
+	ChronoProbe.register_state_property("door.open", self, "open")
+	ChronoProbe.register_state_property("door.receiver_connected", self, "receiver_connected")
 
 
 func _process(_delta: float) -> void:

@@ -20,6 +20,9 @@ export type CapsuleId = Id<"CapsuleId">;
 export type ComparisonId = Id<"ComparisonId">;
 export type ProposalId = Id<"ProposalId">;
 export type VerdictId = Id<"VerdictId">;
+export type FixtureId = Id<"FixtureId">;
+export type InterventionId = Id<"InterventionId">;
+export type BenchmarkRunId = Id<"BenchmarkRunId">;
 
 const idSchema = <T extends string>(): z.ZodType<Id<T>> =>
   z.string().min(1) as unknown as z.ZodType<Id<T>>;
@@ -39,6 +42,9 @@ export const CapsuleIdSchema = idSchema<"CapsuleId">();
 export const ComparisonIdSchema = idSchema<"ComparisonId">();
 export const ProposalIdSchema = idSchema<"ProposalId">();
 export const VerdictIdSchema = idSchema<"VerdictId">();
+export const FixtureIdSchema = idSchema<"FixtureId">();
+export const InterventionIdSchema = idSchema<"InterventionId">();
+export const BenchmarkRunIdSchema = idSchema<"BenchmarkRunId">();
 
 export const asRunId = (value: string): RunId => RunIdSchema.parse(value);
 export const asBranchId = (value: string): BranchId =>
@@ -68,3 +74,9 @@ export const asProposalId = (value: string): ProposalId =>
   ProposalIdSchema.parse(value);
 export const asVerdictId = (value: string): VerdictId =>
   VerdictIdSchema.parse(value);
+export const asFixtureId = (value: string): FixtureId =>
+  FixtureIdSchema.parse(value);
+export const asInterventionId = (value: string): InterventionId =>
+  InterventionIdSchema.parse(value);
+export const asBenchmarkRunId = (value: string): BenchmarkRunId =>
+  BenchmarkRunIdSchema.parse(value);

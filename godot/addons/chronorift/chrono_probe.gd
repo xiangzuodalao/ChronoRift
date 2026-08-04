@@ -1,6 +1,5 @@
 extends Node
 
-const PROTOCOL_VERSION := 1
 const SCHEMA_VERSION := 1
 const MAX_FRAME_BYTES := 1024 * 1024
 const CAPABILITIES := [
@@ -12,6 +11,10 @@ const CAPABILITIES := [
 	"launch.fixed_fps",
 	"checkpoint.l0_restart",
 	"checkpoint.fixture_semantic",
+	"observe.entity_lifecycle",
+	"observe.dynamic_property_registry",
+	"control.physics_ticks_per_second",
+	"control.fixture_allowlist",
 ]
 
 var _peer := StreamPeerTCP.new()
@@ -24,6 +27,8 @@ var _allowed_properties: Array = []
 var _allowed_signals: Array = []
 var _participants: Dictionary = {}
 var _entities: Dictionary = {}
+var _entity_incarnations: Dictionary = {}
+var _state_providers: Dictionary = {}
 var _observed_connections: Dictionary = {}
 var _events: Array = []
 var _current_input_local_id := ""
@@ -35,6 +40,9 @@ var _step_physics_start := 0
 var step_activation_frame := -1
 var _probe_overhead_us := 0
 var _fingerprint: Dictionary = {}
+var _protocol_version := 2
+var _adapter_version := "0.3.0"
+var _fixture_controls: Dictionary = {}
 var execution_active := false
 var _next_tick := 0
 var _sim_time_us := 0
@@ -42,6 +50,18 @@ var _sim_time_us := 0
 
 func _ready() -> void:
 	process_priority = -1000
+	_protocol_version = int(OS.get_environment("CHRONORIFT_PROTOCOL_VERSION"))
+	if _protocol_version <= 0:
+		_protocol_version = 2
+	_adapter_version = OS.get_environment("CHRONORIFT_ADAPTER_VERSION")
+	if _adapter_version.is_empty():
+		_adapter_version = "0.3.0"
+	var physics_ticks := int(OS.get_environment("CHRONORIFT_PHYSICS_TPS"))
+	if physics_ticks > 0:
+		Engine.physics_ticks_per_second = physics_ticks
+	var parsed_controls: Variant = JSON.parse_string(OS.get_environment("CHRONORIFT_FIXTURE_CONTROLS"))
+	if parsed_controls is Dictionary:
+		_fixture_controls = parsed_controls
 	_fingerprint = _build_fingerprint()
 	var host := OS.get_environment("CHRONORIFT_HOST")
 	var port := int(OS.get_environment("CHRONORIFT_PORT"))
@@ -67,11 +87,89 @@ func _process(delta: float) -> void:
 	_read_available_frames()
 
 
-func register_entity(stable_id: String, entity: Node) -> void:
-	if stable_id.is_empty() or _entities.has(stable_id):
+func register_entity(stable_id: String, entity: Node) -> Dictionary:
+	if stable_id.is_empty() or (_entities.has(stable_id) and is_instance_valid(_entities[stable_id])):
 		push_error("Duplicate or empty ChronoRift entity ID: %s" % stable_id)
-		return
+		return {}
+	var incarnation := int(_entity_incarnations.get(stable_id, 0)) + 1
+	_entity_incarnations[stable_id] = incarnation
 	_entities[stable_id] = entity
+	return {"stableId": stable_id, "incarnation": incarnation}
+
+
+func unregister_entity(stable_id: String, entity: Node) -> void:
+	if _entities.get(stable_id) == entity:
+		_entities.erase(stable_id)
+
+
+func entity_ref(stable_id: String) -> Dictionary:
+	var incarnation := int(_entity_incarnations.get(stable_id, 0))
+	return {} if incarnation <= 0 else {"stableId": stable_id, "incarnation": incarnation}
+
+
+func register_state_property(path: String, entity: Object, property_name: String) -> void:
+	if path.is_empty() or _state_providers.has(path):
+		push_error("Duplicate or empty ChronoRift state path: %s" % path)
+		return
+	_state_providers[path] = func() -> Variant:
+		return entity.get(property_name) if is_instance_valid(entity) else null
+
+
+func register_state_provider(path: String, provider: Callable) -> void:
+	if path.is_empty() or _state_providers.has(path) or not provider.is_valid():
+		push_error("Invalid ChronoRift state provider: %s" % path)
+		return
+	_state_providers[path] = provider
+
+
+func fixture_control(name: String, fallback: Variant) -> Variant:
+	return _fixture_controls.get(name, fallback)
+
+
+func record_entity_lifecycle(action: String, entity: Dictionary, caused_by := "") -> String:
+	if action != "spawned" and action != "despawned":
+		push_error("Invalid lifecycle action: %s" % action)
+		return caused_by
+	var local_id := "godot:%d:lifecycle:%d" % [Engine.get_process_frames(), _events.size()]
+	var event := {
+		"kind": "log",
+		"localId": local_id,
+		"level": "info",
+		"source": "ChronoProbe",
+		"message": "entity lifecycle",
+		"fields": {
+			"chronoriftEvent": "entity_lifecycle",
+			"action": action,
+			"stableId": entity.get("stableId", ""),
+			"incarnation": int(entity.get("incarnation", 0)),
+		},
+	}
+	if not caused_by.is_empty():
+		event["causedByLocalId"] = caused_by
+	_events.append(event)
+	return local_id
+
+
+func record_spatial_sample(entity: Dictionary, position: Vector2, caused_by := "") -> String:
+	var local_id := "godot:%d:spatial:%d" % [Engine.get_process_frames(), _events.size()]
+	var event := {
+		"kind": "log",
+		"localId": local_id,
+		"level": "debug",
+		"source": "ChronoProbe",
+		"message": "spatial sample",
+		"fields": {
+			"chronoriftEvent": "spatial_sample",
+			"stableId": entity.get("stableId", ""),
+			"incarnation": int(entity.get("incarnation", 0)),
+			"x": position.x,
+			"y": position.y,
+		},
+	}
+	if not caused_by.is_empty():
+		event["causedByLocalId"] = caused_by
+	_events.append(event)
+	return local_id
 
 
 func register_checkpoint_participant(participant_id: String, participant: Node) -> void:
@@ -131,11 +229,11 @@ func emit_observed_signal(
 	telemetry_name: String,
 	receiver_id: String,
 	caused_by := "",
-) -> void:
+) -> String:
 	var probe_started_us := Time.get_ticks_usec()
 	if not _allowed_signals.has("%s|%s" % [source_id, telemetry_name]):
 		push_error("ChronoProbe rejected non-allowlisted Signal: %s/%s" % [source_id, telemetry_name])
-		return
+		return caused_by
 	var signal_local_id := "godot:%d:signal:%d" % [Engine.get_process_frames(), _events.size()]
 	var signal_event := {
 		"kind": "signal",
@@ -163,6 +261,7 @@ func emit_observed_signal(
 	_current_signal_local_id = signal_local_id
 	source.emit_signal(native_signal)
 	_current_signal_local_id = ""
+	return signal_local_id
 
 
 func record_signal_delivery(source_id: String, telemetry_name: String, receiver_id: String) -> String:
@@ -195,19 +294,17 @@ func consume_input_local_id(action: String) -> String:
 
 
 func current_state() -> Dictionary:
-	var switch_node: Node = _entities.get("switch")
-	var door_node: Node = _entities.get("door")
-	return {
-		"values": {
-			"switch.active": false if switch_node == null else switch_node.get("active"),
-			"door.open": false if door_node == null else door_node.get("open"),
-			"door.receiver_connected": false if door_node == null else door_node.get("receiver_connected"),
-		},
-	}
+	var values := {}
+	var paths: Array = _state_providers.keys()
+	paths.sort()
+	for path in paths:
+		var provider: Callable = _state_providers[path]
+		values[path] = provider.call()
+	return {"values": values}
 
 
 func _handle_message(message: Dictionary) -> void:
-	if int(message.get("schemaVersion", -1)) != SCHEMA_VERSION or int(message.get("protocolVersion", -1)) != PROTOCOL_VERSION:
+	if int(message.get("schemaVersion", -1)) != SCHEMA_VERSION or int(message.get("protocolVersion", -1)) != _protocol_version:
 		_send_error(message.get("requestId", ""), "PROTOCOL_MISMATCH", "Unsupported protocol version")
 		return
 	if int(message.get("sequence", -1)) != _expected_incoming_sequence:
@@ -405,19 +502,22 @@ func _handle_snapshot(request_id: String) -> void:
 			"deferredCallsDrained": false,
 		},
 	}
+	var covered_domains: Array = [
+		"registered.state_providers",
+		"logical_clock",
+		"input_schedule",
+	]
+	var participant_ids: Array = _participants.keys()
+	participant_ids.sort()
+	for participant_id in participant_ids:
+		covered_domains.append("participant.%s" % participant_id)
 	var certificate := {
 		"schemaVersion": 1,
 		"level": "fixture_semantic_l2",
 		"captureConsistencyModel": "frame_end_barrier",
 		"adapterSemanticBarrier": "chronorift.frame_end_deferred",
 		"environmentFingerprint": _fingerprint,
-		"coveredStateDomains": [
-			"fixture.switch_state",
-			"fixture.door_state",
-			"fixture.signal_connections",
-			"logical_clock",
-			"input_schedule",
-		],
+		"coveredStateDomains": covered_domains,
 		"missingStateDomains": [
 			"godot.physics_internal",
 			"godot.timers_tweens_coroutines",
@@ -433,7 +533,7 @@ func _handle_snapshot(request_id: String) -> void:
 		"restoreValidation": validations,
 		"portability": "same_build_only",
 		"limitations": [
-			"Only the registered switch-door participant is restored",
+			"Only registered checkpoint participants are restored",
 			"Godot engine internals are not checkpointed",
 		],
 	}
@@ -446,8 +546,8 @@ func _build_fingerprint() -> Dictionary:
 		"schemaVersion": 1,
 		"engine": "godot",
 		"engineVersion": str(version_info.get("string", "unknown")),
-		"adapterVersion": "0.2.0",
-		"protocolVersion": 1,
+		"adapterVersion": _adapter_version,
+		"protocolVersion": _protocol_version,
 		"platform": OS.get_name(),
 		"renderer": RenderingServer.get_current_rendering_method(),
 		"physicsTicksPerSecond": Engine.physics_ticks_per_second,
@@ -491,7 +591,7 @@ func _read_available_frames() -> void:
 func _send(kind: String, payload: Dictionary, request_id := "") -> void:
 	var message := {
 		"schemaVersion": SCHEMA_VERSION,
-		"protocolVersion": PROTOCOL_VERSION,
+		"protocolVersion": _protocol_version,
 		"sequence": _outgoing_sequence,
 		"kind": kind,
 		"payload": payload,

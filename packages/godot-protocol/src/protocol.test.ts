@@ -12,7 +12,7 @@ import {
   parseGodotWireMessage,
 } from "./messages.js";
 
-describe("Godot protocol v1", () => {
+describe("Godot protocol v1/v2", () => {
   it("round-trips a strictly hashed message", () => {
     const message = makeGodotWireMessage({
       sequence: 0,
@@ -26,6 +26,24 @@ describe("Godot protocol v1", () => {
         },
       },
     });
+    expect(parseGodotWireMessage(JSON.stringify(message))).toEqual(message);
+  });
+
+  it("round-trips a Protocol v2 envelope without changing the payload hash", () => {
+    const message = makeGodotWireMessage({
+      protocolVersion: 2,
+      sequence: 0,
+      requestId: "request:configure-v2",
+      kind: "configure",
+      payload: {
+        probePlan: {
+          schemaVersion: 1,
+          signals: [{ source: "enemy", name: "enemy.respawned" }],
+          properties: ["enemy.health", "enemy.incarnation"],
+        },
+      },
+    });
+    expect(message.protocolVersion).toBe(2);
     expect(parseGodotWireMessage(JSON.stringify(message))).toEqual(message);
   });
 

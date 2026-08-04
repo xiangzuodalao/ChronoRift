@@ -76,7 +76,7 @@ export const doctorGodot = async (options: {
   const version = normalizedVersion(stdout);
   if (!version.startsWith(`${GODOT_VERSION}.`)) {
     throw new GodotInstallError(
-      `ChronoRift v0.2 requires Godot ${GODOT_VERSION}, received ${version || "unknown"}`,
+      `ChronoRift v0.3 requires Godot ${GODOT_VERSION}, received ${version || "unknown"}`,
     );
   }
   return {
@@ -97,7 +97,7 @@ export const installGodot = async (options: {
 }): Promise<GodotDoctorReport> => {
   if (platform() !== "linux" || arch() !== "x64") {
     throw new GodotInstallError(
-      "The v0.2 managed installer currently supports Linux x86_64 only; use GODOT_BIN on other platforms.",
+      "The v0.3 managed installer currently supports Linux x86_64 only; use GODOT_BIN on other platforms.",
     );
   }
   const binary = managedGodotBinary(options.cwd);

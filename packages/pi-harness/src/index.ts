@@ -4,6 +4,8 @@ export {
   persistPiApiKey,
   runDeterministicPiDiagnosis,
   runPiDiagnosis,
+  runV03PiDiagnosis,
+  runDeterministicV03PiDiagnosis,
 } from "./harness.js";
 export { createRestrictedSourceAccess } from "./source-access.js";
 export type {
@@ -34,3 +36,4 @@ export type {
   SourceSearchRequest,
   SourceSearchResult,
 } from "./types.js";
+export type * from "./v03-types.js";

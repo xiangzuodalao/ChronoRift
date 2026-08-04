@@ -1,0 +1,21 @@
+config_version=5
+
+[application]
+config/name="ChronoRift Frame Input Window Fixture"
+run/main_scene="res://frame_input_window.tscn"
+
+[autoload]
+ChronoProbe="*res://addons/chronorift/chrono_probe.gd"
+
+[input]
+attempt_jump={
+"deadzone": 0.5,
+"events": []
+}
+
+[physics]
+common/physics_ticks_per_second=60
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

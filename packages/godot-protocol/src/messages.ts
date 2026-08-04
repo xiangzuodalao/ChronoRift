@@ -32,7 +32,7 @@ const identity = {
 };
 const envelope = {
   schemaVersion: z.literal(1),
-  protocolVersion: z.literal(1),
+  protocolVersion: z.union([z.literal(1), z.literal(2)]),
   sequence: z.number().int().nonnegative(),
   requestId: z.string().min(1).optional(),
   payloadHash: HashSchema,
@@ -289,11 +289,12 @@ export const makeGodotWireMessage = (message: {
   readonly sequence: number;
   readonly kind: GodotWireMessageKind;
   readonly requestId?: string | undefined;
+  readonly protocolVersion?: 1 | 2 | undefined;
   readonly payload: JsonValue;
 }): GodotWireMessage =>
   GodotWireMessageSchema.parse({
     schemaVersion: 1,
-    protocolVersion: 1,
+    protocolVersion: message.protocolVersion ?? 1,
     ...message,
     payloadHash: payloadHash(message.payload),
   });

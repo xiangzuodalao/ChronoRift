@@ -1,0 +1,21 @@
+config_version=5
+
+[application]
+config/name="ChronoRift Entity Reuse Fixture"
+run/main_scene="res://entity_reuse.tscn"
+
+[autoload]
+ChronoProbe="*res://addons/chronorift/chrono_probe.gd"
+
+[input]
+recycle_enemy={
+"deadzone": 0.5,
+"events": []
+}
+
+[physics]
+common/physics_ticks_per_second=60
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

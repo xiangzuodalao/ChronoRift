@@ -5,12 +5,16 @@ export type JsonArray = JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 export type JsonValue = JsonPrimitive | JsonArray | JsonObject;
 
+export const JsonPrimitiveSchema: z.ZodType<JsonPrimitive> = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+]);
+
 export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
-    z.string(),
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
+    JsonPrimitiveSchema,
     z.array(JsonValueSchema),
     z.record(z.string(), JsonValueSchema),
   ]),

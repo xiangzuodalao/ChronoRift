@@ -21,10 +21,10 @@ current vertical slice.
 - `packages/godot-protocol`: strict Godot wire DTOs, payload hashing, and TCP framing.
 - `packages/godot-adapter`: Godot process lifecycle, fixture staging, capability handshake, and runtime port.
 - `packages/mock-game`: deterministic switch-door fixture and intentional receiver-order Bug.
-- `packages/json-artifacts`: local write-once v0.1 artifact adapter.
-- `packages/pi-harness`: Pi Session/Agent Loop adapter and restricted diagnostic tools.
+- `packages/json-artifacts`: legacy v0.1 plus run-scoped write-once v0.3 artifact adapters.
+- `packages/pi-harness`: Pi Session/Agent Loop adapter and arm-scoped diagnostic/source tools.
 - `godot/addons/chronorift`: minimal EditorPlugin and ChronoProbe Autoload.
-- `fixtures/godot-switch-door`: the only supported v0.2 real Godot fixture.
+- `fixtures/godot-*`: four supported v0.3 runtime-Bug fixtures; switch-door also preserves v0.2.
 
 Do not create planned packages such as `world-model`, `agent-protocol`, `godot-*`, `worktree-manager`, or
 `execution-sandbox` until a real dependency and lifecycle boundary is implemented and tested.
@@ -77,7 +77,8 @@ Do not create planned packages such as `world-model`, `agent-protocol`, `godot-*
 - Provider and model selection are explicit at the command boundary.
 - Reuse Pi's user credential store; never copy credentials into the repository or artifacts.
 - Parse model output with strict schemas and revalidate every referenced artifact.
-- Diagnostic Agents receive only scoped tools; no arbitrary shell, source access, or file writes.
+- Diagnostic Agents receive only scoped tools; no shell or writes, and source reads stay inside the
+  current Fixture root with explicit budgets.
 - Unit tests use fake flows/models/sessions. Only `*.live.test.ts` may contact a provider.
 
 ## Godot integration

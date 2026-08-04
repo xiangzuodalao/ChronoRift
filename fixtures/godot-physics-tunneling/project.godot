@@ -1,0 +1,21 @@
+config_version=5
+
+[application]
+config/name="ChronoRift Physics Tunneling Fixture"
+run/main_scene="res://physics_tunneling.tscn"
+
+[autoload]
+ChronoProbe="*res://addons/chronorift/chrono_probe.gd"
+
+[input]
+fire_projectile={
+"deadzone": 0.5,
+"events": []
+}
+
+[physics]
+common/physics_ticks_per_second=30
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

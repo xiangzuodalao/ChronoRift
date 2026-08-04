@@ -1,0 +1,13 @@
+{
+  "name": "@chronorift/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@chronorift/domain": "workspace:*",
+    "@chronorift/gamebranch": "workspace:*",
+    "@chronorift/json-artifacts": "workspace:*",
+    "@chronorift/mock-game": "workspace:*",
+    "@chronorift/pi-harness": "workspace:*"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "chronorift",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test",
+    "demo": "tsx apps/cli/src/main.ts demo",
+    "diagnose": "tsx apps/cli/src/main.ts diagnose",
+    "replay": "tsx apps/cli/src/main.ts replay",
+    "models": "tsx apps/cli/src/main.ts models",
+    "auth:volcengine": "tsx apps/cli/src/main.ts auth-volcengine"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.66.0",
+    "vitest": "4.1.10"
+  }
+}

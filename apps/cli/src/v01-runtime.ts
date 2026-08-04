@@ -12,8 +12,15 @@ import {
 import {
   V01GameBranchService,
   type ClockPort,
+  type GameEnvironmentFactoryPort,
   type V01IdGeneratorPort,
 } from "@chronorift/gamebranch";
+import {
+  GODOT_ADAPTER,
+  GodotGameEnvironmentFactory,
+  prepareGodotSwitchDoorFixture,
+  type PreparedGodotFixture,
+} from "@chronorift/godot-adapter";
 import { V01JsonArtifactRepository } from "@chronorift/json-artifacts";
 import {
   MockGameEnvironmentFactory,
@@ -34,6 +41,7 @@ const systemClock: ClockPort = {
 };
 
 export interface V01MockRunContext {
+  readonly environmentKind: "mock" | "godot";
   readonly runId: RunId;
   readonly artifactRoot: string;
   readonly runDirectory: string;
@@ -44,6 +52,7 @@ export interface V01MockRunContext {
   readonly baselineBranch: BaselineBranchSpec;
   readonly baselineExecution: ExecutionLog;
   readonly evidenceCapsule: EvidenceCapsule;
+  readonly preparedGodotFixture?: PreparedGodotFixture | undefined;
 }
 
 export interface CreateV01MockRunOptions {
@@ -52,6 +61,9 @@ export interface CreateV01MockRunOptions {
   readonly runId?: RunId;
   readonly ids?: V01IdGeneratorPort;
   readonly clock?: ClockPort;
+  readonly environment?: "mock" | "godot" | undefined;
+  readonly godotBin?: string | undefined;
+  readonly checkpointLevel?: "l0_restart" | "fixture_semantic_l2" | undefined;
 }
 
 /** Build only the original failing execution and its immutable Capsule. */
@@ -63,13 +75,44 @@ export async function createV01MockRun(
     options.artifactRoot ?? ".chronorift",
   );
   const repository = new V01JsonArtifactRepository(artifactRoot);
+  const environmentKind = options.environment ?? "mock";
+  const preparedGodotFixture =
+    environmentKind === "godot"
+      ? await prepareGodotSwitchDoorFixture({
+          cwd: options.cwd,
+          artifactRoot,
+          ...(options.godotBin === undefined
+            ? {}
+            : { godotBin: options.godotBin }),
+          ...(options.checkpointLevel === undefined
+            ? {}
+            : { checkpointLevel: options.checkpointLevel }),
+        })
+      : undefined;
+  const environmentFactory: GameEnvironmentFactoryPort =
+    preparedGodotFixture === undefined
+      ? new MockGameEnvironmentFactory()
+      : new GodotGameEnvironmentFactory({
+          binary: preparedGodotFixture.doctor.binary,
+          projectDirectory: preparedGodotFixture.projectDirectory,
+          runtimeRoot: resolve(artifactRoot, "godot-runtime"),
+        });
   const gameBranch = new V01GameBranchService(
     repository,
-    new MockGameEnvironmentFactory(),
+    environmentFactory,
     options.ids ?? new RuntimeV01Ids(),
     options.clock ?? systemClock,
   );
-  const fixture = buildV01SwitchDoorFixture();
+  const baseFixture = buildV01SwitchDoorFixture();
+  const fixture: V01SwitchDoorFixture =
+    preparedGodotFixture === undefined
+      ? baseFixture
+      : {
+          ...baseFixture,
+          environment: preparedGodotFixture.environment,
+          initialCheckpointContent:
+            preparedGodotFixture.initialCheckpointContent,
+        };
   const contract = await gameBranch.freezeContract(fixture.contractInput);
   const checkpoint = await repository.putCheckpoint(
     fixture.initialCheckpointContent,
@@ -90,6 +133,7 @@ export async function createV01MockRun(
   const runDirectory = await repository.resolveRunDirectory(runId);
 
   return {
+    environmentKind,
     runId,
     artifactRoot,
     runDirectory,
@@ -100,6 +144,7 @@ export async function createV01MockRun(
     baselineBranch,
     baselineExecution,
     evidenceCapsule,
+    ...(preparedGodotFixture === undefined ? {} : { preparedGodotFixture }),
   };
 }
 
@@ -113,6 +158,37 @@ export function createV01GameBranchService(
   return new V01GameBranchService(
     repository,
     new MockGameEnvironmentFactory(),
+    options.ids ?? new RuntimeV01Ids(),
+    options.clock ?? systemClock,
+  );
+}
+
+export async function createV01GameBranchServiceForEnvironment(
+  repository: V01JsonArtifactRepository,
+  options: {
+    readonly cwd: string;
+    readonly artifactRoot: string;
+    readonly environmentAdapter: string;
+    readonly godotBin?: string | undefined;
+    readonly ids?: V01IdGeneratorPort;
+    readonly clock?: ClockPort;
+  },
+): Promise<V01GameBranchService> {
+  if (options.environmentAdapter !== GODOT_ADAPTER) {
+    return createV01GameBranchService(repository, options);
+  }
+  const prepared = await prepareGodotSwitchDoorFixture({
+    cwd: options.cwd,
+    artifactRoot: options.artifactRoot,
+    ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
+  });
+  return new V01GameBranchService(
+    repository,
+    new GodotGameEnvironmentFactory({
+      binary: prepared.doctor.binary,
+      projectDirectory: prepared.projectDirectory,
+      runtimeRoot: resolve(options.artifactRoot, "godot-runtime"),
+    }),
     options.ids ?? new RuntimeV01Ids(),
     options.clock ?? systemClock,
   );

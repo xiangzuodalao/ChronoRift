@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm check
+
+  godot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: .tools/godot/4.7.1
+          key: godot-4.7.1-linux-x86_64-c7ff14fd
+      - run: corepack pnpm godot:install
+      - run: corepack pnpm godot:doctor
+      - run: corepack pnpm test:godot

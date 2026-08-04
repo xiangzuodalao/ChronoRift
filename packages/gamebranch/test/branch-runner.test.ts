@@ -94,7 +94,12 @@ class TimingBugEnvironment implements GameEnvironmentPort {
   private doorOpen = false;
   private openAtUs: number | null = null;
 
-  public async restore(snapshot: EnvironmentSnapshot): Promise<RestoreReceipt> {
+  public async restore(request: {
+    readonly snapshot: EnvironmentSnapshot;
+    readonly nextTick: number;
+    readonly simTimeUs: number;
+  }): Promise<RestoreReceipt> {
+    const { snapshot } = request;
     if (
       snapshot.runtimeState === null ||
       Array.isArray(snapshot.runtimeState) ||
@@ -178,16 +183,18 @@ class TimingBugEnvironment implements GameEnvironmentPort {
     };
   }
 
-  public async snapshot(): Promise<EnvironmentSnapshot> {
+  public async snapshot(): Promise<{ readonly snapshot: EnvironmentSnapshot }> {
     return {
-      state: this.state(),
-      runtimeState: {
-        switchActive: this.switchActive,
-        doorOpen: this.doorOpen,
-        openAtUs: this.openAtUs,
+      snapshot: {
+        state: this.state(),
+        runtimeState: {
+          switchActive: this.switchActive,
+          doorOpen: this.doorOpen,
+          openAtUs: this.openAtUs,
+        },
+        rngState: { seed: "test" },
+        pendingEffects: [],
       },
-      rngState: { seed: "test" },
-      pendingEffects: [],
     };
   }
 

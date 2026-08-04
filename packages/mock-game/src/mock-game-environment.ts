@@ -11,6 +11,7 @@ import type {
   FrameCommand,
   FrameObservation,
   GameEnvironmentFactoryPort,
+  GameEnvironmentLaunchRequest,
   GameEnvironmentPort,
   RestoreReceipt,
   RuntimeInput,
@@ -153,9 +154,11 @@ export class MockGameEnvironment implements GameEnvironmentPort {
   private state: MutableRuntimeState = { ...INITIAL_RUNTIME_STATE };
   private disposed = false;
 
-  restore(snapshot: EnvironmentSnapshot): Promise<RestoreReceipt> {
+  restore(request: {
+    readonly snapshot: EnvironmentSnapshot;
+  }): Promise<RestoreReceipt> {
     this.assertNotDisposed();
-    const parsed = EnvironmentSnapshotSchema.parse(snapshot);
+    const parsed = EnvironmentSnapshotSchema.parse(request.snapshot);
     const runtime = expectObject(parsed.runtimeState, "runtimeState");
     const pendingEffects = expectObject(
       parsed.pendingEffects,
@@ -236,19 +239,22 @@ export class MockGameEnvironment implements GameEnvironmentPort {
     });
   }
 
-  snapshot(): Promise<EnvironmentSnapshot> {
+  snapshot(): Promise<{ readonly snapshot: EnvironmentSnapshot }> {
     this.assertNotDisposed();
     return Promise.resolve({
-      state: this.currentState(),
-      runtimeState: {
-        nowUs: this.state.nowUs,
-        nextTick: this.state.nextTick,
-      },
-      rngState: {
-        state: this.state.rngState,
-      },
-      pendingEffects: {
-        receiverInitializationPending: this.state.receiverInitializationPending,
+      snapshot: {
+        state: this.currentState(),
+        runtimeState: {
+          nowUs: this.state.nowUs,
+          nextTick: this.state.nextTick,
+        },
+        rngState: {
+          state: this.state.rngState,
+        },
+        pendingEffects: {
+          receiverInitializationPending:
+            this.state.receiverInitializationPending,
+        },
       },
     });
   }
@@ -408,7 +414,8 @@ export class MockGameEnvironment implements GameEnvironmentPort {
 }
 
 export class MockGameEnvironmentFactory implements GameEnvironmentFactoryPort {
-  create(environment: EnvironmentRef): Promise<GameEnvironmentPort> {
+  create(request: GameEnvironmentLaunchRequest): Promise<GameEnvironmentPort> {
+    const { environment } = request;
     if (
       environment.adapter !== MOCK_GAME_ENVIRONMENT_REF.adapter ||
       environment.adapterVersion !== MOCK_GAME_ENVIRONMENT_REF.adapterVersion ||

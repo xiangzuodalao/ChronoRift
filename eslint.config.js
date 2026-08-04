@@ -16,7 +16,11 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["vitest.config.ts", "vitest.live.config.ts"],
+          allowDefaultProject: [
+            "vitest.config.ts",
+            "vitest.live.config.ts",
+            "vitest.godot.config.ts",
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },

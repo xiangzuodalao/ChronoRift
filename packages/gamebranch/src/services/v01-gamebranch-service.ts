@@ -574,14 +574,35 @@ export class V01GameBranchService {
       await this.repository.getInputTrace(branch.inputTraceId),
     );
     const executionId = asExecutionId(this.ids.next("execution"));
-    const environment = await this.environments.create(
-      checkpoint.content.environment,
-    );
+    const environment = await this.environments.create({
+      environment: checkpoint.content.environment,
+      runId: branch.runId,
+      branchId: branch.branchId,
+      executionId,
+      controls: branch.controls,
+      requiredCapabilities:
+        checkpoint.content.environment.runtimeFingerprint?.capabilities ?? [],
+      probePlan: {
+        schemaVersion: 1,
+        signals: [
+          {
+            source: contract.rule.trigger.source,
+            name: contract.rule.trigger.name,
+          },
+        ],
+        properties: [contract.rule.expectation.path],
+      },
+    });
 
     try {
-      const adapterRestore = await environment.restore(
-        checkpoint.content.snapshot,
-      );
+      const adapterRestore = await environment.restore({
+        snapshot: checkpoint.content.snapshot,
+        nextTick: checkpoint.content.nextTick,
+        simTimeUs: checkpoint.content.simTimeUs,
+        ...(checkpoint.content.certificate === undefined
+          ? {}
+          : { certificate: checkpoint.content.certificate }),
+      });
       if (
         !adapterRestore.restored ||
         adapterRestore.nextTick !== checkpoint.content.nextTick ||
@@ -601,6 +622,9 @@ export class V01GameBranchService {
         nextTick: adapterRestore.nextTick,
         simTimeUs: adapterRestore.simTimeUs,
         stateDigest: stateDigest(adapterRestore.state),
+        ...(adapterRestore.runtimeValidation === undefined
+          ? {}
+          : { runtimeValidation: adapterRestore.runtimeValidation }),
       };
       const events: ExecutionTelemetryEvent[] = [];
       const stepReceipts: StepReceipt[] = [];
@@ -727,13 +751,16 @@ export class V01GameBranchService {
         }
 
         const evaluation = evaluateContract(contract, events, statesByTick);
-        const finalSnapshot = await environment.snapshot();
+        const finalCapture = await environment.snapshot();
         const finalCheckpoint = await this.repository.putCheckpoint({
           schemaVersion: 1,
-          environment: checkpoint.content.environment,
+          environment: environment.descriptor,
           nextTick,
           simTimeUs: nextSimTimeUs,
-          snapshot: finalSnapshot,
+          snapshot: finalCapture.snapshot,
+          ...(finalCapture.certificate === undefined
+            ? {}
+            : { certificate: finalCapture.certificate }),
         });
         const completed = ExecutionLogSchema.parse({
           schemaVersion: 1,
@@ -748,6 +775,11 @@ export class V01GameBranchService {
           events,
           timelineDigest: computeExecutionTimelineDigest(stepReceipts, events),
           sealed: true,
+          ...(environment.descriptor.runtimeFingerprint === undefined
+            ? {}
+            : {
+                runtimeFingerprint: environment.descriptor.runtimeFingerprint,
+              }),
           status: "completed",
           evaluation,
           finalCheckpointId: finalCheckpoint.checkpointId,
@@ -768,6 +800,11 @@ export class V01GameBranchService {
           events,
           timelineDigest: computeExecutionTimelineDigest(stepReceipts, events),
           sealed: true,
+          ...(environment.descriptor.runtimeFingerprint === undefined
+            ? {}
+            : {
+                runtimeFingerprint: environment.descriptor.runtimeFingerprint,
+              }),
           status: "failed",
           failure: {
             code:
@@ -1082,7 +1119,8 @@ export class V01GameBranchService {
       .map((event) => event.eventId);
     const before = observe(checkpoint.content.snapshot.state, expectedPath);
     const actual = execution.evaluation.observed;
-    const eventLossDetected = !hasClosedEventLedger(execution);
+    const eventLossDetected =
+      !hasClosedEventLedger(execution) || runtimeObservationIsLossy(execution);
     const capsule = EvidenceCapsuleSchema.parse({
       schemaVersion: 1,
       capsuleId: asCapsuleId(this.ids.next("capsule")),
@@ -1128,9 +1166,13 @@ export class V01GameBranchService {
         eventLossDetected,
         timelineDigest: execution.timelineDigest,
       },
-      knownLimitations: [
-        "v0.1 observes one deterministic in-process switch-door fixture",
-      ],
+      knownLimitations:
+        execution.runtimeFingerprint === undefined
+          ? ["v0.1 observes one deterministic in-process switch-door fixture"]
+          : [
+              "v0.2 observes one explicitly instrumented Godot switch-door fixture",
+              "The checkpoint certificate does not cover Godot engine internals",
+            ],
       nextMinimalExperiments: [
         "Delay the sole interaction input by exactly one tick from the same checkpoint",
       ],
@@ -1365,6 +1407,17 @@ export class V01GameBranchService {
       addBlocker(
         "CHECKPOINT_MISMATCH",
         "Baseline start/final checkpoint lineage cannot be resolved",
+        [baselineRef],
+      );
+    }
+    if (
+      startCheckpoint !== undefined &&
+      baseline.runtimeFingerprint !== undefined &&
+      !checkpointIsAdmissibleForGodot(startCheckpoint, baseline)
+    ) {
+      addBlocker(
+        "CHECKPOINT_MISMATCH",
+        "Godot checkpoint certificate, runtime fingerprint, or required fixture coverage is insufficient",
         [baselineRef],
       );
     }
@@ -1909,9 +1962,91 @@ const hasClosedEventLedger = (execution: ExecutionLog): boolean => {
   return true;
 };
 
+const runtimeObservationIsLossy = (execution: ExecutionLog): boolean =>
+  execution.stepReceipts.some((receipt) => {
+    const health = receipt.runtime?.observationHealth;
+    return (
+      health !== undefined &&
+      (health.droppedEvents > 0 ||
+        health.truncatedEvents > 0 ||
+        health.backpressure)
+    );
+  });
+
+const runtimeEvidenceIsAdmissible = (execution: ExecutionLog): boolean => {
+  if (execution.runtimeFingerprint === undefined) return true;
+  if (
+    execution.restoreReceipt.runtimeValidation === undefined ||
+    execution.restoreReceipt.runtimeValidation.validations.some(
+      (validation) => validation.status !== "pass",
+    )
+  ) {
+    return false;
+  }
+  return execution.stepReceipts.every((receipt) => {
+    const runtime = receipt.runtime;
+    if (runtime === undefined) return false;
+    const realizedIdleUs = runtime.actualIdleDeltasUs.reduce(
+      (total, delta) => total + delta,
+      0,
+    );
+    return (
+      !runtimeObservationIsLossy({
+        ...execution,
+        stepReceipts: [receipt],
+      }) &&
+      realizedIdleUs === receipt.realizedDeltaUs &&
+      runtime.inputApplications.length === receipt.appliedInputOrders.length &&
+      runtime.inputApplications.every(
+        (application, index) =>
+          application.order === receipt.appliedInputOrders[index],
+      )
+    );
+  });
+};
+
+const REQUIRED_GODOT_CHECKPOINT_DOMAINS = [
+  "fixture.switch_state",
+  "fixture.door_state",
+  "fixture.signal_connections",
+  "logical_clock",
+  "input_schedule",
+] as const;
+
+const checkpointIsAdmissibleForGodot = (
+  checkpoint: Checkpoint,
+  execution: ExecutionLog,
+): boolean => {
+  const certificate = checkpoint.content.certificate;
+  const fingerprint = execution.runtimeFingerprint;
+  if (certificate === undefined || fingerprint === undefined) return false;
+  if (
+    canonicalStringify(
+      certificate.environmentFingerprint as unknown as JsonValue,
+    ) !== canonicalStringify(fingerprint as unknown as JsonValue) ||
+    canonicalStringify(
+      checkpoint.content.environment.runtimeFingerprint as unknown as JsonValue,
+    ) !== canonicalStringify(fingerprint as unknown as JsonValue) ||
+    certificate.restoreRecipeHash !==
+      digestJson(checkpoint.content.snapshot as unknown as JsonValue).slice(
+        "sha256:".length,
+      ) ||
+    certificate.restoreValidation.some(
+      (validation) => validation.status !== "pass",
+    )
+  ) {
+    return false;
+  }
+  const covered = new Set(certificate.coveredStateDomains);
+  return REQUIRED_GODOT_CHECKPOINT_DOMAINS.every((domain) =>
+    covered.has(domain),
+  );
+};
+
 const executionIsAdmissible = (execution: ExecutionLog): boolean =>
   execution.sealed &&
   hasClosedEventLedger(execution) &&
+  runtimeEvidenceIsAdmissible(execution) &&
   execution.timelineDigest ===
     computeExecutionTimelineDigest(execution.stepReceipts, execution.events);
 

@@ -18,9 +18,13 @@ current vertical slice.
 - `apps/cli`: argument parsing and composition root.
 - `packages/domain`: engine-neutral IDs, DTOs, strict Zod schemas, and pure contracts.
 - `packages/gamebranch`: ports and canonical experiment, evidence, comparison, and verdict services.
+- `packages/godot-protocol`: strict Godot wire DTOs, payload hashing, and TCP framing.
+- `packages/godot-adapter`: Godot process lifecycle, fixture staging, capability handshake, and runtime port.
 - `packages/mock-game`: deterministic switch-door fixture and intentional receiver-order Bug.
 - `packages/json-artifacts`: local write-once v0.1 artifact adapter.
 - `packages/pi-harness`: Pi Session/Agent Loop adapter and restricted diagnostic tools.
+- `godot/addons/chronorift`: minimal EditorPlugin and ChronoProbe Autoload.
+- `fixtures/godot-switch-door`: the only supported v0.2 real Godot fixture.
 
 Do not create planned packages such as `world-model`, `agent-protocol`, `godot-*`, `worktree-manager`, or
 `execution-sandbox` until a real dependency and lifecycle boundary is implemented and tested.

@@ -46,12 +46,20 @@ const eventKey = (event: V01EnvironmentEventDraft): string => {
 
 const createRestoredEnvironment = async (): Promise<GameEnvironmentPort> => {
   const scenario = buildMockSwitchDoorScenario();
-  const environment = await new MockGameEnvironmentFactory().create(
-    scenario.environment,
-  );
-  const receipt = await environment.restore(
-    scenario.initialCheckpointContent.snapshot,
-  );
+  const environment = await new MockGameEnvironmentFactory().create({
+    environment: scenario.environment,
+    runId: "run:test" as never,
+    branchId: "branch:test" as never,
+    executionId: "execution:test" as never,
+    controls: scenario.controls.baseline,
+    requiredCapabilities: [],
+    probePlan: { schemaVersion: 1, signals: [], properties: [] },
+  });
+  const receipt = await environment.restore({
+    snapshot: scenario.initialCheckpointContent.snapshot,
+    nextTick: 0,
+    simTimeUs: 0,
+  });
   expect(receipt).toMatchObject({
     restored: true,
     nextTick: 0,
@@ -89,7 +97,7 @@ const runTwoFrames = async (
     simTimeUs += deltaUs;
   }
 
-  const snapshot = await environment.snapshot();
+  const { snapshot } = await environment.snapshot();
   await environment.dispose();
   return { observations, snapshot };
 };
@@ -193,7 +201,7 @@ describe("MockGameEnvironment", () => {
       deltaUs: BASELINE_DELTA_US,
       inputs: [],
     });
-    const checkpoint = await original.snapshot();
+    const checkpoint = (await original.snapshot()).snapshot;
 
     expect(checkpoint).toMatchObject({
       state: {
@@ -217,10 +225,21 @@ describe("MockGameEnvironment", () => {
     const expectedObservation = await original.step(nextCommand);
     const expectedSnapshot = await original.snapshot();
 
-    const restored = await new MockGameEnvironmentFactory().create(
-      MOCK_GAME_ENVIRONMENT_REF,
-    );
-    const restoreReceipt = await restored.restore(checkpoint);
+    const scenario = buildMockSwitchDoorScenario();
+    const restored = await new MockGameEnvironmentFactory().create({
+      environment: MOCK_GAME_ENVIRONMENT_REF,
+      runId: "run:restore" as never,
+      branchId: "branch:restore" as never,
+      executionId: "execution:restore" as never,
+      controls: scenario.controls.baseline,
+      requiredCapabilities: [],
+      probePlan: { schemaVersion: 1, signals: [], properties: [] },
+    });
+    const restoreReceipt = await restored.restore({
+      snapshot: checkpoint,
+      nextTick: 1,
+      simTimeUs: 16_667,
+    });
     const actualObservation = await restored.step(nextCommand);
     const actualSnapshot = await restored.snapshot();
 

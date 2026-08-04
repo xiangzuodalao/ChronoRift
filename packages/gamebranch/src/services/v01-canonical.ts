@@ -73,6 +73,26 @@ const normalizedReceipt = (receipt: StepReceipt): JsonValue => ({
   requestedDeltaUs: receipt.requestedDeltaUs,
   realizedDeltaUs: receipt.realizedDeltaUs,
   appliedInputOrders: [...receipt.appliedInputOrders],
+  runtime:
+    receipt.runtime === undefined
+      ? null
+      : {
+          schemaVersion: receipt.runtime.schemaVersion,
+          phase: receipt.runtime.phase,
+          idleFramesExecuted: receipt.runtime.idleFramesExecuted,
+          physicsTicksExecuted: receipt.runtime.physicsTicksExecuted,
+          actualIdleDeltasUs: [...receipt.runtime.actualIdleDeltasUs],
+          actualPhysicsDeltasUs: [...receipt.runtime.actualPhysicsDeltasUs],
+          inputApplications: receipt.runtime.inputApplications.map(
+            (application) => ({ ...application }),
+          ),
+          observationHealth: {
+            emittedEvents: receipt.runtime.observationHealth.emittedEvents,
+            droppedEvents: receipt.runtime.observationHealth.droppedEvents,
+            truncatedEvents: receipt.runtime.observationHealth.truncatedEvents,
+            backpressure: receipt.runtime.observationHealth.backpressure,
+          },
+        },
 });
 
 export const computeExecutionTimelineDigest = (

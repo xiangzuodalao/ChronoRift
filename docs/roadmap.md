@@ -54,6 +54,11 @@
 
 Godot 作为新 adapter 接入，核心层继续只看 Game Environment 端口。
 
+> v0.2 已完成本节的单 Fixture 最小闭环：Godot 4.7.1 Addon/Autoload、loopback TCP v1、
+> allowlisted switch-door telemetry、真实 InputEventAction、process/physics receipts、L0/L2
+> checkpoint、baseline replay、one-tick intervention 和现有 Conclusion Gate。以下未被该 Fixture
+> 证明的条目仍是后续路线图，不应外推为通用 Godot 支持。
+
 ### 2.1 运行时桥接
 
 - 选择清晰的进程通信协议并进行版本握手。
@@ -64,7 +69,7 @@ Godot 作为新 adapter 接入，核心层继续只看 Game Environment 端口�
 
 ### 2.2 控制与恢复
 
-- 支持 headless 启动、暂停、单步和受控 frame/physics tick。
+- 支持 headless 启动和受控 logical step；v0.2 不声称拥有引擎级精确 frame/physics 单步。
 - 注入带时间戳的确定性输入轨迹。
 - 将 Godot save/snapshot 或场景重建机制适配为 checkpoint。
 - 在 manifest 中记录 Godot 版本、项目构建、平台与 adapter 版本。

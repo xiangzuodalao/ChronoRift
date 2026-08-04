@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .chronorift/
+.tools/
 coverage/
 *.tsbuildinfo
 .env

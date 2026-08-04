@@ -1,0 +1,33 @@
+config_version=5
+
+[application]
+
+config/name="ChronoRift Switch-Door Fixture"
+run/main_scene="res://switch_door.tscn"
+
+[autoload]
+
+ChronoProbe="*res://addons/chronorift/chrono_probe.gd"
+
+[display]
+
+window/size/viewport_width=800
+window/size/viewport_height=450
+window/size/window_width_override=800
+window/size/window_height_override=450
+
+[input]
+
+interact_switch={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":32,"unicode":32)]
+}
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

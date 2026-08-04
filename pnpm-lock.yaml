@@ -38,6 +38,9 @@ importers:
       '@chronorift/gamebranch':
         specifier: workspace:*
         version: link:../../packages/gamebranch
+      '@chronorift/godot-adapter':
+        specifier: workspace:*
+        version: link:../../packages/godot-adapter
       '@chronorift/json-artifacts':
         specifier: workspace:*
         version: link:../../packages/json-artifacts
@@ -59,6 +62,27 @@ importers:
       '@chronorift/domain':
         specifier: workspace:*
         version: link:../domain
+
+  packages/godot-adapter:
+    dependencies:
+      '@chronorift/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@chronorift/gamebranch':
+        specifier: workspace:*
+        version: link:../gamebranch
+      '@chronorift/godot-protocol':
+        specifier: workspace:*
+        version: link:../godot-protocol
+
+  packages/godot-protocol:
+    dependencies:
+      '@chronorift/domain':
+        specifier: workspace:*
+        version: link:../domain
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/json-artifacts:
     dependencies:

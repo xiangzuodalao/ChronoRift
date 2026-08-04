@@ -4,6 +4,11 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { asExecutionId, type DiagnosisProposal } from "@chronorift/domain";
+import {
+  doctorGodot,
+  installGodot,
+  prepareGodotSwitchDoorFixture,
+} from "@chronorift/godot-adapter";
 import { V01JsonArtifactRepository } from "@chronorift/json-artifacts";
 import {
   listAvailablePiModels,
@@ -16,7 +21,7 @@ import {
 import { persistV01PiDiagnosis } from "./diagnosis.js";
 import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
 import {
-  createV01GameBranchService,
+  createV01GameBranchServiceForEnvironment,
   createV01MockRun,
   type V01MockRunContext,
 } from "./v01-runtime.js";
@@ -91,6 +96,16 @@ function requiredFlag(
   return value;
 }
 
+function environmentKind(args: Arguments): "mock" | "godot" {
+  const value = flag(args, "environment") ?? "mock";
+  if (value !== "mock" && value !== "godot") {
+    throw new Error(
+      `Unsupported --environment ${value}; expected mock or godot`,
+    );
+  }
+  return value;
+}
+
 function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
@@ -113,6 +128,7 @@ async function diagnosisOutput(
 
   return {
     schemaVersion: 1,
+    environment: context.environmentKind,
     runId: context.runId,
     artifactRoot: context.artifactRoot,
     runDirectory: context.runDirectory,
@@ -163,7 +179,9 @@ function printHumanDiagnosis(output: Readonly<Record<string, unknown>>): void {
     readonly sessionFile: string;
   };
 
-  process.stdout.write(`ChronoRift v0.1 — ${verdict.status}\n`);
+  process.stdout.write(
+    `ChronoRift ${String(output["environment"]) === "godot" ? "v0.2" : "v0.1"} — ${verdict.status}\n`,
+  );
   process.stdout.write(`${verdict.summary}\n\n`);
   process.stdout.write(
     `Original baseline: ${original.executionId} (${original.evaluation?.status ?? original.status})\n`,
@@ -190,6 +208,10 @@ async function runDemo(args: Arguments, cwd: string): Promise<void> {
   const artifactRoot = flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT");
   const context = await createV01MockRun({
     cwd,
+    environment: environmentKind(args),
+    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+      ? {}
+      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
     ...(artifactRoot === undefined ? {} : { artifactRoot }),
   });
   const game = new ChronoRiftV01AgentGameApi(
@@ -217,6 +239,10 @@ async function runDiagnosisCommand(
   const artifactRoot = flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT");
   const context = await createV01MockRun({
     cwd,
+    environment: environmentKind(args),
+    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+      ? {}
+      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
     ...(artifactRoot === undefined ? {} : { artifactRoot }),
   });
   const game = new ChronoRiftV01AgentGameApi(
@@ -244,8 +270,50 @@ async function replayCommand(args: Arguments, cwd: string): Promise<void> {
     flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") ?? ".chronorift",
   );
   const repository = new V01JsonArtifactRepository(artifactRoot);
-  const gameBranch = createV01GameBranchService(repository);
+  const sourceExecution = await repository.getExecutionLog(executionId);
+  const sourceCheckpoint = await repository.getCheckpoint(
+    sourceExecution.startCheckpointId,
+  );
+  const gameBranch = await createV01GameBranchServiceForEnvironment(
+    repository,
+    {
+      cwd,
+      artifactRoot,
+      environmentAdapter: sourceCheckpoint.content.environment.adapter,
+      ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+        ? {}
+        : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
+    },
+  );
   printJson(await gameBranch.replayExecution({ executionId }));
+}
+
+async function godotDoctorCommand(args: Arguments, cwd: string): Promise<void> {
+  const godotBin = flag(args, "godot-bin", "GODOT_BIN");
+  const artifactRoot = resolve(
+    cwd,
+    flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") ?? ".chronorift",
+  );
+  const fixture = await prepareGodotSwitchDoorFixture({
+    cwd,
+    artifactRoot,
+    ...(godotBin === undefined ? {} : { godotBin }),
+  });
+  printJson({
+    ...(await doctorGodot({
+      cwd,
+      ...(godotBin === undefined ? {} : { godotBin }),
+    })),
+    projectDirectory: fixture.projectDirectory,
+    projectHash: fixture.projectHash,
+    addonHash: fixture.addonHash,
+    protocolVersion: 1,
+    capabilities: fixture.environment.runtimeFingerprint?.capabilities ?? [],
+  });
+}
+
+async function godotInstallCommand(cwd: string): Promise<void> {
+  printJson(await installGodot({ cwd }));
 }
 
 async function modelsCommand(args: Arguments): Promise<void> {
@@ -272,15 +340,19 @@ async function persistVolcengineAuthCommand(): Promise<void> {
 }
 
 function printHelp(): void {
-  process.stdout.write(`ChronoRift v0.1\n\n`);
-  process.stdout.write(`  pnpm demo [--artifacts PATH] [--json]\n`);
+  process.stdout.write(`ChronoRift v0.2\n\n`);
   process.stdout.write(
-    `  pnpm diagnose -- --provider PROVIDER --model MODEL [--artifacts PATH] [--json]\n`,
+    `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
+  );
+  process.stdout.write(
+    `  pnpm diagnose -- --provider PROVIDER --model MODEL [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
   );
   process.stdout.write(`  pnpm models [-- --provider PROVIDER]\n`);
   process.stdout.write(`  pnpm auth:volcengine\n`);
+  process.stdout.write(`  pnpm godot:install\n`);
+  process.stdout.write(`  pnpm godot:doctor [-- --godot-bin PATH]\n`);
   process.stdout.write(
-    `  pnpm replay -- --execution EXECUTION_ID [--artifacts PATH]\n`,
+    `  pnpm replay -- --execution EXECUTION_ID [--godot-bin PATH] [--artifacts PATH]\n`,
   );
 }
 
@@ -302,6 +374,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     case "replay":
       await replayCommand(args, cwd);
+      return;
+    case "godot-doctor":
+      await godotDoctorCommand(args, cwd);
+      return;
+    case "godot-install":
+      await godotInstallCommand(cwd);
       return;
     case "help":
     case "--help":

@@ -945,32 +945,34 @@ domain + gamebranch + agent-protocol ← GameBranch bridge
 `DiagnosisReport` 暂时保留兼容。v0.1 新路径不再把 Branch 和 Execution 混为一个生命周期，
 也不再将 Agent 输出当作权威 verdict。
 
-| 目标能力     | v0.1 当前锚点                                     | 当前状态                                                    | 下一步                                             |
-| ------------ | ------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
-| Contract     | `FrozenContract`、`contractIdFor`                 | 一个 content-addressed switch-door Contract                 | 通用版本化 Contract AST/bundle                     |
-| Runtime port | `GameEnvironmentPort` + restore/step receipt      | 确定性进程内 Mock                                           | capability negotiation 与 Godot session            |
-| Checkpoint   | 版本化 checkpoint envelope、restore receipt       | Fixture 专用 Mock 语义快照                                  | consistency、coverage、missing-state descriptor    |
-| Replay       | 新 sealed `ExecutionLog` + timeline digest        | 一次严格 baseline replay                                    | 重复 replay 与 Determinism Certificate             |
-| GameBranch   | 2 个 immutable `BranchSpec`、3 个 Execution       | baseline + 一个 one-tick input intervention                 | matched-pair 服务、边界搜索、Experiment DAG        |
-| Telemetry    | input/signal/`signal_delivery`/property/log       | execution-scoped tick/seq 与 realized receipt               | entity identity、双时钟、生命周期与跨帧关系        |
-| Evidence     | `EvidenceCapsule`                                 | closed window、因果闭包、state diff、integrity              | World Graph causal slice 与质量证书                |
-| Agent        | 真实 Pi Session/Loop、5 个受限工具                | faux 与 production model 共用同一 flow                      | SDK-neutral agent protocol 与预算/egress audit     |
-| Verdict      | `DiagnosisProposal` → Conclusion Gate → `Verdict` | typed mechanism assertion、canonical 重算与 confidence 隔离 | 更一般的 Contract/Gate policy                      |
-| Artifact     | `V01JsonArtifactRepository`                       | strict schema、ID/hash、write-once、symlink containment     | CAS head/history、migration 与更细 repository port |
-| Patch        | 无                                                | 未实现                                                      | worktree manager、sandbox 与 verification          |
+| 目标能力     | v0.2 当前锚点                                      | 当前状态                                                            | 下一步                                              |
+| ------------ | -------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------- |
+| Contract     | `FrozenContract`、`contractIdFor`                  | 一个 content-addressed switch-door Contract                         | 通用版本化 Contract AST/bundle                      |
+| Runtime port | `GameEnvironmentPort`、`godot-adapter/protocol`    | Mock + 独立 Godot 4.7.1 进程、能力握手、realized receipt            | 第二类真实 Bug 验证 port 泛化程度                   |
+| Checkpoint   | `CheckpointCertificateV1`、participant registry    | L0 fresh scene + switch-door fixture-specific L2                    | 更多 participant、兼容性与 failure characterization |
+| Replay       | sealed `ExecutionLog` + semantic runtime digest    | 一次严格 baseline replay，排除 host/绝对 engine counter 噪声        | 重复 replay 与 Determinism Certificate              |
+| GameBranch   | 2 个 immutable `BranchSpec`、3 个 Execution        | baseline + 一个 one-tick input intervention                         | matched-pair 服务、边界搜索、Experiment DAG         |
+| Telemetry    | input/signal/delivery/property + runtime health    | allowlist、process/physics/logical/host clock 与 event-loss health  | entity lifecycle、更多 input phase                  |
+| Evidence     | `EvidenceCapsule`                                  | Godot closed window、因果链、state diff、integrity                  | World Graph causal slice 与质量证书                 |
+| Agent        | 真实 Pi Session/Loop、5 个受限工具                 | faux/production model 共用 flow；Godot 不扩大 Agent 权限            | SDK-neutral agent protocol 与预算/egress audit      |
+| Verdict      | `DiagnosisProposal` → Conclusion Gate → `Verdict`  | certificate/health/lineage gate 与 confidence 隔离                  | 更一般的 Contract/Gate policy                       |
+| Artifact     | `V01JsonArtifactRepository` + additive runtime DTO | 历史 v0.1 可读；新 Godot fingerprint/receipt/certificate write-once | v0.2 envelope migration 与 CAS history              |
+| Patch        | 无                                                 | 未实现                                                              | worktree manager、sandbox 与 verification           |
 
-v0.1 仍有以下明确限制：
+v0.2 仍有以下明确限制：
 
 1. Contract、intervention、Gate 和遥测词汇只支持一个 switch-door Fixture，不是通用游戏模型。
-2. checkpoint 能精确恢复当前 Mock，但尚不能描述 Godot 的物理、线程、资源、异步和 RNG 缺失域。
+2. Godot checkpoint 已描述覆盖与缺失域，但只恢复 switch-door participant，不恢复物理、线程、
+   resource cache、异步和未注册 RNG。
 3. confirmed 只要求一次 matching baseline replay；这不是完整 Determinism Certificate。
-4. 只有 requested/realized tick、delta 和 input receipt；尚未建模 physics/process/render/host
-   clock domains。
+4. 已建模 logical/process/physics/host clock receipt，但没有 rendered/presented frame，也不承诺
+   引擎级精确单步。
 5. v0.1 Capsule 是扁平 execution event chain，不是双层 World Graph 或通用 causal slice。
 6. Pi 工具已无 shell、source-read 和写入能力，但完整 token/time/egress audit 与 OS sandbox 仍属
    后续安全工作。
 7. 旧 Phase 1 JSON/JSONL 覆盖写 artifact 仍留在代码中兼容，但不进入新的 Conclusion Gate。
-8. 没有源码修改、候选 patch、Git worktree、build sandbox 或 Verification Lattice。
+8. Addon 依赖显式 allowlist 与项目插桩，不具备全局 Signal/property interception。
+9. 没有源码修改、候选 patch、Git worktree、build sandbox、OS sandbox 或 Verification Lattice。
 
 这些限制是目标架构与可执行 v0.1 之间的 backlog，不应被描述成已经完成的能力。
 

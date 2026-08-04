@@ -2,6 +2,8 @@
   "files": [],
   "references": [
     { "path": "./packages/domain" },
+    { "path": "./packages/godot-protocol" },
+    { "path": "./packages/godot-adapter" },
     { "path": "./packages/gamebranch" },
     { "path": "./packages/mock-game" },
     { "path": "./packages/json-artifacts" },

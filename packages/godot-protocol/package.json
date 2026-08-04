@@ -1,0 +1,13 @@
+{
+  "name": "@chronorift/godot-protocol",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@chronorift/domain": "workspace:*",
+    "zod": "4.4.3"
+  }
+}

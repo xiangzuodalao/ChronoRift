@@ -32,6 +32,14 @@ import {
 } from "./telemetry.js";
 import { BranchControlsSchema, type BranchControls } from "./timeline.js";
 import {
+  RestoreValidationV1Schema,
+  RuntimeFingerprintV1Schema,
+  RuntimeStepReceiptV1Schema,
+  type RestoreValidationV1,
+  type RuntimeFingerprintV1,
+  type RuntimeStepReceiptV1,
+} from "./runtime.js";
+import {
   MicrosecondsSchema,
   PositiveMicrosecondsSchema,
   TickSchema,
@@ -324,6 +332,7 @@ export interface RestoreReceipt {
   readonly nextTick: Tick;
   readonly simTimeUs: Microseconds;
   readonly stateDigest: string;
+  readonly runtimeValidation?: RestoreValidationV1 | undefined;
 }
 
 export const RestoreReceiptSchema: z.ZodType<RestoreReceipt> = z
@@ -334,6 +343,7 @@ export const RestoreReceiptSchema: z.ZodType<RestoreReceipt> = z
     nextTick: TickSchema,
     simTimeUs: MicrosecondsSchema,
     stateDigest: z.string().min(1),
+    runtimeValidation: RestoreValidationV1Schema.optional(),
   })
   .strict();
 
@@ -343,6 +353,7 @@ export interface StepReceipt {
   readonly requestedDeltaUs: Microseconds;
   readonly realizedDeltaUs: Microseconds;
   readonly appliedInputOrders: readonly number[];
+  readonly runtime?: RuntimeStepReceiptV1 | undefined;
 }
 
 export const StepReceiptSchema: z.ZodType<StepReceipt> = z
@@ -352,6 +363,7 @@ export const StepReceiptSchema: z.ZodType<StepReceipt> = z
     requestedDeltaUs: PositiveMicrosecondsSchema,
     realizedDeltaUs: PositiveMicrosecondsSchema,
     appliedInputOrders: z.array(z.number().int().nonnegative()),
+    runtime: RuntimeStepReceiptV1Schema.optional(),
   })
   .strict();
 
@@ -388,6 +400,7 @@ interface ExecutionLogBase {
   readonly events: readonly ExecutionTelemetryEvent[];
   readonly timelineDigest: string;
   readonly sealed: true;
+  readonly runtimeFingerprint?: RuntimeFingerprintV1 | undefined;
 }
 
 export interface CompletedExecutionLog extends ExecutionLogBase {
@@ -419,6 +432,7 @@ const executionLogBase = {
   events: z.array(ExecutionTelemetryEventSchema),
   timelineDigest: z.string().min(1),
   sealed: z.literal(true),
+  runtimeFingerprint: RuntimeFingerprintV1Schema.optional(),
 };
 
 export const ExecutionLogSchema: z.ZodType<ExecutionLog> = z

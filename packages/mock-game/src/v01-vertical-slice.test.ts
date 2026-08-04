@@ -193,6 +193,30 @@ const supportedMechanismAssertion = {
   },
 };
 
+const testRuntimeFingerprint = {
+  schemaVersion: 1,
+  engine: "godot",
+  engineVersion: "4.7.1-stable (official)",
+  adapterVersion: "0.2.0",
+  protocolVersion: 1,
+  platform: "Linux",
+  renderer: "gl_compatibility",
+  physicsTicksPerSecond: 60,
+  fixedFps: 60,
+  projectHash: "a".repeat(64),
+  addonHash: "b".repeat(64),
+  capabilities: [
+    "observe.signal_allowlist",
+    "observe.property_sampling",
+    "control.input_event_action",
+    "clock.process_frame",
+    "clock.physics_tick",
+    "launch.fixed_fps",
+    "checkpoint.l0_restart",
+    "checkpoint.fixture_semantic",
+  ],
+} as const;
+
 const setup = async (): Promise<{
   readonly repository: MemoryV01Repository;
   readonly service: V01GameBranchService;
@@ -516,6 +540,77 @@ describe("ChronoRift v0.1 vertical slice", () => {
       context,
       experiment,
       "proposal-replay-diverged",
+    );
+    await context.repository.putDiagnosisProposal(proposal);
+
+    const verdict = await context.service.conclude({
+      proposalId: proposal.proposalId,
+    });
+    expect(verdict.status).toBe("inconclusive");
+    if (verdict.status !== "inconclusive") return;
+    expect(verdict.blockers.map((blocker) => blocker.code)).toContain(
+      "REPLAY_DIVERGED",
+    );
+  });
+
+  it("returns inconclusive when runtime health reports event loss", async () => {
+    const context = await setup();
+    const experiment = await completeExperiment(context);
+    const replay = experiment.replay.execution;
+    const lossyReplay = ExecutionLogSchema.parse({
+      ...replay,
+      runtimeFingerprint: testRuntimeFingerprint,
+      restoreReceipt: {
+        ...replay.restoreReceipt,
+        runtimeValidation: {
+          schemaVersion: 1,
+          level: "fixture_semantic_l2",
+          semanticStateHash: "c".repeat(64),
+          validations: [
+            {
+              participantId: "switch-door",
+              status: "pass",
+              stateHash: "d".repeat(64),
+            },
+          ],
+        },
+      },
+      stepReceipts: replay.stepReceipts.map((receipt, index) => ({
+        ...receipt,
+        runtime: {
+          schemaVersion: 1,
+          phase: "process_frame_start",
+          idleFramesExecuted: 1,
+          physicsTicksExecuted: 0,
+          actualIdleDeltasUs: [receipt.realizedDeltaUs],
+          actualPhysicsDeltasUs: [],
+          engineProcessFrame: index,
+          enginePhysicsFrame: index,
+          hostMonotonicStartUs: index,
+          hostMonotonicEndUs: index + 1,
+          inputApplications: receipt.appliedInputOrders.map((order) => ({
+            order,
+            eventsInjected: 2,
+            pressed: true,
+            released: true,
+          })),
+          observationHealth: {
+            schemaVersion: 1,
+            emittedEvents: 0,
+            droppedEvents: index === 0 ? 1 : 0,
+            truncatedEvents: 0,
+            bufferedBytes: 0,
+            backpressure: false,
+            probeOverheadUs: 0,
+          },
+        },
+      })),
+    });
+    context.repository.executions.set(replay.executionId, lossyReplay);
+    const proposal = mechanismProposal(
+      context,
+      experiment,
+      "proposal-runtime-event-loss",
     );
     await context.repository.putDiagnosisProposal(proposal);
 

@@ -1,6 +1,7 @@
 import {
   asBranchId,
   asEventId,
+  asExecutionId,
   type BranchComparison,
   type BranchControls,
   type BranchId,
@@ -268,15 +269,29 @@ export class BranchRunner {
     await this.repository.putBranch(running);
     await this.updateManifestBranch(running);
 
-    const environment = await this.environments.create(
-      checkpoint.content.environment,
-    );
+    const environment = await this.environments.create({
+      environment: checkpoint.content.environment,
+      runId: original.runId,
+      branchId: original.branchId,
+      executionId: asExecutionId(`legacy:${original.branchId}`),
+      controls: original.controls,
+      requiredCapabilities:
+        checkpoint.content.environment.runtimeFingerprint?.capabilities ?? [],
+      probePlan: { schemaVersion: 1, signals: [], properties: [] },
+    });
     const frames: FrameRecord[] = [];
     const events: TelemetryEvent[] = [];
     let seq = 0;
 
     try {
-      await environment.restore(checkpoint.content.snapshot);
+      await environment.restore({
+        snapshot: checkpoint.content.snapshot,
+        nextTick: checkpoint.content.nextTick,
+        simTimeUs: checkpoint.content.simTimeUs,
+        ...(checkpoint.content.certificate === undefined
+          ? {}
+          : { certificate: checkpoint.content.certificate }),
+      });
       for (
         let relativeTick = 0;
         relativeTick <= original.controls.maxTicks;
@@ -399,16 +414,19 @@ export class BranchRunner {
         await this.repository.putEvidence(bundle);
       }
 
-      const finalSnapshot = await environment.snapshot();
+      const finalCapture = await environment.snapshot();
       const executedFrames = original.controls.maxTicks + 1;
       const finalCheckpoint = await this.repository.putCheckpoint({
         schemaVersion: 1,
-        environment: checkpoint.content.environment,
+        environment: environment.descriptor,
         nextTick: checkpoint.content.nextTick + executedFrames,
         simTimeUs:
           checkpoint.content.simTimeUs +
           executedFrames * original.controls.deltaUs,
-        snapshot: finalSnapshot,
+        snapshot: finalCapture.snapshot,
+        ...(finalCapture.certificate === undefined
+          ? {}
+          : { certificate: finalCapture.certificate }),
       });
       const evaluationRefs: InvariantResultRef[] = compiled.evaluations.map(
         (evaluation) => ({

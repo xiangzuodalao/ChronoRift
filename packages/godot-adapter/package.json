@@ -1,0 +1,14 @@
+{
+  "name": "@chronorift/godot-adapter",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@chronorift/domain": "workspace:*",
+    "@chronorift/gamebranch": "workspace:*",
+    "@chronorift/godot-protocol": "workspace:*"
+  }
+}

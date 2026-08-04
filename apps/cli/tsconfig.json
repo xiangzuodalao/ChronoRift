@@ -4,5 +4,13 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/domain" },
+    { "path": "../../packages/gamebranch" },
+    { "path": "../../packages/godot-adapter" },
+    { "path": "../../packages/json-artifacts" },
+    { "path": "../../packages/mock-game" },
+    { "path": "../../packages/pi-harness" }
+  ]
 }

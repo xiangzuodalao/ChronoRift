@@ -9,6 +9,7 @@ export * from "./invariant.js";
 export * from "./json.js";
 export * from "./manifest.js";
 export * from "./proposal.js";
+export * from "./runtime.js";
 export * from "./telemetry.js";
 export * from "./time.js";
 export * from "./timeline.js";

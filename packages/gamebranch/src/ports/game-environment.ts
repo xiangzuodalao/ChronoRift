@@ -1,8 +1,16 @@
 import type {
+  BranchControls,
+  BranchId,
+  CheckpointCertificateV1,
   EnvironmentRef,
   EnvironmentSnapshot,
+  ExecutionId,
   JsonObject,
   Microseconds,
+  RestoreValidationV1,
+  RunId,
+  RuntimeCapability,
+  RuntimeStepReceiptV1,
   StateSnapshot,
   Tick,
   V01EnvironmentEventDraft,
@@ -24,12 +32,39 @@ export interface FrameCommand {
   readonly inputs: readonly RuntimeInput[];
 }
 
+export interface RuntimeProbePlan {
+  readonly schemaVersion: 1;
+  readonly signals: readonly {
+    readonly source: string;
+    readonly name: string;
+  }[];
+  readonly properties: readonly string[];
+}
+
+export interface GameEnvironmentLaunchRequest {
+  readonly environment: EnvironmentRef;
+  readonly runId: RunId;
+  readonly branchId: BranchId;
+  readonly executionId: ExecutionId;
+  readonly controls: BranchControls;
+  readonly requiredCapabilities: readonly RuntimeCapability[];
+  readonly probePlan: RuntimeProbePlan;
+}
+
+export interface EnvironmentRestoreRequest {
+  readonly snapshot: EnvironmentSnapshot;
+  readonly certificate?: CheckpointCertificateV1 | undefined;
+  readonly nextTick: Tick;
+  readonly simTimeUs: Microseconds;
+}
+
 /** Adapter acknowledgement for an actually applied restore. */
 export interface RestoreReceipt {
   readonly restored: true;
   readonly nextTick: Tick;
   readonly simTimeUs: Microseconds;
   readonly state: StateSnapshot;
+  readonly runtimeValidation?: RestoreValidationV1 | undefined;
 }
 
 /** Requested controls are distinct from values realized by the runtime. */
@@ -39,6 +74,7 @@ export interface StepReceipt {
   readonly requestedDeltaUs: Microseconds;
   readonly realizedDeltaUs: Microseconds;
   readonly appliedInputOrders: readonly number[];
+  readonly runtime?: RuntimeStepReceiptV1 | undefined;
 }
 
 /** State is captured after every event and process callback in the frame. */
@@ -50,12 +86,15 @@ export interface FrameObservation {
 
 export interface GameEnvironmentPort {
   readonly descriptor: EnvironmentRef;
-  restore(snapshot: EnvironmentSnapshot): Promise<RestoreReceipt>;
+  restore(request: EnvironmentRestoreRequest): Promise<RestoreReceipt>;
   step(command: FrameCommand): Promise<FrameObservation>;
-  snapshot(): Promise<EnvironmentSnapshot>;
+  snapshot(): Promise<{
+    readonly snapshot: EnvironmentSnapshot;
+    readonly certificate?: CheckpointCertificateV1 | undefined;
+  }>;
   dispose(): Promise<void>;
 }
 
 export interface GameEnvironmentFactoryPort {
-  create(environment: EnvironmentRef): Promise<GameEnvironmentPort>;
+  create(request: GameEnvironmentLaunchRequest): Promise<GameEnvironmentPort>;
 }

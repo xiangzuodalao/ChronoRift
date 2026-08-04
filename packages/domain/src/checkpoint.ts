@@ -4,6 +4,12 @@ import { CheckpointIdSchema, type CheckpointId } from "./ids.js";
 import { JsonValueSchema, type JsonValue } from "./json.js";
 import { StateSnapshotSchema, type StateSnapshot } from "./telemetry.js";
 import {
+  CheckpointCertificateV1Schema,
+  RuntimeFingerprintV1Schema,
+  type CheckpointCertificateV1,
+  type RuntimeFingerprintV1,
+} from "./runtime.js";
+import {
   MicrosecondsSchema,
   TickSchema,
   type Microseconds,
@@ -15,6 +21,7 @@ export interface EnvironmentRef {
   readonly adapterVersion: string;
   readonly scene: string;
   readonly build?: string | undefined;
+  readonly runtimeFingerprint?: RuntimeFingerprintV1 | undefined;
 }
 
 export const EnvironmentRefSchema: z.ZodType<EnvironmentRef> = z
@@ -23,6 +30,7 @@ export const EnvironmentRefSchema: z.ZodType<EnvironmentRef> = z
     adapterVersion: z.string().min(1),
     scene: z.string().min(1),
     build: z.string().min(1).optional(),
+    runtimeFingerprint: RuntimeFingerprintV1Schema.optional(),
   })
   .strict();
 
@@ -49,6 +57,7 @@ export interface CheckpointContent {
   readonly nextTick: Tick;
   readonly simTimeUs: Microseconds;
   readonly snapshot: EnvironmentSnapshot;
+  readonly certificate?: CheckpointCertificateV1 | undefined;
 }
 
 export const CheckpointContentSchema: z.ZodType<CheckpointContent> = z
@@ -58,6 +67,7 @@ export const CheckpointContentSchema: z.ZodType<CheckpointContent> = z
     nextTick: TickSchema,
     simTimeUs: MicrosecondsSchema,
     snapshot: EnvironmentSnapshotSchema,
+    certificate: CheckpointCertificateV1Schema.optional(),
   })
   .strict();
 

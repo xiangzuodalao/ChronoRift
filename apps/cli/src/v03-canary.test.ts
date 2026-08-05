@@ -244,6 +244,51 @@ class PostProposalFailureRunner extends FakeCanaryRunner {
   }
 }
 
+class ObservedToolFailureRunner extends FakeCanaryRunner {
+  public override runCell(
+    input: RunCanaryCellInput,
+  ): Promise<CanaryScoredCellResultV1> {
+    if (input.arm !== "evidence-only") return super.runCell(input);
+    return Promise.reject(
+      new CanaryCellError("invalid_tool_flow", {
+        kind: "diagnostic",
+        flow: readyFlow(input.arm),
+        progress: {
+          ...readyProgress(input.arm),
+          sequence: 3,
+          model: {
+            requestStarted: true,
+            outputObserved: true,
+            turnCompleted: false,
+          },
+          tools: {
+            started: 1,
+            completed: 1,
+            failed: 1,
+            semanticRevision: 0,
+            consecutiveNonProgressToolResults: 0,
+          },
+          proposalSubmitted: false,
+        },
+        metrics: {
+          gameExecutions: 1,
+          toolCalls: 1,
+          toolErrors: 1,
+          maxConsecutiveNonProgressToolResults: 0,
+          wallTimeMs: 1_000,
+          tokens: {
+            input: 100,
+            output: 20,
+            cacheRead: 30,
+            cacheWrite: 0,
+            total: 150,
+          },
+        },
+      }),
+    );
+  }
+}
+
 const clock = () => {
   let second = 0;
   return () => new Date(Date.UTC(2026, 7, 5, 0, 0, second++)).toISOString();
@@ -474,6 +519,32 @@ describe("Luna staged canary", () => {
     });
     expect(report.readiness.reasons).toContain(
       "evidence-only:infra_failure:http_429",
+    );
+    expect(parseCanaryStageReport(report)).toEqual(report);
+  });
+
+  it("seals a failed tool as one completed call with a failed subset", async () => {
+    const paths = await workspace();
+    const spec = buildTestSpec("v0.3.2-luna-canary-tool-failure-progress");
+    const report = await executeCanaryStage({
+      ...paths,
+      spec,
+      stage: "c0",
+      runner: new ObservedToolFailureRunner(),
+      nowIso: clock(),
+    });
+    const failed = report.cells.find((cell) => cell.arm === "evidence-only");
+
+    expect(failed).toMatchObject({
+      status: "diagnostic_failure",
+      failureCode: "invalid_tool_flow",
+      progress: {
+        tools: { started: 1, completed: 1, failed: 1, semanticRevision: 0 },
+      },
+      metrics: { toolCalls: 1, toolErrors: 1 },
+    });
+    expect(report.readiness.reasons).toContain(
+      "evidence-only:failure:invalid_tool_flow",
     );
     expect(parseCanaryStageReport(report)).toEqual(report);
   });

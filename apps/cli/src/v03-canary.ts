@@ -710,8 +710,12 @@ function parseProgress(value: unknown, label: string): CanaryProgressSummaryV2 {
       `${label}.proposalSubmitted`,
     ),
   };
-  if (parsed.tools.completed + parsed.tools.failed > parsed.tools.started) {
-    throw new Error(`${label}.tools terminal count exceeds started count`);
+  if (
+    parsed.tools.completed > parsed.tools.started ||
+    parsed.tools.failed > parsed.tools.completed ||
+    parsed.tools.semanticRevision > parsed.tools.completed
+  ) {
+    throw new Error(`${label}.tools counters are inconsistent`);
   }
   return parsed;
 }

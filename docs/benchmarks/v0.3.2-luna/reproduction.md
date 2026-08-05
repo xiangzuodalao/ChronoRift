@@ -157,14 +157,18 @@ attempt started、36 条 attempt finished 与 36 条 terminal cell，但 3 个 p
 不得对旧 spec 再运行不带 `--resume` 的 formal，也不得恢复该 ID、删除 selection、修改 ledger、移动
 `v0.3.2-luna-benchmark-freeze` 或手工拼接 report。
 
-## 8. r1 freeze、formal、发布与 Gate（pending）
+## 8. r1 freeze、formal、发布与 Gate（已发布负结果）
 
 后续只能使用独立的 `v0.3.2-luna-r1` campaign/spec/freeze tag/definition。先在 proposal 接收与 cell
 封存边界加入 unresolved event-reference 回归，再生成并审核 r1 spec、创建新的不可移动 tag，最后从
 干净 checkout 创建 r1 的唯一 first selection。原 `benchmark-spec.v3.json`、tag、selection 和 ledger
 全部保持原样。
 
-r1 execution 若能合法封存，才可以从其 ledger 生成 sanitized report、results 和 case bundle，并分别
-运行 integrity verifier 与产品 Gate。verifier exit 0 只说明 schema、identity、hash chain、oracle、
-aggregate 与 report hash 可重算；Gate exit 0 才代表预注册产品门槛通过。本文不声称 r1 已冻结、已
-执行、已发布或已通过 Gate。
+r1 已以 execution `benchmark-execution:3207d7d4-9e14-40bc-bca0-840897416739` 封存并发布。selection
+hash 为 `c869f64755c7cd1a871ba05263d7d75aa4acee786653d9976b8ef6624442c6e3`，report hash 为
+`ef08aa6a727093ce8b9741d188a5b0b2bdbb0240e82a6a39d1265cb42e28b77d`。报告只有 3 cells：2 scored、
+1 `invalid` / `harness_failure`，2 个 scoring proofs，aggregate `null`。verifier 返回 true；Gate
+`not_evaluated`，exit 2。详见 [r1 evidence workspace](../v0.3.2-luna-r1/README.md)。
+
+本地根因是 ungrounded event proposal 被正确拒绝为 diagnostic `invalid_proposal`，但随之记录的 tool
+error 因预算 allowlist 漏项被升级为 `harness_failure`。不得据此形成 treatment 结论；后继尚未完成。

@@ -87,7 +87,8 @@ C0-001/002/003 均为 `not_ready` 并必须保留。C0-004 与引用其 report h
 完成。其后原 identity 的唯一 selection 完成了 36 个 cell 记录，但因 3 个 unresolved event references
 未能写入 execution completed 或 canonical report；该运行事实只记录在
 [非规范失败记录](failed-execution-fd22f458.md)，不修改本冻结协议。任何后续正式尝试必须使用独立 r1
-identity。
+identity。r1 后续已发布 `invalid` 负结果，但只有 3 cells、aggregate `null`，Gate 未评估；详见
+[r1 evidence workspace](../v0.3.2-luna-r1/README.md)。
 
 ## 7. Formal Gate 与发布
 

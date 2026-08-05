@@ -5,13 +5,14 @@
 
 ## 当前状态
 
-| 项目                         | 状态                 | 可验证事实                                                         |
-| ---------------------------- | -------------------- | ------------------------------------------------------------------ |
-| Canary 006 C0                | `ready` / `hardened` | C0 report 已封存并公开                                             |
-| Canary 006 C1                | **interrupted**      | parser 计数语义缺陷；只有 generic cell，无 C1 report；禁止恢复     |
-| Canary 007 C0/C1             | `ready` / `hardened` | 六个 cells 均 scored、mechanism correct、零 incorrect confirmation |
-| r1 machine spec / freeze tag | **已冻结**           | definition `75d8a1b7…`；本地 tag 固定当前 spec                     |
-| r1 formal / verifier / Gate  | **pending**          | 尚无 treatment 优势结论                                            |
+| 项目                         | 状态                     | 可验证事实                                                         |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| Canary 006 C0                | `ready` / `hardened`     | C0 report 已封存并公开                                             |
+| Canary 006 C1                | **interrupted**          | parser 计数语义缺陷；只有 generic cell，无 C1 report；禁止恢复     |
+| Canary 007 C0/C1             | `ready` / `hardened`     | 六个 cells 均 scored、mechanism correct、零 incorrect confirmation |
+| r1 machine spec / freeze tag | **已冻结**               | definition `75d8a1b7…`；本地 tag 固定当前 spec                     |
+| r1 formal report             | **已发布负结果**         | 3 cells：2 scored、1 invalid；aggregate `null`                     |
+| verifier / Gate              | `true` / `not_evaluated` | verifier exit 0；Gate exit 2；无 treatment 结论                    |
 
 ## R1 freeze
 
@@ -49,6 +50,21 @@ confirmation。C0 的 generic/evidence-only/chronorift-full verdict 依次为
 
 这些事实只证明当前实现满足 hardened canary 前置，不证明正式 36-cell treatment 优势或产品 Gate
 通过。
+
+## R1 formal 结果
+
+[benchmark-report.v3.json](benchmark-report.v3.json) 对应 execution
+`benchmark-execution:3207d7d4-9e14-40bc-bca0-840897416739`，selection hash 为
+`c869f64755c7cd1a871ba05263d7d75aa4acee786653d9976b8ef6624442c6e3`，report hash 为
+`ef08aa6a727093ce8b9741d188a5b0b2bdbb0240e82a6a39d1265cb42e28b77d`。execution 以 `invalid`
+封存并发布：3 attempts / 3 cells，其中 2 个 `scored`、1 个 `invalid` / `harness_failure`；公开报告含
+2 个 scoring proofs，aggregate 为 `null`。完整性 verifier 返回 `verified=true`；产品 Gate 为
+`not_evaluated`，命令 exit 2。
+
+本地 ledger 表明 invalid cell 中，Harness 正确拒绝了引用 ungrounded event 的 proposal，并形成
+diagnostic `invalid_proposal` 与一次 tool error；但预算校验 allowlist 漏掉 `invalid_proposal`，随后将其
+升级为 `harness_failure`。因此这是 Harness 分类缺陷暴露出的有效负结果，不能用于比较 treatment。
+可读汇总见 [results.md](results.md)；预选 case bundle 为 `absent` / `raw_manifest_unavailable`。
 
 ## Canary 006
 

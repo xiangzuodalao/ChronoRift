@@ -77,8 +77,9 @@ event references，因此没有 execution `completed` 或 canonical report。详
 [非规范失败记录](failed-execution-fd22f458.md)。旧 spec、tag、selection 与 ledger 保持不变，也不能把
 这些 cell 记录当成可发布 formal aggregate。
 
-尚未完成的是独立 r1 identity 的 spec/freeze/first-selection，以及对应 sanitized report、results、case
-bundle、integrity verification 和 Gate。本文不声称 r1 已经冻结或执行。
+独立 r1 后续已冻结并发布真实负结果：3 cells 中 2 scored、1 `invalid` / `harness_failure`，aggregate
+`null`；verifier true，Gate `not_evaluated` / exit 2。详见
+[r1 evidence workspace](../v0.3.2-luna-r1/README.md)。该结果不能形成 treatment 结论，后继尚未完成。
 
 因此当前可以声称“V3 可靠性边界已实现、真实 Pi 链路已通过 smoke、历史负向与 004 canary 已
 原样保留、005 C0/C1 均达到 `ready` 且 verifier 前置资格为 `hardened`、原 V3 spec 已冻结、旧

@@ -21,7 +21,8 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 > 但因 3 个 unresolved proposal event references 未能写入 completed 或 report，因此不可发布；后续
 > formal 使用独立 r1 identity。006 C1 暴露的 canary parser 缺陷已作为 interrupted 负证据保留；新
 > 007 C0/C1 均为 `ready` / `hardened`，r1 machine spec 已生成并由
-> `v0.3.2-luna-r1-benchmark-freeze` 固定，但 r1 formal 尚未执行；
+> `v0.3.2-luna-r1-benchmark-freeze` 固定。r1 已封存并发布真实负结果：3 cells 中 2 scored、1 invalid
+> `harness_failure`，aggregate 为 `null`；verifier 通过，Gate 为 `not_evaluated` / exit 2；
 > 历史 V2 报告与冻结 spec 不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
@@ -164,7 +165,8 @@ finish 后拒绝追加 progress。Harness 按冻结的 baseline/replay/intervent
 为 `confirmed`/`inconclusive`/`confirmed`，C1 三组均为 `inconclusive`。正式冻结的 canary 前置
 现已满足；machine spec 已生成并由 `v0.3.2-luna-benchmark-freeze` 固定。原 36-cell execution 因
 3 个 unresolved event references 未通过终态封存，没有 canonical report。修复后运行的 007 C0/C1
-均为 `ready` / `hardened`，r1 spec 已冻结，r1 formal 仍待执行。详见
+均为 `ready` / `hardened`，r1 spec 已冻结。r1 report 已以 `invalid` 发布：3 cells 中 2 scored、1
+`harness_failure`，2 个 scoring proofs、aggregate `null`；verifier 通过，Gate 未评估。详见
 [历史 v0.3.2-luna workspace](docs/benchmarks/v0.3.2-luna/README.md) 与
 [r1 evidence workspace](docs/benchmarks/v0.3.2-luna-r1/README.md)。
 
@@ -290,6 +292,15 @@ corepack pnpm benchmark:status -- \
 # 查看 r1 first-selection 状态
 corepack pnpm benchmark:status -- \
   --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json
+
+corepack pnpm benchmark:verify -- \
+  --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json \
+  --report docs/benchmarks/v0.3.2-luna-r1/benchmark-report.v3.json
+
+# 预期 exit 2：报告有效，但 execution invalid，Gate not_evaluated
+corepack pnpm benchmark:gate -- \
+  --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json \
+  --report docs/benchmarks/v0.3.2-luna-r1/benchmark-report.v3.json
 ```
 
 旧 selection `benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66` 没有 completed/report，不能
@@ -417,9 +428,9 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
   event references 未通过终态封存，不能作为 formal 评测结果。
 - C0-001/002/003 均为 `not_ready` 且已保留；历史 C0/C1-004 的 readiness 字段为 `ready`，但强化
   verifier 只将其 V1 linkage 归为 `legacy_only`。005 与 007 C0/C1 的前置资格均为 `hardened`；
-  006 C1 作为 interrupted 负证据保留。r1 formal campaign 仍是 pending，因此目前仍没有 Luna 下的
-  treatment 优势结论。
+  006 C1 作为 interrupted 负证据保留。r1 只产生 3 cells 且 aggregate 为 `null`，Gate
+  `not_evaluated`，因此目前仍没有 Luna 下的 treatment 优势结论。
 
-下一步是从干净 r1 freeze checkout 启动新的 first selection，封存后发布并独立重验报告与 Gate。旧
-spec、tag、selection 与 ledger 保持不变。
+下一步是修复 `invalid_proposal` 的预算分类漏项并增加回归；r1 报告及旧 spec、tag、selection 与
+ledger 保持不变。后继 campaign 尚未冻结或执行。
 真实 Godot 项目接入继续作为下一条独立垂直切片。

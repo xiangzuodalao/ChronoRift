@@ -40,6 +40,8 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
   零无进展违规、零 incorrect confirmation；两份报告均通过强化 verifier 并取得 `hardened` 前置资格。
   C1 精确绑定 C0 report hash
   `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。
+- r1 正式 execution 已原样发布 `invalid` 负结果：3 cells 中 2 scored、1 `harness_failure`，2 个
+  scoring proofs、aggregate `null`；verifier 通过，Gate `not_evaluated` / exit 2。
 
 完整证据、hash 和复现顺序见
 [v0.3.2-luna evidence workspace](benchmarks/v0.3.2-luna/README.md)。
@@ -60,12 +62,12 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 > 错误与零错误确认，并进一步完成 implementation-bound 005 C0/C1；两阶段均为 `ready`，verifier
 > 前置资格均为 `hardened`，并以可重建 machine spec 冻结 36-cell protocol；原 execution 因引用
 > 完整性失败未形成报告；修复后 007 C0/C1 再次达到 `ready` / `hardened`，独立 r1 spec/tag 已冻结，
-> 正式评测待执行。
+> 并原样发布 3-cell `invalid` 负结果，完整性可验证但 Gate 未评估。
 
 ## 边界
 
 005 C0/C1 与原 V3 machine spec freeze 已完成。旧 selection 有 36 组 started/finished/cell，但 3 个
 unresolved event references 阻止 completed/report；它不是可发布 formal 结果。007 C0/C1 与 r1 freeze
-已完成，但 r1 formal 和产品 Gate 仍是 **pending**。当前数据证明工程链路与 canary 运行事实，不证明
-ChronoRift 相对 generic Agent 已有统计优势。Fixture 仍是同一代码库内的校准小场景，不得外推为任意
-Godot 项目即插即用。
+已完成；r1 报告虽通过 verifier，但只有 3 cells、aggregate `null`，产品 Gate 为 `not_evaluated`。该结果
+暴露的是 `invalid_proposal` 的预算分类漏项，不证明 ChronoRift 相对 generic Agent 已有统计优势。
+Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用；后继尚未完成。

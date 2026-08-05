@@ -56,8 +56,12 @@ correct，并且为零 tool errors、零无进展违规、零 incorrect confirma
    execution completed/report；旧 spec、tag、selection 与 ledger 不改写；
 9. **已完成**：在 proposal/cell 封存边界加入引用完整性回归；保留 006 C1 parser interruption；007
    C0/C1 均达到 `ready` / `hardened`；冻结独立 `v0.3.2-luna-r1` spec/tag；
-10. **pending**：创建 r1 first selection；无论 pass、fail、invalid 或 recovery-exhausted incomplete，
-    都发布 r1 sanitized V3 report，分别运行 verifier 与 Gate，再更新作品证据。
+10. **已发布负结果**：r1 execution
+    `benchmark-execution:3207d7d4-9e14-40bc-bca0-840897416739` 以 3 attempts / 3 cells 封存：2
+    scored、1 `invalid` / `harness_failure`，2 个 scoring proofs、aggregate `null`；verifier 为 true，
+    Gate `not_evaluated` / exit 2；
+11. **pending**：修复 `invalid_proposal` 遇到 tool error 时被预算 allowlist 漏项升级为
+    `harness_failure` 的分类缺陷并增加回归；不改写 r1 报告，不声称 treatment 结论或后继已完成。
 
 ## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 

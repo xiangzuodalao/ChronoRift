@@ -53,5 +53,6 @@ grounding。引用完整性失败意味着相关 raw manifests 不能进入 cano
 使用独立的 `v0.3.2-luna-r1` campaign/spec/freeze tag/definition 创建新的 first selection。旧 ledger 与
 `v0.3.2-luna-benchmark-freeze` 继续作为不可改写的历史事实保留。
 
-本文不声称 r1 已冻结、已启动、已完成或已发布；这些状态只能由后续提交的 r1 spec、tag、sealed
-ledger 和 canonical report 分别证明。
+r1 后续已用独立身份冻结并发布一份 `invalid` 负结果；它不改变本文记录的旧 selection。r1 只有 3
+cells、aggregate `null`，verifier 通过但 Gate `not_evaluated`。详见
+[r1 evidence workspace](../v0.3.2-luna-r1/README.md)；不得将其解释为 treatment 结论。

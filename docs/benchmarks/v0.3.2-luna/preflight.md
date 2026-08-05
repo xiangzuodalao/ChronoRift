@@ -54,16 +54,23 @@ matching replay、一项 intervention、一次 comparison 与 proposal。两个 
 都是零 tool errors、零无进展违规、零 incorrect confirmation。
 
 004 报告缺少 V2 implementation receipt，强化 verifier 因此只将其 linkage 归为
-`legacy_only`。这些数值仍是有效历史事实，但不能授权 implementation-bound C1 或 freeze；005 尚未运行。
+`legacy_only`。这些数值仍是有效历史事实，但不能授权 implementation-bound C1 或 freeze。
+
+implementation-bound 005 已完成。C0 与 C1 报告分别为
+[canary-c0-ready-005.json](canary-c0-ready-005.json) 和
+[canary-c1-ready-005.json](canary-c1-ready-005.json)，report hash 分别为
+`0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1` 与
+`b28560f66e6ef6c073e9029a993ad3636e8530f2c13decf47e52b7c60e710dfb`。两阶段六个 cells 均为
+`scored`、mechanism correct、零 tool errors、零无进展违规、零 incorrect confirmation；强化 verifier
+对两份报告均返回 `prerequisiteEligibility=hardened`，C1 精确绑定上述 C0 report hash。
 
 ## 尚未完成
 
 - `docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json`：pending；
-- implementation-bound C0/C1-005：pending；
 - `v0.3.2-luna-benchmark-freeze`：pending；
 - 唯一 36-cell first-selection 与 formal execution：pending；
 - V3 sanitized report、results、case bundle、integrity verification 和 Gate：pending。
 
 因此当前可以声称“V3 可靠性边界已实现、真实 Pi 链路已通过 smoke、历史负向与 004 canary 已
-原样保留”，不能声称“hardened canary 已通过”、“V3 formal 已发布”、“Gate 已通过”或
+原样保留、hardened 005 canary 已通过”，不能声称“V3 formal 已发布”、“Gate 已通过”或
 “ChronoRift 已证明优于 generic Agent”。

@@ -12,8 +12,8 @@
 | `corepack pnpm test:live`               | 已通过                       | 真实 Pi Session/Agent Loop 回归                          |
 | C0-001 / C0-002 / C0-003                | 已封存，均 `not_ready`       | 三份 JSON 原样保留                                       |
 | C0/C1-004                               | 历史 `ready` / `legacy_only` | 原报告不改写，但缺少 V2 implementation receipt           |
-| Hardened C0/C1-005                      | **pending**                  | 尚未运行；是 freeze 的必要前置                           |
-| `benchmark-spec.v3.json` / freeze tag   | **pending**                  | hardened canary 前置尚未满足                             |
+| Hardened C0/C1-005                      | **已通过**                   | 均 `ready`；verifier 前置资格为 `hardened`               |
+| `benchmark-spec.v3.json` / freeze tag   | **pending**                  | hardened canary 前置已满足，尚未生成/冻结                |
 | 36-cell formal report / verifier / Gate | **pending**                  | 尚无 Luna treatment 优势结论                             |
 
 ## V3 改变了什么
@@ -49,13 +49,18 @@ receipt；confidence 永远不能决定 `confirmed`，证据不足时必须输�
 | [C0-003](canary-c0-attempt-003.json) | `not_ready`             | evidence-only `invalid_tool_flow`                                |
 | [C0-004](canary-c0-ready-004.json)   | `ready` / `legacy_only` | 三 arm 均 mechanism correct；不能授权 hardened C1                |
 | [C1-004](canary-c1-ready-004.json)   | `ready` / `legacy_only` | 历史 linkage 可重验；不能授权 freeze                             |
+| [C0-005](canary-c0-ready-005.json)   | `ready` / `hardened`    | implementation-bound；三个 arm 均 mechanism correct              |
+| [C1-005](canary-c1-ready-005.json)   | `ready` / `hardened`    | 精确绑定 C0-005 report hash；三个 arm 均 mechanism correct       |
 
 C0 只有在 generic、evidence-only 和 chronorift-full 三个 arm 都满足冻结 readiness 条件时
 才是 `ready`。某些 arm 单独得到 `confirmed` 不能将整个 stage 改写为 ready，也不允许删除
 其他 arm 的失败。004 的 readiness 字段仍是历史事实，但它们没有 V2 implementation receipt；
-强化 verifier 输出 `prerequisiteEligibility=legacy_only`。必须使用新 identity 005 完成
-implementation-bound C0，并由其精确 report hash 与相同 implementation receipt 授权 C1，之后才可
-解锁 V3 freeze；这也不等于 formal Gate 通过。
+强化 verifier 输出 `prerequisiteEligibility=legacy_only`。新 identity 005 已完成
+implementation-bound C0/C1，强化 verifier 对两份报告均输出 `prerequisiteEligibility=hardened`。
+C0 report hash 为 `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`；C1 report hash 为
+`b28560f66e6ef6c073e9029a993ad3636e8530f2c13decf47e52b7c60e710dfb`，并精确绑定该 C0。两阶段
+六个 cells 均为零 tool errors、零无进展违规、零 incorrect confirmation。这已解锁 V3 freeze 的
+canary 前置，但不等于 formal Gate 通过。
 
 ## 文档导航
 

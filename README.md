@@ -14,8 +14,10 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 > 3+3 recovery 已落地；两次 Luna smoke（各 5 次工具调用，30,828 / 30,039 total tokens）和
 > `test:live` 已通过。C0-001/002/003 均为 `not_ready`；历史 C0/C1-004 JSON 的 readiness
 > 字段均为 `ready`，但它们缺少 V2 implementation receipt，强化 verifier 将其前置资格分类为
-> `legacy_only`。它们不会被改写，也不能授权新的 hardened C1 或 freeze。新身份 005、V3
-> machine spec、freeze tag 与 36-cell formal campaign 均尚未执行；
+> `legacy_only`。它们不会被改写，也不能授权新的 hardened C1 或 freeze。新身份 005 的
+> implementation-bound C0/C1 均已 `ready`，verifier 返回 `prerequisiteEligibility=hardened`，且
+> C1 精确绑定已发布 C0 report hash。V3 machine spec、freeze tag 与 36-cell formal campaign
+> 仍尚未执行；
 > 历史 V2 报告与冻结 spec 不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
@@ -150,9 +152,13 @@ finish 后拒绝追加 progress。Harness 按冻结的 baseline/replay/intervent
 均为 `not_ready` 并作为负向工程证据原样保留。历史 C0-004 与 C1-004 报告的 readiness 字段
 均为 `ready`，六个 cells 为零 tool errors、零无进展违规、零 incorrect confirmation；但二者是
 缺少 implementation receipt 的 V1 linkage，强化 verifier 返回 `prerequisiteEligibility=legacy_only`。
-因此正式冻结前置**尚未满足**：必须以新 identity 005 完成绑定精确 Git HEAD 与 runtime source hash
-的 V2 C0，再由同一 implementation receipt 和精确 C0 report hash 授权 C1。005、machine spec、
-freeze tag 和 36-cell formal campaign 均尚未执行。
+新 identity 005 已完成 implementation-bound V2 C0/C1：[C0](docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json)
+与 [C1](docs/benchmarks/v0.3.2-luna/canary-c1-ready-005.json) 均为 `ready`，verifier 的
+`prerequisiteEligibility` 均为 `hardened`，C1 精确绑定 C0 report hash
+`0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。两阶段六个 cells
+均 mechanism correct，并保持零 tool errors、零无进展违规、零 incorrect confirmation；C0 verdict
+为 `confirmed`/`inconclusive`/`confirmed`，C1 三组均为 `inconclusive`。正式冻结的 canary 前置
+现已满足，但 machine spec、freeze tag 和 36-cell formal campaign 仍尚未执行。
 详见 [v0.3.2-luna evidence workspace](docs/benchmarks/v0.3.2-luna/README.md)。
 
 ## 项目结构
@@ -251,22 +257,14 @@ corepack pnpm benchmark:canary:verify -- \
   --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-004.json \
   --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-004.json
 
-# hardened identity 005 尚未运行；先生成绑定当前实现的 V2 spec
-corepack pnpm --silent benchmark:canary:spec -- \
-  --id v0.3.2-luna-canary-005 \
-  > .chronorift/v0.3/canary-plans/luna-005.spec.json
+# hardened 005 已完成；重验 C1 时必须提供它实际绑定的精确 C0 报告
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-005.json \
+  --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
 
-corepack pnpm benchmark:canary -- \
-  --spec .chronorift/v0.3/canary-plans/luna-005.spec.json \
-  --stage c0
-
-# 只有 005 C0 hardened-ready 后才可运行；PATH 必须是精确发布的 C0 报告
-corepack pnpm benchmark:canary -- \
-  --spec .chronorift/v0.3/canary-plans/luna-005.spec.json \
-  --stage c1 \
-  --c0-report PATH_TO_C0_005_REPORT
-
-# 005 C0/C1 都为 hardened-ready 后才生成；精确 JSON 必须与 freeze commit/tag 一起提交
+# canary 前置已满足；精确 V3 JSON 仍待生成、审核并与 freeze commit/tag 一起提交
 corepack pnpm --silent benchmark:spec -- \
   --campaign v0.3.2-luna \
   > docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
@@ -415,11 +413,10 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
   grounded success；r2 又被 32 个底层连接错误主导，不能衡量三组 treatment 或模型诊断效果。
 - V3 已保留 typed provider failure、串行化诊断工具、strict terminal manifest、sealed ledger、
   sanitized scoring proof，并在 verifier 施加冻结 material 与 per-kind budget；这些机制已离线回归，
-  但尚未经 hardened canary 或 36-cell formal 评测。
+  且已通过 hardened 005 canary，但尚未经 36-cell formal 评测。
 - C0-001/002/003 均为 `not_ready` 且已保留；历史 C0/C1-004 的 readiness 字段为 `ready`，但强化
-  verifier 只将其 V1 linkage 归为 `legacy_only`。005 和正式 campaign 仍是 pending，因此目前仍没有
-  Luna 下的 treatment 优势结论。
+  verifier 只将其 V1 linkage 归为 `legacy_only`。005 C0/C1 的前置资格均为 `hardened`；正式
+  campaign 仍是 pending，因此目前仍没有 Luna 下的 treatment 优势结论。
 
-下一步是保留全部历史 canary 证据，以新 identity 005 跑完 implementation-bound C0/C1；只有两阶段
-均为 `hardened` 后才生成并人工复核 V3 spec，将实现与 spec 冻结在不可移动的 tag，再从干净 freeze
-checkout 启动唯一 36-cell execution。真实 Godot 项目接入继续作为下一条独立垂直切片。
+下一步是生成并人工复核 V3 spec，将实现、005 canary 与 spec 冻结在不可移动的 tag，再从干净
+freeze checkout 启动唯一 36-cell execution。真实 Godot 项目接入继续作为下一条独立垂直切片。

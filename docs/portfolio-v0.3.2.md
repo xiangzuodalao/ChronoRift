@@ -36,6 +36,10 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
   一次 comparison 与 proposal。
 - 004 C0/C1 共六个 cells，全部为零 tool errors、零无进展违规、零 incorrect confirmation；但两份
   V1 报告缺少 implementation receipt，强化 verifier 只将其前置资格归为 `legacy_only`。
+- implementation-bound 005 C0/C1 共六个 cells 均为 `scored`、mechanism correct、零 tool errors、
+  零无进展违规、零 incorrect confirmation；两份报告均通过强化 verifier 并取得 `hardened` 前置资格。
+  C1 精确绑定 C0 report hash
+  `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。
 
 完整证据、hash 和复现顺序见
 [v0.3.2-luna evidence workspace](benchmarks/v0.3.2-luna/README.md)。
@@ -53,11 +57,11 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 > 独立设计并实现基于 Pi SDK 的 Godot 运行时诊断 Harness，通过 Contract、checkpoint/replay、
 > 单变量实验、因果证据与 Harness Gate 约束 LLM 结论；建立 4 类 runtime-Bug、3-arm 盲化
 > benchmark 与 append-only 证据链；在 GPT-5.6 Luna 的历史 C0/C1 六个 canary cells 中实现零工具
-> 错误与零错误确认，并进一步加入 implementation-bound canary 与 raw-to-proof verifier。hardened 005
-> 和 36-cell 正式评测待执行。
+> 错误与零错误确认，并进一步通过 implementation-bound hardened 005 canary 与 raw-to-proof
+> verifier；36-cell 正式评测待执行。
 
 ## 边界
 
-Hardened 005 canary、36-cell Luna formal campaign 和产品 Gate 仍是 **pending**。当前数据证明工程
-链路和历史 canary 运行事实，不证明 freeze 前置已满足，也不证明 ChronoRift 相对 generic Agent 已有
-统计优势。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用。
+Hardened 005 canary 已完成，因此 freeze 的 canary 前置已满足；36-cell Luna formal campaign 和产品
+Gate 仍是 **pending**。当前数据证明工程链路与 canary 运行事实，不证明 ChronoRift 相对 generic
+Agent 已有统计优势。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用。

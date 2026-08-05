@@ -1,6 +1,6 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3.2-luna Benchmark V3（hardened canary pending）
+## 当前里程碑：v0.3.2-luna Benchmark V3（hardened canary ready）
 
 v0.3.1-r2 已完成并原样发布负结果。当前 Pi 路径使用
 `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级
@@ -29,6 +29,9 @@ total tokens 分别为 30,828 与 30,039；`corepack pnpm test:live` 通过。C0
 C0-003 均为 `not_ready` 并已原样保留。历史 C0/C1-004 JSON 的 readiness 字段均为 `ready`，
 六个 cells 均为零 tool errors、零无进展违规、零 incorrect confirmation；但它们缺少 V2
 implementation receipt，强化 verifier 将其前置资格归为 `legacy_only`，不能授权 hardened C1 或 freeze。
+新 identity 005 的 implementation-bound C0/C1 均已 `ready`，verifier 返回
+`prerequisiteEligibility=hardened`；C1 精确绑定已发布 C0 report hash。两阶段六个 cells 均 mechanism
+correct，并且为零 tool errors、零无进展违规、零 incorrect confirmation。
 
 ### v0.3.2 交付顺序
 
@@ -41,9 +44,11 @@ implementation receipt，强化 verifier 将其前置资格归为 `legacy_only`�
 5. **历史事实**：C1-004 readiness 为 ready，report hash 为
    `9526f486d9dea9619a748a867757861c588c77e90e58f43c4327dd0820195e3b`；004 linkage 仅
    `legacy_only`，两份 JSON 保持原字节；
-6. **pending**：以新 identity 005 运行 implementation-bound V2 C0，并仅由其精确 report hash 与
-   implementation receipt 授权同 identity C1；
-7. **pending**：005 C0/C1 均为 `hardened` 后生成 `benchmark-spec.v3.json`，审核并与实现一起冻结在
+6. **已完成**：identity 005 的 implementation-bound V2 C0/C1 均为 `ready` 且
+   `prerequisiteEligibility=hardened`；C0 report hash 为
+   `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`，C1 report hash 为
+   `b28560f66e6ef6c073e9029a993ad3636e8530f2c13decf47e52b7c60e710dfb`；C1 精确绑定该 C0；
+7. **pending**：生成 `benchmark-spec.v3.json`，审核并与实现及 005 canary 一起冻结在
    `v0.3.2-luna-benchmark-freeze`；
 8. **pending**：从干净 freeze checkout 启动唯一 36-cell first-selection，按 3+3 规则恢复或封存；
 9. **pending**：无论 pass、fail、invalid 或 recovery-exhausted incomplete，都发布 sanitized V3

@@ -1,7 +1,8 @@
 # ChronoRift v0.3.2-luna Benchmark V3 Protocol
 
 本协议定义 v0.3.2-luna 的 canary 和 formal 评测语义。历史 C0/C1-004 的 readiness 字段为
-ready，但强化 verifier 只把其 V1 linkage 归为 `legacy_only`；implementation-bound 005 尚未运行。
+ready，但强化 verifier 只把其 V1 linkage 归为 `legacy_only`；implementation-bound C0/C1-005
+均已 `ready`，前置资格为 `hardened`。
 本文仍是待与 machine spec 一起冻结的协议，不是已完成的 formal 结果。
 
 ## 1. 历史不可改写
@@ -79,8 +80,11 @@ attempt，不 resume、不 retry。C1 必须引用同 canary identity 下 ready 
 C0-001/002/003 均为 `not_ready` 并必须保留。C0-004 与引用其 report hash 的 C1-004 报告仍按
 原字节验证为 `ready`，但缺少 V2 implementation receipt，因此前置资格仅为 `legacy_only`。
 新 identity 005 必须绑定精确 Git HEAD、runtime source hash/count 与 clean implementation scope；
-只有 005 C0 ready 后，精确 C0 report hash 和相同 receipt 才能授权 C1。005 两阶段均 hardened-ready
-之前，不得生成 freeze spec 或 formal selection。
+只有 005 C0 ready 后，精确 C0 report hash 和相同 receipt 才能授权 C1。该前置已完成：
+[C0-005](canary-c0-ready-005.json) 与 [C1-005](canary-c1-ready-005.json) 均为 `ready`，verifier 均返回
+`prerequisiteEligibility=hardened`；C1 精确绑定 C0 report hash
+`0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。formal spec、freeze 与
+selection 仍未执行。
 
 ## 7. Formal Gate 与发布
 

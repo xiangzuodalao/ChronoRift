@@ -3,7 +3,8 @@
 > 状态：目标架构（Target Architecture）；决策日期：2026-08-04；当前实现：ChronoRift v0.3.2
 > 开发中的受控 Godot 诊断/评测垂直切片。历史 V2 正式报告完整性有效、Gate 失败；
 > V3 可靠性路径已实现；历史 C0/C1-004 报告虽各自为 ready，但强化 verifier 将其 V1
-> linkage 归为 `legacy_only`。implementation-bound 的 005 canary 与新 formal campaign 尚未执行。
+> linkage 归为 `legacy_only`。implementation-bound 的 C0/C1-005 均已 hardened-ready；新 formal
+> campaign 尚未执行。
 > 本文同时定义尚未实现的完整
 > Godot、修复与验证能力。
 >
@@ -951,20 +952,20 @@ domain + gamebranch + agent-protocol ← GameBranch bridge
 canonical hash 与 verifier 继续按原字节重验。当前 v0.3.2 campaign 新增独立的 Benchmark V3
 schema/repository/runner；它不静默迁移、替换或覆盖任何 V2 artifact。
 
-| 目标能力     | v0.3 当前锚点                                     | 已实现状态                                                                                                                                                            | 下一步                                      |
-| ------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Contract     | `FrozenContractV2`、content-addressed ID          | 四个 Fixture 各一个冻结 temporal property Contract                                                                                                                    | 从真实项目提取最小 Contract bundle          |
-| Runtime port | `GameEnvironmentPort`、Godot Protocol v2          | 独立 Godot 4.7.1 进程、能力握手、realized controls                                                                                                                    | 仓库外真实项目验证 adapter API              |
-| Checkpoint   | certificate + participant/state-provider registry | Fixture L2 语义恢复；entity Fixture 额外捕获 pending effects/sequence                                                                                                 | restore divergence characterization         |
-| Replay       | sealed `V03ExecutionLog` + semantic digest        | confirmed 要求一次 matching strict replay                                                                                                                             | 重复 replay 与 Determinism Certificate      |
-| GameBranch   | immutable v2 BranchSpec + intervention            | baseline、两候选目录、最多两个单变量分支、canonical comparison                                                                                                        | matched pair 边界搜索                       |
-| Telemetry    | v2 typed event ledger                             | input/signal/delivery/property/lifecycle/spatial/pending-effect + health/clocks                                                                                       | async/resource 与更细 input phase           |
-| Evidence     | `EvidenceCapsuleV2`                               | Contract window 加递归 causal ancestors，保留 expected/actual 与 loss flag                                                                                            | 通用 causal slice，不先实现完整 World Graph |
-| Agent        | `FailureBriefV1` + 三组盲化 Pi tool flow          | byte-identical prompt；neutral source view；content-addressed receipt 由 Session-local `@rN` handle 引用；Pi 工具强制 sequential                                      | egress audit 与 prompt-injection suite      |
-| Verdict      | `DiagnosisProposalV3` → v0.3 Conclusion Gate      | 重验 receipt/candidate/replay/compare/lineage/mechanism；confidence 无裁决权                                                                                          | 更一般机制策略                              |
-| Benchmark    | V2 历史路径 + `BenchmarkSuiteSpecV3`              | V3 typed provider cause、结构化单调 progress、3+3 recovery、严格 terminal manifest、细分预算与 prose-free scoring proof 已实现；004 为历史 `legacy_only`，005 pending | hardened 005 → V3 spec → freeze → formal    |
-| Artifact     | run repository + append-only benchmark ledger     | strict write-once path、attempt hash chain、终态恢复、raw-to-proof seal 与 sanitized publisher                                                                        | 外部签名或 CI attestation                   |
-| Patch        | 无                                                | 未实现                                                                                                                                                                | 证据稳定后再引入 worktree/sandbox           |
+| 目标能力     | v0.3 当前锚点                                     | 已实现状态                                                                                                                                                                          | 下一步                                      |
+| ------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Contract     | `FrozenContractV2`、content-addressed ID          | 四个 Fixture 各一个冻结 temporal property Contract                                                                                                                                  | 从真实项目提取最小 Contract bundle          |
+| Runtime port | `GameEnvironmentPort`、Godot Protocol v2          | 独立 Godot 4.7.1 进程、能力握手、realized controls                                                                                                                                  | 仓库外真实项目验证 adapter API              |
+| Checkpoint   | certificate + participant/state-provider registry | Fixture L2 语义恢复；entity Fixture 额外捕获 pending effects/sequence                                                                                                               | restore divergence characterization         |
+| Replay       | sealed `V03ExecutionLog` + semantic digest        | confirmed 要求一次 matching strict replay                                                                                                                                           | 重复 replay 与 Determinism Certificate      |
+| GameBranch   | immutable v2 BranchSpec + intervention            | baseline、两候选目录、最多两个单变量分支、canonical comparison                                                                                                                      | matched pair 边界搜索                       |
+| Telemetry    | v2 typed event ledger                             | input/signal/delivery/property/lifecycle/spatial/pending-effect + health/clocks                                                                                                     | async/resource 与更细 input phase           |
+| Evidence     | `EvidenceCapsuleV2`                               | Contract window 加递归 causal ancestors，保留 expected/actual 与 loss flag                                                                                                          | 通用 causal slice，不先实现完整 World Graph |
+| Agent        | `FailureBriefV1` + 三组盲化 Pi tool flow          | byte-identical prompt；neutral source view；content-addressed receipt 由 Session-local `@rN` handle 引用；Pi 工具强制 sequential                                                    | egress audit 与 prompt-injection suite      |
+| Verdict      | `DiagnosisProposalV3` → v0.3 Conclusion Gate      | 重验 receipt/candidate/replay/compare/lineage/mechanism；confidence 无裁决权                                                                                                        | 更一般机制策略                              |
+| Benchmark    | V2 历史路径 + `BenchmarkSuiteSpecV3`              | V3 typed provider cause、结构化单调 progress、3+3 recovery、严格 terminal manifest、细分预算与 prose-free scoring proof 已实现；004 为历史 `legacy_only`，005 C0/C1 均为 `hardened` | V3 spec → freeze → formal                   |
+| Artifact     | run repository + append-only benchmark ledger     | strict write-once path、attempt hash chain、终态恢复、raw-to-proof seal 与 sanitized publisher                                                                                      | 外部签名或 CI attestation                   |
+| Patch        | 无                                                | 未实现                                                                                                                                                                              | 证据稳定后再引入 worktree/sandbox           |
 
 v0.3 仍有以下明确限制：
 
@@ -981,8 +982,8 @@ v0.3 仍有以下明确限制：
 9. 三次 repetition 没有 provider sampling seed；四个 Fixture 又参与实现校准，不能声称统计显著性或
    跨项目泛化。v0.3.1-r2 虽记录 2,527,181 tokens 与 146 次工具调用，但 32/36 cells 被底层连接错误
    主导，另外 4 个为工具流违规或进度超时，Gate 失败。V3 修复了错误归类与调度边界，
-   当前已完成两次 Luna smoke，三份 `not_ready` C0 与一组 ready C0/C1 canary，但尚无 formal report，
-   仍不能评价 treatment 差异。
+   当前已完成两次 Luna smoke，三份 `not_ready` C0、历史 `legacy_only` 004 以及 implementation-bound
+   hardened-ready 005 C0/C1，但尚无 formal report，仍不能评价 treatment 差异。
 10. 没有自动修复、worktree、Verification Lattice、视觉、多 Agent、容器或复杂 UI。
 
 这些限制是目标架构与可执行 v0.3 之间的 backlog，不应描述成已经完成的能力。
@@ -1135,8 +1136,11 @@ attempts 与唯一 3-attempt recovery cycle 内重试。诊断进展后的 provi
 `confirmed`，total tokens 为 30,828 / 30,039，`test:live` 通过。C0-001、C0-002 与 C0-003
 均为 `not_ready` 并已原样保留；历史 C0/C1-004 六个 cells 都是零 tool errors、零无进展违规、
 零 incorrect confirmation，但其 V1 linkage 在强化 verifier 下仅为 `legacy_only`，不能授权新
-C1 或 freeze。implementation-bound 005、machine spec、freeze tag 与正式 36-cell execution
-仍是 pending。在 report/Gate 实际产生之前，不得声称 Luna 下的 game-native treatment 优势已被验证。
+C1 或 freeze。implementation-bound 005 C0/C1 已完成：两阶段均 `ready`，verifier 的
+`prerequisiteEligibility` 均为 `hardened`，C1 精确绑定 C0 report hash；六个 cells 均 mechanism correct，
+且零 tool errors、零无进展违规、零 incorrect confirmation。machine spec、freeze tag 与正式
+36-cell execution 仍是 pending。在 report/Gate 实际产生之前，不得声称 Luna 下的 game-native
+treatment 优势已被验证。
 
 Bug 集至少覆盖 frame/timer、Signal 生命周期和顺序、Node 复用与 scene reload、
 physics/contact 边界、RNG、异步资源、input sampling 和 save/restore。

@@ -1,6 +1,6 @@
 # v0.3.2-luna Reproduction
 
-本文区分已完成的真实链路/C0/C1 前置和尚未执行的 freeze/formal 步骤。
+本文区分已完成的真实链路与 hardened C0/C1 前置，以及尚未执行的 freeze/formal 步骤。
 
 ## 1. 环境与离线检查
 
@@ -85,7 +85,7 @@ chronorift-full 的 mechanism 都正确、verdict 都为 `inconclusive`；三组
 tokens 为 92,310/49,464/111,558，全部为零 tool errors、零无进展违规、零 incorrect
 confirmation。full 完成 matching replay、一项 intervention、一次 comparison 与 proposal。
 
-## 5. Hardened 005 canary（pending）
+## 5. Hardened 005 canary（已完成）
 
 005 必须在干净 implementation checkout 上生成 V2 spec；不得复制 004 spec 或修改 receipt。C1 只能由
 同一 identity 下实际发布的 ready C0 报告授权：
@@ -106,9 +106,13 @@ corepack pnpm benchmark:canary -- \
   --c0-report PATH_TO_PUBLISHED_C0_005_REPORT
 ```
 
-本节目前只描述待执行顺序，不声称 005 已运行。
+实际发布的 [C0-005](canary-c0-ready-005.json) 与 [C1-005](canary-c1-ready-005.json) 均为
+`ready`，强化 verifier 对两份报告均返回 `prerequisiteEligibility=hardened`。C0 report hash 为
+`0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`；C1 report hash 为
+`b28560f66e6ef6c073e9029a993ad3636e8530f2c13decf47e52b7c60e710dfb`，并精确绑定该 C0 hash。六个
+cells 均为 `scored`、mechanism correct、零 tool errors、零无进展违规、零 incorrect confirmation。
 
-## 6. V3 spec 与 freeze（pending，hardened canary 前置尚未满足）
+## 6. V3 spec 与 freeze（pending，hardened canary 前置已满足）
 
 ```bash
 corepack pnpm --silent benchmark:spec -- \

@@ -1,6 +1,14 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3.1-r2 provider recovery（实现中）
+## 当前里程碑：GPT-5.6 Luna provider migration（实现中）
+
+v0.3.1-r2 已完成并原样发布负结果。当前 real-Pi smoke、`test:live` 与探索诊断迁移到 Pi
+`openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级 OAuth store。
+迁移只改变当前 canary/探索路径；v0.3、v0.3.1 与 v0.3.1-r2 的冻结 spec、ledger 和报告仍保留原
+Volcengine/GLM-5.2 事实。新正式矩阵必须先修复已知工具串行与基础设施分类问题，通过小规模 canary，
+再使用新的 campaign identity、freeze tag、order seed 和发布目录。
+
+## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 
 v0.3.1 不改写 v0.3 的正式负结果，也不改变 Fixture、arm、prompt、预算、模型或 Gate。它新增一个不接触
 正式 Fixture 的真实 Pi smoke，要求持久化 Session、非零 token、至少一次工具调用与 Harness confirmed；

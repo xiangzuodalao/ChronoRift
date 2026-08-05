@@ -71,9 +71,9 @@ const result = (tokens: number, toolCalls = 5): PiDiagnosisRunResult => ({
   piSession: {
     sessionId: "session:smoke",
     sessionFile: "/temporary/pi-session.jsonl",
-    provider: "volcengine-coding-plan",
-    model: "glm-5.2",
-    thinkingLevel: "medium",
+    provider: "openai-codex",
+    model: "gpt-5.6-luna",
+    thinkingLevel: "max",
     stats: {
       toolCalls,
       tokens: {
@@ -97,6 +97,9 @@ describe("Pi provider smoke summary", () => {
     );
     expect(summary).toMatchObject({
       ok: true,
+      provider: "openai-codex",
+      model: "gpt-5.6-luna",
+      thinkingLevel: "max",
       sessionPersisted: true,
       verdict: "confirmed",
       toolCalls: 5,

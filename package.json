@@ -33,6 +33,7 @@
     "benchmark:gate": "tsx apps/cli/src/main.ts benchmark-gate",
     "replay": "tsx apps/cli/src/main.ts replay",
     "models": "tsx apps/cli/src/main.ts models",
+    "pi": "node packages/pi-harness/node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
     "auth:volcengine": "tsx apps/cli/src/main.ts auth-volcengine",
     "pi:smoke": "tsx apps/cli/src/main.ts pi-smoke",
     "godot:doctor": "tsx apps/cli/src/main.ts godot-doctor",

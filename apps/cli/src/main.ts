@@ -34,6 +34,11 @@ import {
 } from "@chronorift/pi-harness";
 
 import { persistV01PiDiagnosis } from "./diagnosis.js";
+import {
+  DEFAULT_PI_MODEL,
+  DEFAULT_PI_PROVIDER,
+  DEFAULT_PI_THINKING_LEVEL,
+} from "./pi-defaults.js";
 import { runPiSmoke } from "./pi-smoke.js";
 import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
 import { ChronoRiftV03AgentGameApi } from "./v03-agent-game-api.js";
@@ -329,6 +334,7 @@ async function runDiagnosisCommand(
     runDir: context.runDirectory,
     provider,
     model,
+    thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
     initialCapsuleId: context.evidenceCapsule.capsuleId,
     game,
   });
@@ -428,6 +434,7 @@ async function runV03DiagnosisCommand(
           ...common,
           provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
           model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
+          thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
         });
   const output = await v03DiagnosisOutput(context, result);
   if (hasFlag(args, "json")) printJson(output);
@@ -549,8 +556,9 @@ async function piSmokeCommand(args: Arguments, cwd: string): Promise<void> {
   printJson(
     await runPiSmoke({
       cwd,
-      provider: "volcengine-coding-plan",
-      model: "glm-5.2",
+      provider: DEFAULT_PI_PROVIDER,
+      model: DEFAULT_PI_MODEL,
+      thinkingLevel: DEFAULT_PI_THINKING_LEVEL,
     }),
   );
 }
@@ -729,10 +737,10 @@ function printHelp(): void {
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
   );
   process.stdout.write(
-    `  pnpm diagnose -- --provider PROVIDER --model MODEL [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
+    `  pnpm diagnose -- --provider PROVIDER --model MODEL [--thinking LEVEL] [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
   );
   process.stdout.write(`  pnpm models [-- --provider PROVIDER]\n`);
-  process.stdout.write(`  pnpm auth:volcengine\n`);
+  process.stdout.write(`  pnpm pi [PI_ARGS]\n`);
   process.stdout.write(`  pnpm pi:smoke\n`);
   process.stdout.write(`  pnpm godot:install\n`);
   process.stdout.write(`  pnpm godot:doctor [-- --godot-bin PATH]\n`);
@@ -744,7 +752,7 @@ function printHelp(): void {
     `  pnpm demo:v03 -- --fixture FIXTURE [--godot-bin PATH] [--json]\n`,
   );
   process.stdout.write(
-    `  pnpm diagnose:v03 -- --fixture FIXTURE --provider PROVIDER --model MODEL [--json]\n`,
+    `  pnpm diagnose:v03 -- --fixture FIXTURE --provider PROVIDER --model MODEL [--thinking LEVEL] [--json]\n`,
   );
   process.stdout.write(
     `  pnpm benchmark [-- --repetitions N --seed SEED --report PATH]\n`,

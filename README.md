@@ -8,6 +8,8 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 > manifest 记录底层 `Connection error`，另外 2 个为 `invalid_tool_flow`、2 个为
 > `progress_timeout`。因此该 execution 验收了 cache-aware ledger、fail-closed 封存与负结果发布，
 > 不能证明 GLM-5.2 的诊断质量，也不能证明 ChronoRift 相对 generic arm 的优势。
+> 当前交互诊断、real-Pi smoke 与 `test:live` 已迁移到
+> `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`；历史报告与冻结 spec 不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)。
@@ -159,25 +161,36 @@ corepack pnpm test:godot
 
 系统没有全局 `pnpm` 时始终使用 `corepack pnpm <command>`。
 
-## 使用火山 Coding Plan / GLM-5.2
+## 使用 ChatGPT OAuth / GPT-5.6 Luna Max
 
 Pi 依赖固定为 `@earendil-works/pi-coding-agent@0.83.0` 与
 `@earendil-works/pi-ai@0.83.0`，不修改、fork 或 vendor。凭据只写入 Pi 用户级 credential store，
-不会复制进仓库、Session Capsule 或 benchmark report。
+不会复制进仓库、Session Capsule 或 benchmark report。该版本 Pi 的 `openai-codex` provider 使用
+ChatGPT Plus/Pro OAuth；其目录为 Luna 声明 272,000 context、128,000 max output，并把 `max` 映射为
+真实的 `max` reasoning effort。
 
 ```bash
-read -rsp 'Volcengine Coding Plan API key: ' ARK_CODING_PLAN_API_KEY && echo
-export ARK_CODING_PLAN_API_KEY
-corepack pnpm auth:volcengine
-unset ARK_CODING_PLAN_API_KEY
+# 首次登录：启动 Pi 后执行 /login openai-codex，并在浏览器完成 ChatGPT 登录
+corepack pnpm pi \
+  --no-session \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max
 
-corepack pnpm models -- --provider volcengine-coding-plan
+# 登录后验证用户级凭据可解析的模型目录
+corepack pnpm models -- --provider openai-codex
 
 corepack pnpm diagnose:v03 -- \
   --fixture physics-tunneling \
-  --provider volcengine-coding-plan \
-  --model glm-5.2
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max
 ```
+
+Pi OAuth 凭据保存在 `~/.pi/agent/auth.json`。不要复制或提交该文件。`corepack pnpm pi:smoke` 与
+`corepack pnpm test:live` 默认使用上述 Luna Max 组合；diagnose 命令仍可通过参数或
+`CHRONORIFT_PI_PROVIDER`、`CHRONORIFT_PI_MODEL` 显式选择 provider/model。此前
+Volcengine/GLM-5.2 只保留为历史 campaign 事实和兼容代码，不再是当前运行默认值。
 
 真实 provider 的探索运行与冻结正式运行是两个不同入口。`benchmark:explore` 允许调整参数，仅用于
 调试基础设施；`benchmark:formal` 只接受冻结 spec、可选的同 execution 恢复 ID 与 Godot 二进制路径，
@@ -188,8 +201,8 @@ corepack pnpm diagnose:v03 -- \
 corepack pnpm pi:smoke
 
 corepack pnpm benchmark:explore -- \
-  --provider volcengine-coding-plan \
-  --model glm-5.2 \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
   --thinking max
 
 # 维护者在最终实现通过检查后生成机器 spec；精确 JSON 必须与 freeze commit/tag 一起提交
@@ -220,7 +233,7 @@ corepack pnpm benchmark:gate -- \
   --report docs/benchmarks/v0.3/benchmark-report.v2.json
 ```
 
-`pi:smoke` 使用 v0.1 Mock switch-door 与真实 Pi Session/Agent Loop，但不接触四个正式 Fixture；只有
+`pi:smoke` 使用 Luna Max、v0.1 Mock switch-door 与真实 Pi Session/Agent Loop，但不接触四个正式 Fixture；只有
 Session 文件已持久化、token 和 tool call 均非零且 Harness verdict 为 `confirmed` 才返回成功。输出仅含
 provider/model、thinking、用量与 verdict，不含 credential、prompt、Session ID 或本地路径。v0.3.1
 正式 campaign 的完整命令、冻结顺序和发布边界见
@@ -249,6 +262,7 @@ report hash；有效的负面或 incomplete 报告仍是完整性有效。`bench
 | `corepack pnpm test:godot`        | 四 Fixture v0.3 + v0.2 兼容集成测试    |
 | `corepack pnpm demo:v03`          | 单 Fixture 离线完整诊断                |
 | `corepack pnpm diagnose:v03`      | 单 Fixture 真实 provider 诊断          |
+| `corepack pnpm pi`                | 启动仓库所依赖的 Pi CLI                |
 | `corepack pnpm pi:smoke`          | 正式 Fixture 外的真实 Pi 链路 smoke    |
 | `corepack pnpm benchmark`         | deterministic fake-model smoke         |
 | `corepack pnpm benchmark:explore` | 可配置的真实 provider 探索运行         |

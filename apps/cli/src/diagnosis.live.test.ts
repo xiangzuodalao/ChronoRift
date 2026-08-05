@@ -7,11 +7,13 @@ import { afterEach, expect, test } from "vitest";
 import { runPiDiagnosis } from "@chronorift/pi-harness";
 
 import { persistV01PiDiagnosis } from "./diagnosis.js";
+import {
+  DEFAULT_PI_MODEL,
+  DEFAULT_PI_PROVIDER,
+  DEFAULT_PI_THINKING_LEVEL,
+} from "./pi-defaults.js";
 import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
 import { createV01MockRun } from "./v01-runtime.js";
-
-const DEFAULT_PI_PROVIDER = "volcengine-coding-plan";
-const DEFAULT_PI_MODEL = "glm-5.2";
 
 function environmentOrDefault(name: string, fallback: string): string {
   return process.env[name]?.trim() || fallback;
@@ -46,7 +48,7 @@ test("real Pi proposes a reference-valid switch-door diagnosis", async () => {
     runDir: context.runDirectory,
     provider,
     model,
-    thinkingLevel: "medium",
+    thinkingLevel: DEFAULT_PI_THINKING_LEVEL,
     initialCapsuleId: context.evidenceCapsule.capsuleId,
     game,
   });

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   runPiDiagnosis,
   type PiDiagnosisRunResult,
+  type PiThinkingLevel,
 } from "@chronorift/pi-harness";
 
 import {
@@ -71,6 +72,7 @@ export interface RunPiSmokeOptions {
   readonly cwd: string;
   readonly provider: string;
   readonly model: string;
+  readonly thinkingLevel: PiThinkingLevel;
 }
 
 export async function runPiSmoke(
@@ -92,7 +94,7 @@ export async function runPiSmoke(
       runDir: context.runDirectory,
       provider: options.provider,
       model: options.model,
-      thinkingLevel: "medium",
+      thinkingLevel: options.thinkingLevel,
       initialCapsuleId: context.evidenceCapsule.capsuleId,
       game,
     });

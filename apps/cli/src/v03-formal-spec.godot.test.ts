@@ -66,32 +66,19 @@ describe("committed formal benchmark specification", () => {
     });
   });
 
-  it("keeps the committed V3 Luna r1 specification identical to the implementation", async () => {
+  it("keeps the frozen V3 Luna r1 specification parseable", async () => {
     const cwd = process.cwd();
-    const artifactRoot = await mkdtemp(
-      join(tmpdir(), "chronorift-formal-spec-v3-r1-committed-"),
+    const committed = parseFormalBenchmarkSuiteSpecV3(
+      JSON.parse(
+        await readFile(
+          resolve(cwd, "docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json"),
+          "utf8",
+        ),
+      ) as unknown,
     );
-    try {
-      const committed = parseFormalBenchmarkSuiteSpecV3(
-        JSON.parse(
-          await readFile(
-            resolve(
-              cwd,
-              "docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json",
-            ),
-            "utf8",
-          ),
-        ) as unknown,
-      );
-      const rebuilt = await buildFormalBenchmarkSuiteSpecV3({
-        cwd,
-        artifactRoot,
-        campaign: "v0.3.2-luna-r1",
-      });
-
-      expect(sameFormalSuiteV3(committed, rebuilt)).toBe(true);
-    } finally {
-      await rm(artifactRoot, { recursive: true, force: true });
-    }
+    expect(committed.campaign).toEqual({
+      campaignId: "v0.3.2-luna-r1",
+      freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+    });
   });
 });

@@ -1731,6 +1731,98 @@ describe("Benchmark V3 semantics", () => {
     );
   });
 
+  it("accepts exactly one failed proposal submission as invalid_proposal evidence", () => {
+    const spec = suite();
+    const original = completedRawAttempt(spec).attempt;
+    const failedProgress = {
+      ...original.progress,
+      tools: {
+        started: 1,
+        completed: 1,
+        failed: 1,
+        semanticRevision: 0,
+      },
+      proposalSubmitted: false,
+    };
+    const { attemptHash: _attemptHash, ...oldBasis } = original;
+    void _attemptHash;
+    const basis = {
+      ...oldBasis,
+      progress: failedProgress,
+      outcome: {
+        status: "diagnostic_failure" as const,
+        code: "invalid_proposal" as const,
+        message: "Terminal diagnostic failure",
+        rawManifestHash: hash("4"),
+      },
+    };
+    const attempt = BenchmarkCellAttemptV3Schema.parse({
+      ...basis,
+      attemptHash: benchmarkAttemptHashV3(basis),
+    });
+
+    expect(assertBenchmarkAttemptBudgetsV3(spec, attempt)).toEqual([
+      "tool_errors",
+    ]);
+  });
+
+  it.each([
+    {
+      name: "more than one failed tool",
+      tools: {
+        started: 2,
+        completed: 2,
+        failed: 2,
+        semanticRevision: 0,
+      },
+      game: { baselineExecutions: 1, diagnosticExecutions: 0 },
+      metrics: { toolCalls: 2, gameExecutions: 1 },
+    },
+    {
+      name: "a failed tool plus a game-execution violation",
+      tools: {
+        started: 1,
+        completed: 1,
+        failed: 1,
+        semanticRevision: 0,
+      },
+      game: { baselineExecutions: 1, diagnosticExecutions: 4 },
+      metrics: { toolCalls: 1, gameExecutions: 5 },
+    },
+  ])("rejects invalid_proposal with $name", ({ tools, game, metrics }) => {
+    const spec = suite();
+    const original = completedRawAttempt(spec).attempt;
+    const { attemptHash: _attemptHash, ...oldBasis } = original;
+    void _attemptHash;
+    const basis = {
+      ...oldBasis,
+      progress: {
+        ...original.progress,
+        tools,
+        game,
+        proposalSubmitted: false,
+      },
+      metrics: {
+        ...original.metrics,
+        ...metrics,
+      },
+      outcome: {
+        status: "diagnostic_failure" as const,
+        code: "invalid_proposal" as const,
+        message: "Terminal diagnostic failure",
+        rawManifestHash: hash("4"),
+      },
+    };
+    const attempt = BenchmarkCellAttemptV3Schema.parse({
+      ...basis,
+      attemptHash: benchmarkAttemptHashV3(basis),
+    });
+
+    expect(() => assertBenchmarkAttemptBudgetsV3(spec, attempt)).toThrow(
+      "budget violation contradicts diagnostic terminal code",
+    );
+  });
+
   it("rejects a rehashed report whose mechanism evidence was removed", () => {
     const spec = suite();
     const built = report(

@@ -421,6 +421,70 @@ const success = (
   };
 };
 
+const invalidProposalFailure = (
+  executionId: BenchmarkExecutionId,
+  cell: FormalBenchmarkCellV3,
+  ordinal: number,
+): Extract<
+  FormalBenchmarkAttemptResultV3,
+  { readonly status: "diagnostic_failure" }
+> => {
+  const completed = success(executionId, cell, ordinal);
+  const completedManifest = BenchmarkRawAttemptManifestV3Schema.parse(
+    completed.rawManifest,
+  );
+  if (completedManifest.terminalStatus !== "completed") {
+    throw new Error("Expected a completed raw manifest");
+  }
+  const {
+    terminalStatus: _terminalStatus,
+    proposal: _proposal,
+    accessReceipts: _accessReceipts,
+    verdict: _verdict,
+    progress: _progress,
+    metrics: _metrics,
+    ...identity
+  } = completedManifest;
+  void [
+    _terminalStatus,
+    _proposal,
+    _accessReceipts,
+    _verdict,
+    _progress,
+    _metrics,
+  ];
+  const progress = {
+    ...completed.progress,
+    tools: {
+      started: 1,
+      completed: 1,
+      failed: 1,
+      semanticRevision: 0,
+    },
+    proposalSubmitted: false,
+  };
+  const rawManifest = BenchmarkRawAttemptManifestV3Schema.parse({
+    ...identity,
+    terminalStatus: "diagnostic_failure",
+    diagnosticCode: "invalid_proposal",
+    progress,
+    metrics: completed.metrics,
+    error: {
+      kind: "harness",
+      code: "INVALID_DIAGNOSIS",
+      messageHash: hash,
+    },
+  });
+  return {
+    status: "diagnostic_failure",
+    code: "invalid_proposal",
+    message: "Proposal evidence event IDs are ungrounded",
+    progress,
+    metrics: completed.metrics,
+    rawManifest: rawManifest as unknown as JsonValue,
+  };
+};
+
 const transientProviderFailure: BenchmarkInfrastructureFailureV3 = {
   kind: "provider",
   provider: {
@@ -974,6 +1038,72 @@ describe("executeFormalBenchmarkV3", () => {
       score: null,
     });
   });
+
+  it("seals an invalid proposal as a diagnostic failure with a re-readable proof", async () => {
+    const artifactRepository = await repository();
+    const executionId = asBenchmarkExecutionId(
+      "benchmark-execution:v3-invalid-proposal",
+    );
+    const target = benchmarkCellOrderV3(suite)[0]!;
+    let targetCalls = 0;
+    const runAttempt: Parameters<
+      typeof executeFormalBenchmarkV3
+    >[0]["runAttempt"] = async (cell, ordinal) => {
+      if (cell.cellId === target.cellId) {
+        targetCalls += 1;
+        return invalidProposalFailure(executionId, cell, ordinal);
+      }
+      return success(executionId, cell, ordinal);
+    };
+
+    const result = await executeFormalBenchmarkV3(
+      executionOptions(artifactRepository, executionId, clock(), runAttempt),
+    );
+    const targetCell = result.report.cells.find(
+      (cell) => cell.cellId === target.cellId,
+    );
+    const targetAttempt = result.report.attempts.find(
+      (attempt) => attempt.cellId === target.cellId,
+    );
+    const targetProof = result.report.scoringProofs.find(
+      (proof) => proof.cellId === target.cellId,
+    );
+
+    expect(targetCalls).toBe(1);
+    expect(result.report.status).toBe("complete");
+    expect(targetCell).toMatchObject({
+      status: "diagnostic_failure",
+      terminalCode: "invalid_proposal",
+      score: {
+        proposedMechanism: "unknown",
+        mechanismCorrect: false,
+        verdict: "inconclusive",
+        groundedSuccess: false,
+      },
+    });
+    expect(targetAttempt?.outcome).toMatchObject({
+      status: "diagnostic_failure",
+      code: "invalid_proposal",
+    });
+    expect(targetProof).toMatchObject({
+      proofKind: "diagnostic_failure",
+      diagnosticCode: "invalid_proposal",
+    });
+    await expect(
+      artifactRepository.getCompletedV3(suite.definitionId, executionId),
+    ).resolves.toEqual(result.report);
+
+    const reread = await executeFormalBenchmarkV3(
+      executionOptions(artifactRepository, executionId, clock(), async () => {
+        throw new Error("A sealed execution must not rerun an attempt");
+      }),
+    );
+    expect(reread).toMatchObject({
+      recoverable: false,
+      resumed: true,
+      report: result.report,
+    });
+  }, 20_000);
 
   it("fails closed before persisting a forged adapter score as terminal evidence", async () => {
     const artifactRepository = await repository();

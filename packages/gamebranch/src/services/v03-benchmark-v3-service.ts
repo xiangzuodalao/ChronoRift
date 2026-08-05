@@ -331,11 +331,20 @@ export function assertBenchmarkAttemptBudgetsV3(
       throw new Error("Benchmark V3 scored attempt is not terminally complete");
     }
   } else if (attempt.outcome.status === "diagnostic_failure") {
-    const allowed =
+    const allowedBudgetTerminal =
       attempt.outcome.code === "budget_exhausted" ||
       attempt.outcome.code === "invalid_tool_flow" ||
       attempt.outcome.code === "progress_timeout";
-    if (violations.length > 0 && !allowed) {
+    const expectedInvalidProposalToolFailure =
+      attempt.outcome.code === "invalid_proposal" &&
+      violations.length === 1 &&
+      violations[0] === "tool_errors" &&
+      attempt.progress.tools.failed === 1;
+    if (
+      violations.length > 0 &&
+      !allowedBudgetTerminal &&
+      !expectedInvalidProposalToolFailure
+    ) {
       throw new Error(
         "Benchmark V3 budget violation contradicts diagnostic terminal code",
       );

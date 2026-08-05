@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import {
   BenchmarkSuiteSpecV2Schema,
   asFixtureId,
+  type BenchmarkCampaignV1,
   type JsonValue,
 } from "@chronorift/domain";
 import { createBenchmarkSuiteSpecV2 } from "@chronorift/gamebranch";
@@ -33,17 +34,24 @@ const roots = [
   "apps/cli/src/v03-agent-game-api.ts",
 ] as const;
 
-const suiteFor = (subjectHash: string, campaign = false) =>
+const campaignSpecFor = (
+  campaign: "v0.3.1" | "v0.3.1-r2" | undefined,
+): BenchmarkCampaignV1 | undefined =>
+  campaign === "v0.3.1"
+    ? { campaignId: "v0.3.1", freezeTag: "v0.3.1-benchmark-freeze" }
+    : campaign === "v0.3.1-r2"
+      ? {
+          campaignId: "v0.3.1-r2",
+          freezeTag: "v0.3.1-r2-benchmark-freeze",
+        }
+      : undefined;
+
+const suiteFor = (subjectHash: string, campaign?: "v0.3.1" | "v0.3.1-r2") =>
   createBenchmarkSuiteSpecV2({
     schemaVersion: 2,
-    ...(campaign
-      ? {
-          campaign: {
-            campaignId: "v0.3.1" as const,
-            freezeTag: "v0.3.1-benchmark-freeze" as const,
-          },
-        }
-      : {}),
+    ...(campaignSpecFor(campaign) === undefined
+      ? {}
+      : { campaign: campaignSpecFor(campaign)! }),
     subjectHash,
     runnerHash: "b".repeat(64),
     metricSet: "grounded-diagnosis-v2",
@@ -66,9 +74,12 @@ const suiteFor = (subjectHash: string, campaign = false) =>
     })),
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: campaign
-      ? "chronorift-v0.3.1-formal-1"
-      : "chronorift-v0.3-formal-1",
+    orderSeed:
+      campaign === undefined
+        ? "chronorift-v0.3-formal-1"
+        : campaign === "v0.3.1"
+          ? "chronorift-v0.3.1-formal-1"
+          : "chronorift-v0.3.1-r2-formal-1",
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "volcengine-coding-plan",
     model: "glm-5.2",
@@ -115,8 +126,10 @@ const definitionFor = (subjectHash: string): string =>
 describe("formalSubjectHash", () => {
   it("gives v0.3.1 an isolated campaign identity and strict tag mapping", () => {
     const legacy = suiteFor("a".repeat(64));
-    const current = suiteFor("a".repeat(64), true);
+    const current = suiteFor("a".repeat(64), "v0.3.1");
+    const retry = suiteFor("a".repeat(64), "v0.3.1-r2");
     expect(current.definitionId).not.toBe(legacy.definitionId);
+    expect(retry.definitionId).not.toBe(current.definitionId);
     expect(formalCampaignForSuite(legacy)).toMatchObject({
       campaignId: "v0.3",
       freezeTag: "v0.3.0-benchmark-freeze",
@@ -124,6 +137,11 @@ describe("formalSubjectHash", () => {
     expect(formalCampaignForSuite(current)).toMatchObject({
       campaignId: "v0.3.1",
       freezeTag: "v0.3.1-benchmark-freeze",
+    });
+    expect(formalCampaignForSuite(retry)).toMatchObject({
+      campaignId: "v0.3.1-r2",
+      freezeTag: "v0.3.1-r2-benchmark-freeze",
+      evidenceDirectory: "docs/benchmarks/v0.3.1-r2",
     });
     expect(() =>
       BenchmarkSuiteSpecV2Schema.parse({

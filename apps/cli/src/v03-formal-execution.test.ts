@@ -424,6 +424,55 @@ describe("executeFormalBenchmarkV2", () => {
     expect(cherryPickAnnounced).toBe(false);
   });
 
+  it("seals malformed provider usage metrics instead of leaving a running execution", async () => {
+    const repository = new MemoryRepository();
+    const executionId = asBenchmarkExecutionId(
+      "benchmark-execution:invalid-usage",
+    );
+    const result = await executeFormalBenchmarkV2({
+      suite,
+      executionId,
+      provenance,
+      repository,
+      allowRecoveryCycle: false,
+      runAttempt: async (cell, _ordinal, recordProgress) => {
+        await recordProgress({
+          observedAt: "2026-08-05T00:00:01.000Z",
+          validationStage: "agent_progress",
+          metrics: {
+            gameExecutions: 1,
+            toolCalls: 3,
+            wallTimeMs: 100,
+            tokens: { input: 7, output: 5, total: 12 },
+          },
+          rawManifest: { schemaVersion: 2, progress: true },
+        });
+        return {
+          ...success(cell),
+          metrics: {
+            gameExecutions: 1,
+            toolCalls: 3,
+            wallTimeMs: 200,
+            tokens: { input: 7, output: 5, total: 100 },
+          },
+        } as unknown as FormalBenchmarkAttemptResultV2;
+      },
+      recover: async () => undefined,
+      nowIso: () => "2026-08-05T00:00:02.000Z",
+      sleep: async () => undefined,
+    });
+    expect(result.report.status).toBe("invalid");
+    expect(result.report.cells).toHaveLength(1);
+    expect(result.report.cells[0]).toMatchObject({
+      terminalCode: "harness_failure",
+    });
+    expect(result.report.attempts[0]?.metrics).toMatchObject({
+      toolCalls: 3,
+      tokens: { total: 12 },
+    });
+    expect(repository.completed).toEqual(result.report);
+  });
+
   it("seals a started-only crash after progress as terminal diagnostic without retry", async () => {
     const repository = new MemoryRepository();
     repository.failNextFinish = true;

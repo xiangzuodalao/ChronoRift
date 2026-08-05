@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BenchmarkPublicCapsuleEvidenceV2Schema,
   BenchmarkPublicCausalEventV2Schema,
+  BenchmarkTokenMetricsV2Schema,
 } from "../src/index.js";
 
 const hash = "a".repeat(64);
@@ -55,6 +56,34 @@ const capsule = {
 };
 
 describe("Benchmark public causal evidence", () => {
+  it("accounts for Pi cache tokens without changing legacy zero-cache data", () => {
+    expect(
+      BenchmarkTokenMetricsV2Schema.parse({
+        input: 100,
+        output: 20,
+        cacheRead: 300,
+        cacheWrite: 10,
+        total: 430,
+      }),
+    ).toMatchObject({ total: 430, cacheRead: 300 });
+    expect(
+      BenchmarkTokenMetricsV2Schema.parse({
+        input: 100,
+        output: 20,
+        total: 120,
+      }),
+    ).toEqual({ input: 100, output: 20, total: 120 });
+    expect(() =>
+      BenchmarkTokenMetricsV2Schema.parse({
+        input: 100,
+        output: 20,
+        cacheRead: 300,
+        cacheWrite: 10,
+        total: 120,
+      }),
+    ).toThrow("cache-read");
+  });
+
   it("retains auditable spatial identity and causal links", () => {
     const parsed = BenchmarkPublicCapsuleEvidenceV2Schema.parse(capsule);
     expect(parsed.causalEvents[1]).toMatchObject({

@@ -1201,7 +1201,7 @@ const runWithRuntime = async (
     ) {
       return;
     }
-    const signature = `${flow.progressObserved}\0${stats.toolCalls}\0${stats.tokens.input}\0${stats.tokens.output}\0${stats.tokens.total}`;
+    const signature = `${flow.progressObserved}\0${stats.toolCalls}\0${stats.tokens.input}\0${stats.tokens.output}\0${stats.tokens.cacheRead}\0${stats.tokens.cacheWrite}\0${stats.tokens.total}`;
     if (signature === progressSignature) return;
     progressSignature = signature;
     const snapshot = {
@@ -1210,6 +1210,8 @@ const runWithRuntime = async (
       tokens: {
         input: stats.tokens.input,
         output: stats.tokens.output,
+        cacheRead: stats.tokens.cacheRead,
+        cacheWrite: stats.tokens.cacheWrite,
         total: stats.tokens.total,
       },
       wallTimeMs: Math.max(0, Date.now() - started),
@@ -1312,6 +1314,8 @@ const runWithRuntime = async (
           tokens: {
             input: stats.tokens.input,
             output: stats.tokens.output,
+            cacheRead: stats.tokens.cacheRead,
+            cacheWrite: stats.tokens.cacheWrite,
             total: stats.tokens.total,
           },
           cost: stats.cost,

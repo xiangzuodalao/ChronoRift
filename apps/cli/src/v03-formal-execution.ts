@@ -3,6 +3,7 @@ import {
   BenchmarkAttemptProgressV2Schema,
   BenchmarkAttemptStartedV2Schema,
   BenchmarkCellAttemptV2Schema,
+  BenchmarkCellMetricsV2Schema,
   BenchmarkCellResultV2Schema,
   BenchmarkExecutionStartedV2Schema,
   BenchmarkExecutionSelectionV2Schema,
@@ -552,35 +553,45 @@ async function processCell(
     });
     await options.repository.putAttemptStarted(started);
     let result: FormalBenchmarkAttemptResultV2;
+    let latestProgress: FormalAttemptProgressSnapshotV2 | undefined;
     try {
       let progressSequence = 0;
       result = await options.runAttempt(cell, ordinal, async (snapshot) => {
+        latestProgress = snapshot;
         progressSequence += 1;
-        await options.repository.putAttemptProgress(
-          BenchmarkAttemptProgressV2Schema.parse({
-            schemaVersion: 2,
-            suiteId: options.suite.suiteId,
-            definitionId: options.suite.definitionId,
-            executionId: options.executionId,
-            cellId: cell.cellId,
-            attemptId,
-            ordinal,
-            sequence: progressSequence,
-            observedAt: snapshot.observedAt,
-            progressObserved: true,
-            validationStage: snapshot.validationStage,
-            metrics: snapshot.metrics,
-            rawManifest: snapshot.rawManifest,
-          }),
-        );
+        const progress = BenchmarkAttemptProgressV2Schema.parse({
+          schemaVersion: 2,
+          suiteId: options.suite.suiteId,
+          definitionId: options.suite.definitionId,
+          executionId: options.executionId,
+          cellId: cell.cellId,
+          attemptId,
+          ordinal,
+          sequence: progressSequence,
+          observedAt: snapshot.observedAt,
+          progressObserved: true,
+          validationStage: snapshot.validationStage,
+          metrics: snapshot.metrics,
+          rawManifest: snapshot.rawManifest,
+        });
+        await options.repository.putAttemptProgress(progress);
       });
     } catch {
       result = {
         status: "invalid",
-        progressObserved: false,
+        progressObserved: latestProgress !== undefined,
         code: "harness_failure",
         message: "Invalid formal attempt",
-        metrics: zeroMetrics(),
+        metrics: latestProgress?.metrics ?? zeroMetrics(),
+      };
+    }
+    if (!BenchmarkCellMetricsV2Schema.safeParse(result.metrics).success) {
+      result = {
+        status: "invalid",
+        progressObserved: latestProgress !== undefined,
+        code: "harness_failure",
+        message: "Invalid formal attempt metrics",
+        metrics: latestProgress?.metrics ?? zeroMetrics(),
       };
     }
     const outcome =

@@ -1,6 +1,6 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3.1 provider recovery（实现中）
+## 当前里程碑：v0.3.1-r2 provider recovery（实现中）
 
 v0.3.1 不改写 v0.3 的正式负结果，也不改变 Fixture、arm、prompt、预算、模型或 Gate。它新增一个不接触
 正式 Fixture 的真实 Pi smoke，要求持久化 Session、非零 token、至少一次工具调用与 Harness confirmed；
@@ -10,6 +10,11 @@ v0.3.1 不改写 v0.3 的正式负结果，也不改变 Fixture、arm、prompt�
 2026-08-05 已连续两次通过 smoke（均为 5 次工具调用，total tokens 33,562 / 43,087，Harness
 confirmed）并通过 `test:live`；pre-freeze 的 `check`、Godot、fake benchmark 与历史 report 验证也已
 通过。下一步是提交 machine spec、创建 freeze tag，再启动唯一 formal execution。
+
+首个 v0.3.1 formal execution 在第一 cell 的真实 Pi 工具流后暴露 token-accounting schema 缺陷：Pi
+total 包含 cache read/write，而 Harness 只校验 input + output；异常又越过 attempt 封存边界。原 freeze
+tag 与 selection 已保留且不恢复拼接。r2 将 cache read/write 纳入严格总和，并为非法 provider metrics
+增加 fail-closed 封存回归；它使用新的 campaign/tag/seed/output directory，再执行新的唯一 selection。
 
 ### v0.3.1 交付顺序
 

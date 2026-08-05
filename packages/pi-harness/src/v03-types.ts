@@ -49,11 +49,7 @@ export interface V03AgentGameApi {
 export interface V03PiProgressSnapshot {
   readonly progressObserved: boolean;
   readonly toolCalls: number;
-  readonly tokens: {
-    readonly input: number;
-    readonly output: number;
-    readonly total: number;
-  };
+  readonly tokens: PiUsageStats["tokens"];
   readonly wallTimeMs: number;
 }
 

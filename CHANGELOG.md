@@ -11,6 +11,9 @@
 - Kept the 36-cell Fixture/arm/repetition matrix, prompts, budgets, model configuration, scoring, and Gate
   unchanged. The new campaign result will be published without rerun selection once provider recovery is
   proven.
+- Preserved the first v0.3.1 freeze and selection after its first cell exposed that Pi totals include cache
+  tokens and malformed metrics could escape attempt sealing. The transparent `v0.3.1-r2` campaign records
+  cache reads/writes, validates all four token components, and seals future metric failures fail closed.
 
 ## v0.3.0 — 2026-08-05
 

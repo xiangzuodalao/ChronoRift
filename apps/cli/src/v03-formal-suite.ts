@@ -5,6 +5,7 @@ import { join, relative, resolve, sep } from "node:path";
 import {
   BenchmarkSuiteSpecV2Schema,
   FrozenContractV2Schema,
+  type BenchmarkCampaignV1,
   type BenchmarkFixtureSpecV2,
   type BenchmarkFreezeTagV1,
   type BenchmarkSuiteSpecV2,
@@ -91,14 +92,20 @@ export interface BuildFormalBenchmarkSuiteOptions {
   readonly cwd: string;
   readonly artifactRoot: string;
   readonly godotBin?: string | undefined;
-  readonly campaign?: "v0.3.1" | undefined;
+  readonly campaign?: "v0.3.1" | "v0.3.1-r2" | undefined;
 }
 
 export interface FormalCampaignDescriptor {
-  readonly campaignId: "v0.3" | "v0.3.1";
+  readonly campaignId: "v0.3" | "v0.3.1" | "v0.3.1-r2";
   readonly freezeTag: BenchmarkFreezeTagV1;
-  readonly evidenceDirectory: "docs/benchmarks/v0.3" | "docs/benchmarks/v0.3.1";
-  readonly orderSeed: "chronorift-v0.3-formal-1" | "chronorift-v0.3.1-formal-1";
+  readonly evidenceDirectory:
+    | "docs/benchmarks/v0.3"
+    | "docs/benchmarks/v0.3.1"
+    | "docs/benchmarks/v0.3.1-r2";
+  readonly orderSeed:
+    | "chronorift-v0.3-formal-1"
+    | "chronorift-v0.3.1-formal-1"
+    | "chronorift-v0.3.1-r2-formal-1";
 }
 
 const LEGACY_CAMPAIGN: FormalCampaignDescriptor = {
@@ -115,10 +122,21 @@ const V031_CAMPAIGN: FormalCampaignDescriptor = {
   orderSeed: "chronorift-v0.3.1-formal-1",
 };
 
+const V031_R2_CAMPAIGN: FormalCampaignDescriptor = {
+  campaignId: "v0.3.1-r2",
+  freezeTag: "v0.3.1-r2-benchmark-freeze",
+  evidenceDirectory: "docs/benchmarks/v0.3.1-r2",
+  orderSeed: "chronorift-v0.3.1-r2-formal-1",
+};
+
 export function formalCampaignForSuite(
   suite: BenchmarkSuiteSpecV2,
 ): FormalCampaignDescriptor {
-  return suite.campaign === undefined ? LEGACY_CAMPAIGN : V031_CAMPAIGN;
+  return suite.campaign === undefined
+    ? LEGACY_CAMPAIGN
+    : suite.campaign.campaignId === "v0.3.1"
+      ? V031_CAMPAIGN
+      : V031_R2_CAMPAIGN;
 }
 
 export interface FormalFixtureMaterialInput {
@@ -177,7 +195,23 @@ export async function buildFormalBenchmarkSuiteSpecV2(
   options: BuildFormalBenchmarkSuiteOptions,
 ): Promise<BenchmarkSuiteSpecV2> {
   const campaign =
-    options.campaign === "v0.3.1" ? V031_CAMPAIGN : LEGACY_CAMPAIGN;
+    options.campaign === "v0.3.1"
+      ? V031_CAMPAIGN
+      : options.campaign === "v0.3.1-r2"
+        ? V031_R2_CAMPAIGN
+        : LEGACY_CAMPAIGN;
+  const campaignSpec: BenchmarkCampaignV1 | undefined =
+    options.campaign === "v0.3.1"
+      ? {
+          campaignId: "v0.3.1",
+          freezeTag: "v0.3.1-benchmark-freeze",
+        }
+      : options.campaign === "v0.3.1-r2"
+        ? {
+            campaignId: "v0.3.1-r2",
+            freezeTag: "v0.3.1-r2-benchmark-freeze",
+          }
+        : undefined;
   const [subjectHash, runnerHash] = await Promise.all([
     formalSubjectHash(options.cwd),
     formalRunnerHash(options.cwd),
@@ -221,14 +255,7 @@ export async function buildFormalBenchmarkSuiteSpecV2(
     throw new Error("Formal physics Fixture is missing");
   return createBenchmarkSuiteSpecV2({
     schemaVersion: 2,
-    ...(options.campaign === "v0.3.1"
-      ? {
-          campaign: {
-            campaignId: "v0.3.1" as const,
-            freezeTag: "v0.3.1-benchmark-freeze" as const,
-          },
-        }
-      : {}),
+    ...(campaignSpec === undefined ? {} : { campaign: campaignSpec }),
     subjectHash,
     runnerHash,
     metricSet: "grounded-diagnosis-v2",

@@ -64,6 +64,8 @@ export interface PiUsageStats {
   readonly tokens: {
     readonly input: number;
     readonly output: number;
+    readonly cacheRead: number;
+    readonly cacheWrite: number;
     readonly total: number;
   };
   readonly cost: number;

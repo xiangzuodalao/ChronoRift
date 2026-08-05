@@ -1096,7 +1096,9 @@ export async function runFormalBenchmark(
   const expected = await buildFormalBenchmarkSuiteSpecV2({
     cwd: options.cwd,
     artifactRoot: resolve(options.artifactRoot, "formal-preflight"),
-    ...(suite.campaign === undefined ? {} : { campaign: "v0.3.1" }),
+    ...(suite.campaign === undefined
+      ? {}
+      : { campaign: suite.campaign.campaignId }),
     ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
   });
   if (!sameFormalSuite(suite, expected)) {

@@ -305,6 +305,8 @@ export async function runPiDiagnosisWithRuntime(
             tokens: {
               input: stats.tokens.input,
               output: stats.tokens.output,
+              cacheRead: stats.tokens.cacheRead,
+              cacheWrite: stats.tokens.cacheWrite,
               total: stats.tokens.total,
             },
             cost: stats.cost,

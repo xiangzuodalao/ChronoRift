@@ -19,15 +19,24 @@ export type Sha256V1 = z.infer<typeof Sha256V1Schema>;
 export const BenchmarkFreezeTagV1Schema = z.enum([
   "v0.3.0-benchmark-freeze",
   "v0.3.1-benchmark-freeze",
+  "v0.3.1-r2-benchmark-freeze",
 ]);
 export type BenchmarkFreezeTagV1 = z.infer<typeof BenchmarkFreezeTagV1Schema>;
 
-export const BenchmarkCampaignV1Schema = z
-  .object({
-    campaignId: z.literal("v0.3.1"),
-    freezeTag: z.literal("v0.3.1-benchmark-freeze"),
-  })
-  .strict();
+export const BenchmarkCampaignV1Schema = z.discriminatedUnion("campaignId", [
+  z
+    .object({
+      campaignId: z.literal("v0.3.1"),
+      freezeTag: z.literal("v0.3.1-benchmark-freeze"),
+    })
+    .strict(),
+  z
+    .object({
+      campaignId: z.literal("v0.3.1-r2"),
+      freezeTag: z.literal("v0.3.1-r2-benchmark-freeze"),
+    })
+    .strict(),
+]);
 export type BenchmarkCampaignV1 = z.infer<typeof BenchmarkCampaignV1Schema>;
 
 export const BenchmarkFixtureSpecV2Schema = z
@@ -71,6 +80,7 @@ export const BenchmarkSuiteSpecV2Schema = z
     orderSeed: z.enum([
       "chronorift-v0.3-formal-1",
       "chronorift-v0.3.1-formal-1",
+      "chronorift-v0.3.1-r2-formal-1",
     ]),
     orderStrategy: z.literal("block_randomized_by_fixture_repetition"),
     provider: z.literal("volcengine-coding-plan"),
@@ -126,7 +136,9 @@ export const BenchmarkSuiteSpecV2Schema = z
     const expectedOrderSeed =
       spec.campaign === undefined
         ? "chronorift-v0.3-formal-1"
-        : "chronorift-v0.3.1-formal-1";
+        : spec.campaign.campaignId === "v0.3.1"
+          ? "chronorift-v0.3.1-formal-1"
+          : "chronorift-v0.3.1-r2-formal-1";
     if (spec.orderSeed !== expectedOrderSeed) {
       context.addIssue({
         code: "custom",
@@ -264,6 +276,47 @@ export type BenchmarkCellAttemptOutcomeV2 = z.infer<
   typeof BenchmarkCellAttemptOutcomeV2Schema
 >;
 
+const LegacyBenchmarkTokenMetricsV2Schema = z
+  .object({
+    input: z.number().int().nonnegative(),
+    output: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const CachedBenchmarkTokenMetricsV2Schema = z
+  .object({
+    input: z.number().int().nonnegative(),
+    output: z.number().int().nonnegative(),
+    cacheRead: z.number().int().nonnegative(),
+    cacheWrite: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const BenchmarkTokenMetricsV2Schema = z
+  .union([
+    LegacyBenchmarkTokenMetricsV2Schema,
+    CachedBenchmarkTokenMetricsV2Schema,
+  ])
+  .superRefine((tokens, context) => {
+    const expectedTotal =
+      tokens.input +
+      tokens.output +
+      ("cacheRead" in tokens ? tokens.cacheRead + tokens.cacheWrite : 0);
+    if (tokens.total !== expectedTotal) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Token total must equal input, output, cache-read, and cache-write tokens",
+        path: ["total"],
+      });
+    }
+  });
+export type BenchmarkTokenMetricsV2 = z.infer<
+  typeof BenchmarkTokenMetricsV2Schema
+>;
+
 export const BenchmarkCellAttemptV2Schema = z
   .object({
     schemaVersion: z.literal(2),
@@ -286,13 +339,7 @@ export const BenchmarkCellAttemptV2Schema = z
         gameExecutions: z.number().int().nonnegative(),
         toolCalls: z.number().int().nonnegative(),
         wallTimeMs: z.number().int().nonnegative(),
-        tokens: z
-          .object({
-            input: z.number().int().nonnegative(),
-            output: z.number().int().nonnegative(),
-            total: z.number().int().nonnegative(),
-          })
-          .strict(),
+        tokens: BenchmarkTokenMetricsV2Schema,
       })
       .strict(),
     outcome: BenchmarkCellAttemptOutcomeV2Schema,
@@ -329,16 +376,6 @@ export const BenchmarkCellAttemptV2Schema = z
         code: "custom",
         message: "Attempt completion precedes its start",
         path: ["finishedAt"],
-      });
-    }
-    if (
-      attempt.metrics.tokens.total !==
-      attempt.metrics.tokens.input + attempt.metrics.tokens.output
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Attempt token total must equal input plus output",
-        path: ["metrics", "tokens", "total"],
       });
     }
     const expectedFailureMessage =
@@ -444,24 +481,9 @@ export const BenchmarkCellMetricsV2Schema = z
     gameExecutions: z.number().int().nonnegative(),
     toolCalls: z.number().int().nonnegative(),
     wallTimeMs: z.number().int().nonnegative(),
-    tokens: z
-      .object({
-        input: z.number().int().nonnegative(),
-        output: z.number().int().nonnegative(),
-        total: z.number().int().nonnegative(),
-      })
-      .strict(),
+    tokens: BenchmarkTokenMetricsV2Schema,
   })
-  .strict()
-  .superRefine((metrics, context) => {
-    if (metrics.tokens.total !== metrics.tokens.input + metrics.tokens.output) {
-      context.addIssue({
-        code: "custom",
-        message: "Token total must equal input plus output",
-        path: ["tokens", "total"],
-      });
-    }
-  });
+  .strict();
 export type BenchmarkCellMetricsV2 = z.infer<
   typeof BenchmarkCellMetricsV2Schema
 >;

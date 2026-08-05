@@ -76,7 +76,13 @@ const result = (tokens: number, toolCalls = 5): PiDiagnosisRunResult => ({
     thinkingLevel: "medium",
     stats: {
       toolCalls,
-      tokens: { input: tokens, output: tokens, total: tokens * 2 },
+      tokens: {
+        input: tokens,
+        output: tokens,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: tokens * 2,
+      },
       cost: 0,
     },
   },

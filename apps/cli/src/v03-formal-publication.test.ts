@@ -117,6 +117,14 @@ const v031Suite = createBenchmarkSuiteSpecV2({
   },
   orderSeed: "chronorift-v0.3.1-formal-1",
 });
+const v031R2Suite = createBenchmarkSuiteSpecV2({
+  ...legacySuiteBasis,
+  campaign: {
+    campaignId: "v0.3.1-r2",
+    freezeTag: "v0.3.1-r2-benchmark-freeze",
+  },
+  orderSeed: "chronorift-v0.3.1-r2-formal-1",
+});
 const executionId = asBenchmarkExecutionId("benchmark-execution:negative");
 const report = buildBenchmarkReportV2({
   suite,
@@ -185,6 +193,22 @@ describe("formal benchmark publication", () => {
         v031Suite,
       ),
     ).not.toThrow();
+  });
+
+  it("isolates the accounting-fix rerun from both earlier campaigns", () => {
+    const cwd = "/workspace/chronorift";
+    const output = join(cwd, "docs", "benchmarks", "v0.3.1-r2");
+    expect(() =>
+      assertPublicationOutputScope(
+        cwd,
+        output,
+        `?? docs/benchmarks/v0.3.1-r2/${FORMAL_REPORT_FILENAME}\n`,
+        v031R2Suite,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertPublicationOutputScope(cwd, output, "", v031Suite),
+    ).toThrow("docs/benchmarks/v0.3.1");
   });
 
   it("hashes model-authored prose instead of publishing source-text canaries", () => {

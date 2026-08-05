@@ -3,11 +3,12 @@
 ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游戏运行时 Bug 转换成可恢复、
 可干预、可重放、可比较的实验，并由 Harness 根据运行时证据裁决结论，而不是相信模型置信度。
 
-> 当前开发版本：**v0.3.1 provider-recovery campaign**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容；
+> 当前开发版本：**v0.3.1-r2 provider-recovery campaign**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容；
 > v0.3 已冻结三组对照协议，并发布首个 36-cell 正式执行。该执行完整、报告完整性验证通过，但
 > 36/36 cells 均以 `proposal_missing` 结束，冻结 Gate 未通过。v0.3.1 保留该负结果，先以独立 Pi
 > smoke 验证 provider，再使用新 campaign 身份执行同一冻结矩阵。两次 smoke 与 `test:live` 已通过；
-> 新 formal execution 尚未开始，发布前不声称 benchmark 或模型优势。
+> 首个 v0.3.1 execution 暴露 cache-token accounting/封存缺陷并中止；freeze 与 selection 已保留。
+> 修复后的 r2 使用新 identity，formal execution 尚未开始，发布前不声称 benchmark 或模型优势。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)。

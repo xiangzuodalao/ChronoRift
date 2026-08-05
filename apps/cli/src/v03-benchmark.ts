@@ -401,7 +401,11 @@ async function runCell(
     gameExecutions: game.gameExecutions,
     toolCalls: diagnosis.piSession.stats.toolCalls,
     wallTimeMs: diagnosis.wallTimeMs,
-    tokens: diagnosis.piSession.stats.tokens,
+    tokens: {
+      input: diagnosis.piSession.stats.tokens.input,
+      output: diagnosis.piSession.stats.tokens.output,
+      total: diagnosis.piSession.stats.tokens.total,
+    },
     rawManifestHash: contentHash(basis),
   });
   await writeRawCell(manifestPath, basis, cell);

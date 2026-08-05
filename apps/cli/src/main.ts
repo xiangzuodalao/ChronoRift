@@ -522,7 +522,11 @@ async function buildFormalSpecCommand(
 ): Promise<void> {
   assertOnlyFlags(args, ["artifacts", "campaign", "godot-bin"]);
   const campaign = flag(args, "campaign");
-  if (campaign !== undefined && campaign !== "v0.3.1") {
+  if (
+    campaign !== undefined &&
+    campaign !== "v0.3.1" &&
+    campaign !== "v0.3.1-r2"
+  ) {
     throw new Error(`Unsupported benchmark campaign: ${campaign}`);
   }
   printJson(
@@ -532,7 +536,7 @@ async function buildFormalSpecCommand(
         cwd,
         flag(args, "artifacts") ?? ".chronorift/formal-spec-build",
       ),
-      ...(campaign === undefined ? {} : { campaign: "v0.3.1" }),
+      ...(campaign === undefined ? {} : { campaign }),
       ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
         ? {}
         : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
@@ -752,7 +756,7 @@ function printHelp(): void {
     `  pnpm benchmark:formal -- --spec PATH [--resume EXECUTION_ID]\n`,
   );
   process.stdout.write(
-    `  pnpm benchmark:spec [-- --campaign v0.3.1 --godot-bin PATH]\n`,
+    `  pnpm benchmark:spec [-- --campaign v0.3.1|v0.3.1-r2 --godot-bin PATH]\n`,
   );
   process.stdout.write(`  pnpm benchmark:status [-- --spec PATH]\n`);
   process.stdout.write(

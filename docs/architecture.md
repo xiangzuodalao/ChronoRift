@@ -1149,6 +1149,13 @@ scored、1 `harness_failure`、aggregate `null`，Gate `not_evaluated`。根因�
 正确拒绝为 `invalid_proposal` 后，其 tool error 因预算 allowlist 漏项被升级。不得据此声称 Luna 下的
 game-native treatment 优势已被验证。
 
+该分类缺陷经狭义修复与回归覆盖后使用独立 r2 identity 验证，不改写 r1。implementation commit
+`e00cba6cbe3e87e0e768af02284bdc2edb24a77a` 上的 008 C0 报告 hash 为
+`d1461034624816e2946a9e0f617c18a4ce9c76818230472d7faf5c96a7217caf`，其 readiness 为 `not_ready`、
+前置资格为 `not_eligible`：generic 错误复制 baseline execution ID 并产生一次 tool error，full 未使用
+source tool。C1 未启动，008 identity 不得复用。009 只是经过测试修复后的下一候选 identity，目前尚未
+创建或运行；因此 r2 尚无可冻结 spec、formal aggregate 或 Gate 结论。
+
 Bug 集至少覆盖 frame/timer、Signal 生命周期和顺序、Node 复用与 scene reload、
 physics/contact 边界、RNG、异步资源、input sampling 和 save/restore。
 

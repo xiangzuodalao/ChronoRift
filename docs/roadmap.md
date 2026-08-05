@@ -1,6 +1,6 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3.2-luna Benchmark V3（hardened canary ready）
+## 当前里程碑：v0.3.2-luna Benchmark V3（r2 canary hardening）
 
 v0.3.1-r2 已完成并原样发布负结果。当前 Pi 路径使用
 `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级
@@ -33,6 +33,10 @@ implementation receipt，强化 verifier 将其前置资格归为 `legacy_only`�
 `prerequisiteEligibility=hardened`；C1 精确绑定已发布 C0 report hash。两阶段六个 cells 均 mechanism
 correct，并且为零 tool errors、零无进展违规、零 incorrect confirmation。
 
+r1 的 `invalid` formal 报告保持不可变。独立 r2 后继的 008 C0 已封存为 `not_ready`，verifier 返回
+`prerequisiteEligibility=not_eligible`：generic 因错误复制 baseline execution ID 产生一次 tool error，
+full 没有 source receipt。008 C1 未启动，008 不得复用；009 尚未创建或运行。
+
 ### v0.3.2 交付顺序
 
 1. **已完成**：V3 schema/classifier/progress/recovery、严格 terminal manifest、sealed ledger、
@@ -60,8 +64,20 @@ correct，并且为零 tool errors、零无进展违规、零 incorrect confirma
     `benchmark-execution:3207d7d4-9e14-40bc-bca0-840897416739` 以 3 attempts / 3 cells 封存：2
     scored、1 `invalid` / `harness_failure`，2 个 scoring proofs、aggregate `null`；verifier 为 true，
     Gate `not_evaluated` / exit 2；
-11. **pending**：修复 `invalid_proposal` 遇到 tool error 时被预算 allowlist 漏项升级为
-    `harness_failure` 的分类缺陷并增加回归；不改写 r1 报告，不声称 treatment 结论或后继已完成。
+11. **已完成**：狭义修复 `invalid_proposal` 遇到其单个预期 tool error 时被预算检查升级为
+    `harness_failure` 的分类缺陷，增加 service 与 executor 回归，并隔离新的 r2 campaign；r1 报告不改写；
+12. **已保留负结果**：[008 C0](benchmarks/v0.3.2-luna-r2/canary-c0-not-ready-008.json) report hash
+    `d1461034624816e2946a9e0f617c18a4ce9c76818230472d7faf5c96a7217caf`，绑定 implementation commit
+    `e00cba6cbe3e87e0e768af02284bdc2edb24a77a` 与 source hash
+    `a2c504f3e8a784b01ec1b880365bcb2f1690fbdbe3b6d19c45ecd9e77308a738`；readiness 为
+    `not_ready`、前置资格为 `not_eligible`。generic 为 `invalid_tool_flow`，full 缺 source receipt；C1
+    未启动，008 不得复用；
+13. **已完成**：008 公开 generic cell 的 `sessionPersisted=false` / 全零 flow counts 少报了本地 JSONL
+    已持久化的 FailureBrief、raw baseline、replay 与 experiment-catalog receipts。这是独立的
+    partial-failure observability 缺陷，不是 `invalid_tool_flow` 的成因；后继已用 typed callback 与一字符
+    baseline ID 损坏回归保留 Session、receipt 和精确进度，008 report 保持不可变；
+14. **pending**：以全新 009 identity 运行 C0；009 尚未创建或运行，只有实际通过 C0/C1 前置后才能生成
+    freeze spec 或启动 formal execution。
 
 ## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 

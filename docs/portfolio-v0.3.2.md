@@ -42,9 +42,14 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
   `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。
 - r1 正式 execution 已原样发布 `invalid` 负结果：3 cells 中 2 scored、1 `harness_failure`，2 个
   scoring proofs、aggregate `null`；verifier 通过，Gate `not_evaluated` / exit 2。
+- 独立 r2 后继的 008 C0 同样原样保留：report hash
+  `d1461034624816e2946a9e0f617c18a4ce9c76818230472d7faf5c96a7217caf`，readiness 为 `not_ready`、
+  前置资格为 `not_eligible`。generic 错误复制 baseline execution ID 并产生一次 tool error；full 没有
+  source receipt。C1 未启动，008 不复用。
 
-完整证据、hash 和复现顺序见
-[v0.3.2-luna evidence workspace](benchmarks/v0.3.2-luna/README.md)。
+完整证据、hash 和状态边界见 [v0.3.2-luna evidence workspace](benchmarks/v0.3.2-luna/README.md)、
+[r1 workspace](benchmarks/v0.3.2-luna-r1/README.md) 与
+[r2 workspace](benchmarks/v0.3.2-luna-r2/README.md)。
 
 ## 这个项目体现的能力
 
@@ -62,7 +67,8 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 > 错误与零错误确认，并进一步完成 implementation-bound 005 C0/C1；两阶段均为 `ready`，verifier
 > 前置资格均为 `hardened`，并以可重建 machine spec 冻结 36-cell protocol；原 execution 因引用
 > 完整性失败未形成报告；修复后 007 C0/C1 再次达到 `ready` / `hardened`，独立 r1 spec/tag 已冻结，
-> 并原样发布 3-cell `invalid` 负结果，完整性可验证但 Gate 未评估。
+> 并原样发布 3-cell `invalid` 负结果，完整性可验证但 Gate 未评估；继续保留 r2 008
+> `not_ready` / `not_eligible` canary，未通过重跑或选择性发布隐藏失败。
 
 ## 边界
 
@@ -70,4 +76,6 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 unresolved event references 阻止 completed/report；它不是可发布 formal 结果。007 C0/C1 与 r1 freeze
 已完成；r1 报告虽通过 verifier，但只有 3 cells、aggregate `null`，产品 Gate 为 `not_evaluated`。该结果
 暴露的是 `invalid_proposal` 的预算分类漏项，不证明 ChronoRift 相对 generic Agent 已有统计优势。
-Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用；后继尚未完成。
+008 C0 又暴露 generic 的 `invalid_tool_flow` 和 full 的 source-grounding 缺口；C1 未启动，008 不得复用。
+009 仅是测试修复后的下一候选 identity，尚未创建或运行。Fixture 仍是同一代码库内的校准小场景，
+不得外推为任意 Godot 项目即插即用；后继 formal 尚未完成。

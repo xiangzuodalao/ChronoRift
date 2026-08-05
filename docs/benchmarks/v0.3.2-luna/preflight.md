@@ -18,7 +18,7 @@ context window、128,000 max output，`max` 映射为真实 `max` reasoning effo
 Loop、工具调度与 Harness verdict 这条链路在当时可用。它们不进入 36-cell aggregate，
 也不能证明三个 benchmark arm 的相对效果。
 
-## C0 canary 记录
+## Canary 记录
 
 | Canary | 状态                               | generic               | evidence-only         | chronorift-full          |
 | ------ | ---------------------------------- | --------------------- | --------------------- | ------------------------ |
@@ -27,6 +27,8 @@ Loop、工具调度与 Harness verdict 这条链路在当时可用。它们不�
 | 003    | `not_ready`                        | scored                | `invalid_tool_flow`   | scored                   |
 | 004 C0 | historical `ready` / `legacy_only` | true / `inconclusive` | true / `inconclusive` | true / `confirmed`       |
 | 004 C1 | historical `ready` / `legacy_only` | true / `inconclusive` | true / `inconclusive` | true / `inconclusive`    |
+| 005 C0 | `ready` / `hardened`               | true / `confirmed`    | true / `inconclusive` | true / `confirmed`       |
+| 005 C1 | `ready` / `hardened`               | true / `inconclusive` | true / `inconclusive` | true / `inconclusive`    |
 
 原始 sanitized reports：
 
@@ -35,6 +37,8 @@ Loop、工具调度与 Harness verdict 这条链路在当时可用。它们不�
 - [canary-c0-attempt-003.json](canary-c0-attempt-003.json)
 - [canary-c0-ready-004.json](canary-c0-ready-004.json)
 - [canary-c1-ready-004.json](canary-c1-ready-004.json)
+- [canary-c0-ready-005.json](canary-c0-ready-005.json)
+- [canary-c1-ready-005.json](canary-c1-ready-005.json)
 
 每份 report 都对 spec、cell 和 report 持有 content hash。这三份负结果已保留，不会因某个 arm
 在后续 attempt 成功而被覆盖。`invalid_tool_flow` 表明当次诊断流未满足冻结工具规则；
@@ -66,11 +70,10 @@ implementation-bound 005 已完成。C0 与 C1 报告分别为
 
 ## 尚未完成
 
-- `docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json`：pending；
-- `v0.3.2-luna-benchmark-freeze`：pending；
 - 唯一 36-cell first-selection 与 formal execution：pending；
 - V3 sanitized report、results、case bundle、integrity verification 和 Gate：pending。
 
 因此当前可以声称“V3 可靠性边界已实现、真实 Pi 链路已通过 smoke、历史负向与 004 canary 已
-原样保留、hardened 005 canary 已通过”，不能声称“V3 formal 已发布”、“Gate 已通过”或
+原样保留、005 C0/C1 均达到 `ready` 且 verifier 前置资格为 `hardened`、V3 spec 已冻结”，不能
+声称“V3 formal 已发布”、“Gate 已通过”或
 “ChronoRift 已证明优于 generic Agent”。

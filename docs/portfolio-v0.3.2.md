@@ -57,11 +57,11 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 > 独立设计并实现基于 Pi SDK 的 Godot 运行时诊断 Harness，通过 Contract、checkpoint/replay、
 > 单变量实验、因果证据与 Harness Gate 约束 LLM 结论；建立 4 类 runtime-Bug、3-arm 盲化
 > benchmark 与 append-only 证据链；在 GPT-5.6 Luna 的历史 C0/C1 六个 canary cells 中实现零工具
-> 错误与零错误确认，并进一步通过 implementation-bound hardened 005 canary 与 raw-to-proof
-> verifier；36-cell 正式评测待执行。
+> 错误与零错误确认，并进一步完成 implementation-bound 005 C0/C1；两阶段均为 `ready`，verifier
+> 前置资格均为 `hardened`，并以可重建 machine spec 冻结 36-cell protocol；正式评测待执行。
 
 ## 边界
 
-Hardened 005 canary 已完成，因此 freeze 的 canary 前置已满足；36-cell Luna formal campaign 和产品
-Gate 仍是 **pending**。当前数据证明工程链路与 canary 运行事实，不证明 ChronoRift 相对 generic
-Agent 已有统计优势。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用。
+005 C0/C1 与 V3 machine spec freeze 已完成；36-cell Luna formal campaign 和产品 Gate 仍是
+**pending**。当前数据证明工程链路与 canary 运行事实，不证明 ChronoRift 相对 generic Agent 已有
+统计优势。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用。

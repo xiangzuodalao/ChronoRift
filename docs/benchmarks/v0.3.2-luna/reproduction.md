@@ -87,8 +87,9 @@ confirmation。full 完成 matching replay、一项 intervention、一次 compar
 
 ## 5. Hardened 005 canary（已完成）
 
-005 必须在干净 implementation checkout 上生成 V2 spec；不得复制 004 spec 或修改 receipt。C1 只能由
-同一 identity 下实际发布的 ready C0 报告授权：
+以下是已执行顺序，仅供审计；不要重跑或覆盖该 identity。005 必须在干净 implementation checkout
+上生成 V2 spec；不得复制 004 spec 或修改 receipt。C1 只能由同一 identity 下实际发布的 ready C0
+报告授权：
 
 ```bash
 corepack pnpm --silent benchmark:canary:spec -- \
@@ -103,7 +104,14 @@ corepack pnpm benchmark:canary -- \
 corepack pnpm benchmark:canary -- \
   --spec .chronorift/v0.3/canary-plans/luna-005.spec.json \
   --stage c1 \
-  --c0-report PATH_TO_PUBLISHED_C0_005_REPORT
+  --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
+
+# 公开报告可安全重验
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-005.json \
+  --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
 ```
 
 实际发布的 [C0-005](canary-c0-ready-005.json) 与 [C1-005](canary-c1-ready-005.json) 均为
@@ -112,17 +120,16 @@ corepack pnpm benchmark:canary -- \
 `b28560f66e6ef6c073e9029a993ad3636e8530f2c13decf47e52b7c60e710dfb`，并精确绑定该 C0 hash。六个
 cells 均为 `scored`、mechanism correct、零 tool errors、零无进展违规、零 incorrect confirmation。
 
-## 6. V3 spec 与 freeze（pending，hardened canary 前置已满足）
+## 6. V3 spec 与 freeze（已完成）
 
 ```bash
-corepack pnpm --silent benchmark:spec -- \
-  --campaign v0.3.2-luna \
-  > docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
+corepack pnpm --silent benchmark:spec -- --campaign v0.3.2-luna
 ```
 
-人工复核 schema version、campaign/tag/seed、provider/model metadata、36-cell 顺序、预算、3+3 recovery、
-score eligibility 与 Gate。然后将实现、文档、canary 和 machine spec 一起提交，在干净
-checkout 上创建不可移动的 tag：
+生成结果已写入 `benchmark-spec.v3.json`；人工复核了 schema version、campaign/tag/seed、
+provider/model metadata、36-cell 构成、预算、3+3 recovery、score eligibility 与 Gate，并由 Godot
+gate 确认提交文件可按当前实现确定性重建。实现、文档、canary 和 machine spec 随后一起提交，在
+干净 checkout 上创建不可移动的 tag：
 
 ```bash
 git tag -a v0.3.2-luna-benchmark-freeze -m "Freeze ChronoRift v0.3.2 Luna benchmark"
@@ -169,6 +176,9 @@ corepack pnpm benchmark:gate -- \
   --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
   --report docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
 ```
+
+publisher 固定生成 `benchmark-report.v3.json`、`results.md` 和
+`case-physics-tunneling-full-r1.json`。发布前不得预建或改写这些 write-once 文件。
 
 verifier exit 0 只说明 schema、identity、hash chain、oracle、aggregate 与 report hash 可重算。Gate
 exit 0 才代表预注册产品门槛通过；exit 2 表示失败或不可评估。无论 Gate 结果如何，

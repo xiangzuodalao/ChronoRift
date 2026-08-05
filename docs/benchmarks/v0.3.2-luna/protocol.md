@@ -3,7 +3,7 @@
 本协议定义 v0.3.2-luna 的 canary 和 formal 评测语义。历史 C0/C1-004 的 readiness 字段为
 ready，但强化 verifier 只把其 V1 linkage 归为 `legacy_only`；implementation-bound C0/C1-005
 均已 `ready`，前置资格为 `hardened`。
-本文仍是待与 machine spec 一起冻结的协议，不是已完成的 formal 结果。
+本文已与 machine spec 一起冻结，但不是已完成的 formal 结果。
 
 ## 1. 历史不可改写
 
@@ -83,8 +83,8 @@ C0-001/002/003 均为 `not_ready` 并必须保留。C0-004 与引用其 report h
 只有 005 C0 ready 后，精确 C0 report hash 和相同 receipt 才能授权 C1。该前置已完成：
 [C0-005](canary-c0-ready-005.json) 与 [C1-005](canary-c1-ready-005.json) 均为 `ready`，verifier 均返回
 `prerequisiteEligibility=hardened`；C1 精确绑定 C0 report hash
-`0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。formal spec、freeze 与
-selection 仍未执行。
+`0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。formal spec 与 freeze 已
+完成，selection 仍未执行。
 
 ## 7. Formal Gate 与发布
 

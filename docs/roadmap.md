@@ -48,8 +48,8 @@ correct，并且为零 tool errors、零无进展违规、零 incorrect confirma
    `prerequisiteEligibility=hardened`；C0 report hash 为
    `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`，C1 report hash 为
    `b28560f66e6ef6c073e9029a993ad3636e8530f2c13decf47e52b7c60e710dfb`；C1 精确绑定该 C0；
-7. **pending**：生成 `benchmark-spec.v3.json`，审核并与实现及 005 canary 一起冻结在
-   `v0.3.2-luna-benchmark-freeze`；
+7. **已完成**：生成并审核 `benchmark-spec.v3.json`，与实现及 005 canary 一起冻结在
+   `v0.3.2-luna-benchmark-freeze`；提交 spec 的 Godot gate 会按当前实现确定性重建并比较；
 8. **pending**：从干净 freeze checkout 启动唯一 36-cell first-selection，按 3+3 规则恢复或封存；
 9. **pending**：无论 pass、fail、invalid 或 recovery-exhausted incomplete，都发布 sanitized V3
    report，分别运行 verifier 与 Gate，再更新作品证据。
@@ -63,7 +63,7 @@ v0.3.1 不改写 v0.3 的正式负结果，也不改变 Fixture、arm、prompt�
 
 2026-08-05 已连续两次通过 smoke（均为 5 次工具调用，total tokens 33,562 / 43,087，Harness
 confirmed）并通过 `test:live`；pre-freeze 的 `check`、Godot、fake benchmark 与历史 report 验证也已
-通过。下一步是提交 machine spec、创建 freeze tag，再启动唯一 formal execution。
+通过。machine spec 与 freeze tag 已完成；下一步是启动唯一 formal execution。
 
 首个 v0.3.1 formal execution 在第一 cell 的真实 Pi 工具流后暴露 token-accounting schema 缺陷：Pi
 total 包含 cache read/write，而 Harness 只校验 input + output；异常又越过 attempt 封存边界。原 freeze

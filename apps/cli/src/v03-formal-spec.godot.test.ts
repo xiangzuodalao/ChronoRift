@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFormalBenchmarkSuiteSpecV3,
   parseFormalBenchmarkSuiteSpecV2,
+  parseFormalBenchmarkSuiteSpecV3,
   sameFormalSuiteV3,
 } from "./v03-formal-suite.js";
 
@@ -44,6 +45,31 @@ describe("committed formal benchmark specification", () => {
       expect(sameFormalSuiteV3(first, second)).toBe(true);
       expect(first.provider).toBe("openai-codex");
       expect(first.model).toBe("gpt-5.6-luna");
+    } finally {
+      await rm(artifactRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the committed V3 Luna specification identical to the implementation", async () => {
+    const cwd = process.cwd();
+    const artifactRoot = await mkdtemp(
+      join(tmpdir(), "chronorift-formal-spec-v3-committed-"),
+    );
+    try {
+      const committed = parseFormalBenchmarkSuiteSpecV3(
+        JSON.parse(
+          await readFile(
+            resolve(cwd, "docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json"),
+            "utf8",
+          ),
+        ) as unknown,
+      );
+      const rebuilt = await buildFormalBenchmarkSuiteSpecV3({
+        cwd,
+        artifactRoot,
+      });
+
+      expect(sameFormalSuiteV3(committed, rebuilt)).toBe(true);
     } finally {
       await rm(artifactRoot, { recursive: true, force: true });
     }

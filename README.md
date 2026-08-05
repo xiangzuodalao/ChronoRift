@@ -3,12 +3,11 @@
 ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游戏运行时 Bug 转换成可恢复、
 可干预、可重放、可比较的实验，并由 Harness 根据运行时证据裁决结论，而不是相信模型置信度。
 
-> 当前开发版本：**v0.3.1-r2 provider-recovery campaign**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容；
-> v0.3 已冻结三组对照协议，并发布首个 36-cell 正式执行。该执行完整、报告完整性验证通过，但
-> 36/36 cells 均以 `proposal_missing` 结束，冻结 Gate 未通过。v0.3.1 保留该负结果，先以独立 Pi
-> smoke 验证 provider，再使用新 campaign 身份执行同一冻结矩阵。两次 smoke 与 `test:live` 已通过；
-> 首个 v0.3.1 execution 暴露 cache-token accounting/封存缺陷并中止；freeze 与 selection 已保留。
-> 修复后的 r2 使用新 identity，formal execution 尚未开始，发布前不声称 benchmark 或模型优势。
+> 当前开发版本：**v0.3.1**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容。v0.3.1-r2 已完成唯一的
+> 36-cell 正式 execution 并发布可验证报告；报告完整性通过，但冻结 Gate 失败。32 个 cells 的本地
+> manifest 记录底层 `Connection error`，另外 2 个为 `invalid_tool_flow`、2 个为
+> `progress_timeout`。因此该 execution 验收了 cache-aware ledger、fail-closed 封存与负结果发布，
+> 不能证明 GLM-5.2 的诊断质量，也不能证明 ChronoRift 相对 generic arm 的优势。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)。
@@ -99,6 +98,21 @@ raw ledger 在 36 个 finished manifests 中均记录 `PiHarnessError/PROPOSAL_M
 Gate 编排，不作为产品优势数据。formal v2 selection、progress journal、retry/recovery 与 ledger
 由 `corepack pnpm check` 中的离线测试验证。正式结果状态与复现实验协议见
 [v0.3 evidence package](docs/benchmarks/v0.3/README.md)。
+
+### v0.3.1-r2 provider-recovery 结果（负结果）
+
+[r2 已验证报告](docs/benchmarks/v0.3.1-r2/benchmark-report.v2.json)对应唯一、完整的 36-cell
+execution。三组 grounded success 仍均为 0/12，incorrect confirmation 为 0，Gate 因 full 未达到
+9/12 且 full − generic 未达到 +0.20 而失败。与 v0.3 的零用量报告不同，本轮记录到 2,527,181
+tokens、146 次工具调用和 36 次 baseline 游戏执行；非零用量集中在 4 个 cells。
+
+本地 write-once ledger 进一步显示：32 个 `proposal_missing` 的底层错误为 `Connection error.`，2 个
+cells 因 Pi 发起并发诊断工具调用而得到 `invalid_tool_flow`，2 个有持续进度但在 600 秒达到
+`progress_timeout`。sanitized report 不导出底层错误文本，所以公开证据只能把前 32 个解释为 proposal
+缺失；不能把这轮 aggregate 当作有效的 arm 能力对比。完整边界、汇总和预选案例见
+[v0.3.1-r2 evidence package](docs/benchmarks/v0.3.1-r2/README.md)、
+[results](docs/benchmarks/v0.3.1-r2/results.md)与
+[case study](docs/benchmarks/v0.3.1-r2/case-study-physics-tunneling.md)。
 
 ## 项目结构
 
@@ -309,10 +323,14 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
 - suite 在同一四个 Fixture 上校准，不能用于统计显著性、跨项目泛化或与 Claude Code 的比较。
 - provider 没有 sampling seed；三次 repetition 不是独立、可复现实验随机样本。
 - report verifier 是本地可重算的完整性检查，不是签名、CI attestation 或 provider attestation。
-- 首个 formal execution 虽完整并通过 report integrity verification，但 36/36 cells 均未产生 proposal，
-  因而不能衡量三组 treatment 或模型诊断效果，冻结 Gate 已失败。
+- v0.3 与 v0.3.1-r2 两个 formal execution 都完整且通过 report integrity verification，但都未产生
+  grounded success；r2 又被 32 个底层连接错误主导，不能衡量三组 treatment 或模型诊断效果。
+- 当前 `REPORT_MISSING` 会把 Agent state 中的 `Connection error.` 包装成 `proposal_missing`；下一轮
+  必须保留 typed provider failure cause，避免 sanitized report 丢失基础设施归因。
+- GLM-5.2 可能发起并发诊断工具调用，而当前受控工具流要求串行；需要在 Agent tool scheduling 边界
+  明确串行化或将违规反馈给模型，并增加完成/工具预算后的终止策略。
 
-下一步先在 formal suite 外隔离并修复 provider 连接路径，用独立 smoke 取得至少一次非零 token 的真实
-Pi Session；不得删除 selection 或重跑已冻结 execution 来筛掉本次负结果。随后接入一个仓库外真实
-Godot 项目，验证 Addon API、checkpoint coverage 与源码根边界是否足够；不会因为四个校准 Fixture
-跑通就直接外推完整 Target Architecture。
+下一步先实现 provider 错误 cause chain、串行工具调度与 Agent 终止预算，并在 formal suite 外用故障注入
+回归连接中断、并发工具调用和超时。不得删除 selection 或重跑已冻结 execution 来筛掉负结果。随后以
+新 campaign 身份跑小规模 canary；只有 canary 能稳定提交合法 proposal 后，才预注册下一轮 36-cell
+矩阵。真实 Godot 项目接入继续作为下一条独立垂直切片。

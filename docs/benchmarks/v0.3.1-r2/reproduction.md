@@ -7,6 +7,7 @@ corepack pnpm check
 corepack pnpm test:godot
 corepack pnpm benchmark
 corepack pnpm benchmark:verify -- \
+  --spec docs/benchmarks/v0.3/benchmark-spec.v2.json \
   --report docs/benchmarks/v0.3/benchmark-report.v2.json
 corepack pnpm pi:smoke
 corepack pnpm pi:smoke
@@ -46,9 +47,12 @@ corepack pnpm benchmark:publish -- \
   --execution EXECUTION_ID \
   --output docs/benchmarks/v0.3.1-r2
 corepack pnpm benchmark:verify -- \
+  --spec docs/benchmarks/v0.3.1-r2/benchmark-spec.v2.json \
   --report docs/benchmarks/v0.3.1-r2/benchmark-report.v2.json
 corepack pnpm benchmark:gate -- \
+  --spec docs/benchmarks/v0.3.1-r2/benchmark-spec.v2.json \
   --report docs/benchmarks/v0.3.1-r2/benchmark-report.v2.json
 ```
 
-verifier 与 Gate 分开解释；负面、invalid 或 recovery-exhausted incomplete 结果不得替换。
+verifier 返回 0 且 Gate 返回 2 是本次已发布负结果的预期复验结果。verifier 与 Gate 分开解释；负面、
+invalid 或 recovery-exhausted incomplete 结果不得替换。

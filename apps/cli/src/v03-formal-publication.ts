@@ -396,6 +396,7 @@ export function sanitizeFormalCaseEvidence(
     promptAudit,
     proposal: proposal === null ? null : sanitizeFormalProposal(proposal),
     accessReceipts: receipts.map((receipt) => ({
+      schemaVersion: receipt.schemaVersion,
       receiptId: receipt.receiptId,
       runId: receipt.runId,
       fixtureId: receipt.fixtureId,

@@ -1,6 +1,7 @@
 # Receipt coverage 分类缺陷复现协议
 
-> 当前状态：r3 修复与对应离线回归已经落地并通过；本文仍只描述复现与验证协议，不替代正式 report。
+> 当前状态：r3 的 receipt coverage 修复与离线回归已经通过；唯一 r3 formal 随后在 16/36 暴露了独立的
+> proposal scope 边界缺陷。本文记录两项可复现问题，不把未完成 execution 当作 treatment report。
 
 ## 1. 已观察到的 r2 事实
 
@@ -80,3 +81,22 @@ corepack pnpm check
 若改动触及 Godot runtime/material 边界，再运行 `corepack pnpm test:godot`。只有这些离线门槛通过后，
 才进入 canary-010；`test:live`、canary 或 formal 的未来结果必须由各自 write-once artifact 证明，不能在
 本文预填。
+
+## 6. r3 的 proposal scope 复现
+
+r3 case 03 / generic / repetition 3 的 Agent 完成 baseline、replay、单变量 intervention、source read 和
+proposal 提交，但把真实 Failure Brief `runId` 的一个字符抄错。Capsule、baseline、candidate、event 和
+receipt ID 本身均为真实 scoped tool 结果。
+
+旧行为的最小复现是：构造合法 `DiagnosisProposalV3`，仅令 `proposal.runId !== failureBrief.runId`（另一个
+反例令 `fixtureId` 不同），再调用 `V03ToolFlow.submit`。修复前 proposal 会被接受；Conclusion Gate 生成
+跨 investigation blockers；terminal manifest integrity 最终抛出
+`Benchmark V3 proposal investigation binding is invalid`，executor 把它封成 campaign 级
+`harness_failure`。
+
+修复后的 oracle 是：submit 边界立即抛 `INVALID_DIAGNOSIS`，不锁存 proposal；formal classifier 将其记录为
+cell 级 `diagnostic_failure/invalid_proposal`，调度器继续后续 cell。下游 GameBranch 与 manifest integrity
+仍保持严格，真正的 lineage 或 artifact 腐败不能被降级。
+
+对应测试位于 `packages/pi-harness/tests/v03-tool-flow.test.ts`；36-cell continuation 仍由
+`apps/cli/src/v03-formal-execution-v3.test.ts` 的离线 campaign 回归覆盖。

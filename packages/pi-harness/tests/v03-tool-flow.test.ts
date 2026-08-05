@@ -201,6 +201,80 @@ describe("V03 diagnostic tool flow", () => {
     expect(ungrounded.getProposal()).toBeUndefined();
   });
 
+  it.each([
+    {
+      label: "run ID",
+      scopeOverride: { runId: asRunId("run:foreign-scope") },
+    },
+    {
+      label: "fixture ID",
+      scopeOverride: { fixtureId: asFixtureId("fixture:foreign-scope") },
+    },
+  ])(
+    "rejects a proposal whose $label differs from the Failure Brief scope",
+    ({ scopeOverride }) => {
+      const failureBrief = FailureBriefV1Schema.parse({
+        schemaVersion: 1,
+        runId: asRunId("run:proposal-scope"),
+        fixtureId: asFixtureId("fixture:proposal-scope"),
+        contractId: asContractId("contract:proposal-scope"),
+        capsuleId: asCapsuleId("capsule:proposal-scope"),
+        baselineExecutionId: asExecutionId("execution:proposal-scope"),
+        trigger: { kind: "signal", source: "subject", name: "triggered" },
+        triggerEventId: "event:proposal-scope",
+        triggerTick: 0,
+        expectation: {
+          kind: "property_equals",
+          path: "subject.result",
+          value: true,
+        },
+        deadlineTick: 1,
+        actual: { present: true, value: false },
+        violationSummary: "The frozen expectation was not met",
+      });
+      const flow = new V03ToolFlow({
+        cwd: "/virtual",
+        runDir: "/virtual/run",
+        arm: "evidence-only",
+        initialCapsuleId: failureBrief.capsuleId,
+        baselineExecutionId: failureBrief.baselineExecutionId,
+        failureBrief,
+        game: unavailableGame,
+        source: createVirtualSourceAccess({
+          files: [{ path: "case/main.gd", content: "extends Node\n" }],
+        }),
+      });
+
+      expect(() =>
+        flow.submit({
+          schemaVersion: 3,
+          proposalId: "proposal:foreign-scope",
+          runId: failureBrief.runId,
+          fixtureId: failureBrief.fixtureId,
+          capsuleId: failureBrief.capsuleId,
+          baselineExecutionId: failureBrief.baselineExecutionId,
+          candidateExecutionIds: [],
+          comparisonIds: [],
+          accessReceiptIds: ["@r0"],
+          mechanismCode: "unknown",
+          summary: "Insufficient grounded evidence",
+          evidenceEventIds: [],
+          blockers: ["No experiment is available"],
+          nextExperiment: null,
+          confidence: 0,
+          ...scopeOverride,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "INVALID_DIAGNOSIS",
+          message: "Proposal scope does not match the Failure Brief",
+        }),
+      );
+      expect(flow.getProposal()).toBeUndefined();
+      expect(flow.hasSubmittedProposal()).toBe(false);
+    },
+  );
+
   it("latches a source-budget violation so a later valid submit cannot score", async () => {
     const failureBrief = FailureBriefV1Schema.parse({
       schemaVersion: 1,

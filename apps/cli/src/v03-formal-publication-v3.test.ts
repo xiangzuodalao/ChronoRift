@@ -31,6 +31,7 @@ import {
   publishFormalBenchmarkV3,
   verifyFormalBenchmarkReportV3,
 } from "./v03-formal-publication-v3.js";
+import { sanitizeFormalCaseEvidence } from "./v03-formal-publication.js";
 
 const hash = "a".repeat(64);
 const mechanisms = [
@@ -68,12 +69,17 @@ const campaignById = {
     campaignId: "v0.3.2-luna-r3",
     freezeTag: "v0.3.2-luna-r3-benchmark-freeze",
   },
+  "v0.3.2-luna-r4": {
+    campaignId: "v0.3.2-luna-r4",
+    freezeTag: "v0.3.2-luna-r4-benchmark-freeze",
+  },
 } as const;
 const orderSeedByCampaign = {
   "v0.3.2-luna": "chronorift-v0.3.2-luna-formal-1",
   "v0.3.2-luna-r1": "chronorift-v0.3.2-luna-r1-formal-1",
   "v0.3.2-luna-r2": "chronorift-v0.3.2-luna-r2-formal-1",
   "v0.3.2-luna-r3": "chronorift-v0.3.2-luna-r3-formal-1",
+  "v0.3.2-luna-r4": "chronorift-v0.3.2-luna-r4-formal-1",
 } as const;
 
 const suiteForCampaign = (campaignId: keyof typeof campaignById) => {
@@ -139,6 +145,7 @@ const suite = suiteForCampaign("v0.3.2-luna");
 const r1Suite = suiteForCampaign("v0.3.2-luna-r1");
 const r2Suite = suiteForCampaign("v0.3.2-luna-r2");
 const r3Suite = suiteForCampaign("v0.3.2-luna-r3");
+const r4Suite = suiteForCampaign("v0.3.2-luna-r4");
 const executionId = asBenchmarkExecutionId("benchmark-execution:v3-publish");
 const report = buildBenchmarkReportV3({
   suite,
@@ -170,6 +177,174 @@ const report = buildBenchmarkReportV3({
   cells: [],
   scoringProofs: [],
 });
+
+const completedV3ManifestWithReceipt = (): JsonValue => {
+  const fixtureId = fixtures[2]!.fixtureId;
+  const runId = "run:v3-publication-receipt";
+  const receiptId = "receipt:v1:v3-publication-receipt";
+  const capsuleId = "capsule:v3-publication-receipt";
+  const baselineExecutionId = "execution:v3-publication-baseline";
+  const checkpointId = "checkpoint:v3-publication";
+  const contractId = "contract:v3-publication";
+  const inputTraceId = "trace:v3-publication";
+  const proposalId = "proposal:v3-publication";
+  const receipt = {
+    schemaVersion: 1,
+    receiptId,
+    runId,
+    fixtureId,
+    accessKind: "failure_brief",
+    resourceId: capsuleId,
+    requestHash: hash,
+    contentHash: hash,
+    sourceCoverage: [],
+    issuedAt: "2026-08-05T00:00:00.000Z",
+  };
+  const observationHealth = {
+    schemaVersion: 1,
+    emittedEvents: 0,
+    droppedEvents: 0,
+    truncatedEvents: 0,
+    bufferedBytes: 0,
+    backpressure: false,
+    probeOverheadUs: 0,
+  };
+  const caseEvidence = {
+    schemaVersion: 2,
+    contract: { contractId, contentHash: hash },
+    checkpoint: {
+      checkpointId,
+      contentHash: hash,
+      certificateHash: null,
+      certificate: null,
+    },
+    inputTrace: { inputTraceId, contentHash: hash },
+    capsule: {
+      capsuleId,
+      contentHash: hash,
+      timelineDigest: hash,
+      eventChainHash: hash,
+      evidenceLinks: [],
+      causalEvents: [],
+      omittedRuntimeLogCount: 0,
+      expected: {
+        kind: "property_equals",
+        path: "fixture.outcome",
+        value: true,
+      },
+      actual: { present: true, value: false },
+      eventLossDetected: false,
+      limitationsHash: hash,
+    },
+    baseline: {
+      executionId: baselineExecutionId,
+      contractId,
+      checkpointId,
+      inputTraceId,
+      evaluationStatus: "fail",
+      evaluation: {
+        status: "fail",
+        triggerEventId: "event:v3-publication-trigger",
+        triggerTick: 0,
+        deadlineTick: 1,
+        observed: { present: true, value: false },
+      },
+      timelineDigest: hash,
+      contentHash: hash,
+      restoreReceiptHash: hash,
+      controlReceiptHash: hash,
+      stepReceiptsHash: hash,
+      observationHealthHash: hash,
+      finalStateHash: hash,
+      finalState: { values: { "fixture.outcome": false } },
+      runtimeFingerprintHash: hash,
+      timelineMatchesBaseline: true,
+      restoreReceipt: {
+        requestedCheckpointId: checkpointId,
+        restoredCheckpointId: checkpointId,
+        restored: true,
+        nextTick: 0,
+        simTimeUs: 0,
+        stateDigest: hash,
+      },
+      controlReceipt: {
+        schemaVersion: 1,
+        requested: {},
+        realized: {},
+        accepted: true,
+        mismatches: [],
+      },
+      stepReceipts: [
+        {
+          requestedTick: 0,
+          realizedTick: 0,
+          requestedDeltaUs: 1,
+          realizedDeltaUs: 1,
+          appliedInputOrders: [],
+        },
+      ],
+      observationHealth,
+      causalEvents: [],
+    },
+    replay: null,
+    candidates: [],
+    comparisons: [],
+    accessReceipts: [receipt],
+  };
+  return {
+    schemaVersion: 3,
+    manifestKind: "benchmark_attempt_terminal",
+    terminalStatus: "completed",
+    promptAudit: {
+      failureBriefHash: hash,
+      failureBriefReceiptId: receiptId,
+      systemHash: hash,
+      userHash: hash,
+      baselineTimelineDigest: hash,
+      checkpointId,
+      checkpointHash: hash,
+      contractId,
+      contractHash: hash,
+      inputTraceId,
+      inputTraceHash: hash,
+      runtimeFingerprintHash: hash,
+      sourceViewHash: hash,
+      experimentCatalogHash: hash,
+      oracleHash: hash,
+    },
+    proposal: {
+      schemaVersion: 3,
+      proposalId,
+      runId,
+      fixtureId,
+      capsuleId,
+      baselineExecutionId,
+      candidateExecutionIds: [],
+      comparisonIds: [],
+      accessReceiptIds: [receiptId],
+      mechanismCode: "discrete_physics_tunneling",
+      summary: "The evidence supports the mechanism.",
+      evidenceEventIds: [],
+      blockers: ["A replay is still required."],
+      nextExperiment: "Replay once from the frozen checkpoint.",
+      confidence: 0.8,
+    },
+    accessReceipts: [receipt],
+    verdict: {
+      schemaVersion: 2,
+      verdictId: "verdict:v3-publication",
+      proposalId,
+      runId,
+      fixtureId,
+      status: "inconclusive",
+      mechanismCode: "discrete_physics_tunneling",
+      summary: "The replay requirement keeps the result inconclusive.",
+      blockers: ["A replay is still required."],
+    },
+    metrics: { gameExecutions: 1 },
+    caseEvidence,
+  };
+};
 
 describe("formal benchmark V3 publication", () => {
   it("limits output to the Luna campaign's three generated files", () => {
@@ -257,6 +432,27 @@ describe("formal benchmark V3 publication", () => {
     );
   });
 
+  it("isolates Luna r4 publication from every earlier evidence directory", () => {
+    const cwd = "/workspace/chronorift";
+    const r3Output = join(cwd, "docs", "benchmarks", "v0.3.2-luna-r3");
+    const r4Output = join(cwd, "docs", "benchmarks", "v0.3.2-luna-r4");
+    const r4Status = `?? docs/benchmarks/v0.3.2-luna-r4/${FORMAL_REPORT_FILENAME_V3}\n`;
+
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r4Output, r4Status, r4Suite),
+    ).not.toThrow();
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r3Output, "", r4Suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r4",
+    );
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r4Output, "", r3Suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r3",
+    );
+  });
+
   it("rejects raw session, credential, source text, and host path fields", () => {
     expect(() =>
       assertFormalPublicationProjectionV3({ piSession: {} }),
@@ -276,6 +472,21 @@ describe("formal benchmark V3 publication", () => {
     expect(() =>
       assertFormalPublicationProjectionV3({ resourceId: "C:\\Users\\private" }),
     ).toThrow("unsafe host path");
+  });
+
+  it("preserves receipt schema versions in a sealed V3 case projection", () => {
+    expect(
+      sanitizeFormalCaseEvidence(completedV3ManifestWithReceipt()),
+    ).toMatchObject({
+      evidenceCompleteness: "complete",
+      accessReceipts: [
+        {
+          schemaVersion: 1,
+          receiptId: "receipt:v1:v3-publication-receipt",
+          accessKind: "failure_brief",
+        },
+      ],
+    });
   });
 
   it("publishes and verifies an append-only sanitized V3 bundle", async () => {

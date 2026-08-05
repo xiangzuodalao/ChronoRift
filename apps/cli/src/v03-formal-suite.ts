@@ -144,11 +144,19 @@ export const V032_LUNA_R3_CAMPAIGN = {
   orderSeed: "chronorift-v0.3.2-luna-r3-formal-1",
 } as const;
 
+export const V032_LUNA_R4_CAMPAIGN = {
+  campaignId: "v0.3.2-luna-r4",
+  freezeTag: "v0.3.2-luna-r4-benchmark-freeze",
+  evidenceDirectory: "docs/benchmarks/v0.3.2-luna-r4",
+  orderSeed: "chronorift-v0.3.2-luna-r4-formal-1",
+} as const;
+
 type FormalCampaignDescriptorV3 =
   | typeof V032_LUNA_CAMPAIGN
   | typeof V032_LUNA_R1_CAMPAIGN
   | typeof V032_LUNA_R2_CAMPAIGN
-  | typeof V032_LUNA_R3_CAMPAIGN;
+  | typeof V032_LUNA_R3_CAMPAIGN
+  | typeof V032_LUNA_R4_CAMPAIGN;
 
 export type FormalCampaignIdV3 = FormalCampaignDescriptorV3["campaignId"];
 
@@ -164,6 +172,8 @@ export function formalCampaignForIdV3(
       return V032_LUNA_R2_CAMPAIGN;
     case "v0.3.2-luna-r3":
       return V032_LUNA_R3_CAMPAIGN;
+    case "v0.3.2-luna-r4":
+      return V032_LUNA_R4_CAMPAIGN;
   }
 }
 

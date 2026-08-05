@@ -1,7 +1,8 @@
 # r3 预执行协议
 
-本文定义 `v0.3.2-luna-r3` 的冻结边界。它不是 machine spec；已完成的 canary 事实由独立 report 证明，
-formal 状态仍以 machine spec、ledger 与发布报告为准。
+本文定义 `v0.3.2-luna-r3` 的冻结边界，并保留执行后的真实终态。它不是 machine spec；canary 事实由
+独立 report 证明，formal 事实以 frozen spec 与不可变 ledger 为准。r3 publisher 未能生成公开 report，
+因此本文不把手工摘要冒充 write-once publication。
 
 ## 1. 单一变更维度
 
@@ -89,7 +90,9 @@ write-once canary report。
 - Gate：full grounded successes ≥ 9/12、full − generic ≥ 0.20、full incorrect confirmations = 0，且每个
   arm 必须有 12 个 score-eligible cells。
 
-suite/definition/subject/runner hash 现在均未知。只有以下条件全部满足后才能生成并提交 machine spec：
+冻结 identity 已解析为：suite `01efdcdc…`、definition `9e49b4ac…`、subject `e9f5a659…`、runner
+`79702dc0…`，annotated tag 指向 `6d754488a00991411c8d171fd21ec9437f1d75cc`。freeze 前执行了以下
+门槛：
 
 1. coverage 修复和回归位于干净 implementation commit；
 2. canary-010 C0/C1 的 hardened evidence 已发布并与该实现绑定；
@@ -97,7 +100,7 @@ suite/definition/subject/runner hash 现在均未知。只有以下条件全部�
 4. 重建测试逐字节或按 canonical hash 证明 spec 与实现一致；
 5. annotated tag 精确指向包含上述实现、evidence、spec 与测试的同一个干净 commit。
 
-tag 创建前的文本约定不能替代这些条件。
+tag 创建前的文本约定不能替代这些条件；上述值已经由 committed spec 与 tag 固定，后继不得移动。
 
 ## 6. 唯一 formal execution
 
@@ -105,6 +108,13 @@ freeze 后才允许创建一个 first-selection execution。selection 持久化�
 `recoverable` 状态恢复同一 execution ID；不得创建第二个 execution、移动 tag、修改 spec 或清理负向
 cell。terminal 状态无论 `complete`、`incomplete` 或 `invalid` 都应原样发布，并分别运行 report verifier
 和 Gate。
+
+实际唯一 execution 为 `benchmark-execution:9f28a0d8-ae45-41d3-85ce-f5969f0b9c04`，selection hash
+`61f47b0a428c15c4c652740f1a0ae45370318809980c255dd29fc9954e6a872b`。它在 16 个 terminal
+cells 后以 `invalid`、`recoverable=false` 封存；aggregate 为 `null`，因此产品 Gate 不可评估。触发条件与
+边界修复见 [reproduction.md](reproduction.md)。冻结 publisher 又在 public case receipt projection 处
+fail closed，所以 r3 没有仓库内 formal report；不得为补齐发布而移动 tag、修改 frozen checkout 或绕过
+checkout verification。
 
 ## 7. 36-cell 成功判据
 

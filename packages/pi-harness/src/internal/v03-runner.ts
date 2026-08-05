@@ -911,6 +911,15 @@ export class V03ToolFlow {
     }
     const proposal = parsed.data;
     if (
+      proposal.runId !== this.failureBrief.runId ||
+      proposal.fixtureId !== this.failureBrief.fixtureId
+    ) {
+      throw new PiHarnessError(
+        "INVALID_DIAGNOSIS",
+        "Proposal scope does not match the Failure Brief",
+      );
+    }
+    if (
       proposal.capsuleId !== this.options.initialCapsuleId ||
       proposal.baselineExecutionId !== this.options.baselineExecutionId
     ) {

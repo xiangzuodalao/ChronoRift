@@ -5,13 +5,14 @@
 
 ## 当前状态
 
-| 项目                  | 状态                         | 可验证事实                                         |
-| --------------------- | ---------------------------- | -------------------------------------------------- |
-| Canary 008 C0         | `not_ready` / `not_eligible` | 三个 cells 已封存；存在两个独立 readiness blockers |
-| Canary 008 C1         | **未启动**                   | C0 未满足前置；没有 C1 report                      |
-| Canary 009 C0/C1      | `ready` / `hardened`         | 六个 cells 均 scored、mechanism correct、无违规    |
-| r2 machine spec / tag | **已生成 / 本地冻结**        | annotated tag 固定包含 spec 的 freeze commit       |
-| r2 formal execution   | **未运行**                   | `selected=false`；`executionId=null`               |
+| 项目                  | 状态                         | 可验证事实                                            |
+| --------------------- | ---------------------------- | ----------------------------------------------------- |
+| Canary 008 C0         | `not_ready` / `not_eligible` | 三个 cells 已封存；存在两个独立 readiness blockers    |
+| Canary 008 C1         | **未启动**                   | C0 未满足前置；没有 C1 report                         |
+| Canary 009 C0/C1      | `ready` / `hardened`         | 六个 cells 均 scored、mechanism correct、无违规       |
+| r2 machine spec / tag | **已生成 / 本地冻结**        | annotated tag 固定包含 spec 的 freeze commit          |
+| r2 formal execution   | `invalid` / 不可恢复         | 5/36 cells 封存；4 scored、1 `harness_failure`        |
+| report / Gate         | verifier true / 未评估       | aggregate `null`；Gate `not_evaluated`，预期 exit `2` |
 
 ## Canary 008 C0 负结果
 
@@ -84,13 +85,48 @@ confirmations，且每个 cell 都有 2 个 source receipts：
 - order seed：`chronorift-v0.3.2-luna-r2-formal-1`；
 - local annotated freeze tag：`v0.3.2-luna-r2-benchmark-freeze`。
 
-该本地 tag 固定包含 implementation、009 evidence、machine spec 与重建测试的 freeze commit。当前
-`benchmark:status` 为 `selected=false`、`executionId=null`：formal execution 尚未运行，因此没有
-aggregate、scoring proofs 或产品 Gate 结论。
+该本地 tag 固定包含 implementation、009 evidence、machine spec 与重建测试的 freeze commit。随后只有
+一个 first-selection execution 被创建；它已封存为不可恢复的 `invalid`，不得恢复、替换或复用。
+
+## R2 formal 负结果
+
+[sanitized report](benchmark-report.v3.json) 与[可读汇总](results.md)固定：
+
+- execution：`benchmark-execution:0d6c17c8-03f1-441b-aadd-83ed2623aa9b`；
+- first-selection hash：`906bea23e579fc37b6edab31df5570c7075a25477bb644033851944fbd2f8a96`；
+- report hash：`116a57fcc24c7e1e9493a466b6613de9cac7082648d8219575c75d3b2c84353d`；
+- status：`invalid`、不可恢复；
+- terminal cells：5/36，其中 4 `scored`、1 `harness_failure`；
+- aggregate：`null`；
+- verifier：`verified=true`、`issues=[]`；
+- frozen Gate：`not_evaluated`，Gate 命令预期返回 exit `2`。
+
+四个 scored cells 是不完整 execution 中保留下来的逐 cell 事实，不能组成 treatment aggregate：
+
+| Fixture / repetition | Arm             | Verdict        | Mechanism correct | Source grounded | Grounded success |
+| -------------------- | --------------- | -------------- | ----------------- | --------------- | ---------------- |
+| case 04 / r3         | generic         | `inconclusive` | true              | false           | false            |
+| case 04 / r3         | evidence-only   | `inconclusive` | true              | true            | false            |
+| case 04 / r3         | chronorift-full | `confirmed`    | true              | true            | true             |
+| case 02 / r3         | evidence-only   | `inconclusive` | true              | true            | false            |
+
+第五个 terminal cell 是 case 02 generic r3。Agent 的 7 次工具调用全部成功，proposal 被工具接受，且其
+`mechanismCode` 与 frozen oracle 一致；但它引用了 baseline Capsule 中的 events，却没有引用对应的
+`@r1` raw baseline receipt。post-run integrity 因此拒绝 completed manifest，将该 cell 以
+`terminalCode=harness_failure` 的 `invalid` 状态封存，并将整个 execution 封存为 `invalid`。这不是
+provider、Godot 或工具调用故障，而是 formal protocol 与终态
+coverage 分类之间暴露出的缺口。
+
+冻结 spec 预选的公开案例是 case 03 / chronorift-full / r1；该 cell 尚未执行，因此
+[case evidence](case-physics-tunneling-full-r1.json) 明确为 `raw_manifest_unavailable`，不能用其他 cell
+替代或拼接。
 
 ## 不变性边界
 
 - 历史 r1 仍是已发布、完整性可验证但 aggregate 为 `null` 的 `invalid` 负结果；008 不改写它。
 - `not_ready` 是 canary 前置结论，不是三组 treatment 的效果比较。
 - 单个 `confirmed` verdict 不会覆盖缺失 source receipt，也不会使整个 canary 获得资格。
-- 009 的 `ready` / `hardened` 只证明 canary 前置；freeze 只固定 protocol，不证明 formal 或 Gate 已完成。
+- 009 的 `ready` / `hardened` 只证明 canary 前置；r2 formal 的 4 个 scored cells 不构成 aggregate，也不
+  支持产品优势结论。
+- r2 spec、tag、selection、ledger 与报告保持不可变。下一轮必须以新的 campaign/definition 修复并验证
+  receipt coverage 的分类/协议，不能恢复或复用 r2。

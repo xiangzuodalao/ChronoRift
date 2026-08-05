@@ -51,8 +51,15 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
   tool/game/token 为 `7/3/63,799`、`5/2/31,522`、`8/3/74,071`；C1 为 `7/3/94,825`、
   `5/2/50,667`、`8/3/107,345`。
 - r2 machine spec 已生成并由本地 annotated tag `v0.3.2-luna-r2-benchmark-freeze` 固定；definition 为
-  `benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`。当前
-  `selected=false` / `executionId=null`，没有 formal aggregate 或 Gate 结果。
+  `benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`。唯一 formal execution
+  `benchmark-execution:0d6c17c8-03f1-441b-aadd-83ed2623aa9b` 已封存并发布为不可恢复的 `invalid`：5/36
+  cells 封存，其中 4 scored、1 `harness_failure`，aggregate `null`；report hash 为
+  `116a57fcc24c7e1e9493a466b6613de9cac7082648d8219575c75d3b2c84353d`，verifier true / `issues=[]`，
+  Gate `not_evaluated`（命令预期 exit 2）。
+- r2 失效不是 provider、Godot 或工具故障：case 02 generic r3 的 7 次工具调用均成功，proposal 被工具
+  接受，且其 `mechanismCode` 与 frozen oracle 一致；但只引用 baseline Capsule events、遗漏 raw
+  baseline receipt，post-run coverage 因而拒绝 completed manifest，并以 `invalid` 封存 cell 与
+  execution。四个 scored cells 只保留逐 cell 事实，不能形成 treatment aggregate。
 
 完整证据、hash 和状态边界见 [v0.3.2-luna evidence workspace](benchmarks/v0.3.2-luna/README.md)、
 [r1 workspace](benchmarks/v0.3.2-luna-r1/README.md) 与
@@ -77,7 +84,9 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 > 并原样发布 3-cell `invalid` 负结果，完整性可验证但 Gate 未评估；继续保留 r2 008
 > `not_ready` / `not_eligible` canary，未通过重跑或选择性发布隐藏失败；以全新 009 identity 完成六个
 > scored、mechanism-correct cells，C0/C1 均取得 hardened 前置资格且每 cell 有 2 个 source receipts；
-> 用独立 definition 与本地 annotated tag 冻结可重建的 r2 36-cell protocol，formal 尚未运行。
+> 用独立 definition 与本地 annotated tag 冻结可重建的 r2 36-cell protocol，并原样发布其 5-cell
+> `invalid` 负结果：verifier 通过、aggregate 为 `null`、Gate 未评估；定位到 proposal 引用与终态 receipt
+> coverage 之间的协议缺口，并保留冻结 evidence 供后继 campaign 回归。
 
 ## 边界
 
@@ -86,7 +95,8 @@ unresolved event references 阻止 completed/report；它不是可发布 formal 
 已完成；r1 报告虽通过 verifier，但只有 3 cells、aggregate `null`，产品 Gate 为 `not_evaluated`。该结果
 暴露的是 `invalid_proposal` 的预算分类漏项，不证明 ChronoRift 相对 generic Agent 已有统计优势。
 008 C0 又暴露 generic 的 `invalid_tool_flow` 和 full 的 source-grounding 缺口；C1 未启动，008 不得复用。
-009 C0/C1 虽为 `ready` / `hardened`，仍只证明 canary 前置。r2 machine spec/tag 已冻结 protocol，但
-`selected=false` / `executionId=null`，formal 尚未运行；不得把六个 canary cells 或 freeze 外推为 36-cell
-treatment aggregate 或产品 Gate。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目
-即插即用。
+009 C0/C1 虽为 `ready` / `hardened`，仍只证明 canary 前置。r2 machine spec/tag 已冻结 protocol；formal
+只封存 5/36 cells，并因 receipt coverage 失效，预选 case 03 / full / r1 也没有 raw manifest。因此不得把
+六个 canary cells、四个 scored formal cells 或单个 full grounded success 外推为 36-cell treatment
+aggregate、产品 Gate 或相对通用 Agent 的优势。下一轮必须使用新 campaign/definition，不能改写或复用
+r2。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用。

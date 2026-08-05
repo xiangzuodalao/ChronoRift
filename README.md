@@ -27,8 +27,12 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 > tool error，full 缺少 source receipt。008 C1 未启动，008 不得复用。全新 009 C0/C1 均为
 > `ready` / `hardened`：六个 cells 均 scored、mechanism correct、零工具/无进展/错误确认，且各有 2 个
 > source receipts。r2 machine spec 已生成并由本地 annotated tag
-> `v0.3.2-luna-r2-benchmark-freeze` 固定；formal 状态仍为 `selected=false` / `executionId=null`，尚未运行。
-> 历史 V2、r1 与 008 证据不会被改写。
+> `v0.3.2-luna-r2-benchmark-freeze` 固定。唯一 r2 formal execution 已封存并发布为不可恢复的
+> `invalid` 负结果：5/36 cells 封存，其中 4 scored、1 `harness_failure`，aggregate 为 `null`；verifier
+> 通过，Gate 为 `not_evaluated`（命令预期 exit 2）。触发点是 case 02 generic r3 的 proposal 已被工具接受，
+> 且其 `mechanismCode` 与 frozen oracle 一致，却没有引用 raw baseline receipt；终态 coverage 因此拒绝
+> completed manifest，并将 execution 以 `invalid` 封存。该结果不是 provider、Godot
+> 或工具调用故障，也不证明 treatment 优势。历史 V2、r1、008 与 r2 证据都不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)；面向简历/面试的事实摘要见
@@ -136,7 +140,7 @@ cells 因 Pi 发起并发诊断工具调用而得到 `invalid_tool_flow`，2 个
 [results](docs/benchmarks/v0.3.1-r2/results.md)与
 [case study](docs/benchmarks/v0.3.1-r2/case-study-physics-tunneling.md)。
 
-### v0.3.2-luna 可靠性与 Benchmark V3（进行中）
+### v0.3.2-luna 可靠性与 Benchmark V3（r2 负结果已发布）
 
 V3 不改写 V2 artifact、hash 或 verifier。它把 provider 失败保留为 typed cause（阶段、错误
 code、HTTP status 与 retry class），并持久化 model/tool/game/proposal 的单调 progress。只有
@@ -180,8 +184,16 @@ blockers 分别是 generic 的 `invalid_tool_flow` 和 full 的 `source_receipt_
 cell 有 2 个 source receipts。r2 [machine spec](docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json)
 已生成，definition 为
 `benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`，并由本地 annotated
-freeze tag 固定；当前仍为 `selected=false` / `executionId=null`，没有 formal aggregate 或 Gate。原始
-report hash、逐 arm 用量与边界见
+freeze tag 固定。唯一 execution
+`benchmark-execution:0d6c17c8-03f1-441b-aadd-83ed2623aa9b` 已封存为不可恢复的 `invalid`：5/36 cells
+封存，4 scored、1 `harness_failure`，aggregate 为 `null`；report hash 为
+`116a57fcc24c7e1e9493a466b6613de9cac7082648d8219575c75d3b2c84353d`，verifier 返回 true 且无 issues，
+Gate 为 `not_evaluated`（命令预期 exit 2）。四个 scored cells 中只有 case 04 r3 full 为 grounded success；这组
+不完整样本不能形成 treatment aggregate。case 02 generic r3 的 7 次工具调用全部成功，proposal 已被工具
+接受，且其 `mechanismCode` 与 frozen oracle 一致；但它引用了 Capsule 中的 baseline events 而没有引用
+raw baseline receipt，终态 coverage 因此拒绝 completed manifest，并将 cell 与 execution 以 `invalid`
+封存。这不是 provider、Godot 或工具故障。原始 report hash、
+逐 arm 用量与边界见
 [r2 evidence workspace](docs/benchmarks/v0.3.2-luna-r2/README.md)。
 
 ## 项目结构
@@ -307,7 +319,7 @@ corepack pnpm benchmark:status -- \
 corepack pnpm benchmark:status -- \
   --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json
 
-# 查看 r2 冻结 definition；formal 运行前预期 selected=false / executionId=null
+# 查看 r2 唯一且已封存的 invalid execution
 corepack pnpm benchmark:status -- \
   --spec docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json
 
@@ -319,6 +331,15 @@ corepack pnpm benchmark:verify -- \
 corepack pnpm benchmark:gate -- \
   --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json \
   --report docs/benchmarks/v0.3.2-luna-r1/benchmark-report.v3.json
+
+corepack pnpm benchmark:verify -- \
+  --spec docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json \
+  --report docs/benchmarks/v0.3.2-luna-r2/benchmark-report.v3.json
+
+# 预期 exit 2：r2 report 完整性有效，但 execution invalid，Gate not_evaluated
+corepack pnpm benchmark:gate -- \
+  --spec docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json \
+  --report docs/benchmarks/v0.3.2-luna-r2/benchmark-report.v3.json
 ```
 
 旧 selection `benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66` 没有 completed/report，不能
@@ -447,8 +468,9 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
 - C0-001/002/003 均为 `not_ready` 且已保留；历史 C0/C1-004 的 readiness 字段为 `ready`，但强化
   verifier 只将其 V1 linkage 归为 `legacy_only`。005 与 007 C0/C1 的前置资格均为 `hardened`；
   006 C1 作为 interrupted 负证据保留。r1 只产生 3 cells 且 aggregate 为 `null`，Gate
-  `not_evaluated`，因此目前仍没有 Luna 下的 treatment 优势结论。
+  `not_evaluated`。r2 也只封存 5/36 cells（4 scored、1 `harness_failure`），aggregate 为 `null`、Gate
+  `not_evaluated`；因此目前仍没有 Luna 下的 treatment 优势结论。
 
-下一步是修复 `invalid_proposal` 的预算分类漏项并增加回归；r1 报告及旧 spec、tag、selection 与
-ledger 保持不变。后继 campaign 尚未冻结或执行。
+下一步是在新的 campaign/definition 中修复“Capsule event 引用与 raw baseline receipt coverage”之间的
+分类/协议缺口并增加回归；r2 及更早的 report、spec、tag、selection 与 ledger 保持不变，不恢复或复用。
 真实 Godot 项目接入继续作为下一条独立垂直切片。

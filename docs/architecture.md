@@ -1,13 +1,11 @@
 # ChronoRift Game-native Agent Harness 总体架构
 
 > 状态：目标架构（Target Architecture）；决策日期：2026-08-04；当前实现：ChronoRift v0.3.2
-> 开发中的受控 Godot 诊断/评测垂直切片。历史 V2 正式报告完整性有效、Gate 失败；
-> V3 可靠性路径已实现；历史 C0/C1-004 报告虽各自为 ready，但强化 verifier 将其 V1
-> linkage 归为 `legacy_only`。implementation-bound 的 C0/C1-005 均已 hardened-ready；原 V3 machine
-> spec 已冻结，但其唯一 execution 因引用完整性失败没有 completed/report；007 C0/C1 已
-> hardened-ready，独立 r1 已发布 3-cell `invalid` 负结果；verifier 通过，Gate 未评估。
-> 后继 009 C0/C1 已 hardened-ready；r2 的唯一 formal execution 以 5/36 cells 封存为不可恢复的
-> `invalid` 负结果，verifier 通过、aggregate 为 `null`、Gate 未评估。
+> 开发中的受控 Godot 诊断/评测垂直切片。历史 V2 与 V3 负结果保持不可变；
+> v0.3.2-luna 使用真实 `openai-codex/gpt-5.6-luna`、Pi Session/Agent Loop 与 Benchmark V3。
+> r3 在 16/36 因 proposal scope Harness 缺陷停止，并暴露 publisher receipt schema 缺陷；两者均已修复。
+> r4 freeze commit `c03237b` 的唯一 execution 已完成 36/36：30 scored、6 diagnostic failure、零
+> infra/Harness-invalid；verifier `issues=[]`，产品 Gate 失败，尚无 treatment 或跨产品优势结论。
 > 本文同时定义尚未实现的完整
 > Godot、修复与验证能力。
 >
@@ -955,20 +953,20 @@ domain + gamebranch + agent-protocol ← GameBranch bridge
 canonical hash 与 verifier 继续按原字节重验。当前 v0.3.2 campaign 新增独立的 Benchmark V3
 schema/repository/runner；它不静默迁移、替换或覆盖任何 V2 artifact。
 
-| 目标能力     | v0.3 当前锚点                                     | 已实现状态                                                                                                                                                                                              | 下一步                                      |
-| ------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Contract     | `FrozenContractV2`、content-addressed ID          | 四个 Fixture 各一个冻结 temporal property Contract                                                                                                                                                      | 从真实项目提取最小 Contract bundle          |
-| Runtime port | `GameEnvironmentPort`、Godot Protocol v2          | 独立 Godot 4.7.1 进程、能力握手、realized controls                                                                                                                                                      | 仓库外真实项目验证 adapter API              |
-| Checkpoint   | certificate + participant/state-provider registry | Fixture L2 语义恢复；entity Fixture 额外捕获 pending effects/sequence                                                                                                                                   | restore divergence characterization         |
-| Replay       | sealed `V03ExecutionLog` + semantic digest        | confirmed 要求一次 matching strict replay                                                                                                                                                               | 重复 replay 与 Determinism Certificate      |
-| GameBranch   | immutable v2 BranchSpec + intervention            | baseline、两候选目录、最多两个单变量分支、canonical comparison                                                                                                                                          | matched pair 边界搜索                       |
-| Telemetry    | v2 typed event ledger                             | input/signal/delivery/property/lifecycle/spatial/pending-effect + health/clocks                                                                                                                         | async/resource 与更细 input phase           |
-| Evidence     | `EvidenceCapsuleV2`                               | Contract window 加递归 causal ancestors，保留 expected/actual 与 loss flag                                                                                                                              | 通用 causal slice，不先实现完整 World Graph |
-| Agent        | `FailureBriefV1` + 三组盲化 Pi tool flow          | byte-identical prompt；neutral source view；content-addressed receipt 由 Session-local `@rN` handle 引用；Pi 工具强制 sequential                                                                        | egress audit 与 prompt-injection suite      |
-| Verdict      | `DiagnosisProposalV3` → v0.3 Conclusion Gate      | 重验 receipt/candidate/replay/compare/lineage/mechanism；confidence 无裁决权                                                                                                                            | 更一般机制策略                              |
-| Benchmark    | V2 历史路径 + `BenchmarkSuiteSpecV3`              | 004 为历史 `legacy_only`；005/007/009 C0/C1 均为 `hardened`；原 V3 selection 未封存；r1 发布 2 scored + 1 invalid；r2 发布 4 scored + 1 invalid；两者 aggregate null、verifier true、Gate not evaluated | 新 identity 修复 receipt coverage 协议      |
-| Artifact     | run repository + append-only benchmark ledger     | strict write-once path、attempt hash chain、终态恢复、raw-to-proof seal 与 sanitized publisher                                                                                                          | 外部签名或 CI attestation                   |
-| Patch        | 无                                                | 未实现                                                                                                                                                                                                  | 证据稳定后再引入 worktree/sandbox           |
+| 目标能力     | v0.3 当前锚点                                     | 已实现状态                                                                                                                                                      | 下一步                                      |
+| ------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Contract     | `FrozenContractV2`、content-addressed ID          | 四个 Fixture 各一个冻结 temporal property Contract                                                                                                              | 从真实项目提取最小 Contract bundle          |
+| Runtime port | `GameEnvironmentPort`、Godot Protocol v2          | 独立 Godot 4.7.1 进程、能力握手、realized controls                                                                                                              | 仓库外真实项目验证 adapter API              |
+| Checkpoint   | certificate + participant/state-provider registry | Fixture L2 语义恢复；entity Fixture 额外捕获 pending effects/sequence                                                                                           | restore divergence characterization         |
+| Replay       | sealed `V03ExecutionLog` + semantic digest        | confirmed 要求一次 matching strict replay                                                                                                                       | 重复 replay 与 Determinism Certificate      |
+| GameBranch   | immutable v2 BranchSpec + intervention            | baseline、两候选目录、最多两个单变量分支、canonical comparison                                                                                                  | matched pair 边界搜索                       |
+| Telemetry    | v2 typed event ledger                             | input/signal/delivery/property/lifecycle/spatial/pending-effect + health/clocks                                                                                 | async/resource 与更细 input phase           |
+| Evidence     | `EvidenceCapsuleV2`                               | Contract window 加递归 causal ancestors，保留 expected/actual 与 loss flag                                                                                      | 通用 causal slice，不先实现完整 World Graph |
+| Agent        | `FailureBriefV1` + 三组盲化 Pi tool flow          | byte-identical prompt；neutral source view；content-addressed receipt 由 Session-local `@rN` handle 引用；Pi 工具强制 sequential                                | egress audit 与 prompt-injection suite      |
+| Verdict      | `DiagnosisProposalV3` → v0.3 Conclusion Gate      | 重验 receipt/candidate/replay/compare/lineage/mechanism；confidence 无裁决权                                                                                    | 更一般机制策略                              |
+| Benchmark    | V2 历史路径 + `BenchmarkSuiteSpecV3`              | 历史 r1/r2/r3 invalid 证据保持不可变；r4 唯一 execution 完成 36/36（30 scored、6 diagnostic failure、0 infra/Harness-invalid），verifier `issues=[]`，Gate fail | 真实项目外部效度与独立产品对照              |
+| Artifact     | run repository + append-only benchmark ledger     | strict write-once path、attempt hash chain、终态恢复、raw-to-proof seal 与 sanitized publisher                                                                  | 外部签名或 CI attestation                   |
+| Patch        | 无                                                | 未实现                                                                                                                                                          | 证据稳定后再引入 worktree/sandbox           |
 
 v0.3 仍有以下明确限制：
 
@@ -983,14 +981,10 @@ v0.3 仍有以下明确限制：
    另用 append-only attempt ledger。
 8. report hash/验证器可发现内部不一致，但不是 provider attestation，也不能抵抗同权限重写整个证据包。
 9. 三次 repetition 没有 provider sampling seed；四个 Fixture 又参与实现校准，不能声称统计显著性或
-   跨项目泛化。v0.3.1-r2 虽记录 2,527,181 tokens 与 146 次工具调用，但 32/36 cells 被底层连接错误
-   主导，另外 4 个为工具流违规或进度超时，Gate 失败。V3 修复了错误归类与调度边界，
-   当前已完成两次 Luna smoke，三份 `not_ready` C0、历史 `legacy_only` 004 以及 implementation-bound
-   hardened-ready 005 C0/C1。原 36-cell selection 有 36 组 started/finished/cell，却因 3 个 unresolved
-   event references 没有 execution completed 或 formal report。r1 又因 Harness 分类缺陷只封存 3 cells，
-   aggregate 为 `null`、Gate 未评估。r2 只封存 5/36 cells（4 scored、1 `harness_failure`），因为 case 02
-   generic r3 的 proposal 引用 Capsule events 却遗漏 raw baseline receipt，终态 coverage 将 execution
-   封存为不可恢复的 `invalid`；aggregate 同样为 `null`、Gate 未评估，仍不能评价 treatment 差异。
+   跨项目泛化。r3 在 16/36 暴露 proposal scope 与 publisher receipt schema 两个 Harness 边界，均已在
+   独立 r4 修复。r4 完成 36/36，但 grounded success 为 generic 6/12、evidence-only 0/12、full 6/12，
+   full-minus-generic 为 0，产品 Gate 失败。generic 还是同一 Pi Agent Loop 的工具消融，不是 Claude Code
+   或 Codex，因此结果既不证明 treatment 优势，也不是跨产品比较。
 10. 没有自动修复、worktree、Verification Lattice、视觉、多 Agent、容器或复杂 UI。
 
 这些限制是目标架构与可执行 v0.3 之间的 backlog，不应描述成已经完成的能力。
@@ -1183,6 +1177,20 @@ case 02 r3 generic 的 7 次工具调用全部成功，proposal 被工具接受�
 分类之间的架构缺口。预选 case 03 / full / r1 未执行，公开案例证据只能是
 `raw_manifest_unavailable`。r2 的 spec、tag、selection、ledger 与报告保持不变；修复必须进入新的
 campaign/definition。上述局部事实不能形成 treatment aggregate，也不支持产品优势结论。
+
+r3 随后使用独立 identity 继续验证 receipt coverage 修复，但唯一 execution 在 16/36 停止：Agent proposal
+的 `runId` 越过 scoped submit，直到 terminal integrity 才被识别为跨 investigation Harness invalid。
+发布该 sealed 负结果时又发现 public receipt projection 遗漏 `schemaVersion`。r3 ledger 不改写；r4 在
+submit 边界拒绝 `runId` / `fixtureId` 不匹配，并保留 public receipt schema，同时维持下游 fail-closed。
+
+r4 annotated tag `v0.3.2-luna-r4-benchmark-freeze` 固定 commit
+`c03237bea8c9767aa8a956d4e3db9a17e680ad94`。唯一 execution
+`benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b` 完成 36/36：30 `scored`、6
+`diagnostic_failure`（5 `invalid_proposal`、1 `invalid_tool_flow`），零 infrastructure failure、零
+Harness-invalid；verifier `issues=[]`。generic/evidence-only/full 的 grounded success 为 6/12、0/12、6/12，
+mechanism correct 为 11/12、10/12、9/12，incorrect confirmation 均为 0，full-minus-generic 为 0，故预注册 Gate 为 `fail`。
+这里的 generic arm 只是同一 Pi Session/Agent Loop 的工具消融，不是 Claude Code 或 Codex；本结果只能
+描述冻结四 Fixture 协议内的表现，不能支持 game-native treatment 或跨产品优势宣称。
 
 Bug 集至少覆盖 frame/timer、Signal 生命周期和顺序、Node 复用与 scene reload、
 physics/contact 边界、RNG、异步资源、input sampling 和 save/restore。

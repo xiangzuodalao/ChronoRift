@@ -2,101 +2,124 @@
 
 ## 一句话介绍
 
-ChronoRift 是基于 Pi SDK 的 game-native Agent Harness：它把 Godot 运行时 Bug 转换为带
-Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的受控实验，而不是仅让
-大模型阅读代码和日志。
+ChronoRift 是基于 Pi SDK 的 game-native Agent Harness：它把 Godot 运行时 Bug 转换为带冻结
+Contract、checkpoint/replay、单变量 intervention、证据引用和 Harness verdict 的受控实验，而不是只让
+模型阅读源码与日志后自由作答。
 
 ## 我做了什么
 
-- 用 strict TypeScript 和 pnpm workspace 建立
-  `domain ← gamebranch ← adapters ← CLI` 单向依赖，隔离 Pi、Godot 和持久化类型。
-- 实现四个可执行 Godot runtime-Bug Fixture：Signal 连接顺序、frame/time 混淆、physics
+- 用 strict TypeScript 与 pnpm workspace 建立
+  `domain ← gamebranch ← adapters ← CLI` 的单向依赖，隔离 Pi、Godot、存储与核心规则。
+- 实现四个真实可执行的 Godot runtime-Bug Fixture：Signal 连接顺序、frame/time 混淆、离散物理
   tunneling 和 entity incarnation 复用。
-- 将冻结 Contract、checkpoint/restore、strict replay、单变量实验、canonical comparison、
-  Evidence Capsule 和 Conclusion Gate 串成真实 Pi Session/Agent Loop。
-- 设计 generic、evidence-only 和 chronorift-full 三组盲化 treatment，prompt 与失败描述
-  byte-identical，仅工具能力不同。
-- 实现 Benchmark V3 的 typed provider failure、结构化单调 progress、3+3 recovery、strict
-  terminal manifest、append-only seal、sanitized scoring proof 和独立 verifier/Gate；verifier 重算
-  frozen material、引用、机制、评分与 per-kind budgets。
-- 将 Pi 诊断工具设为 sequential，冻结每 cell 12 次工具调用、0 次工具错误、0 个
-  连续无语义进展结果；用 Session-local `@rN` handle 降低长 receipt ID 转录错误，再由
-  Harness 解析回精确 canonical ID 并严格 grounding。
+- 将 Contract、checkpoint/restore、strict replay、单变量实验、canonical comparison、Evidence Capsule
+  与 Conclusion Gate 串入真实 Pi Session/Agent Loop。
+- 设计 generic、evidence-only、chronorift-full 三个工具 treatment；冻结 Fixture、模型、prompt、预算、
+  顺序种子和评分规则，并让 Harness 而非模型 confidence 决定是否 `confirmed`。
+- 实现 36-cell Benchmark V3：typed failure、单调 progress、可恢复执行、write-once terminal seal、
+  sanitized scoring proof、独立 verifier 和产品 Gate。Agent 的无效 proposal 作为局部 diagnostic failure
+  留在矩阵中，真正的 Harness/lineage 损坏仍 fail closed。
+- 用 Session-local `@rN` handle 降低模型抄写长 receipt ID 的错误，再在 submit 边界解析为 canonical ID，
+  校验 run、fixture、artifact、event、receipt 与 source coverage 的 investigation 归属。
 
-## 现有真实数据
+## r4 正式 Benchmark：完整，但产品 Gate 未通过
 
-- GPT-5.6 Luna 真实 Pi smoke 连续两次通过：每次 5 次工具调用，30,828 / 30,039
-  total tokens，Harness verdict 均为 `confirmed`；`test:live` 随后通过。
-- 三份早期 C0 canary 均为 `not_ready`，已作为负向工程证据原样保留，没有删除或
-  cherry-pick。
-- C0-004 三组均 mechanism correct；generic/evidence-only 为 `inconclusive`，full 为
-  `confirmed`；工具调用 7/5/8，total tokens 62,667/31,150/73,722。
-- 同 identity C1 physics-tunneling 三组均 mechanism correct 且均为 `inconclusive`；工具调用
-  7/5/8，total tokens 92,310/49,464/111,558。full 完成 matching replay、一项 intervention、
-  一次 comparison 与 proposal。
-- 004 C0/C1 共六个 cells，全部为零 tool errors、零无进展违规、零 incorrect confirmation；但两份
-  V1 报告缺少 implementation receipt，强化 verifier 只将其前置资格归为 `legacy_only`。
-- implementation-bound 005 C0/C1 共六个 cells 均为 `scored`、mechanism correct、零 tool errors、
-  零无进展违规、零 incorrect confirmation；两份报告均通过强化 verifier 并取得 `hardened` 前置资格。
-  C1 精确绑定 C0 report hash
-  `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。
-- r1 正式 execution 已原样发布 `invalid` 负结果：3 cells 中 2 scored、1 `harness_failure`，2 个
-  scoring proofs、aggregate `null`；verifier 通过，Gate `not_evaluated` / exit 2。
-- 独立 r2 后继的 008 C0 同样原样保留：report hash
-  `d1461034624816e2946a9e0f617c18a4ce9c76818230472d7faf5c96a7217caf`，readiness 为 `not_ready`、
-  前置资格为 `not_eligible`。generic 错误复制 baseline execution ID 并产生一次 tool error；full 没有
-  source receipt。C1 未启动，008 不复用。
-- 全新 009 C0/C1 均为 `ready` / `hardened`，C1 精确绑定 C0 report hash；六个 cells 均 scored、
-  mechanism correct、零工具错误/无进展违规/错误确认，且各有 2 个 source receipts。C0 三组的
-  tool/game/token 为 `7/3/63,799`、`5/2/31,522`、`8/3/74,071`；C1 为 `7/3/94,825`、
-  `5/2/50,667`、`8/3/107,345`。
-- r2 machine spec 已生成并由本地 annotated tag `v0.3.2-luna-r2-benchmark-freeze` 固定；definition 为
-  `benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`。唯一 formal execution
-  `benchmark-execution:0d6c17c8-03f1-441b-aadd-83ed2623aa9b` 已封存并发布为不可恢复的 `invalid`：5/36
-  cells 封存，其中 4 scored、1 `harness_failure`，aggregate `null`；report hash 为
-  `116a57fcc24c7e1e9493a466b6613de9cac7082648d8219575c75d3b2c84353d`，verifier true / `issues=[]`，
-  Gate `not_evaluated`（命令预期 exit 2）。
-- r2 失效不是 provider、Godot 或工具故障：case 02 generic r3 的 7 次工具调用均成功，proposal 被工具
-  接受，且其 `mechanismCode` 与 frozen oracle 一致；但只引用 baseline Capsule events、遗漏 raw
-  baseline receipt，post-run coverage 因而拒绝 completed manifest，并以 `invalid` 封存 cell 与
-  execution。四个 scored cells 只保留逐 cell 事实，不能形成 treatment aggregate。
+唯一 r4 formal execution
+`benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b` 已完整封存 **36/36** 个 cells：
+30 个 `scored`，6 个 `diagnostic_failure`（5 个 `invalid_proposal`、1 个 `invalid_tool_flow`），无
+infrastructure-unavailable cell。独立 verifier 返回 `issues=[]`，证明公开报告可由冻结材料重算；这只说明
+证据链完整，不代表产品指标通过。
 
-完整证据、hash 和状态边界见 [v0.3.2-luna evidence workspace](benchmarks/v0.3.2-luna/README.md)、
-[r1 workspace](benchmarks/v0.3.2-luna-r1/README.md) 与
-[r2 workspace](benchmarks/v0.3.2-luna-r2/README.md)。
+| Arm             | Grounded success | Mechanism correct | Incorrect confirmation | Total tokens |
+| --------------- | ---------------: | ----------------: | ---------------------: | -----------: |
+| generic         |             6/12 |             11/12 |                      0 |    1,103,071 |
+| evidence-only   |             0/12 |             10/12 |                      0 |      540,781 |
+| chronorift-full |             6/12 |              9/12 |                      0 |    1,213,944 |
+
+冻结 Gate 的两个优势阈值都未达到，因此结果是 **fail**：
+
+- `chronorift-full` grounded success 为 6/12，低于要求的 9/12；
+- full 与 generic 的 grounded-success rate 都是 0.50，差值为 0，低于要求的 0.20。
+
+这轮结果说明 36-cell pipeline、局部失败分类、不可变发布与独立验证已经跑通，也说明当前 full treatment
+没有测得相对 generic treatment 的优势。六个 diagnostic failures 全部保留为可计分的零分结果，没有通过
+重跑、删格或模型 confidence 美化结论。
+
+## 对照组应如何解释
+
+本 benchmark 的 `generic` 是**同一 Pi SDK / GPT-5.6 Luna Agent Loop 下的工具消融 arm**：它与其他
+arms 共享冻结的模型、prompt、Fixture、预算和评分规则，只获得较通用的诊断工具集合。它不是 Claude
+Code、Codex CLI，也不是对这些产品的代理测量。
+
+因此，r4 不支持“ChronoRift 优于 Claude Code/Codex”或“game-native Harness 已具有统计优势”的表述。
+只有 4 个仓库内校准 Fixture、每个 arm 12 cells，且没有独立项目、不同模型或多次 campaign 的重复验证；
+不能声称统计显著性、跨项目泛化或即插即用的任意 Godot 调试能力。
+
+## r3 负向审计轨迹
+
+r3 的 canary-010 已 `ready/hardened`，但唯一 formal execution 在 **16/36** 后不可恢复地变成
+`invalid`：11 个 `scored`、4 个 `diagnostic_failure`、1 个 `invalid/harness_failure`，没有 aggregate 或
+可解释的产品 Gate。
+
+根因不是 provider 或 Godot 故障。case 03 / generic / repetition 3 的模型把 `runId` 抄错一个字符；旧
+submit tool 只校验 Capsule 与 baseline，没有在入口校验 proposal 的 `runId/fixtureId`。Conclusion Gate
+先安全地给出跨 investigation 的 `inconclusive` blockers，terminal integrity 随后才发现绑定错误并使整个
+campaign fail closed。冻结 publisher 又因 public receipt projection 遗漏 `schemaVersion: 1` 而拒绝发布。
+r3 没有通过绕过 provenance 生成伪报告，其 spec、tag、selection 和本地 invalid ledger 均保持不变。
+
+r4 针对这两点增加了边界回归：scope 错误在 submit 时成为 cell-level
+`diagnostic_failure/invalid_proposal`，后续 cells 继续运行；public projection 保留 receipt schemaVersion。
+r4 的 36/36 完成证明这些 Harness 阻塞问题已解除，但 Gate fail 同时表明“能完整测量”和“产品具有优势”
+是两件不同的事。
+
+## 可核验的证据
+
+- [r4 machine spec](benchmarks/v0.3.2-luna-r4/benchmark-spec.v3.json)：冻结 4 × 3 × 3 矩阵、模型、
+  budgets、Gate 与 order seed。
+- [r4 formal report](benchmarks/v0.3.2-luna-r4/benchmark-report.v3.json)：report hash
+  `7aef5376cca43bfd01bdef8ca46b73357c9d5608c83295ba9812de80dd897b2f`，selection hash
+  `fd5faf448e71cbd8156ca4c202f70dc9074b67b32830634f796ba722e463eaf0`，status `complete`。
+- [r4 generated results](benchmarks/v0.3.2-luna-r4/results.md)：arm 与 Fixture × arm 的公开汇总。
+- [r4 preselected public case](benchmarks/v0.3.2-luna-r4/case-physics-tunneling-full-r1.json)：预注册
+  case 03 / full / repetition 1 的脱敏 scoring proof。
+- [r4 C0 canary](benchmarks/v0.3.2-luna-r4/canary-c0-ready-011.json) 与
+  [r4 C1 canary](benchmarks/v0.3.2-luna-r4/canary-c1-ready-011.json)：formal 前的真实 Pi/Godot
+  `ready/hardened` 证据。
+- [r4 boundary regression protocol](benchmarks/v0.3.2-luna-r4/reproduction.md)：proposal scope 与 public
+  receipt projection 的最小复现和修复 oracle。
+- [r3 negative workspace](benchmarks/v0.3.2-luna-r3/README.md) 与
+  [r3 reproduction protocol](benchmarks/v0.3.2-luna-r3/reproduction.md)：16/36 invalid 终态、hash、未发布
+  边界与后继修复依据。
+- [r2 immutable negative report](benchmarks/v0.3.2-luna-r2/README.md)：更早 receipt coverage 分类缺陷的
+  write-once 审计证据。
+
+r4 formal 使用本地 annotated tag `v0.3.2-luna-r4-benchmark-freeze`，对应 clean commit
+`c03237bea8c9767aa8a956d4e3db9a17e680ad94`；报告记录 GPT-5.6 Luna、Pi `0.83.0`、Godot
+`4.7.1`、requested/mapped thinking level `max`。这些 provenance 字段可验证本次执行身份，但不能扩大
+实验外推范围。
 
 ## 这个项目体现的能力
 
-- 将“Agent 能回答”与“系统有证据确认”分开；confidence 不能覆盖 Contract 和引用
-  完整性。
-- 在真实模型、游戏进程和可恢复持久化之间设计 fail-closed 边界，区分诊断失败和
-  infrastructure failure。
-- 对负结果与中间失败保持可审计性，不通过重跑或选择性发布美化 benchmark。
+- 将“Agent 给出正确 mechanism”与“证据足以 canonical confirm”分开；本轮 mechanism correct 为
+  11/10/9，但 grounded success 只有 6/0/6，正好展示这条边界。
+- 在真实模型、Godot 进程、checkpoint/replay 与持久化之间设计 fail-closed trust boundary，并区分
+  diagnostic、tool-flow、infrastructure 与 Harness integrity failure。
+- 对正负结果使用同一冻结 protocol 与独立 verifier；完整发布 Gate fail，而不是只展示成功个例。
+- 从 r2 receipt coverage、r3 proposal scope/publisher projection 两轮真实失败中提取离线回归，再用新
+  campaign identity 验证修复，不改写历史 artifacts。
 
 ## 简历可用表述
 
-> 独立设计并实现基于 Pi SDK 的 Godot 运行时诊断 Harness，通过 Contract、checkpoint/replay、
-> 单变量实验、因果证据与 Harness Gate 约束 LLM 结论；建立 4 类 runtime-Bug、3-arm 盲化
-> benchmark 与 append-only 证据链；在 GPT-5.6 Luna 的历史 C0/C1 六个 canary cells 中实现零工具
-> 错误与零错误确认，并进一步完成 implementation-bound 005 C0/C1；两阶段均为 `ready`，verifier
-> 前置资格均为 `hardened`，并以可重建 machine spec 冻结 36-cell protocol；原 execution 因引用
-> 完整性失败未形成报告；修复后 007 C0/C1 再次达到 `ready` / `hardened`，独立 r1 spec/tag 已冻结，
-> 并原样发布 3-cell `invalid` 负结果，完整性可验证但 Gate 未评估；继续保留 r2 008
-> `not_ready` / `not_eligible` canary，未通过重跑或选择性发布隐藏失败；以全新 009 identity 完成六个
-> scored、mechanism-correct cells，C0/C1 均取得 hardened 前置资格且每 cell 有 2 个 source receipts；
-> 用独立 definition 与本地 annotated tag 冻结可重建的 r2 36-cell protocol，并原样发布其 5-cell
-> `invalid` 负结果：verifier 通过、aggregate 为 `null`、Gate 未评估；定位到 proposal 引用与终态 receipt
-> coverage 之间的协议缺口，并保留冻结 evidence 供后继 campaign 回归。
+> 独立设计并实现基于 Pi SDK 的 Godot 运行时诊断 Harness，以 strict TypeScript 构建 Contract、
+> checkpoint/replay、单变量实验、Evidence Capsule、Conclusion Gate 与 write-once Benchmark V3；在
+> GPT-5.6 Luna 上完成 4 类 runtime-Bug × 3 工具 treatment × 3 repetitions 的 36-cell 正式执行，
+> 独立 verifier `issues=[]`、零错误确认；如实发布产品 Gate fail（full 6/12，generic 6/12），并将 5 个
+> invalid proposal 与 1 个 invalid tool flow 作为局部失败保留；通过 r3 的 16/36 invalid 负向审计定位
+> investigation scope 与 public receipt projection 缺陷，修复后使 campaign 完整运行且保持历史证据不可变。
 
 ## 边界
 
-005 C0/C1 与原 V3 machine spec freeze 已完成。旧 selection 有 36 组 started/finished/cell，但 3 个
-unresolved event references 阻止 completed/report；它不是可发布 formal 结果。007 C0/C1 与 r1 freeze
-已完成；r1 报告虽通过 verifier，但只有 3 cells、aggregate `null`，产品 Gate 为 `not_evaluated`。该结果
-暴露的是 `invalid_proposal` 的预算分类漏项，不证明 ChronoRift 相对 generic Agent 已有统计优势。
-008 C0 又暴露 generic 的 `invalid_tool_flow` 和 full 的 source-grounding 缺口；C1 未启动，008 不得复用。
-009 C0/C1 虽为 `ready` / `hardened`，仍只证明 canary 前置。r2 machine spec/tag 已冻结 protocol；formal
-只封存 5/36 cells，并因 receipt coverage 失效，预选 case 03 / full / r1 也没有 raw manifest。因此不得把
-六个 canary cells、四个 scored formal cells 或单个 full grounded success 外推为 36-cell treatment
-aggregate、产品 Gate 或相对通用 Agent 的优势。下一轮必须使用新 campaign/definition，不能改写或复用
-r2。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用。
+r4 证明的是该冻结环境下的 pipeline completion、证据可重算性和失败分类，不是 treatment 优势。generic
+只是工具消融对照，不是 Claude Code/Codex；当前样本不支持统计显著性、跨仓库泛化或商业产品对比。
+Fixture 仍是同一代码库中的校准小场景；自动修复、视觉、多 Agent、复杂 World Graph 和广泛真实项目验证
+仍不在 v0.3.2 的已实现范围内。

@@ -1,6 +1,6 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3.2-luna Benchmark V3（r2 invalid 已发布；后继待定义）
+## 当前里程碑：v0.3.2-luna Benchmark V3（r4 已完成；Gate 失败）
 
 v0.3.1-r2 已完成并原样发布负结果。当前 Pi 路径使用
 `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级
@@ -33,14 +33,18 @@ implementation receipt，强化 verifier 将其前置资格归为 `legacy_only`�
 `prerequisiteEligibility=hardened`；C1 精确绑定已发布 C0 report hash。两阶段六个 cells 均 mechanism
 correct，并且为零 tool errors、零无进展违规、零 incorrect confirmation。
 
-r1 的 `invalid` formal 报告保持不可变。独立 r2 后继的 008 C0 已封存为 `not_ready`，verifier 返回
-`prerequisiteEligibility=not_eligible`：generic 因错误复制 baseline execution ID 产生一次 tool error，
-full 没有 source receipt。008 C1 未启动，008 不得复用。全新 009 C0/C1 均已达到 `ready` / `hardened`；
-C1 精确绑定 C0 report hash，六个 cells 均 scored、mechanism correct、零工具错误/无进展违规/错误确认，
-且各有 2 个 source receipts。r2 machine spec 已生成并由本地 annotated tag 固定。唯一 formal execution
-已以不可恢复的 `invalid` 负结果发布：5/36 cells 封存，其中 4 scored、1 `harness_failure`，aggregate
-为 `null`；verifier 返回 true 且无 issues，Gate 为 `not_evaluated`（命令预期 exit 2）。触发该终态的是 case 02
-generic r3 缺少 raw baseline receipt 引用，而非 provider、Godot 或工具调用故障。
+r1、r2 和 r3 的 `invalid` formal 账本保持不可变。r3 在 16/36 terminal cells 停止：scoped submit
+错误接受了跨 investigation proposal，直到 terminal integrity 才将其判为 Harness invalid；随后发布器还
+暴露了 receipt public projection 遗漏 `schemaVersion`。两个边界均已用狭义回归修复并进入独立 r4 identity。
+
+r4 freeze tag `v0.3.2-luna-r4-benchmark-freeze` 精确固定 commit
+`c03237bea8c9767aa8a956d4e3db9a17e680ad94`。唯一 execution
+`benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b` 已完整封存 36/36 cells：30 `scored`、
+6 `diagnostic_failure`（5 `invalid_proposal`、1 `invalid_tool_flow`），零 infrastructure failure、零
+Harness-invalid；verifier 为 true / `issues=[]`。产品 Gate 如实为 `fail`：generic、evidence-only、full
+grounded success 分别为 6/12、0/12、6/12，mechanism correct 分别为 11/12、10/12、9/12，三组均零
+incorrect confirmation，full-minus-generic 为 0。当前 `generic` 只是同一 Pi Agent Loop 的工具消融组，
+不是 Claude Code 或 Codex 对照，因此本轮不支持跨产品优势结论。
 
 ### v0.3.2 交付顺序
 
@@ -101,9 +105,18 @@ generic r3 缺少 raw baseline receipt 引用，而非 provider、Godot 或工�
     Gate `not_evaluated`（命令预期 exit 2）。case 02 generic r3 的 7 次工具调用均成功，proposal 被工具接受，
     且其 `mechanismCode` 与 frozen oracle 一致；但只引用 Capsule events、遗漏 `@r1` raw baseline
     receipt，post-run coverage 因此拒绝 completed manifest，并以 `invalid` 封存 cell 与 execution；
-17. **pending**：保持 r2 spec、tag、selection、ledger 与报告不可变；在新的 campaign/definition 中修复
-    receipt coverage 的分类/协议并增加回归。不得恢复或复用 r2，也不得从 4 个 scored cells 外推
-    treatment aggregate 或产品优势。
+17. **已完成**：保持 r2 不变，并将 resolvable receipt coverage gap 规范为 scored `inconclusive`；未知、
+    跨 investigation 或损坏引用仍 fail closed；
+18. **已保留负结果**：r3 唯一 execution 在 16/36 停止，定位 scoped submit 接受跨 investigation
+    proposal，以及 publisher receipt projection 遗漏 `schemaVersion`；r3 spec、tag、selection 与 ledger
+    不恢复、不覆盖；
+19. **已完成**：在 submit 边界拒绝 proposal `runId` / `fixtureId` 不匹配并将其局部分类为
+    `diagnostic_failure/invalid_proposal`；public receipt 保留 schema version，terminal integrity 不放宽；
+20. **已完成**：r4 唯一 execution 在 freeze commit `c03237b` 上跑完 36/36，verifier `issues=[]`；30 scored、
+    6 diagnostic failure、零 infra/Harness-invalid。Gate `fail`，full 与 generic 均为 6/12 grounded，不能
+    宣称 treatment 优势；
+21. **下一步**：保持 r4 证据不可变，优先在仓库外真实 Godot 项目验证 Adapter/Contract 接入成本；只有
+    需要跨产品比较时，才另建预注册协议接入真实 Claude Code 或 Codex，而不把当前 generic arm 改名。
 
 ## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 

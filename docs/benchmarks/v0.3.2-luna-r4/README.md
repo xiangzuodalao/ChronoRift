@@ -1,7 +1,7 @@
 # v0.3.2-luna-r4 evidence workspace
 
-> **当前状态：canary-011 已 `ready/hardened`，r4 machine spec 已生成；formal 必须等 annotated
-> freeze tag 精确指向包含本目录的干净 commit 后才可 first-select。**
+> **当前状态：唯一一次 r4 formal execution 已从 annotated freeze tag 完整运行至 36/36，公开证据经
+> independent verifier 验证无完整性问题；冻结 product Gate 为 `fail`。**
 
 r4 是 r3 的独立后继 identity。r3 的 spec、tag、selection 和 `invalid` ledger 保持不可变；r4 不恢复、
 拼接或重写 r3。它只修复 r3 真实执行暴露的两个 Harness 边界问题：跨 investigation proposal 在 scoped
@@ -24,6 +24,40 @@ submit tool 被错误接受，以及 public case receipt projection 丢失 `sche
 Machine-readable values are in [benchmark-spec.v3.json](benchmark-spec.v3.json). The matrix, model, budgets,
 retry policy, metric set and product Gate remain the r3 values: 4 fixtures × 3 arms × 3 repetitions, Luna Max,
 single concurrency, and 36 terminal cells required for a complete pipeline.
+
+## Formal result
+
+Freeze commit `c03237bea8c9767aa8a956d4e3db9a17e680ad94` was tagged with
+`v0.3.2-luna-r4-benchmark-freeze`. The first and only selection produced:
+
+- execution `benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b`;
+- selection hash `fd5faf448e71cbd8156ca4c202f70dc9074b67b32830634f796ba722e463eaf0`;
+- report hash `7aef5376cca43bfd01bdef8ca46b73357c9d5608c83295ba9812de80dd897b2f`;
+- `status=complete`, 36/36 terminal and score-eligible cells, 30 `scored` cells and six local
+  `diagnostic_failure` cells;
+- zero `infra_unavailable`, campaign-level `invalid`, and incorrect confirmation cells;
+- independent verifier `issues=[]`.
+
+Five local failures were `invalid_proposal`; one was `invalid_tool_flow`. They remain score-eligible zeros in
+the frozen metric and did not terminate the campaign. This is the direct evidence that the r2/r3 Harness
+continuation defect is fixed.
+
+| Arm             | Eligible | Diagnostic failures | Grounded success | Mechanism correct | Incorrect confirmation | Game runs | Tools |    Tokens |
+| --------------- | -------: | ------------------: | ---------------: | ----------------: | ---------------------: | --------: | ----: | --------: |
+| generic         |    12/12 |                   1 |             6/12 |             11/12 |                      0 |        36 |    85 | 1,103,071 |
+| evidence-only   |    12/12 |                   2 |             0/12 |             10/12 |                      0 |        24 |    60 |   540,781 |
+| chronorift-full |    12/12 |                   3 |             6/12 |              9/12 |                      0 |        36 |    94 | 1,213,944 |
+
+The frozen Gate is **`fail`**: full grounded success is 6/12 instead of the required 9/12, and full minus
+generic is 0.00 instead of at least 0.20. The zero-incorrect-confirmation condition passed. Pipeline completion,
+artifact integrity and product performance are therefore three separate results: the first two passed; the
+third did not.
+
+Published evidence:
+
+- [canonical benchmark report](benchmark-report.v3.json);
+- [generated aggregate table](results.md);
+- [preselected case 03/full/r1 bundle](case-physics-tunneling-full-r1.json).
 
 ## Canary-011 hardened evidence
 
@@ -61,9 +95,12 @@ non-progress result. Canary readiness validates the real Pi/Godot path; it is no
 See [protocol.md](protocol.md) for the freeze and success rules and [reproduction.md](reproduction.md) for the two
 exact regressions. The r3 incident is preserved in [the r3 workspace](../v0.3.2-luna-r3/README.md).
 
-## Claims deliberately withheld before formal publication
+## Interpretation boundary
 
-- no 36/36 completion, aggregate, verifier or product Gate result;
-- no claim that `chronorift-full` beats the generic arm;
-- no comparison against Claude Code, Codex or another product;
-- no generalization beyond the four calibrated Godot fixtures and frozen Luna Max protocol.
+- `generic` is the same Pi Session/Agent Loop under a restricted tool-availability arm. It is an internal
+  Harness ablation, not Claude Code, Codex, or another complete coding-agent product.
+- This run does not show a ChronoRift treatment advantage: full and generic both reached 6/12 grounded success.
+- The four fixtures were also used during calibration, there are only three repetitions per cell, and no claim
+  of statistical significance or cross-project generalization is made.
+- A complete, verifier-clean benchmark is useful engineering evidence even though its frozen product Gate
+  failed; the failure is retained rather than rerolled.

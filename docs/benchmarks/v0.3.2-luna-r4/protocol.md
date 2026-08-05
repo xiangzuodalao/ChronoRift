@@ -47,3 +47,16 @@ confirmations. Pipeline completion and product Gate outcome must be reported sep
 
 Even a passing Gate supports only this Luna Max run over four calibrated fixtures. It is not evidence of
 statistical significance or superiority to general-purpose products.
+
+## 5. Frozen execution record
+
+The annotated freeze tag resolves to commit `c03237bea8c9767aa8a956d4e3db9a17e680ad94`. The first persisted
+selection was executed exactly once as
+`benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b`, with selection hash
+`fd5faf448e71cbd8156ca4c202f70dc9074b67b32830634f796ba722e463eaf0`.
+
+The execution completed all 36 cells and sealed report hash
+`7aef5376cca43bfd01bdef8ca46b73357c9d5608c83295ba9812de80dd897b2f`. Independent verification returned
+`issues=[]`. The product Gate returned `fail`: full grounded success was 6/12 against 9/12 required, and the
+full-minus-generic rate was 0.00 against 0.20 required; full incorrect confirmations remained zero. The six
+local diagnostic failures are preserved in the report and were not retried or replaced.

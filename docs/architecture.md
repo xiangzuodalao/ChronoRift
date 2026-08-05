@@ -1156,8 +1156,15 @@ game-native treatment 优势已被验证。
 source tool。C1 未启动，008 identity 不得复用。全新 009 在 implementation commit
 `9217764b2dceb16ca8a5d1604c0bb7767d42b157` 上完成 C0/C1：两份报告均为 `ready` / `hardened`，C1
 精确绑定 C0 report hash；六个 cells 均 scored、mechanism correct、零 tool errors、零无进展违规、零
-incorrect confirmations，并各有 2 个 source receipts。该结果只满足 hardened canary 前置；r2 machine
-spec/tag 尚未生成，formal 尚未运行，因此仍无 36-cell aggregate 或 Gate 结论。
+incorrect confirmations，并各有 2 个 source receipts。该结果只满足 hardened canary 前置。
+
+r2 machine spec 随后固定 suite
+`benchmark-suite:bbd73dedf76964618d0746e11609caa6d78dabe87eae26b7e3caf0ce8ae9d8e1`、definition
+`benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`、subject hash
+`5558e9e3582d38885d9f512583473ab07b849568141ee8d43df469489b8a8470` 与 runner hash
+`8a154f3ddc1581cbd3917d6c87620475e0103b9918f2a679b2425eda6dd243fd`；本地 annotated tag
+`v0.3.2-luna-r2-benchmark-freeze` 固定包含它的 freeze commit。当前 `selected=false`、
+`executionId=null`，formal 尚未运行，因此仍无 36-cell aggregate 或 Gate 结论。
 
 Bug 集至少覆盖 frame/timer、Signal 生命周期和顺序、Node 复用与 scene reload、
 physics/contact 边界、RNG、异步资源、input sampling 和 save/restore。

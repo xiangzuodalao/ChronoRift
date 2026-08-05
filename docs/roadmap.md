@@ -1,6 +1,6 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3.2-luna Benchmark V3（r2 canary ready；freeze pending）
+## 当前里程碑：v0.3.2-luna Benchmark V3（r2 frozen；formal pending）
 
 v0.3.1-r2 已完成并原样发布负结果。当前 Pi 路径使用
 `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级
@@ -37,7 +37,8 @@ r1 的 `invalid` formal 报告保持不可变。独立 r2 后继的 008 C0 已�
 `prerequisiteEligibility=not_eligible`：generic 因错误复制 baseline execution ID 产生一次 tool error，
 full 没有 source receipt。008 C1 未启动，008 不得复用。全新 009 C0/C1 均已达到 `ready` / `hardened`；
 C1 精确绑定 C0 report hash，六个 cells 均 scored、mechanism correct、零工具错误/无进展违规/错误确认，
-且各有 2 个 source receipts。r2 machine spec/tag 尚未生成，formal 尚未运行。
+且各有 2 个 source receipts。r2 machine spec 已生成并由本地 annotated tag 固定；formal 当前仍为
+`selected=false` / `executionId=null`，尚未运行。
 
 ### v0.3.2 交付顺序
 
@@ -85,8 +86,13 @@ C1 精确绑定 C0 report hash，六个 cells 均 scored、mechanism correct、�
     `ba6fb7183aea42e6b95687a65a94c5f5cacb0ef36a398dc990ccea78bede147e`，C1 精确绑定 C0；两阶段均为
     `ready` / `hardened`，六个 cells 均 scored、mechanism correct、零工具错误/无进展违规/错误确认，
     且各有 2 个 source receipts；
-15. **pending**：生成并审核 r2 machine spec 后再冻结独立 tag；r2 formal execution 尚未运行，不得声称
-    treatment aggregate 或产品 Gate 结论。
+15. **已完成**：生成 r2 [machine spec](benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json)，固定 suite
+    `benchmark-suite:bbd73dedf76964618d0746e11609caa6d78dabe87eae26b7e3caf0ce8ae9d8e1`、definition
+    `benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`、seed
+    `chronorift-v0.3.2-luna-r2-formal-1` 与 runner/material hashes；本地 annotated tag
+    `v0.3.2-luna-r2-benchmark-freeze` 固定包含 spec 的 freeze commit；
+16. **pending**：当前 `selected=false` / `executionId=null`，r2 formal execution 尚未运行；启动唯一的
+    first selection 前后均不得改写 freeze，且在结果封存前不得声称 treatment aggregate 或产品 Gate。
 
 ## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 

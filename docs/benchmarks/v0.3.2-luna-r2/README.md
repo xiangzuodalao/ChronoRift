@@ -1,7 +1,7 @@
 # v0.3.2-luna-r2 evidence workspace
 
 本目录承载与历史 `v0.3.2-luna-r1` 分离的后继 evidence identity。r1 的 spec、tag、ledger 和已发布
-`invalid` 报告保持不可变；本目录中的 008 与 009 只记录已经发生的 canary，不等同于 formal freeze。
+`invalid` 报告保持不可变；本目录中的 008、009 与 r2 machine spec 使用独立 lineage。
 
 ## 当前状态
 
@@ -10,8 +10,8 @@
 | Canary 008 C0         | `not_ready` / `not_eligible` | 三个 cells 已封存；存在两个独立 readiness blockers |
 | Canary 008 C1         | **未启动**                   | C0 未满足前置；没有 C1 report                      |
 | Canary 009 C0/C1      | `ready` / `hardened`         | 六个 cells 均 scored、mechanism correct、无违规    |
-| r2 machine spec / tag | **未生成 / 未冻结**          | 009 仅满足 canary 前置                             |
-| r2 formal execution   | **未运行**                   | 没有可评价的 treatment aggregate 或 Gate           |
+| r2 machine spec / tag | **已生成 / 本地冻结**        | annotated tag 固定包含 spec 的 freeze commit       |
+| r2 formal execution   | **未运行**                   | `selected=false`；`executionId=null`               |
 
 ## Canary 008 C0 负结果
 
@@ -69,12 +69,28 @@ confirmations，且每个 cell 都有 2 个 source receipts：
 | C1    | evidence-only   | `inconclusive` | 5          | 2               | 50,667       |
 | C1    | chronorift-full | `inconclusive` | 8          | 3               | 107,345      |
 
-这些结果满足 r2 的 hardened canary 前置，但 r2 machine spec 和 freeze tag 尚未生成，formal execution
-也未运行；因此当前没有 36-cell aggregate 或产品 Gate 结论。
+这些结果满足 r2 的 hardened canary 前置，但不等同于 36-cell treatment aggregate 或产品 Gate。
+
+## R2 freeze
+
+[benchmark-spec.v3.json](benchmark-spec.v3.json) 固定：
+
+- suite：`benchmark-suite:bbd73dedf76964618d0746e11609caa6d78dabe87eae26b7e3caf0ce8ae9d8e1`；
+- definition：
+  `benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`；
+- subject hash：`5558e9e3582d38885d9f512583473ab07b849568141ee8d43df469489b8a8470`；
+- runner hash：`8a154f3ddc1581cbd3917d6c87620475e0103b9918f2a679b2425eda6dd243fd`；
+- campaign：`v0.3.2-luna-r2`；
+- order seed：`chronorift-v0.3.2-luna-r2-formal-1`；
+- local annotated freeze tag：`v0.3.2-luna-r2-benchmark-freeze`。
+
+该本地 tag 固定包含 implementation、009 evidence、machine spec 与重建测试的 freeze commit。当前
+`benchmark:status` 为 `selected=false`、`executionId=null`：formal execution 尚未运行，因此没有
+aggregate、scoring proofs 或产品 Gate 结论。
 
 ## 不变性边界
 
 - 历史 r1 仍是已发布、完整性可验证但 aggregate 为 `null` 的 `invalid` 负结果；008 不改写它。
 - `not_ready` 是 canary 前置结论，不是三组 treatment 的效果比较。
 - 单个 `confirmed` verdict 不会覆盖缺失 source receipt，也不会使整个 canary 获得资格。
-- 009 的 `ready` / `hardened` 只证明 canary 前置；不得描述成 r2 freeze、formal 或 Gate 已完成。
+- 009 的 `ready` / `hardened` 只证明 canary 前置；freeze 只固定 protocol，不证明 formal 或 Gate 已完成。

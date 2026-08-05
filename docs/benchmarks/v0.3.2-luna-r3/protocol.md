@@ -1,6 +1,7 @@
 # r3 预执行协议
 
-本文定义 `v0.3.2-luna-r3` 的计划边界。它不是 machine spec，也不证明任何步骤已执行或通过。
+本文定义 `v0.3.2-luna-r3` 的冻结边界。它不是 machine spec；已完成的 canary 事实由独立 report 证明，
+formal 状态仍以 machine spec、ledger 与发布报告为准。
 
 ## 1. 单一变更维度
 
@@ -56,10 +57,10 @@ Harness failure。
 
 canary identity 预注册为 `v0.3.2-luna-canary-010`。计划沿用两阶段真实 Pi 路径：
 
-| Stage | Fixture             | Arms                                      | 当前状态 |
-| ----- | ------------------- | ----------------------------------------- | -------- |
-| C0    | `signal-ordering`   | generic / evidence-only / chronorift-full | 未运行   |
-| C1    | `physics-tunneling` | generic / evidence-only / chronorift-full | 未运行   |
+| Stage | Fixture             | Arms                                      | 当前状态             |
+| ----- | ------------------- | ----------------------------------------- | -------------------- |
+| C0    | `signal-ordering`   | generic / evidence-only / chronorift-full | `ready` / `hardened` |
+| C1    | `physics-tunneling` | generic / evidence-only / chronorift-full | `ready` / `hardened` |
 
 C0 必须绑定干净 implementation commit、source hash、model receipt 和完整 canary spec。无论结果是否
 ready，都先原样封存并由独立 verifier 检查。只有 C0 为 `ready` 且
@@ -69,6 +70,9 @@ freeze 的 canary 前置要求 C0/C1 均为 `ready` / `hardened`，六个 cells 
 并保持零 tool errors、零连续无语义进展结果、零 incorrect confirmations；每个 cell 还须满足冻结的
 source-grounding receipt 要求。若 010 任一阶段失败或中断，保留其真实状态，停止 freeze，并为后继使用
 新 canary identity；不得覆盖、拼接或重复挑选 010。
+
+实际 C0/C1 已满足上述条件；hash、implementation receipt 和逐 cell 指标见 [README.md](README.md) 及两份
+write-once canary report。
 
 ## 5. r3 identity 与 freeze
 

@@ -1,6 +1,6 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3.2-luna Benchmark V3（r2 canary hardening）
+## 当前里程碑：v0.3.2-luna Benchmark V3（r2 canary ready；freeze pending）
 
 v0.3.1-r2 已完成并原样发布负结果。当前 Pi 路径使用
 `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级
@@ -35,7 +35,9 @@ correct，并且为零 tool errors、零无进展违规、零 incorrect confirma
 
 r1 的 `invalid` formal 报告保持不可变。独立 r2 后继的 008 C0 已封存为 `not_ready`，verifier 返回
 `prerequisiteEligibility=not_eligible`：generic 因错误复制 baseline execution ID 产生一次 tool error，
-full 没有 source receipt。008 C1 未启动，008 不得复用；009 尚未创建或运行。
+full 没有 source receipt。008 C1 未启动，008 不得复用。全新 009 C0/C1 均已达到 `ready` / `hardened`；
+C1 精确绑定 C0 report hash，六个 cells 均 scored、mechanism correct、零工具错误/无进展违规/错误确认，
+且各有 2 个 source receipts。r2 machine spec/tag 尚未生成，formal 尚未运行。
 
 ### v0.3.2 交付顺序
 
@@ -76,8 +78,15 @@ full 没有 source receipt。008 C1 未启动，008 不得复用；009 尚未创
     已持久化的 FailureBrief、raw baseline、replay 与 experiment-catalog receipts。这是独立的
     partial-failure observability 缺陷，不是 `invalid_tool_flow` 的成因；后继已用 typed callback 与一字符
     baseline ID 损坏回归保留 Session、receipt 和精确进度，008 report 保持不可变；
-14. **pending**：以全新 009 identity 运行 C0；009 尚未创建或运行，只有实际通过 C0/C1 前置后才能生成
-    freeze spec 或启动 formal execution。
+14. **已完成**：全新 009 绑定 implementation commit
+    `9217764b2dceb16ca8a5d1604c0bb7767d42b157` 与 source hash
+    `740ce58c6c566b2a6bd575b0597eaebfe63b9342fdb37e3e539b6099abba51f7`；C0 report hash 为
+    `8282c8610149b1f7f1d2e96f68ab9c084afeb738472e4e50305981d33c1db544`，C1 report hash 为
+    `ba6fb7183aea42e6b95687a65a94c5f5cacb0ef36a398dc990ccea78bede147e`，C1 精确绑定 C0；两阶段均为
+    `ready` / `hardened`，六个 cells 均 scored、mechanism correct、零工具错误/无进展违规/错误确认，
+    且各有 2 个 source receipts；
+15. **pending**：生成并审核 r2 machine spec 后再冻结独立 tag；r2 formal execution 尚未运行，不得声称
+    treatment aggregate 或产品 Gate 结论。
 
 ## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 

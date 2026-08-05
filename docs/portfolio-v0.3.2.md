@@ -46,6 +46,10 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
   `d1461034624816e2946a9e0f617c18a4ce9c76818230472d7faf5c96a7217caf`，readiness 为 `not_ready`、
   前置资格为 `not_eligible`。generic 错误复制 baseline execution ID 并产生一次 tool error；full 没有
   source receipt。C1 未启动，008 不复用。
+- 全新 009 C0/C1 均为 `ready` / `hardened`，C1 精确绑定 C0 report hash；六个 cells 均 scored、
+  mechanism correct、零工具错误/无进展违规/错误确认，且各有 2 个 source receipts。C0 三组的
+  tool/game/token 为 `7/3/63,799`、`5/2/31,522`、`8/3/74,071`；C1 为 `7/3/94,825`、
+  `5/2/50,667`、`8/3/107,345`。
 
 完整证据、hash 和状态边界见 [v0.3.2-luna evidence workspace](benchmarks/v0.3.2-luna/README.md)、
 [r1 workspace](benchmarks/v0.3.2-luna-r1/README.md) 与
@@ -68,7 +72,8 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 > 前置资格均为 `hardened`，并以可重建 machine spec 冻结 36-cell protocol；原 execution 因引用
 > 完整性失败未形成报告；修复后 007 C0/C1 再次达到 `ready` / `hardened`，独立 r1 spec/tag 已冻结，
 > 并原样发布 3-cell `invalid` 负结果，完整性可验证但 Gate 未评估；继续保留 r2 008
-> `not_ready` / `not_eligible` canary，未通过重跑或选择性发布隐藏失败。
+> `not_ready` / `not_eligible` canary，未通过重跑或选择性发布隐藏失败；以全新 009 identity 完成六个
+> scored、mechanism-correct cells，C0/C1 均取得 hardened 前置资格且每 cell 有 2 个 source receipts。
 
 ## 边界
 
@@ -77,5 +82,6 @@ unresolved event references 阻止 completed/report；它不是可发布 formal 
 已完成；r1 报告虽通过 verifier，但只有 3 cells、aggregate `null`，产品 Gate 为 `not_evaluated`。该结果
 暴露的是 `invalid_proposal` 的预算分类漏项，不证明 ChronoRift 相对 generic Agent 已有统计优势。
 008 C0 又暴露 generic 的 `invalid_tool_flow` 和 full 的 source-grounding 缺口；C1 未启动，008 不得复用。
-009 仅是测试修复后的下一候选 identity，尚未创建或运行。Fixture 仍是同一代码库内的校准小场景，
-不得外推为任意 Godot 项目即插即用；后继 formal 尚未完成。
+009 C0/C1 虽为 `ready` / `hardened`，仍只证明 canary 前置。r2 machine spec/tag 尚未生成，formal 尚未
+运行；不得把六个 canary cells 外推为 36-cell treatment aggregate 或产品 Gate。Fixture 仍是同一代码库
+内的校准小场景，不得外推为任意 Godot 项目即插即用。

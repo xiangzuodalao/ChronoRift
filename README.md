@@ -24,8 +24,9 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 > `v0.3.2-luna-r1-benchmark-freeze` 固定。r1 已封存并发布真实负结果：3 cells 中 2 scored、1 invalid
 > `harness_failure`，aggregate 为 `null`；verifier 通过，Gate 为 `not_evaluated` / exit 2；
 > 后继 008 C0 也已原样封存为 `not_ready` / `not_eligible`：generic 因错误复制 baseline ID 产生一次
-> tool error，full 缺少 source receipt。008 C1 未启动，008 不得复用；009 尚未创建或运行。历史 V2、
-> r1 及 008 证据均不会被改写。
+> tool error，full 缺少 source receipt。008 C1 未启动，008 不得复用。全新 009 C0/C1 均为
+> `ready` / `hardened`：六个 cells 均 scored、mechanism correct、零工具/无进展/错误确认，且各有 2 个
+> source receipts。r2 machine spec/tag 尚未生成，formal 尚未运行；历史 V2、r1 与 008 证据不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)；面向简历/面试的事实摘要见
@@ -172,8 +173,10 @@ finish 后拒绝追加 progress。Harness 按冻结的 baseline/replay/intervent
 [历史 v0.3.2-luna workspace](docs/benchmarks/v0.3.2-luna/README.md) 与
 [r1 evidence workspace](docs/benchmarks/v0.3.2-luna-r1/README.md)。独立后继 008 C0 的两个 readiness
 blockers 分别是 generic 的 `invalid_tool_flow` 和 full 的 `source_receipt_missing`，因此报告为
-`not_ready`、前置资格为 `not_eligible`；C1 从未启动。008 不得复用，009 只是在修复通过测试后的下一
-候选 identity，目前尚未创建或运行。原始 report hash 与边界见
+`not_ready`、前置资格为 `not_eligible`；C1 从未启动，008 不得复用。全新 009 C0/C1 已分别验证为
+`ready` / `hardened`，C1 精确绑定 C0 report hash；六个 cells 均 scored、mechanism correct，且每个
+cell 有 2 个 source receipts。该结果仅满足 canary 前置；r2 spec/tag/formal 尚未生成或运行。原始 report
+hash、逐 arm 用量与边界见
 [r2 evidence workspace](docs/benchmarks/v0.3.2-luna-r2/README.md)。
 
 ## 项目结构

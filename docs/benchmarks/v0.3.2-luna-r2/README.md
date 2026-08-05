@@ -1,17 +1,17 @@
 # v0.3.2-luna-r2 evidence workspace
 
 本目录承载与历史 `v0.3.2-luna-r1` 分离的后继 evidence identity。r1 的 spec、tag、ledger 和已发布
-`invalid` 报告保持不可变；本目录中的 008 也只记录已经发生的 canary，不授权 formal freeze。
+`invalid` 报告保持不可变；本目录中的 008 与 009 只记录已经发生的 canary，不等同于 formal freeze。
 
 ## 当前状态
 
-| 项目                     | 状态                         | 可验证事实                                          |
-| ------------------------ | ---------------------------- | --------------------------------------------------- |
-| Canary 008 C0            | `not_ready` / `not_eligible` | 三个 cells 已封存；存在两个独立 readiness blockers  |
-| Canary 008 C1            | **未启动**                   | C0 未满足前置；没有 C1 report                       |
-| r2 machine spec / tag    | **未冻结**                   | 008 不能授权 freeze                                 |
-| r2 formal execution      | **未运行**                   | 没有可评价的 treatment aggregate 或 Gate            |
-| 下一可用 canary identity | **009（尚未创建或运行）**    | 仅能在修复经过测试后使用新的 identity；不得复用 008 |
+| 项目                  | 状态                         | 可验证事实                                         |
+| --------------------- | ---------------------------- | -------------------------------------------------- |
+| Canary 008 C0         | `not_ready` / `not_eligible` | 三个 cells 已封存；存在两个独立 readiness blockers |
+| Canary 008 C1         | **未启动**                   | C0 未满足前置；没有 C1 report                      |
+| Canary 009 C0/C1      | `ready` / `hardened`         | 六个 cells 均 scored、mechanism correct、无违规    |
+| r2 machine spec / tag | **未生成 / 未冻结**          | 009 仅满足 canary 前置                             |
+| r2 formal execution   | **未运行**                   | 没有可评价的 treatment aggregate 或 Gate           |
 
 ## Canary 008 C0 负结果
 
@@ -31,9 +31,8 @@ readiness 精确保留两个原因：
   为 `confirmed`，也不满足 canary 的 source-grounding 前置。
 
 evidence-only cell 正常计分并输出 `inconclusive`；这不能抵消另外两个 arm 的前置失败，也不能把 C0
-提升为 `ready`。008 C1 从未启动。008 的 C0 report 和 identity 均不得覆盖、恢复或拼接；后继只能在
-针对上述行为的修复通过测试后使用新的 009 identity。009 尚未创建或运行，因此当前没有新的 hardened
-C0/C1、machine spec、freeze tag、formal execution 或产品 Gate 结果。
+提升为 `ready`。008 C1 从未启动。008 的 C0 report 和 identity 均不得覆盖、恢复或拼接；后继使用全新
+009 identity，其结果单独记录如下。
 
 ### Partial-failure 可观测性审计
 
@@ -44,9 +43,38 @@ flow counts 为 0，但本地持久化 JSONL 证明 FailureBrief、raw baseline�
 损坏回归验证 Session、receipt、replay 与 `4/4/1/revision 3` 进度均能在原错误不变时保留；该修复不属于
 008 implementation receipt，只能由新 identity 验证。
 
+## Canary 009 hardened 前置
+
+009 C0/C1 绑定同一份干净 implementation receipt：
+
+- commit：`9217764b2dceb16ca8a5d1604c0bb7767d42b157`；
+- source hash：`740ce58c6c566b2a6bd575b0597eaebfe63b9342fdb37e3e539b6099abba51f7`。
+
+[C0-009](canary-c0-ready-009.json) report hash 为
+`8282c8610149b1f7f1d2e96f68ab9c084afeb738472e4e50305981d33c1db544`；
+[C1-009](canary-c1-ready-009.json) report hash 为
+`ba6fb7183aea42e6b95687a65a94c5f5cacb0ef36a398dc990ccea78bede147e`，其
+`prerequisiteReportHash` 精确等于上述 C0 hash。两份 verifier 均返回 readiness `ready` 与
+`prerequisiteEligibility=hardened`。
+
+六个 cells 均为 `scored`、mechanism correct、零 tool errors、零连续无语义进展结果、零 incorrect
+confirmations，且每个 cell 都有 2 个 source receipts：
+
+| Stage | Arm             | Verdict        | Tool calls | Game executions | Total tokens |
+| ----- | --------------- | -------------- | ---------- | --------------- | ------------ |
+| C0    | generic         | `confirmed`    | 7          | 3               | 63,799       |
+| C0    | evidence-only   | `inconclusive` | 5          | 2               | 31,522       |
+| C0    | chronorift-full | `confirmed`    | 8          | 3               | 74,071       |
+| C1    | generic         | `inconclusive` | 7          | 3               | 94,825       |
+| C1    | evidence-only   | `inconclusive` | 5          | 2               | 50,667       |
+| C1    | chronorift-full | `inconclusive` | 8          | 3               | 107,345      |
+
+这些结果满足 r2 的 hardened canary 前置，但 r2 machine spec 和 freeze tag 尚未生成，formal execution
+也未运行；因此当前没有 36-cell aggregate 或产品 Gate 结论。
+
 ## 不变性边界
 
 - 历史 r1 仍是已发布、完整性可验证但 aggregate 为 `null` 的 `invalid` 负结果；008 不改写它。
 - `not_ready` 是 canary 前置结论，不是三组 treatment 的效果比较。
 - 单个 `confirmed` verdict 不会覆盖缺失 source receipt，也不会使整个 canary 获得资格。
-- 009 只是下一候选 identity；只有实际生成、运行和验证后，才能更新其状态。
+- 009 的 `ready` / `hardened` 只证明 canary 前置；不得描述成 r2 freeze、formal 或 Gate 已完成。

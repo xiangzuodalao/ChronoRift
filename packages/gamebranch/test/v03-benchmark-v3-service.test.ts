@@ -69,13 +69,21 @@ const mechanisms = [
   "stale_effect_crossed_entity_incarnation",
 ] as const satisfies readonly Exclude<MechanismCodeV2, "unknown">[];
 
-const suite = (): BenchmarkSuiteSpecV3 =>
-  createBenchmarkSuiteSpecV3({
+const suite = (
+  campaignId: "v0.3.2-luna" | "v0.3.2-luna-r1" = "v0.3.2-luna",
+): BenchmarkSuiteSpecV3 => {
+  const isR1 = campaignId === "v0.3.2-luna-r1";
+  return createBenchmarkSuiteSpecV3({
     schemaVersion: 3,
-    campaign: {
-      campaignId: "v0.3.2-luna",
-      freezeTag: "v0.3.2-luna-benchmark-freeze",
-    },
+    campaign: isR1
+      ? {
+          campaignId: "v0.3.2-luna-r1",
+          freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+        }
+      : {
+          campaignId: "v0.3.2-luna",
+          freezeTag: "v0.3.2-luna-benchmark-freeze",
+        },
     subjectHash: hash("a"),
     runnerHash: hash("b"),
     metricSet: "grounded-diagnosis-v3",
@@ -94,7 +102,9 @@ const suite = (): BenchmarkSuiteSpecV3 =>
     })),
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: "chronorift-v0.3.2-luna-formal-1",
+    orderSeed: isR1
+      ? "chronorift-v0.3.2-luna-r1-formal-1"
+      : "chronorift-v0.3.2-luna-formal-1",
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "openai-codex",
     model: "gpt-5.6-luna",
@@ -142,6 +152,7 @@ const suite = (): BenchmarkSuiteSpecV3 =>
       repetition: 1,
     },
   });
+};
 
 const provenance: BenchmarkProvenanceV3 = {
   gitCommit: "a".repeat(40),
@@ -1255,6 +1266,62 @@ describe("Benchmark V3 semantics", () => {
       resolvedModelId: "gpt-5.6-luna",
       resolvedModelName: "GPT-5.6 Luna",
     });
+  });
+
+  it("isolates the Luna r1 campaign, tag, provenance, and order seed", () => {
+    const original = suite();
+    const r1 = suite("v0.3.2-luna-r1");
+    const r1Provenance = BenchmarkProvenanceV3Schema.parse({
+      ...provenance,
+      freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+    });
+
+    expect(r1.campaign).toEqual({
+      campaignId: "v0.3.2-luna-r1",
+      freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+    });
+    expect(r1.orderSeed).toBe("chronorift-v0.3.2-luna-r1-formal-1");
+    expect(r1.definitionId).not.toBe(original.definitionId);
+    expect(r1Provenance.freezeTag).toBe("v0.3.2-luna-r1-benchmark-freeze");
+
+    const crossedSuites: readonly unknown[] = [
+      {
+        ...r1,
+        campaign: {
+          campaignId: "v0.3.2-luna-r1",
+          freezeTag: "v0.3.2-luna-benchmark-freeze",
+        },
+      },
+      { ...r1, orderSeed: "chronorift-v0.3.2-luna-formal-1" },
+      {
+        ...original,
+        campaign: {
+          campaignId: "v0.3.2-luna",
+          freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+        },
+      },
+      { ...original, orderSeed: "chronorift-v0.3.2-luna-r1-formal-1" },
+    ];
+    for (const crossed of crossedSuites) {
+      expect(BenchmarkSuiteSpecV3Schema.safeParse(crossed).success).toBe(false);
+    }
+
+    const reportInput = {
+      suite: r1,
+      executionId: asBenchmarkExecutionId("benchmark-execution:r1-pairing"),
+      startedAt: "2026-08-05T00:00:00.000Z",
+      finishedAt: "2026-08-05T00:01:00.000Z",
+      attempts: [],
+      cells: [],
+      scoringProofs: [],
+    } as const;
+    expect(() =>
+      buildBenchmarkReportV3({ ...reportInput, provenance }),
+    ).toThrow("provenance");
+    expect(
+      buildBenchmarkReportV3({ ...reportInput, provenance: r1Provenance }).suite
+        .campaign,
+    ).toEqual(r1.campaign);
   });
 
   it("keeps typed non-provider infrastructure failures outside scoring", () => {

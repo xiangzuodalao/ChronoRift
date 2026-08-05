@@ -32,12 +32,20 @@ import {
 import { JsonValueSchema } from "./json.js";
 import { Sha256V1Schema } from "./benchmark-v2.js";
 
-export const BenchmarkCampaignV3Schema = z
-  .object({
-    campaignId: z.literal("v0.3.2-luna"),
-    freezeTag: z.literal("v0.3.2-luna-benchmark-freeze"),
-  })
-  .strict();
+export const BenchmarkCampaignV3Schema = z.discriminatedUnion("campaignId", [
+  z
+    .object({
+      campaignId: z.literal("v0.3.2-luna"),
+      freezeTag: z.literal("v0.3.2-luna-benchmark-freeze"),
+    })
+    .strict(),
+  z
+    .object({
+      campaignId: z.literal("v0.3.2-luna-r1"),
+      freezeTag: z.literal("v0.3.2-luna-r1-benchmark-freeze"),
+    })
+    .strict(),
+]);
 export type BenchmarkCampaignV3 = z.infer<typeof BenchmarkCampaignV3Schema>;
 
 export const BenchmarkFixtureSpecV3Schema = z
@@ -86,7 +94,10 @@ export const BenchmarkSuiteSpecV3Schema = z
       z.literal("chronorift-full"),
     ]),
     repetitions: z.literal(3),
-    orderSeed: z.literal("chronorift-v0.3.2-luna-formal-1"),
+    orderSeed: z.enum([
+      "chronorift-v0.3.2-luna-formal-1",
+      "chronorift-v0.3.2-luna-r1-formal-1",
+    ]),
     orderStrategy: z.literal("block_randomized_by_fixture_repetition"),
     provider: z.literal("openai-codex"),
     model: z.literal("gpt-5.6-luna"),
@@ -171,13 +182,27 @@ export const BenchmarkSuiteSpecV3Schema = z
         path: ["preselectedCase", "fixtureId"],
       });
     }
+    const expectedOrderSeed =
+      spec.campaign.campaignId === "v0.3.2-luna"
+        ? "chronorift-v0.3.2-luna-formal-1"
+        : "chronorift-v0.3.2-luna-r1-formal-1";
+    if (spec.orderSeed !== expectedOrderSeed) {
+      context.addIssue({
+        code: "custom",
+        message: "Benchmark order seed does not match its campaign",
+        path: ["orderSeed"],
+      });
+    }
   });
 export type BenchmarkSuiteSpecV3 = z.infer<typeof BenchmarkSuiteSpecV3Schema>;
 
 export const BenchmarkProvenanceV3Schema = z
   .object({
     gitCommit: z.string().regex(/^[a-f0-9]{7,64}$/u),
-    freezeTag: z.literal("v0.3.2-luna-benchmark-freeze"),
+    freezeTag: z.enum([
+      "v0.3.2-luna-benchmark-freeze",
+      "v0.3.2-luna-r1-benchmark-freeze",
+    ]),
     dirty: z.literal(false),
     lockfileHash: Sha256V1Schema,
     piPackageVersion: z.string().min(1),

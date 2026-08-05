@@ -68,12 +68,19 @@ implementation-bound 005 已完成。C0 与 C1 报告分别为
 `scored`、mechanism correct、零 tool errors、零无进展违规、零 incorrect confirmation；强化 verifier
 对两份报告均返回 `prerequisiteEligibility=hardened`，C1 精确绑定上述 C0 report hash。
 
-## 尚未完成
+## Freeze 后的 execution 状态
 
-- 唯一 36-cell first-selection 与 formal execution：pending；
-- V3 sanitized report、results、case bundle、integrity verification 和 Gate：pending。
+原 `v0.3.2-luna` definition 已选择
+`benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66`。本地 ledger 包含 36 条 attempt
+`started`、36 条 attempt `finished` 和 36 条 terminal cell，但终态检查发现 3 个 unresolved proposal
+event references，因此没有 execution `completed` 或 canonical report。详见
+[非规范失败记录](failed-execution-fd22f458.md)。旧 spec、tag、selection 与 ledger 保持不变，也不能把
+这些 cell 记录当成可发布 formal aggregate。
+
+尚未完成的是独立 r1 identity 的 spec/freeze/first-selection，以及对应 sanitized report、results、case
+bundle、integrity verification 和 Gate。本文不声称 r1 已经冻结或执行。
 
 因此当前可以声称“V3 可靠性边界已实现、真实 Pi 链路已通过 smoke、历史负向与 004 canary 已
-原样保留、005 C0/C1 均达到 `ready` 且 verifier 前置资格为 `hardened`、V3 spec 已冻结”，不能
-声称“V3 formal 已发布”、“Gate 已通过”或
+原样保留、005 C0/C1 均达到 `ready` 且 verifier 前置资格为 `hardened`、原 V3 spec 已冻结、旧
+execution 被 fail-closed 地拒绝发布”，不能声称“V3 formal 已发布”、“Gate 已通过”或
 “ChronoRift 已证明优于 generic Agent”。

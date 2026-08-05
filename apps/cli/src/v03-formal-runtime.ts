@@ -36,6 +36,7 @@ import {
   benchmarkAttemptIdV3,
   scoreBenchmarkDiagnosisV3,
   scoreBenchmarkDiagnosisV2,
+  unresolvedBenchmarkProposalEventIdsV3,
   type V03IdGeneratorPort,
 } from "@chronorift/gamebranch";
 import { doctorGodot, v03FixtureNameForId } from "@chronorift/godot-adapter";
@@ -1570,12 +1571,23 @@ export const createAttemptExecutorV3 =
           ),
         };
       }
+      const caseEvidence = await buildCaseEvidence(context, diagnosis);
+      if (
+        unresolvedBenchmarkProposalEventIdsV3(
+          BenchmarkCaseEvidenceV2Schema.parse(caseEvidence),
+          diagnosis.proposal.evidenceEventIds,
+        ).length > 0
+      ) {
+        throw new PiHarnessError(
+          "INVALID_DIAGNOSIS",
+          "Diagnosis cites an event outside the scoped investigation evidence",
+        );
+      }
       const verdict = await context.gameBranch.concludeV3(
         diagnosis.proposal,
         diagnosis.accessReceipts,
       );
       const sourceAssessment = sourceScoreV3(cell, options.suite, diagnosis);
-      const caseEvidence = await buildCaseEvidence(context, diagnosis);
       const score = scoreBenchmarkDiagnosisV3({
         proposalId: diagnosis.proposal.proposalId,
         candidateExecutionIds: diagnosis.proposal.candidateExecutionIds,
@@ -1812,6 +1824,7 @@ export async function runFormalBenchmarkV3(
   const expected = await buildFormalBenchmarkSuiteSpecV3({
     cwd: options.cwd,
     artifactRoot: resolve(options.artifactRoot, "formal-v3-preflight"),
+    campaign: suite.campaign.campaignId,
     ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
   });
   if (!sameFormalSuiteV3(suite, expected)) {

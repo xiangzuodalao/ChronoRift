@@ -1,6 +1,7 @@
 # v0.3.2-luna Reproduction
 
-本文区分已完成的真实链路与 hardened C0/C1 前置，以及尚未执行的 freeze/formal 步骤。
+本文区分已完成的真实链路、005 C0/C1 与原 freeze，旧 execution 的不可发布失败，以及尚未执行的
+r1 formal 步骤。
 
 ## 1. 环境与离线检查
 
@@ -85,7 +86,7 @@ chronorift-full 的 mechanism 都正确、verdict 都为 `inconclusive`；三组
 tokens 为 92,310/49,464/111,558，全部为零 tool errors、零无进展违规、零 incorrect
 confirmation。full 完成 matching replay、一项 intervention、一次 comparison 与 proposal。
 
-## 5. Hardened 005 canary（已完成）
+## 5. 005 implementation-bound canary（`ready` / `hardened`）
 
 以下是已执行顺序，仅供审计；不要重跑或覆盖该 identity。005 必须在干净 implementation checkout
 上生成 V2 spec；不得复制 004 spec 或修改 receipt。C1 只能由同一 identity 下实际发布的 ready C0
@@ -139,47 +140,31 @@ git status --short
 本轮执行协议不要求推送该 tag；只要求 formal 运行时 HEAD 与本地 tag 精确匹配且
 worktree 干净。
 
-## 7. 唯一 formal execution（pending）
+## 7. 原 identity 的唯一 execution（历史失败，不得恢复）
 
 ```bash
 corepack pnpm benchmark:status -- \
   --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
-
-corepack pnpm benchmark:formal -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
 ```
 
-selection 持久化后才算 execution 已被选中。终端输出丢失时用 `benchmark:status` 找回 ID。
-只有已选中的同一 execution 可恢复：
+该查询返回已选择的
+`benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66`、`started=true`、
+`status=running` 和 `reportHash=null`。这不是仍可恢复的正常 running execution：ledger 已有 36 条
+attempt started、36 条 attempt finished 与 36 条 terminal cell，但 3 个 proposal event references
+无法解析，因此没有 execution completed 或 canonical report。详见
+[非规范失败记录](failed-execution-fd22f458.md)。
 
-```bash
-corepack pnpm benchmark:formal -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --resume BENCHMARK_EXECUTION_ID
-```
+不得对旧 spec 再运行不带 `--resume` 的 formal，也不得恢复该 ID、删除 selection、修改 ledger、移动
+`v0.3.2-luna-benchmark-freeze` 或手工拼接 report。
 
-不得删除 selection、拼接另一 execution 或在看到结果后修改 spec。
+## 8. r1 freeze、formal、发布与 Gate（pending）
 
-## 8. 发布、完整性验证与 Gate（pending）
+后续只能使用独立的 `v0.3.2-luna-r1` campaign/spec/freeze tag/definition。先在 proposal 接收与 cell
+封存边界加入 unresolved event-reference 回归，再生成并审核 r1 spec、创建新的不可移动 tag，最后从
+干净 checkout 创建 r1 的唯一 first selection。原 `benchmark-spec.v3.json`、tag、selection 和 ledger
+全部保持原样。
 
-```bash
-corepack pnpm benchmark:publish -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --execution BENCHMARK_EXECUTION_ID \
-  --output docs/benchmarks/v0.3.2-luna
-
-corepack pnpm benchmark:verify -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
-
-corepack pnpm benchmark:gate -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
-```
-
-publisher 固定生成 `benchmark-report.v3.json`、`results.md` 和
-`case-physics-tunneling-full-r1.json`。发布前不得预建或改写这些 write-once 文件。
-
-verifier exit 0 只说明 schema、identity、hash chain、oracle、aggregate 与 report hash 可重算。Gate
-exit 0 才代表预注册产品门槛通过；exit 2 表示失败或不可评估。无论 Gate 结果如何，
-只要 execution 已按协议封存，就必须原样发布。
+r1 execution 若能合法封存，才可以从其 ledger 生成 sanitized report、results 和 case bundle，并分别
+运行 integrity verifier 与产品 Gate。verifier exit 0 只说明 schema、identity、hash chain、oracle、
+aggregate 与 report hash 可重算；Gate exit 0 才代表预注册产品门槛通过。本文不声称 r1 已冻结、已
+执行、已发布或已通过 Gate。

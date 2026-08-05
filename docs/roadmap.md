@@ -50,9 +50,14 @@ correct，并且为零 tool errors、零无进展违规、零 incorrect confirma
    `b28560f66e6ef6c073e9029a993ad3636e8530f2c13decf47e52b7c60e710dfb`；C1 精确绑定该 C0；
 7. **已完成**：生成并审核 `benchmark-spec.v3.json`，与实现及 005 canary 一起冻结在
    `v0.3.2-luna-benchmark-freeze`；提交 spec 的 Godot gate 会按当前实现确定性重建并比较；
-8. **pending**：从干净 freeze checkout 启动唯一 36-cell first-selection，按 3+3 规则恢复或封存；
-9. **pending**：无论 pass、fail、invalid 或 recovery-exhausted incomplete，都发布 sanitized V3
-   report，分别运行 verifier 与 Gate，再更新作品证据。
+8. **历史失败**：原 definition 的唯一 selection
+   `benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66` 写入 36 条 attempt started、36 条
+   attempt finished 和 36 条 terminal cell，但 3 个 unresolved proposal event references 阻止
+   execution completed/report；旧 spec、tag、selection 与 ledger 不改写；
+9. **pending**：在 proposal/cell 封存边界加入引用完整性回归，冻结独立 `v0.3.2-luna-r1`
+   spec/tag，并创建新的 first selection；
+10. **pending**：无论 pass、fail、invalid 或 recovery-exhausted incomplete，都发布 r1 sanitized V3
+    report，分别运行 verifier 与 Gate，再更新作品证据。
 
 ## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 

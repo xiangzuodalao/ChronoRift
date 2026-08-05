@@ -34,6 +34,7 @@ import {
   type EvidenceAccessReceiptV1,
   type BenchmarkCaseEvidenceV2,
   type BenchmarkPublicCausalEventV2,
+  type EventId,
   type ExecutionId,
   type FixtureId,
   type JsonValue,
@@ -394,6 +395,20 @@ const exactIds = (
   actual.length === expected.length &&
   actual.every((value, index) => value === expected[index]);
 
+export function unresolvedBenchmarkProposalEventIdsV3(
+  evidence: BenchmarkCaseEvidenceV2,
+  evidenceEventIds: readonly EventId[],
+): readonly EventId[] {
+  const availableEventIds = new Set([
+    ...evidence.capsule.causalEvents.map((event) => event.eventId),
+    ...(evidence.replay?.causalEvents.map((event) => event.eventId) ?? []),
+    ...evidence.candidates.flatMap((candidate) =>
+      candidate.causalEvents.map((event) => event.eventId),
+    ),
+  ]);
+  return evidenceEventIds.filter((eventId) => !availableEventIds.has(eventId));
+}
+
 const assertManifestIdentityV3 = (
   suite: BenchmarkSuiteSpecV3,
   attempt: BenchmarkCellAttemptV3,
@@ -579,14 +594,10 @@ const assertCompletedManifestReferencesV3 = (
       throw new Error("Benchmark V3 comparison references are invalid");
     }
   }
-  const events = new Set([
-    ...evidence.capsule.causalEvents.map((event) => event.eventId),
-    ...(evidence.replay?.causalEvents.map((event) => event.eventId) ?? []),
-    ...evidence.candidates.flatMap((candidate) =>
-      candidate.causalEvents.map((event) => event.eventId),
-    ),
-  ]);
-  if (proposal.evidenceEventIds.some((eventId) => !events.has(eventId))) {
+  if (
+    unresolvedBenchmarkProposalEventIdsV3(evidence, proposal.evidenceEventIds)
+      .length > 0
+  ) {
     throw new Error("Benchmark V3 proposal cites an unresolved event");
   }
   const citedReceipts = proposal.accessReceiptIds.flatMap((receiptId) => {
@@ -1258,14 +1269,10 @@ export function assertBenchmarkCellScoringProofV3Integrity(
   ) {
     throw new Error("Benchmark V3 scoring proof comparison is unresolved");
   }
-  const eventIds = new Set([
-    ...evidence.capsule.causalEvents.map((event) => event.eventId),
-    ...(evidence.replay?.causalEvents.map((event) => event.eventId) ?? []),
-    ...evidence.candidates.flatMap((candidate) =>
-      candidate.causalEvents.map((event) => event.eventId),
-    ),
-  ]);
-  if (proposal.evidenceEventIds.some((eventId) => !eventIds.has(eventId))) {
+  if (
+    unresolvedBenchmarkProposalEventIdsV3(evidence, proposal.evidenceEventIds)
+      .length > 0
+  ) {
     throw new Error("Benchmark V3 scoring proof event is unresolved");
   }
   const citedReceipts = proposal.accessReceiptIds.map((receiptId) =>

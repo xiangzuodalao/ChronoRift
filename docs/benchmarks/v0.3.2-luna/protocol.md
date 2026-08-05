@@ -84,7 +84,10 @@ C0-001/002/003 均为 `not_ready` 并必须保留。C0-004 与引用其 report h
 [C0-005](canary-c0-ready-005.json) 与 [C1-005](canary-c1-ready-005.json) 均为 `ready`，verifier 均返回
 `prerequisiteEligibility=hardened`；C1 精确绑定 C0 report hash
 `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。formal spec 与 freeze 已
-完成，selection 仍未执行。
+完成。其后原 identity 的唯一 selection 完成了 36 个 cell 记录，但因 3 个 unresolved event references
+未能写入 execution completed 或 canonical report；该运行事实只记录在
+[非规范失败记录](failed-execution-fd22f458.md)，不修改本冻结协议。任何后续正式尝试必须使用独立 r1
+identity。
 
 ## 7. Formal Gate 与发布
 

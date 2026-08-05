@@ -115,5 +115,14 @@ describe("formal V3 failure classification", () => {
         modelProgress,
       ),
     ).toMatchObject({ kind: "diagnostic", code: "budget_exhausted" });
+    expect(
+      classifyFormalAttemptErrorV3(
+        new PiHarnessError(
+          "INVALID_DIAGNOSIS",
+          "proposal cites an unresolved event",
+        ),
+        modelProgress,
+      ),
+    ).toMatchObject({ kind: "diagnostic", code: "invalid_proposal" });
   });
 });

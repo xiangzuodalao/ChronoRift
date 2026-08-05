@@ -195,7 +195,10 @@ const success = (
   executionId: BenchmarkExecutionId,
   cell: FormalBenchmarkCellV3,
   ordinal: number,
-): FormalBenchmarkAttemptResultV3 => {
+): Extract<
+  FormalBenchmarkAttemptResultV3,
+  { readonly status: "completed" }
+> => {
   const fixtureSpec = suite.fixtures.find(
     (candidate) => candidate.fixtureId === cell.fixtureId,
   );
@@ -921,6 +924,121 @@ describe("executeFormalBenchmarkV3", () => {
     expect(result.report.status).toBe("invalid");
     expect(result.report.cells).toHaveLength(1);
     expect(result.report.cells[0]?.terminalCode).toBe("harness_failure");
+    await expect(
+      artifactRepository.getCompletedV3(suite.definitionId, executionId),
+    ).resolves.toEqual(result.report);
+  });
+
+  it("rejects an unresolved proposal event before persisting a scored cell", async () => {
+    const artifactRepository = await repository();
+    const executionId = asBenchmarkExecutionId(
+      "benchmark-execution:v3-unresolved-proposal-event",
+    );
+    let calls = 0;
+    const result = await executeFormalBenchmarkV3(
+      executionOptions(
+        artifactRepository,
+        executionId,
+        clock(),
+        async (cell, ordinal) => {
+          calls += 1;
+          const completed = success(executionId, cell, ordinal);
+          const rawManifest = BenchmarkRawAttemptManifestV3Schema.parse(
+            completed.rawManifest,
+          );
+          if (rawManifest.terminalStatus !== "completed") {
+            throw new Error("Expected a completed raw manifest");
+          }
+          return {
+            ...completed,
+            rawManifest: BenchmarkRawAttemptManifestV3Schema.parse({
+              ...rawManifest,
+              proposal: {
+                ...rawManifest.proposal,
+                evidenceEventIds: [
+                  asEventId("event:formal-test:unresolved-reference"),
+                ],
+              },
+            }) as unknown as JsonValue,
+          };
+        },
+      ),
+    );
+
+    expect(calls).toBe(1);
+    expect(result.report.status).toBe("invalid");
+    expect(result.report.cells).toHaveLength(1);
+    expect(result.report.cells[0]).toMatchObject({
+      status: "invalid",
+      terminalCode: "harness_failure",
+      score: null,
+    });
+  });
+
+  it("fails closed before persisting a forged adapter score as terminal evidence", async () => {
+    const artifactRepository = await repository();
+    const executionId = asBenchmarkExecutionId(
+      "benchmark-execution:v3-forged-adapter-score",
+    );
+    const target = benchmarkCellOrderV3(suite)[0]!;
+    let calls = 0;
+
+    const result = await executeFormalBenchmarkV3(
+      executionOptions(
+        artifactRepository,
+        executionId,
+        clock(),
+        async (cell, ordinal) => {
+          calls += 1;
+          const completed = success(executionId, cell, ordinal);
+          return {
+            ...completed,
+            score: {
+              ...completed.score,
+              confidence: 0.01,
+            },
+          };
+        },
+      ),
+    );
+
+    const attemptId = benchmarkAttemptIdV3(executionId, target.cellId, 1);
+    const finished = await artifactRepository.getAttemptFinishedV3(
+      suite.definitionId,
+      executionId,
+      target.cellId,
+      1,
+      attemptId,
+    );
+    const journal = await artifactRepository.getAttemptProgressV3(
+      suite.definitionId,
+      executionId,
+      target.cellId,
+      1,
+      attemptId,
+    );
+
+    expect(calls).toBe(1);
+    expect(result.report.status).toBe("invalid");
+    expect(result.report.scoringProofs).toEqual([]);
+    expect(finished).toMatchObject({
+      attempt: {
+        outcome: { status: "invalid", code: "harness_failure" },
+      },
+      terminalCell: {
+        status: "invalid",
+        score: null,
+        rawManifestHash: null,
+      },
+      rawManifest: null,
+    });
+    expect(journal.at(-1)?.rawManifest).toEqual({
+      schemaVersion: 3,
+      stage: "attempt_terminal_without_evidence",
+      status: "invalid",
+      code: "harness_failure",
+      infrastructureFailure: null,
+    });
     await expect(
       artifactRepository.getCompletedV3(suite.definitionId, executionId),
     ).resolves.toEqual(result.report);

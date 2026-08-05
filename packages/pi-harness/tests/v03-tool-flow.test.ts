@@ -135,6 +135,72 @@ describe("V03 diagnostic tool flow", () => {
     expect(proposal.accessReceiptIds).not.toContain("@r0");
   });
 
+  it("accepts only event IDs exposed to the scoped investigation", () => {
+    const failureBrief = FailureBriefV1Schema.parse({
+      schemaVersion: 1,
+      runId: asRunId("run:event-grounding"),
+      fixtureId: asFixtureId("fixture:event-grounding"),
+      contractId: asContractId("contract:event-grounding"),
+      capsuleId: asCapsuleId("capsule:event-grounding"),
+      baselineExecutionId: asExecutionId("execution:event-grounding"),
+      trigger: { kind: "signal", source: "subject", name: "triggered" },
+      triggerEventId: "event:event-grounding:trigger",
+      triggerTick: 0,
+      expectation: {
+        kind: "property_equals",
+        path: "subject.result",
+        value: true,
+      },
+      deadlineTick: 1,
+      actual: { present: true, value: false },
+      violationSummary: "The frozen expectation was not met",
+    });
+    const createFlow = (): V03ToolFlow =>
+      new V03ToolFlow({
+        cwd: "/virtual",
+        runDir: "/virtual/run",
+        arm: "evidence-only",
+        initialCapsuleId: failureBrief.capsuleId,
+        baselineExecutionId: failureBrief.baselineExecutionId,
+        failureBrief,
+        game: unavailableGame,
+        source: createVirtualSourceAccess({
+          files: [{ path: "case/main.gd", content: "extends Node\n" }],
+        }),
+      });
+    const proposal = (eventId: string) => ({
+      schemaVersion: 3,
+      proposalId: "proposal:event-grounding",
+      runId: failureBrief.runId,
+      fixtureId: failureBrief.fixtureId,
+      capsuleId: failureBrief.capsuleId,
+      baselineExecutionId: failureBrief.baselineExecutionId,
+      candidateExecutionIds: [],
+      comparisonIds: [],
+      accessReceiptIds: ["@r0"],
+      mechanismCode: "unknown",
+      summary: "Insufficient grounded evidence",
+      evidenceEventIds: [eventId],
+      blockers: ["No experiment is available"],
+      nextExperiment: null,
+      confidence: 0,
+    });
+
+    expect(
+      createFlow().submit(proposal(failureBrief.triggerEventId)),
+    ).toMatchObject({ evidenceEventIds: [failureBrief.triggerEventId] });
+    const ungrounded = createFlow();
+    expect(() =>
+      ungrounded.submit(proposal("event:event-grounding:unseen")),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "INVALID_DIAGNOSIS",
+        message: "Proposal evidence event IDs are ungrounded",
+      }),
+    );
+    expect(ungrounded.getProposal()).toBeUndefined();
+  });
+
   it("latches a source-budget violation so a later valid submit cannot score", async () => {
     const failureBrief = FailureBriefV1Schema.parse({
       schemaVersion: 1,

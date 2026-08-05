@@ -51,66 +51,78 @@ const fixtures: readonly BenchmarkFixtureSpecV3[] = mechanisms.map(
     aliasMapHash: hash,
   }),
 );
-const suite = createBenchmarkSuiteSpecV3({
-  schemaVersion: 3,
-  campaign: {
-    campaignId: "v0.3.2-luna",
-    freezeTag: "v0.3.2-luna-benchmark-freeze",
-  },
-  subjectHash: hash,
-  runnerHash: "b".repeat(64),
-  metricSet: "grounded-diagnosis-v3",
-  fixtures,
-  arms: ["generic", "evidence-only", "chronorift-full"],
-  repetitions: 3,
-  orderSeed: "chronorift-v0.3.2-luna-formal-1",
-  orderStrategy: "block_randomized_by_fixture_repetition",
-  provider: "openai-codex",
-  model: "gpt-5.6-luna",
-  thinkingLevel: "max",
-  modelRequirements: {
-    contextWindow: 272_000,
-    maxTokens: 128_000,
-    thinkingLevelMapMax: "max",
-  },
-  budgets: {
-    baselineExecutions: 1,
-    maxReplays: 1,
-    maxInterventions: 2,
-    maxSourceCalls: 4,
-    maxGameExecutions: 4,
-    maxToolCalls: 12,
-    maxToolErrors: 0,
-    maxConsecutiveNonProgressToolResults: 0,
-    timeoutMs: 600_000,
-    concurrency: 1,
-  },
-  retryPolicy: {
-    initialInfraRetries: 2,
-    initialBackoffMs: [1_000, 3_000],
-    maxRecoveryCycles: 1,
-    maxAttemptsPerCell: 6,
-    providerInternalRetries: 0,
-  },
-  gate: {
-    fullRequiredGroundedSuccesses: 9,
-    fullExpectedCells: 12,
-    minimumFullMinusGeneric: 0.2,
-    fullMaximumIncorrectConfirmations: 0,
-    requiredScoreEligibleCellsByArm: {
-      generic: 12,
-      evidenceOnly: 12,
-      chronoriftFull: 12,
+const suiteForCampaign = (campaignId: "v0.3.2-luna" | "v0.3.2-luna-r1") => {
+  const isR1 = campaignId === "v0.3.2-luna-r1";
+  return createBenchmarkSuiteSpecV3({
+    schemaVersion: 3,
+    campaign: isR1
+      ? {
+          campaignId: "v0.3.2-luna-r1",
+          freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+        }
+      : {
+          campaignId: "v0.3.2-luna",
+          freezeTag: "v0.3.2-luna-benchmark-freeze",
+        },
+    subjectHash: hash,
+    runnerHash: "b".repeat(64),
+    metricSet: "grounded-diagnosis-v3",
+    fixtures,
+    arms: ["generic", "evidence-only", "chronorift-full"],
+    repetitions: 3,
+    orderSeed: isR1
+      ? "chronorift-v0.3.2-luna-r1-formal-1"
+      : "chronorift-v0.3.2-luna-formal-1",
+    orderStrategy: "block_randomized_by_fixture_repetition",
+    provider: "openai-codex",
+    model: "gpt-5.6-luna",
+    thinkingLevel: "max",
+    modelRequirements: {
+      contextWindow: 272_000,
+      maxTokens: 128_000,
+      thinkingLevelMapMax: "max",
     },
-  },
-  calibrationStatus: "calibrated_on_same_fixtures",
-  samplingSeedAvailable: false,
-  preselectedCase: {
-    fixtureId: fixtures[2]!.fixtureId,
-    arm: "chronorift-full",
-    repetition: 1,
-  },
-});
+    budgets: {
+      baselineExecutions: 1,
+      maxReplays: 1,
+      maxInterventions: 2,
+      maxSourceCalls: 4,
+      maxGameExecutions: 4,
+      maxToolCalls: 12,
+      maxToolErrors: 0,
+      maxConsecutiveNonProgressToolResults: 0,
+      timeoutMs: 600_000,
+      concurrency: 1,
+    },
+    retryPolicy: {
+      initialInfraRetries: 2,
+      initialBackoffMs: [1_000, 3_000],
+      maxRecoveryCycles: 1,
+      maxAttemptsPerCell: 6,
+      providerInternalRetries: 0,
+    },
+    gate: {
+      fullRequiredGroundedSuccesses: 9,
+      fullExpectedCells: 12,
+      minimumFullMinusGeneric: 0.2,
+      fullMaximumIncorrectConfirmations: 0,
+      requiredScoreEligibleCellsByArm: {
+        generic: 12,
+        evidenceOnly: 12,
+        chronoriftFull: 12,
+      },
+    },
+    calibrationStatus: "calibrated_on_same_fixtures",
+    samplingSeedAvailable: false,
+    preselectedCase: {
+      fixtureId: fixtures[2]!.fixtureId,
+      arm: "chronorift-full",
+      repetition: 1,
+    },
+  });
+};
+const suite = suiteForCampaign("v0.3.2-luna");
+const r1Suite = suiteForCampaign("v0.3.2-luna-r1");
 const executionId = asBenchmarkExecutionId("benchmark-execution:v3-publish");
 const report = buildBenchmarkReportV3({
   suite,
@@ -163,6 +175,27 @@ describe("formal benchmark V3 publication", () => {
         suite,
       ),
     ).toThrow("three generated V3 artifacts");
+  });
+
+  it("isolates Luna r1 publication from the original evidence directory", () => {
+    const cwd = "/workspace/chronorift";
+    const originalOutput = join(cwd, "docs", "benchmarks", "v0.3.2-luna");
+    const r1Output = join(cwd, "docs", "benchmarks", "v0.3.2-luna-r1");
+    const r1Status = `?? docs/benchmarks/v0.3.2-luna-r1/${FORMAL_REPORT_FILENAME_V3}\n`;
+
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r1Output, r1Status, r1Suite),
+    ).not.toThrow();
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, originalOutput, "", r1Suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r1",
+    );
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r1Output, "", suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna",
+    );
   });
 
   it("rejects raw session, credential, source text, and host path fields", () => {

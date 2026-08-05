@@ -17,7 +17,9 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 > `legacy_only`。它们不会被改写，也不能授权新的 hardened C1 或 freeze。新身份 005 的
 > implementation-bound C0/C1 均已 `ready`，verifier 返回 `prerequisiteEligibility=hardened`，且
 > C1 精确绑定已发布 C0 report hash。V3 machine spec 已生成并纳入
-> `v0.3.2-luna-benchmark-freeze`；36-cell formal campaign 仍尚未执行；
+> `v0.3.2-luna-benchmark-freeze`。原 identity 的唯一 execution 写入了 36 组 started/finished/cell，
+> 但因 3 个 unresolved proposal event references 未能写入 completed 或 report，因此不可发布；后续
+> formal 必须使用独立 r1 identity，且当前不声称 r1 已完成；
 > 历史 V2 报告与冻结 spec 不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
@@ -158,8 +160,8 @@ finish 后拒绝追加 progress。Harness 按冻结的 baseline/replay/intervent
 `0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。两阶段六个 cells
 均 mechanism correct，并保持零 tool errors、零无进展违规、零 incorrect confirmation；C0 verdict
 为 `confirmed`/`inconclusive`/`confirmed`，C1 三组均为 `inconclusive`。正式冻结的 canary 前置
-现已满足；machine spec 已生成并由 `v0.3.2-luna-benchmark-freeze` 固定，36-cell formal campaign
-仍尚未执行。
+现已满足；machine spec 已生成并由 `v0.3.2-luna-benchmark-freeze` 固定。原 36-cell execution 因
+3 个 unresolved event references 未通过终态封存，没有 canonical report；后续 r1 formal 仍待执行。
 详见 [v0.3.2-luna evidence workspace](docs/benchmarks/v0.3.2-luna/README.md)。
 
 ## 项目结构
@@ -258,7 +260,7 @@ corepack pnpm benchmark:canary:verify -- \
   --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-004.json \
   --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-004.json
 
-# hardened 005 已完成；重验 C1 时必须提供它实际绑定的精确 C0 报告
+# 005 C0/C1 均为 ready/hardened；重验 C1 时必须提供它实际绑定的精确 C0 报告
 corepack pnpm benchmark:canary:verify -- \
   --report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
 corepack pnpm benchmark:canary:verify -- \
@@ -270,32 +272,13 @@ corepack pnpm --silent benchmark:spec -- \
   --campaign v0.3.2-luna \
   > /tmp/chronorift-v0.3.2-luna-spec.json
 
-# 正式 36-cell；新执行时不要传 --resume
-corepack pnpm benchmark:formal -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
-
-# 从 durable first-execution selection 找回 ID，不调用 provider
+# 只读查看旧 identity 的 durable selection；不要再次运行或恢复它
 corepack pnpm benchmark:status -- \
   --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
-
-# 只恢复已选中的同一 execution，不创建或拼接另一个 suite
-corepack pnpm benchmark:formal -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --resume BENCHMARK_EXECUTION_ID
-
-corepack pnpm benchmark:publish -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --execution BENCHMARK_EXECUTION_ID \
-  --output docs/benchmarks/v0.3.2-luna
-
-corepack pnpm benchmark:verify -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
-
-corepack pnpm benchmark:gate -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
 ```
+
+旧 selection `benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66` 没有 completed/report，不能
+publish、verify 或运行 Gate。后续正式命令必须等待独立 r1 spec/tag 冻结；不得复用上述 spec 或 ID。
 
 `pi:smoke` 使用 Luna Max、v0.1 Mock switch-door 与真实 Pi Session/Agent Loop，但不接触四个正式 Fixture；只有
 Session 文件已持久化、token 和 tool call 均非零且 Harness verdict 为 `confirmed` 才返回成功。输出仅含
@@ -414,10 +397,12 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
   grounded success；r2 又被 32 个底层连接错误主导，不能衡量三组 treatment 或模型诊断效果。
 - V3 已保留 typed provider failure、串行化诊断工具、strict terminal manifest、sealed ledger、
   sanitized scoring proof，并在 verifier 施加冻结 material 与 per-kind budget；这些机制已离线回归，
-  且 005 C0/C1 已达到 `ready`、verifier 前置资格为 `hardened`，但尚未经 36-cell formal 评测。
+  且 005 C0/C1 已达到 `ready`、verifier 前置资格为 `hardened`。原 36-cell execution 因三个悬空
+  event references 未通过终态封存，不能作为 formal 评测结果。
 - C0-001/002/003 均为 `not_ready` 且已保留；历史 C0/C1-004 的 readiness 字段为 `ready`，但强化
-  verifier 只将其 V1 linkage 归为 `legacy_only`。005 C0/C1 的前置资格均为 `hardened`；正式
+  verifier 只将其 V1 linkage 归为 `legacy_only`。005 C0/C1 的前置资格均为 `hardened`；r1 formal
   campaign 仍是 pending，因此目前仍没有 Luna 下的 treatment 优势结论。
 
-下一步是从干净 freeze checkout 启动唯一 36-cell execution，封存后发布并独立重验报告与 Gate。
+下一步是冻结独立 r1 spec/tag，再从干净 r1 checkout 启动新的 first selection，封存后发布并独立
+重验报告与 Gate。旧 spec、tag、selection 与 ledger 保持不变。
 真实 Godot 项目接入继续作为下一条独立垂直切片。

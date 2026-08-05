@@ -964,6 +964,27 @@ export class V03ToolFlow {
         "Proposal replay ID is ungrounded",
       );
     }
+    const availableEventIds = new Set([
+      this.failureBrief.triggerEventId,
+      ...(this.genericBaseline?.events.map((event) => event.eventId) ?? []),
+      ...(this.capsule?.eventChain.map((event) => event.eventId) ?? []),
+      ...this.replays.flatMap((replay) =>
+        replay.execution.events.map((event) => event.eventId),
+      ),
+      ...this.experimentResults.flatMap((result) =>
+        result.execution.events.map((event) => event.eventId),
+      ),
+    ]);
+    if (
+      proposal.evidenceEventIds.some(
+        (eventId) => !availableEventIds.has(eventId),
+      )
+    ) {
+      throw new PiHarnessError(
+        "INVALID_DIAGNOSIS",
+        "Proposal evidence event IDs are ungrounded",
+      );
+    }
     this.proposal = structuredClone(proposal);
     this.semanticRevision += 1;
     return structuredClone(proposal);

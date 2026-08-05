@@ -5,16 +5,17 @@
 
 ## 当前状态
 
-| 项目                                    | 状态                         | 可验证事实                                                 |
-| --------------------------------------- | ---------------------------- | ---------------------------------------------------------- |
-| Benchmark V3 可靠性实现                 | 已实现                       | typed provider/progress、3+3 recovery、sequential tools    |
-| Luna smoke × 2                          | 已通过                       | 各 5 tool calls；30,828 / 30,039 total tokens；confirmed   |
-| `corepack pnpm test:live`               | 已通过                       | 真实 Pi Session/Agent Loop 回归                            |
-| C0-001 / C0-002 / C0-003                | 已封存，均 `not_ready`       | 三份 JSON 原样保留                                         |
-| C0/C1-004                               | 历史 `ready` / `legacy_only` | 原报告不改写，但缺少 V2 implementation receipt             |
-| Hardened C0/C1-005                      | `ready` / `hardened`         | 六个 cells 均 mechanism correct，零 incorrect confirmation |
-| `benchmark-spec.v3.json` / freeze tag   | **已冻结**                   | committed spec 可由实现确定性重建                          |
-| 36-cell formal report / verifier / Gate | **pending**                  | 尚无 Luna treatment 优势结论                               |
+| 项目                                  | 状态                         | 可验证事实                                                  |
+| ------------------------------------- | ---------------------------- | ----------------------------------------------------------- |
+| Benchmark V3 可靠性实现               | 已实现                       | typed provider/progress、3+3 recovery、sequential tools     |
+| Luna smoke × 2                        | 已通过                       | 各 5 tool calls；30,828 / 30,039 total tokens；confirmed    |
+| `corepack pnpm test:live`             | 已通过                       | 真实 Pi Session/Agent Loop 回归                             |
+| C0-001 / C0-002 / C0-003              | 已封存，均 `not_ready`       | 三份 JSON 原样保留                                          |
+| C0/C1-004                             | 历史 `ready` / `legacy_only` | 原报告不改写，但缺少 V2 implementation receipt              |
+| 005 implementation-bound C0/C1        | `ready` / `hardened`         | 六个 cells 均 mechanism correct，零 incorrect confirmation  |
+| `benchmark-spec.v3.json` / freeze tag | **历史冻结身份**             | committed spec 可由冻结实现确定性重建                       |
+| 原 36-cell execution                  | **不可发布的历史失败**       | 36 started/finished/cell；无 completed/report；3 个悬空引用 |
+| r1 formal report / verifier / Gate    | **pending**                  | 尚无 Luna treatment 优势结论                                |
 
 ## V3 改变了什么
 
@@ -66,9 +67,11 @@ canary 前置，但不等于 formal Gate 通过。
 
 - [protocol.md](protocol.md)：V3 冻结语义、retry/score 边界与 Gate。
 - [preflight.md](preflight.md)：已执行真实链路和 canary 的事实记录。
-- [reproduction.md](reproduction.md)：已执行 canary、待执行 freeze/formal/publish/verify 顺序。
+- [failed-execution-fd22f458.md](failed-execution-fd22f458.md)：旧 selection 的非规范、不可发布
+  失败记录。
+- [reproduction.md](reproduction.md)：已执行 canary/freeze、旧 execution 边界与后续 r1 顺序。
 - [中文作品集](../../portfolio-v0.3.2.md)：面向简历和面试的 evidence-backed 项目摘要。
 
-目录中的 `benchmark-spec.v3.json` 已由 `v0.3.2-luna-benchmark-freeze` 固定。尚不存在
-`benchmark-report.v3.json`、V3 results 或 case bundle；这些文件只能由后续实际执行产生，不得预先
-描述为已发布。
+目录中的 `benchmark-spec.v3.json` 已由 `v0.3.2-luna-benchmark-freeze` 固定；该身份的唯一
+selection 没有通过终态封存，不能发布 formal report。当前尚不存在 `benchmark-report.v3.json`、V3
+results 或 case bundle；后续只能由独立 r1 identity 的实际封存执行产生，不得预先描述为已发布。

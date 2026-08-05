@@ -122,11 +122,22 @@ export const V032_LUNA_CAMPAIGN = {
   orderSeed: "chronorift-v0.3.2-luna-formal-1",
 } as const;
 
+export const V032_LUNA_R1_CAMPAIGN = {
+  campaignId: "v0.3.2-luna-r1",
+  freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+  evidenceDirectory: "docs/benchmarks/v0.3.2-luna-r1",
+  orderSeed: "chronorift-v0.3.2-luna-r1-formal-1",
+} as const;
+
+type FormalCampaignDescriptorV3 =
+  typeof V032_LUNA_CAMPAIGN | typeof V032_LUNA_R1_CAMPAIGN;
+
 export function formalCampaignForSuiteV3(
   suite: BenchmarkSuiteSpecV3,
-): typeof V032_LUNA_CAMPAIGN {
-  void suite;
-  return V032_LUNA_CAMPAIGN;
+): FormalCampaignDescriptorV3 {
+  return suite.campaign.campaignId === "v0.3.2-luna"
+    ? V032_LUNA_CAMPAIGN
+    : V032_LUNA_R1_CAMPAIGN;
 }
 
 const LEGACY_CAMPAIGN: FormalCampaignDescriptor = {
@@ -347,6 +358,7 @@ export interface BuildFormalBenchmarkSuiteV3Options {
   readonly cwd: string;
   readonly artifactRoot: string;
   readonly godotBin?: string | undefined;
+  readonly campaign?: "v0.3.2-luna" | "v0.3.2-luna-r1" | undefined;
 }
 
 export function assertFormalFixtureMaterialBindingV3(
@@ -359,6 +371,20 @@ export function assertFormalFixtureMaterialBindingV3(
 export async function buildFormalBenchmarkSuiteSpecV3(
   options: BuildFormalBenchmarkSuiteV3Options,
 ): Promise<BenchmarkSuiteSpecV3> {
+  const campaign =
+    options.campaign === "v0.3.2-luna-r1"
+      ? V032_LUNA_R1_CAMPAIGN
+      : V032_LUNA_CAMPAIGN;
+  const campaignIdentity =
+    campaign.campaignId === "v0.3.2-luna"
+      ? {
+          campaignId: campaign.campaignId,
+          freezeTag: campaign.freezeTag,
+        }
+      : {
+          campaignId: campaign.campaignId,
+          freezeTag: campaign.freezeTag,
+        };
   const [subjectHash, runnerHash] = await Promise.all([
     formalSubjectHash(options.cwd),
     formalRunnerHash(options.cwd),
@@ -403,17 +429,14 @@ export async function buildFormalBenchmarkSuiteSpecV3(
   }
   return createBenchmarkSuiteSpecV3({
     schemaVersion: 3,
-    campaign: {
-      campaignId: V032_LUNA_CAMPAIGN.campaignId,
-      freezeTag: V032_LUNA_CAMPAIGN.freezeTag,
-    },
+    campaign: campaignIdentity,
     subjectHash,
     runnerHash,
     metricSet: "grounded-diagnosis-v3",
     fixtures,
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: V032_LUNA_CAMPAIGN.orderSeed,
+    orderSeed: campaign.orderSeed,
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "openai-codex",
     model: "gpt-5.6-luna",

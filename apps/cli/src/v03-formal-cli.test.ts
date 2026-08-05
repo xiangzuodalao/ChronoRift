@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { main } from "./main.js";
 
@@ -21,5 +21,17 @@ describe("formal benchmark CLI", () => {
     await expect(
       main(["benchmark-spec", "--campaign", "v0.4"]),
     ).rejects.toThrow("Unsupported benchmark campaign");
+  });
+
+  it("lists the isolated Luna r1 campaign in CLI help", async () => {
+    const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    try {
+      await main(["help"]);
+      expect(
+        write.mock.calls.map(([chunk]) => String(chunk)).join(""),
+      ).toContain("v0.3.1|v0.3.1-r2|v0.3.2-luna|v0.3.2-luna-r1");
+    } finally {
+      write.mockRestore();
+    }
   });
 });

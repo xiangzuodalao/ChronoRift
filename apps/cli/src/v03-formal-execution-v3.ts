@@ -784,6 +784,28 @@ async function processCell(
         finishedAt,
       );
       assertBenchmarkAttemptBudgetsV3(options.suite, completion.attempt);
+      if (
+        result.status === "completed" ||
+        result.status === "diagnostic_failure"
+      ) {
+        const verified = assertBenchmarkRawAttemptManifestV3Integrity({
+          suite: options.suite,
+          attempt: completion.attempt,
+          manifest: result.rawManifest,
+        });
+        if (
+          completion.terminalCell?.score === null ||
+          completion.terminalCell?.score === undefined ||
+          contentHash(completion.terminalCell.score) !==
+            contentHash(verified.score) ||
+          (result.status === "completed" &&
+            contentHash(result.score) !== contentHash(verified.score))
+        ) {
+          throw new Error(
+            "Terminal cell score does not match its verified raw manifest",
+          );
+        }
+      }
     } catch {
       result = {
         status: "invalid",

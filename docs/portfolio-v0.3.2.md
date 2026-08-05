@@ -59,11 +59,13 @@ Contract、checkpoint、replay、单变量 intervention 和可重算 verdict 的
 > benchmark 与 append-only 证据链；在 GPT-5.6 Luna 的历史 C0/C1 六个 canary cells 中实现零工具
 > 错误与零错误确认，并进一步完成 implementation-bound 005 C0/C1；两阶段均为 `ready`，verifier
 > 前置资格均为 `hardened`，并以可重建 machine spec 冻结 36-cell protocol；原 execution 因引用
-> 完整性失败未形成报告，独立 r1 正式评测待执行。
+> 完整性失败未形成报告；修复后 007 C0/C1 再次达到 `ready` / `hardened`，独立 r1 spec/tag 已冻结，
+> 正式评测待执行。
 
 ## 边界
 
 005 C0/C1 与原 V3 machine spec freeze 已完成。旧 selection 有 36 组 started/finished/cell，但 3 个
-unresolved event references 阻止 completed/report；它不是可发布 formal 结果。独立 r1 campaign 与产品
-Gate 仍是 **pending**。当前数据证明工程链路与 canary 运行事实，不证明 ChronoRift 相对 generic
-Agent 已有统计优势。Fixture 仍是同一代码库内的校准小场景，不得外推为任意 Godot 项目即插即用。
+unresolved event references 阻止 completed/report；它不是可发布 formal 结果。007 C0/C1 与 r1 freeze
+已完成，但 r1 formal 和产品 Gate 仍是 **pending**。当前数据证明工程链路与 canary 运行事实，不证明
+ChronoRift 相对 generic Agent 已有统计优势。Fixture 仍是同一代码库内的校准小场景，不得外推为任意
+Godot 项目即插即用。

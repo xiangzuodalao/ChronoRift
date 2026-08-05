@@ -50,16 +50,35 @@ describe("committed formal benchmark specification", () => {
     }
   });
 
-  it("keeps the committed V3 Luna specification identical to the implementation", async () => {
+  it("keeps the original frozen V3 Luna specification parseable", async () => {
+    const cwd = process.cwd();
+    const committed = parseFormalBenchmarkSuiteSpecV3(
+      JSON.parse(
+        await readFile(
+          resolve(cwd, "docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json"),
+          "utf8",
+        ),
+      ) as unknown,
+    );
+    expect(committed.campaign).toEqual({
+      campaignId: "v0.3.2-luna",
+      freezeTag: "v0.3.2-luna-benchmark-freeze",
+    });
+  });
+
+  it("keeps the committed V3 Luna r1 specification identical to the implementation", async () => {
     const cwd = process.cwd();
     const artifactRoot = await mkdtemp(
-      join(tmpdir(), "chronorift-formal-spec-v3-committed-"),
+      join(tmpdir(), "chronorift-formal-spec-v3-r1-committed-"),
     );
     try {
       const committed = parseFormalBenchmarkSuiteSpecV3(
         JSON.parse(
           await readFile(
-            resolve(cwd, "docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json"),
+            resolve(
+              cwd,
+              "docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json",
+            ),
             "utf8",
           ),
         ) as unknown,
@@ -67,6 +86,7 @@ describe("committed formal benchmark specification", () => {
       const rebuilt = await buildFormalBenchmarkSuiteSpecV3({
         cwd,
         artifactRoot,
+        campaign: "v0.3.2-luna-r1",
       });
 
       expect(sameFormalSuiteV3(committed, rebuilt)).toBe(true);

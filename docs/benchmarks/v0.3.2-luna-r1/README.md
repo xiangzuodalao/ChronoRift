@@ -10,8 +10,22 @@
 | Canary 006 C0                | `ready` / `hardened` | C0 report 已封存并公开                                             |
 | Canary 006 C1                | **interrupted**      | parser 计数语义缺陷；只有 generic cell，无 C1 report；禁止恢复     |
 | Canary 007 C0/C1             | `ready` / `hardened` | 六个 cells 均 scored、mechanism correct、零 incorrect confirmation |
-| r1 machine spec / freeze tag | **pending**          | 尚未生成或冻结                                                     |
+| r1 machine spec / freeze tag | **已冻结**           | definition `75d8a1b7…`；本地 tag 固定当前 spec                     |
 | r1 formal / verifier / Gate  | **pending**          | 尚无 treatment 优势结论                                            |
+
+## R1 freeze
+
+[benchmark-spec.v3.json](benchmark-spec.v3.json) 固定：
+
+- suite：`benchmark-suite:a365f378c28b59ea18215434dd435f10be6cf4785fcf07deb2f6aaedcc22c4e4`；
+- definition：
+  `benchmark-definition:75d8a1b7e330ce11b8df1f7c3eb70708a0efc7f4d78bdab65fe7e6dc7da91802`；
+- subject hash：`1ce7b053665eb65b0593b6ef6c7dc2ea5c075f6ebf5ea84d001ce27193bf7d82`；
+- runner hash：`134421294496a8262491228e648abdd04ded78f007a9614eff68d4254f90cd9e`；
+- freeze tag：`v0.3.2-luna-r1-benchmark-freeze`。
+
+该 spec 保留 4 fixtures × 3 arms × 3 repetitions、Luna Max、单并发、冻结预算与预注册 Gate。旧
+`v0.3.2-luna` definition 和 selection 不参与 r1 聚合。
 
 ## Canary 007
 

@@ -19,7 +19,9 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 > C1 精确绑定已发布 C0 report hash。V3 machine spec 已生成并纳入
 > `v0.3.2-luna-benchmark-freeze`。原 identity 的唯一 execution 写入了 36 组 started/finished/cell，
 > 但因 3 个 unresolved proposal event references 未能写入 completed 或 report，因此不可发布；后续
-> formal 必须使用独立 r1 identity，且当前不声称 r1 已完成；
+> formal 使用独立 r1 identity。006 C1 暴露的 canary parser 缺陷已作为 interrupted 负证据保留；新
+> 007 C0/C1 均为 `ready` / `hardened`，r1 machine spec 已生成并由
+> `v0.3.2-luna-r1-benchmark-freeze` 固定，但 r1 formal 尚未执行；
 > 历史 V2 报告与冻结 spec 不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
@@ -161,8 +163,10 @@ finish 后拒绝追加 progress。Harness 按冻结的 baseline/replay/intervent
 均 mechanism correct，并保持零 tool errors、零无进展违规、零 incorrect confirmation；C0 verdict
 为 `confirmed`/`inconclusive`/`confirmed`，C1 三组均为 `inconclusive`。正式冻结的 canary 前置
 现已满足；machine spec 已生成并由 `v0.3.2-luna-benchmark-freeze` 固定。原 36-cell execution 因
-3 个 unresolved event references 未通过终态封存，没有 canonical report；后续 r1 formal 仍待执行。
-详见 [v0.3.2-luna evidence workspace](docs/benchmarks/v0.3.2-luna/README.md)。
+3 个 unresolved event references 未通过终态封存，没有 canonical report。修复后运行的 007 C0/C1
+均为 `ready` / `hardened`，r1 spec 已冻结，r1 formal 仍待执行。详见
+[历史 v0.3.2-luna workspace](docs/benchmarks/v0.3.2-luna/README.md) 与
+[r1 evidence workspace](docs/benchmarks/v0.3.2-luna-r1/README.md)。
 
 ## 项目结构
 
@@ -267,18 +271,30 @@ corepack pnpm benchmark:canary:verify -- \
   --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-005.json \
   --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
 
-# machine spec 已冻结；可重建测试会拒绝实现与 spec 漂移
+# r1 hardened 007；006 C1 是不可恢复的 interrupted 负证据
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna-r1/canary-c0-ready-007.json
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna-r1/canary-c1-ready-007.json \
+  --c0-report docs/benchmarks/v0.3.2-luna-r1/canary-c0-ready-007.json
+
+# r1 machine spec 已冻结；可重建测试会拒绝实现与 spec 漂移
 corepack pnpm --silent benchmark:spec -- \
-  --campaign v0.3.2-luna \
-  > /tmp/chronorift-v0.3.2-luna-spec.json
+  --campaign v0.3.2-luna-r1 \
+  > /tmp/chronorift-v0.3.2-luna-r1-spec.json
 
 # 只读查看旧 identity 的 durable selection；不要再次运行或恢复它
 corepack pnpm benchmark:status -- \
   --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
+
+# 查看 r1 first-selection 状态
+corepack pnpm benchmark:status -- \
+  --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json
 ```
 
 旧 selection `benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66` 没有 completed/report，不能
-publish、verify 或运行 Gate。后续正式命令必须等待独立 r1 spec/tag 冻结；不得复用上述 spec 或 ID。
+publish、verify 或运行 Gate。r1 必须使用新 spec、tag、definition 和 first selection，不得复用上述旧
+spec 或 ID。
 
 `pi:smoke` 使用 Luna Max、v0.1 Mock switch-door 与真实 Pi Session/Agent Loop，但不接触四个正式 Fixture；只有
 Session 文件已持久化、token 和 tool call 均非零且 Harness verdict 为 `confirmed` 才返回成功。输出仅含
@@ -400,9 +416,10 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
   且 005 C0/C1 已达到 `ready`、verifier 前置资格为 `hardened`。原 36-cell execution 因三个悬空
   event references 未通过终态封存，不能作为 formal 评测结果。
 - C0-001/002/003 均为 `not_ready` 且已保留；历史 C0/C1-004 的 readiness 字段为 `ready`，但强化
-  verifier 只将其 V1 linkage 归为 `legacy_only`。005 C0/C1 的前置资格均为 `hardened`；r1 formal
-  campaign 仍是 pending，因此目前仍没有 Luna 下的 treatment 优势结论。
+  verifier 只将其 V1 linkage 归为 `legacy_only`。005 与 007 C0/C1 的前置资格均为 `hardened`；
+  006 C1 作为 interrupted 负证据保留。r1 formal campaign 仍是 pending，因此目前仍没有 Luna 下的
+  treatment 优势结论。
 
-下一步是冻结独立 r1 spec/tag，再从干净 r1 checkout 启动新的 first selection，封存后发布并独立
-重验报告与 Gate。旧 spec、tag、selection 与 ledger 保持不变。
+下一步是从干净 r1 freeze checkout 启动新的 first selection，封存后发布并独立重验报告与 Gate。旧
+spec、tag、selection 与 ledger 保持不变。
 真实 Godot 项目接入继续作为下一条独立垂直切片。

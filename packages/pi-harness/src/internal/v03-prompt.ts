@@ -31,6 +31,7 @@ Inspect the frozen failure and use the available evidence and experiment budget.
 Respect tool prerequisites: read the active baseline evidence first, complete the active replay before listing or running experiments, and compare only an execution returned by an experiment. A tool error is terminal.
 Whenever a tool asks for baselineExecutionId, copy the frozen baselineExecutionId from FailureBriefV1; never substitute the replay execution ID or a candidate execution ID.
 Prefer the smallest discriminating single-variable experiment; do not spend a second intervention once the first establishes the mechanism.
+Before submission, use at least one active source tool to ground or rule out a source locus, and cite its accessHandle. If bounded source evidence is insufficient, record that limitation in blockers.
 Submit exactly one typed diagnosis proposal. Cite only results and receipts returned in this Session.
 Populate every required proposal field. In particular, evidenceEventIds, candidateExecutionIds, comparisonIds, accessReceiptIds, blockers, nextExperiment, and confidence must be present; use an empty array only when the evidence genuinely provides no grounded reference.
 For accessReceiptIds, use the short accessHandle values returned by tools plus FailureBriefReceiptHandle; the Harness resolves them to exact content-addressed IDs. Include only handles needed to cover the Failure Brief, cited replay, each cited candidate/comparison, and suspected source.

@@ -54,6 +54,14 @@ describe("v0.3 blind benchmark prompts", () => {
     ).toHaveLength(1);
   });
 
+  it("requires bounded source grounding without exposing a treatment label", () => {
+    const prompt = buildV03BlindSystemPrompt();
+    expect(prompt).toContain(
+      "use at least one active source tool to ground or rule out a source locus",
+    );
+    expect(prompt).toContain("record that limitation in blockers");
+  });
+
   it("reconstructs the canonical prompt receipt without changing its identity", () => {
     const receipt = v03FailureBriefAccessReceipt(
       parsedBrief,

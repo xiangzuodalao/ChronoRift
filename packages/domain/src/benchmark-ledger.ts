@@ -32,6 +32,7 @@ import {
   BenchmarkCellAttemptV2Schema,
   BenchmarkCellMetricsV2Schema,
   BenchmarkCellResultV2Schema,
+  BenchmarkFreezeTagV1Schema,
   Sha256V1Schema,
   type BenchmarkAttemptKindV2,
   type BenchmarkCellAttemptV2,
@@ -58,7 +59,7 @@ import { JsonValueSchema, type JsonValue } from "./json.js";
 export const BenchmarkProvenanceV2Schema = z
   .object({
     gitCommit: z.string().regex(/^[a-f0-9]{7,64}$/u),
-    freezeTag: z.literal("v0.3.0-benchmark-freeze"),
+    freezeTag: BenchmarkFreezeTagV1Schema,
     dirty: z.literal(false),
     lockfileHash: Sha256V1Schema,
     piPackageVersion: z.string().min(1),

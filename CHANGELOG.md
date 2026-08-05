@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.1 — Unreleased
+
+- Added a sanitized real-Pi smoke outside the formal Fixture set. It fails unless the Pi Session is
+  persisted, model usage and tool calls are non-zero, and the Harness confirms the v0.1 Mock diagnosis.
+- Added an isolated v0.3.1 formal campaign identity, freeze tag, order seed, provenance binding, and
+  publication directory while preserving v0.3 spec/report verification and its published negative result.
+- Extended Pi Session references with token, tool-call, and cost statistics so live validation checks
+  actual Agent/model progress instead of accepting a zero-usage Session.
+- Kept the 36-cell Fixture/arm/repetition matrix, prompts, budgets, model configuration, scoring, and Gate
+  unchanged. The new campaign result will be published without rerun selection once provider recovery is
+  proven.
+
 ## v0.3.0 — 2026-08-05
 
 ChronoRift v0.3 turns the single Godot demo into a benchmark-first diagnostic harness while preserving

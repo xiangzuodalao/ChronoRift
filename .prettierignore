@@ -8,3 +8,6 @@ pnpm-lock.yaml
 docs/benchmarks/v0.3/benchmark-report.v2.json
 docs/benchmarks/v0.3/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3/results.md
+docs/benchmarks/v0.3.1/benchmark-report.v2.json
+docs/benchmarks/v0.3.1/case-physics-tunneling-full-r1.json
+docs/benchmarks/v0.3.1/results.md

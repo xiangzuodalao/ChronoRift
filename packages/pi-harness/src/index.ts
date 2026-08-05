@@ -37,6 +37,7 @@ export type {
   PiDiagnosisRunResult,
   PiHarnessOptions,
   PiSessionReference,
+  PiUsageStats,
   PiThinkingLevel,
   ReplayExecutionRequest,
   RestrictedSourceAccess,

@@ -45,6 +45,7 @@ import {
 } from "@chronorift/json-artifacts";
 
 import {
+  formalCampaignForSuite,
   formalRunnerHash,
   formalSubjectHash,
   parseFormalBenchmarkSuiteSpecV2,
@@ -502,11 +503,15 @@ export function assertPublicationOutputScope(
   cwd: string,
   outputDirectory: string,
   porcelainStatus: string,
+  suite: BenchmarkReportV2["suite"],
 ): void {
   const output = resolve(outputDirectory);
-  const requiredOutput = resolve(cwd, "docs", "benchmarks", "v0.3");
+  const campaign = formalCampaignForSuite(suite);
+  const requiredOutput = resolve(cwd, campaign.evidenceDirectory);
   if (output !== requiredOutput) {
-    throw new Error("Formal publication output must be docs/benchmarks/v0.3");
+    throw new Error(
+      `Formal publication output must be ${campaign.evidenceDirectory}`,
+    );
   }
   const allowed = new Set(
     [FORMAL_REPORT_FILENAME, FORMAL_RESULTS_FILENAME, FORMAL_CASE_FILENAME].map(
@@ -558,7 +563,7 @@ async function verifyPublicationCheckout(
   ) {
     throw new Error("Publication checkout does not match frozen provenance");
   }
-  assertPublicationOutputScope(cwd, outputDirectory, status.stdout);
+  assertPublicationOutputScope(cwd, outputDirectory, status.stdout, suite);
 }
 
 export async function publishFormalBenchmark(
@@ -640,7 +645,10 @@ export async function publishFormalBenchmark(
     join(output, FORMAL_RESULTS_FILENAME),
     join(output, FORMAL_CASE_FILENAME),
   ] as const;
-  await writeOnce(files[0], `${canonicalJson(report)}\n`);
+  await writeOnce(
+    files[0],
+    `${canonicalJson(report as unknown as JsonValue)}\n`,
+  );
   await writeOnce(files[1], markdown(report));
   await writeOnce(
     files[2],

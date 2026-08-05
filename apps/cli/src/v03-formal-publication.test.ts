@@ -98,6 +98,25 @@ const suite = createBenchmarkSuiteSpecV2({
     repetition: 1,
   },
 });
+const {
+  suiteId: _legacySuiteId,
+  definitionId: _legacyDefinitionId,
+  suiteHash: _legacySuiteHash,
+  orderSeed: _legacyOrderSeed,
+  ...legacySuiteBasis
+} = suite;
+void _legacySuiteId;
+void _legacyDefinitionId;
+void _legacySuiteHash;
+void _legacyOrderSeed;
+const v031Suite = createBenchmarkSuiteSpecV2({
+  ...legacySuiteBasis,
+  campaign: {
+    campaignId: "v0.3.1",
+    freezeTag: "v0.3.1-benchmark-freeze",
+  },
+  orderSeed: "chronorift-v0.3.1-formal-1",
+});
 const executionId = asBenchmarkExecutionId("benchmark-execution:negative");
 const report = buildBenchmarkReportV2({
   suite,
@@ -131,7 +150,7 @@ describe("formal benchmark publication", () => {
   it("limits dirty publication state to three files in the dedicated directory", () => {
     const cwd = "/workspace/chronorift";
     const output = join(cwd, "docs", "benchmarks", "v0.3");
-    expect(() => assertPublicationOutputScope(cwd, cwd, "")).toThrow(
+    expect(() => assertPublicationOutputScope(cwd, cwd, "", suite)).toThrow(
       "must be docs/benchmarks/v0.3",
     );
     expect(() =>
@@ -139,6 +158,7 @@ describe("formal benchmark publication", () => {
         cwd,
         output,
         `?? docs/benchmarks/v0.3/${FORMAL_REPORT_FILENAME}\n M docs/benchmarks/v0.3/${FORMAL_RESULTS_FILENAME}\n`,
+        suite,
       ),
     ).not.toThrow();
     expect(() =>
@@ -146,8 +166,25 @@ describe("formal benchmark publication", () => {
         cwd,
         output,
         " M docs/benchmarks/v0.3/protocol.md\n",
+        suite,
       ),
     ).toThrow("three generated artifacts");
+  });
+
+  it("isolates v0.3.1 publication from the legacy evidence directory", () => {
+    const cwd = "/workspace/chronorift";
+    const output = join(cwd, "docs", "benchmarks", "v0.3.1");
+    expect(() => assertPublicationOutputScope(cwd, output, "", suite)).toThrow(
+      "docs/benchmarks/v0.3",
+    );
+    expect(() =>
+      assertPublicationOutputScope(
+        cwd,
+        output,
+        `?? docs/benchmarks/v0.3.1/${FORMAL_REPORT_FILENAME}\n`,
+        v031Suite,
+      ),
+    ).not.toThrow();
   });
 
   it("hashes model-authored prose instead of publishing source-text canaries", () => {

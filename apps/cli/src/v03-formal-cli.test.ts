@@ -16,4 +16,10 @@ describe("formal benchmark CLI", () => {
       `Unsupported ${flag}`,
     );
   });
+
+  it("rejects unknown spec campaigns", async () => {
+    await expect(
+      main(["benchmark-spec", "--campaign", "v0.4"]),
+    ).rejects.toThrow("Unsupported benchmark campaign");
+  });
 });

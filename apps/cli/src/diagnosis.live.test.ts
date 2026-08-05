@@ -62,5 +62,7 @@ test("real Pi proposes a reference-valid switch-door diagnosis", async () => {
   expect(diagnosis.verdict.status).toBe("confirmed");
   expect(result.piSession.provider).toBe(provider);
   expect(result.piSession.model).toBe(model);
+  expect(result.piSession.stats.tokens.total).toBeGreaterThan(0);
+  expect(result.piSession.stats.toolCalls).toBeGreaterThan(0);
   expect((await stat(result.piSession.sessionFile)).isFile()).toBe(true);
 });

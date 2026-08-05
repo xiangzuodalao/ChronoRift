@@ -1,6 +1,26 @@
 # ChronoRift 路线图
 
-## 当前里程碑：v0.3 evidence release（正式负结果已发布）
+## 当前里程碑：v0.3.1 provider recovery（实现中）
+
+v0.3.1 不改写 v0.3 的正式负结果，也不改变 Fixture、arm、prompt、预算、模型或 Gate。它新增一个不接触
+正式 Fixture 的真实 Pi smoke，要求持久化 Session、非零 token、至少一次工具调用与 Harness confirmed；
+只有连续两次 smoke 和 `test:live` 通过后，才冻结新的 campaign identity、tag 与 order seed，执行新的
+36-cell first-selection。结果无论正面、负面或 incomplete 都原样发布到 `docs/benchmarks/v0.3.1/`。
+
+2026-08-05 已连续两次通过 smoke（均为 5 次工具调用，total tokens 33,562 / 43,087，Harness
+confirmed）并通过 `test:live`；pre-freeze 的 `check`、Godot、fake benchmark 与历史 report 验证也已
+通过。下一步是提交 machine spec、创建 freeze tag，再启动唯一 formal execution。
+
+### v0.3.1 交付顺序
+
+1. 保持 v0.3 spec/report verifier 兼容，并隔离 v0.3.1 campaign、seed、tag 与发布目录；
+2. `corepack pnpm check`、`test:godot`、离线 benchmark 与旧报告重验；
+3. 修复仓库外 provider 网络路径，连续两次 `pi:smoke` 与一次 `test:live` 取得非零真实用量；
+4. 生成 v0.3.1 spec，与实现一起冻结在 `v0.3.1-benchmark-freeze`；
+5. 运行唯一 36-cell execution，按既有 recovery 规则封存并发布，不 cherry-pick 或替换结果；
+6. verifier 与 Gate 分开报告，再以 artifact 支持的措辞更新案例和 release notes。
+
+## 已发布里程碑：v0.3 evidence release（正式负结果已发布）
 
 本里程碑先修复评测有效性，再运行真实 provider：
 

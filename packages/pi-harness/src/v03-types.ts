@@ -15,6 +15,7 @@ import type {
 import type {
   PiSessionReference,
   PiThinkingLevel,
+  PiUsageStats,
   RestrictedSourceAccess,
 } from "./types.js";
 
@@ -85,15 +86,7 @@ export interface V03PiHarnessOptions extends V03HarnessBaseOptions {
 export type DeterministicV03PiHarnessOptions = V03HarnessBaseOptions;
 
 export interface V03PiSessionReference extends PiSessionReference {
-  readonly stats: {
-    readonly toolCalls: number;
-    readonly tokens: {
-      readonly input: number;
-      readonly output: number;
-      readonly total: number;
-    };
-    readonly cost: number;
-  };
+  readonly stats: PiUsageStats;
   readonly modelMetadata: {
     readonly name: string;
     readonly contextWindow: number;

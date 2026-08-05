@@ -290,6 +290,7 @@ export async function runPiDiagnosisWithRuntime(
           "Pi completed a diagnosis without a persistent session file",
         );
       }
+      const stats = session.getSessionStats();
 
       return {
         proposal,
@@ -299,6 +300,15 @@ export async function runPiDiagnosisWithRuntime(
           provider: runtime.model.provider,
           model: runtime.model.id,
           thinkingLevel: normalizeThinkingLevel(session.thinkingLevel),
+          stats: {
+            toolCalls: stats.toolCalls,
+            tokens: {
+              input: stats.tokens.input,
+              output: stats.tokens.output,
+              total: stats.tokens.total,
+            },
+            cost: stats.cost,
+          },
         },
       };
     } finally {

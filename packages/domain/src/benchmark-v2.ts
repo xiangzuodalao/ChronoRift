@@ -16,6 +16,20 @@ import { BenchmarkArmV1Schema, MechanismCodeV2Schema } from "./v03.js";
 export const Sha256V1Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 export type Sha256V1 = z.infer<typeof Sha256V1Schema>;
 
+export const BenchmarkFreezeTagV1Schema = z.enum([
+  "v0.3.0-benchmark-freeze",
+  "v0.3.1-benchmark-freeze",
+]);
+export type BenchmarkFreezeTagV1 = z.infer<typeof BenchmarkFreezeTagV1Schema>;
+
+export const BenchmarkCampaignV1Schema = z
+  .object({
+    campaignId: z.literal("v0.3.1"),
+    freezeTag: z.literal("v0.3.1-benchmark-freeze"),
+  })
+  .strict();
+export type BenchmarkCampaignV1 = z.infer<typeof BenchmarkCampaignV1Schema>;
+
 export const BenchmarkFixtureSpecV2Schema = z
   .object({
     fixtureId: FixtureIdSchema,
@@ -43,6 +57,7 @@ export const BenchmarkSuiteSpecV2Schema = z
     suiteId: BenchmarkSuiteIdSchema,
     definitionId: BenchmarkDefinitionIdSchema,
     suiteHash: Sha256V1Schema,
+    campaign: BenchmarkCampaignV1Schema.optional(),
     subjectHash: Sha256V1Schema,
     runnerHash: Sha256V1Schema,
     metricSet: z.literal("grounded-diagnosis-v2"),
@@ -53,7 +68,10 @@ export const BenchmarkSuiteSpecV2Schema = z
       z.literal("chronorift-full"),
     ]),
     repetitions: z.literal(3),
-    orderSeed: z.literal("chronorift-v0.3-formal-1"),
+    orderSeed: z.enum([
+      "chronorift-v0.3-formal-1",
+      "chronorift-v0.3.1-formal-1",
+    ]),
     orderStrategy: z.literal("block_randomized_by_fixture_repetition"),
     provider: z.literal("volcengine-coding-plan"),
     model: z.literal("glm-5.2"),
@@ -105,6 +123,17 @@ export const BenchmarkSuiteSpecV2Schema = z
   })
   .strict()
   .superRefine((spec, context) => {
+    const expectedOrderSeed =
+      spec.campaign === undefined
+        ? "chronorift-v0.3-formal-1"
+        : "chronorift-v0.3.1-formal-1";
+    if (spec.orderSeed !== expectedOrderSeed) {
+      context.addIssue({
+        code: "custom",
+        message: "Benchmark campaign and order seed do not match",
+        path: ["orderSeed"],
+      });
+    }
     const fixtureIds = spec.fixtures.map((fixture) => fixture.fixtureId);
     if (new Set(fixtureIds).size !== fixtureIds.length) {
       context.addIssue({
@@ -604,7 +633,7 @@ export const BenchmarkReportV2Schema = z
     provenance: z
       .object({
         gitCommit: z.string().regex(/^[a-f0-9]{7,64}$/u),
-        freezeTag: z.literal("v0.3.0-benchmark-freeze"),
+        freezeTag: BenchmarkFreezeTagV1Schema,
         dirty: z.literal(false),
         lockfileHash: Sha256V1Schema,
         piPackageVersion: z.string().min(1),
@@ -631,6 +660,15 @@ export const BenchmarkReportV2Schema = z
   })
   .strict()
   .superRefine((report, context) => {
+    const expectedFreezeTag =
+      report.suite.campaign?.freezeTag ?? "v0.3.0-benchmark-freeze";
+    if (report.provenance.freezeTag !== expectedFreezeTag) {
+      context.addIssue({
+        code: "custom",
+        message: "Benchmark provenance does not match the suite campaign",
+        path: ["provenance", "freezeTag"],
+      });
+    }
     if ((report.status === "complete") !== (report.aggregate !== null)) {
       context.addIssue({
         code: "custom",

@@ -2,12 +2,17 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { asFixtureId, type JsonValue } from "@chronorift/domain";
+import {
+  BenchmarkSuiteSpecV2Schema,
+  asFixtureId,
+  type JsonValue,
+} from "@chronorift/domain";
 import { createBenchmarkSuiteSpecV2 } from "@chronorift/gamebranch";
 import { describe, expect, it } from "vitest";
 
 import {
   assertFormalFixtureMaterialBinding,
+  formalCampaignForSuite,
   formalFixtureMaterialHashes,
   formalSubjectHash,
   type FormalFixtureMaterialInput,
@@ -28,9 +33,17 @@ const roots = [
   "apps/cli/src/v03-agent-game-api.ts",
 ] as const;
 
-const definitionFor = (subjectHash: string): string =>
+const suiteFor = (subjectHash: string, campaign = false) =>
   createBenchmarkSuiteSpecV2({
     schemaVersion: 2,
+    ...(campaign
+      ? {
+          campaign: {
+            campaignId: "v0.3.1" as const,
+            freezeTag: "v0.3.1-benchmark-freeze" as const,
+          },
+        }
+      : {}),
     subjectHash,
     runnerHash: "b".repeat(64),
     metricSet: "grounded-diagnosis-v2",
@@ -53,7 +66,9 @@ const definitionFor = (subjectHash: string): string =>
     })),
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: "chronorift-v0.3-formal-1",
+    orderSeed: campaign
+      ? "chronorift-v0.3.1-formal-1"
+      : "chronorift-v0.3-formal-1",
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "volcengine-coding-plan",
     model: "glm-5.2",
@@ -92,9 +107,32 @@ const definitionFor = (subjectHash: string): string =>
       arm: "chronorift-full",
       repetition: 1,
     },
-  }).definitionId;
+  });
+
+const definitionFor = (subjectHash: string): string =>
+  suiteFor(subjectHash).definitionId;
 
 describe("formalSubjectHash", () => {
+  it("gives v0.3.1 an isolated campaign identity and strict tag mapping", () => {
+    const legacy = suiteFor("a".repeat(64));
+    const current = suiteFor("a".repeat(64), true);
+    expect(current.definitionId).not.toBe(legacy.definitionId);
+    expect(formalCampaignForSuite(legacy)).toMatchObject({
+      campaignId: "v0.3",
+      freezeTag: "v0.3.0-benchmark-freeze",
+    });
+    expect(formalCampaignForSuite(current)).toMatchObject({
+      campaignId: "v0.3.1",
+      freezeTag: "v0.3.1-benchmark-freeze",
+    });
+    expect(() =>
+      BenchmarkSuiteSpecV2Schema.parse({
+        ...current,
+        orderSeed: "chronorift-v0.3-formal-1",
+      }),
+    ).toThrow("campaign and order seed");
+  });
+
   it("binds Godot adapter, protocol, addon, and Fixture content into definitionId", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "chronorift-formal-subject-"));
     for (const path of roots) {

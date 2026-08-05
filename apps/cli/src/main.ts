@@ -34,6 +34,7 @@ import {
 } from "@chronorift/pi-harness";
 
 import { persistV01PiDiagnosis } from "./diagnosis.js";
+import { runPiSmoke } from "./pi-smoke.js";
 import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
 import { ChronoRiftV03AgentGameApi } from "./v03-agent-game-api.js";
 import {
@@ -519,7 +520,11 @@ async function buildFormalSpecCommand(
   args: Arguments,
   cwd: string,
 ): Promise<void> {
-  assertOnlyFlags(args, ["artifacts", "godot-bin"]);
+  assertOnlyFlags(args, ["artifacts", "campaign", "godot-bin"]);
+  const campaign = flag(args, "campaign");
+  if (campaign !== undefined && campaign !== "v0.3.1") {
+    throw new Error(`Unsupported benchmark campaign: ${campaign}`);
+  }
   printJson(
     await buildFormalBenchmarkSuiteSpecV2({
       cwd,
@@ -527,9 +532,21 @@ async function buildFormalSpecCommand(
         cwd,
         flag(args, "artifacts") ?? ".chronorift/formal-spec-build",
       ),
+      ...(campaign === undefined ? {} : { campaign: "v0.3.1" }),
       ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
         ? {}
         : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
+    }),
+  );
+}
+
+async function piSmokeCommand(args: Arguments, cwd: string): Promise<void> {
+  assertOnlyFlags(args, []);
+  printJson(
+    await runPiSmoke({
+      cwd,
+      provider: "volcengine-coding-plan",
+      model: "glm-5.2",
     }),
   );
 }
@@ -703,7 +720,7 @@ async function persistVolcengineAuthCommand(): Promise<void> {
 }
 
 function printHelp(): void {
-  process.stdout.write(`ChronoRift v0.3\n\n`);
+  process.stdout.write(`ChronoRift v0.3.1\n\n`);
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
   );
@@ -712,6 +729,7 @@ function printHelp(): void {
   );
   process.stdout.write(`  pnpm models [-- --provider PROVIDER]\n`);
   process.stdout.write(`  pnpm auth:volcengine\n`);
+  process.stdout.write(`  pnpm pi:smoke\n`);
   process.stdout.write(`  pnpm godot:install\n`);
   process.stdout.write(`  pnpm godot:doctor [-- --godot-bin PATH]\n`);
   process.stdout.write(
@@ -733,7 +751,9 @@ function printHelp(): void {
   process.stdout.write(
     `  pnpm benchmark:formal -- --spec PATH [--resume EXECUTION_ID]\n`,
   );
-  process.stdout.write(`  pnpm benchmark:spec\n`);
+  process.stdout.write(
+    `  pnpm benchmark:spec [-- --campaign v0.3.1 --godot-bin PATH]\n`,
+  );
   process.stdout.write(`  pnpm benchmark:status [-- --spec PATH]\n`);
   process.stdout.write(
     `  pnpm benchmark:publish -- --execution EXECUTION_ID --output DIR\n`,
@@ -791,6 +811,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     case "auth-volcengine":
       await persistVolcengineAuthCommand();
+      return;
+    case "pi-smoke":
+      await piSmokeCommand(args, cwd);
       return;
     case "replay":
       await replayCommand(args, cwd);

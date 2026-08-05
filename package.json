@@ -1,6 +1,6 @@
 {
   "name": "chronorift",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.20.0",
@@ -34,6 +34,7 @@
     "replay": "tsx apps/cli/src/main.ts replay",
     "models": "tsx apps/cli/src/main.ts models",
     "auth:volcengine": "tsx apps/cli/src/main.ts auth-volcengine",
+    "pi:smoke": "tsx apps/cli/src/main.ts pi-smoke",
     "godot:doctor": "tsx apps/cli/src/main.ts godot-doctor",
     "godot:install": "tsx apps/cli/src/main.ts godot-install"
   },

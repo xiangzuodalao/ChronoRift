@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 2,
+  "suiteId": "benchmark-suite:968c14271da723d06e8cb28f8f982003a90d38969ed341c9fe5b03946bc0fb61",
+  "definitionId": "benchmark-definition:9544797b606f632b0d0bd35bc5187bcc6433238e52d8ce5f21d46ae0a087caad",
+  "suiteHash": "968c14271da723d06e8cb28f8f982003a90d38969ed341c9fe5b03946bc0fb61",
+  "campaign": {
+    "campaignId": "v0.3.1",
+    "freezeTag": "v0.3.1-benchmark-freeze"
+  },
+  "subjectHash": "8cfc19dd43286bf52e068a8a4a0925bd06138f05b3ad62eb81a0943c0592f8ce",
+  "runnerHash": "1c645ea410b1e8fe89ad914750da7742ad8bb8e7d3a42fe57459902e52cd22e2",
+  "metricSet": "grounded-diagnosis-v2",
+  "fixtures": [
+    {
+      "fixtureId": "godot-runtime-case-01",
+      "expectedMechanism": "signal_before_receiver_connection",
+      "expectedSource": {
+        "virtualPath": "case/main.gd",
+        "symbol": "_process"
+      },
+      "contractHash": "c491150b2da29ea0d6b4b3958b93edf45f4a86edf8feb7990353446e6df751cf",
+      "inputTraceHash": "33f733cc963035688de4d18dc972b4b0bc69d887ed456fbcd398981b9324d6b9",
+      "interventionCatalogHash": "37f5e95f675c67455e2e2081928e8857497833953ed9283b5e233f1cfdce4605",
+      "oracleHash": "69f43e99115bf66e2eac4bdb48837838442ea888713f4e2e697f3d156dfb531b",
+      "aliasMapHash": "115266558e067e59ea466e96f4da1649ac8a4e8ea1ff69b678cd3412ee964063"
+    },
+    {
+      "fixtureId": "godot-runtime-case-02",
+      "expectedMechanism": "frame_count_used_for_time_window",
+      "expectedSource": {
+        "virtualPath": "case/main.gd",
+        "symbol": "_process"
+      },
+      "contractHash": "3cb68bbd34d7f08257fb3756f4bf8099d974682b2c6fefc23e861c6f9af5d5a2",
+      "inputTraceHash": "8b799155b6542df265034a0f19ef4306216d8e33e7320fa4e3defefbed3af815",
+      "interventionCatalogHash": "a1376d4e1fb75499045c8545baa1449ed480170396edc3725bf7703fb127e47e",
+      "oracleHash": "74254d26377c8df13a0d6aa2bb78f237ed1ce31cd2ddff394239c94e9ddd40a2",
+      "aliasMapHash": "09dde653824c093529982eb2056ee66c927d0a2c843fd90514b855cb5654677c"
+    },
+    {
+      "fixtureId": "godot-runtime-case-03",
+      "expectedMechanism": "discrete_physics_tunneling",
+      "expectedSource": {
+        "virtualPath": "case/main.gd",
+        "symbol": "_physics_process"
+      },
+      "contractHash": "ad555e318856a97ea08b15f38ad0a553998c36124dca5104ddc3ad71f4cb600a",
+      "inputTraceHash": "c8dca2dcc32806a20ea983e9f6476cbcc441967c927bf63eb5b8e6bfb295a3b6",
+      "interventionCatalogHash": "014378d10762cf58f5eacab7ed72a67cfabfeec93a52e7d7a20f868247de9904",
+      "oracleHash": "66e1b96af4cf092404ad684160ac90726a40e88b90e426f0028956521fa0fb4e",
+      "aliasMapHash": "612390ee233691b56aafb08a0910766fd852ecdead165f589eb46f46c402bdc2"
+    },
+    {
+      "fixtureId": "godot-runtime-case-04",
+      "expectedMechanism": "stale_effect_crossed_entity_incarnation",
+      "expectedSource": {
+        "virtualPath": "case/main.gd",
+        "symbol": "_resolve_pending_effect"
+      },
+      "contractHash": "bae98994c257affadd7a49f6844591e6a75e4bc7e647b1a9461ca19edcd71266",
+      "inputTraceHash": "8892e3b3a1fd972888ffa0e171bb966412a9e02b8badc0da59f05756da79bd2c",
+      "interventionCatalogHash": "434b93881cc0569fb03d002ab41b7bedc7f095e23742b636073019085a47c4f8",
+      "oracleHash": "1a0c59bf38c647f802788ddbaa7e69f04792c42bafd0ef8aab67cfe08f36ac05",
+      "aliasMapHash": "601827aef7cf1ffc50e43e19dc70718154efd09b81b344d8c1a70bd3c8cd4e62"
+    }
+  ],
+  "arms": ["generic", "evidence-only", "chronorift-full"],
+  "repetitions": 3,
+  "orderSeed": "chronorift-v0.3.1-formal-1",
+  "orderStrategy": "block_randomized_by_fixture_repetition",
+  "provider": "volcengine-coding-plan",
+  "model": "glm-5.2",
+  "thinkingLevel": "max",
+  "modelRequirements": {
+    "contextWindow": 1000000,
+    "maxTokens": 128000,
+    "thinkingLevelMapMax": "max"
+  },
+  "budgets": {
+    "baselineExecutions": 1,
+    "maxReplays": 1,
+    "maxInterventions": 2,
+    "maxSourceCalls": 4,
+    "maxGameExecutions": 4,
+    "timeoutMs": 600000,
+    "concurrency": 1
+  },
+  "retryPolicy": {
+    "initialInfraRetries": 2,
+    "initialBackoffMs": [1000, 3000],
+    "maxRecoveryCycles": 1,
+    "maxAttemptsPerCell": 6,
+    "providerInternalRetries": 0
+  },
+  "gate": {
+    "fullRequiredGroundedSuccesses": 9,
+    "fullExpectedCells": 12,
+    "minimumFullMinusGeneric": 0.2,
+    "fullMaximumIncorrectConfirmations": 0
+  },
+  "calibrationStatus": "calibrated_on_same_fixtures",
+  "samplingSeedAvailable": false,
+  "preselectedCase": {
+    "fixtureId": "godot-runtime-case-03",
+    "arm": "chronorift-full",
+    "repetition": 1
+  }
+}

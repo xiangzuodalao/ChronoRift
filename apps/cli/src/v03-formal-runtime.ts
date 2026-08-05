@@ -51,14 +51,13 @@ import {
 import {
   assertFormalFixtureMaterialBinding,
   buildFormalBenchmarkSuiteSpecV2,
+  formalCampaignForSuite,
   parseFormalBenchmarkSuiteSpecV2,
   sameFormalSuite,
 } from "./v03-formal-suite.js";
 import { createV03Run } from "./v03-runtime.js";
 
 const execFileAsync = promisify(execFile);
-const FREEZE_TAG = "v0.3.0-benchmark-freeze" as const;
-
 const sha256Text = (value: string | Buffer): string =>
   createHash("sha256").update(value).digest("hex");
 
@@ -1032,7 +1031,9 @@ async function formalProvenance(
   cwd: string,
   godotBin: string | undefined,
   model: Awaited<ReturnType<typeof assertPiModelCapabilities>>,
+  suite: BenchmarkSuiteSpecV2,
 ): Promise<BenchmarkProvenanceV2> {
+  const campaign = formalCampaignForSuite(suite);
   const [
     gitCommit,
     status,
@@ -1044,7 +1045,7 @@ async function formalProvenance(
   ] = await Promise.all([
     commandText(cwd, "git", "rev-parse", "HEAD"),
     commandText(cwd, "git", "status", "--porcelain"),
-    commandText(cwd, "git", "rev-list", "-n", "1", FREEZE_TAG),
+    commandText(cwd, "git", "rev-list", "-n", "1", campaign.freezeTag),
     readFile(resolve(cwd, "pnpm-lock.yaml")),
     commandText(cwd, "corepack", "pnpm", "--version"),
     readFile(resolve(cwd, "packages/pi-harness/package.json"), "utf8"),
@@ -1055,7 +1056,7 @@ async function formalProvenance(
   ]);
   if (status.length > 0 || freezeCommit !== gitCommit) {
     throw new Error(
-      "Formal benchmark requires a clean checkout exactly at v0.3.0-benchmark-freeze",
+      `Formal benchmark requires a clean checkout exactly at ${campaign.freezeTag}`,
     );
   }
   const pi = JSON.parse(piPackage) as {
@@ -1067,7 +1068,7 @@ async function formalProvenance(
   }
   return {
     gitCommit,
-    freezeTag: FREEZE_TAG,
+    freezeTag: campaign.freezeTag,
     dirty: false,
     lockfileHash: sha256Text(lockfile),
     piPackageVersion: piVersion,
@@ -1095,6 +1096,7 @@ export async function runFormalBenchmark(
   const expected = await buildFormalBenchmarkSuiteSpecV2({
     cwd: options.cwd,
     artifactRoot: resolve(options.artifactRoot, "formal-preflight"),
+    ...(suite.campaign === undefined ? {} : { campaign: "v0.3.1" }),
     ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
   });
   if (!sameFormalSuite(suite, expected)) {
@@ -1114,6 +1116,7 @@ export async function runFormalBenchmark(
     options.cwd,
     options.godotBin,
     model,
+    suite,
   );
   const executionId = asBenchmarkExecutionId(
     options.resumeExecutionId ?? `benchmark-execution:${randomUUID()}`,

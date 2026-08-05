@@ -6,6 +6,7 @@ import {
   BenchmarkSuiteSpecV2Schema,
   FrozenContractV2Schema,
   type BenchmarkFixtureSpecV2,
+  type BenchmarkFreezeTagV1,
   type BenchmarkSuiteSpecV2,
   type JsonValue,
 } from "@chronorift/domain";
@@ -90,6 +91,34 @@ export interface BuildFormalBenchmarkSuiteOptions {
   readonly cwd: string;
   readonly artifactRoot: string;
   readonly godotBin?: string | undefined;
+  readonly campaign?: "v0.3.1" | undefined;
+}
+
+export interface FormalCampaignDescriptor {
+  readonly campaignId: "v0.3" | "v0.3.1";
+  readonly freezeTag: BenchmarkFreezeTagV1;
+  readonly evidenceDirectory: "docs/benchmarks/v0.3" | "docs/benchmarks/v0.3.1";
+  readonly orderSeed: "chronorift-v0.3-formal-1" | "chronorift-v0.3.1-formal-1";
+}
+
+const LEGACY_CAMPAIGN: FormalCampaignDescriptor = {
+  campaignId: "v0.3",
+  freezeTag: "v0.3.0-benchmark-freeze",
+  evidenceDirectory: "docs/benchmarks/v0.3",
+  orderSeed: "chronorift-v0.3-formal-1",
+};
+
+const V031_CAMPAIGN: FormalCampaignDescriptor = {
+  campaignId: "v0.3.1",
+  freezeTag: "v0.3.1-benchmark-freeze",
+  evidenceDirectory: "docs/benchmarks/v0.3.1",
+  orderSeed: "chronorift-v0.3.1-formal-1",
+};
+
+export function formalCampaignForSuite(
+  suite: BenchmarkSuiteSpecV2,
+): FormalCampaignDescriptor {
+  return suite.campaign === undefined ? LEGACY_CAMPAIGN : V031_CAMPAIGN;
 }
 
 export interface FormalFixtureMaterialInput {
@@ -147,6 +176,8 @@ export function assertFormalFixtureMaterialBinding(
 export async function buildFormalBenchmarkSuiteSpecV2(
   options: BuildFormalBenchmarkSuiteOptions,
 ): Promise<BenchmarkSuiteSpecV2> {
+  const campaign =
+    options.campaign === "v0.3.1" ? V031_CAMPAIGN : LEGACY_CAMPAIGN;
   const [subjectHash, runnerHash] = await Promise.all([
     formalSubjectHash(options.cwd),
     formalRunnerHash(options.cwd),
@@ -190,13 +221,21 @@ export async function buildFormalBenchmarkSuiteSpecV2(
     throw new Error("Formal physics Fixture is missing");
   return createBenchmarkSuiteSpecV2({
     schemaVersion: 2,
+    ...(options.campaign === "v0.3.1"
+      ? {
+          campaign: {
+            campaignId: "v0.3.1" as const,
+            freezeTag: "v0.3.1-benchmark-freeze" as const,
+          },
+        }
+      : {}),
     subjectHash,
     runnerHash,
     metricSet: "grounded-diagnosis-v2",
     fixtures,
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: "chronorift-v0.3-formal-1",
+    orderSeed: campaign.orderSeed,
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "volcengine-coding-plan",
     model: "glm-5.2",
@@ -250,5 +289,8 @@ export function sameFormalSuite(
   left: BenchmarkSuiteSpecV2,
   right: BenchmarkSuiteSpecV2,
 ): boolean {
-  return canonicalJson(left) === canonicalJson(right);
+  return (
+    canonicalJson(left as unknown as JsonValue) ===
+    canonicalJson(right as unknown as JsonValue)
+  );
 }

@@ -3,9 +3,11 @@
 ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游戏运行时 Bug 转换成可恢复、
 可干预、可重放、可比较的实验，并由 Harness 根据运行时证据裁决结论，而不是相信模型置信度。
 
-> 当前版本：**v0.3 benchmark evidence release**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容；
+> 当前开发版本：**v0.3.1 provider-recovery campaign**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容；
 > v0.3 已冻结三组对照协议，并发布首个 36-cell 正式执行。该执行完整、报告完整性验证通过，但
-> 36/36 cells 均以 `proposal_missing` 结束，冻结 Gate 未通过；本仓库不声称 benchmark 或模型优势。
+> 36/36 cells 均以 `proposal_missing` 结束，冻结 Gate 未通过。v0.3.1 保留该负结果，先以独立 Pi
+> smoke 验证 provider，再使用新 campaign 身份执行同一冻结矩阵。两次 smoke 与 `test:live` 已通过；
+> 新 formal execution 尚未开始，发布前不声称 benchmark 或模型优势。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)。
@@ -168,6 +170,8 @@ corepack pnpm diagnose:v03 -- \
 仓库下的 `.chronorift/`：
 
 ```bash
+corepack pnpm pi:smoke
+
 corepack pnpm benchmark:explore -- \
   --provider volcengine-coding-plan \
   --model glm-5.2 \
@@ -201,6 +205,12 @@ corepack pnpm benchmark:gate -- \
   --report docs/benchmarks/v0.3/benchmark-report.v2.json
 ```
 
+`pi:smoke` 使用 v0.1 Mock switch-door 与真实 Pi Session/Agent Loop，但不接触四个正式 Fixture；只有
+Session 文件已持久化、token 和 tool call 均非零且 Harness verdict 为 `confirmed` 才返回成功。输出仅含
+provider/model、thinking、用量与 verdict，不含 credential、prompt、Session ID 或本地路径。v0.3.1
+正式 campaign 的完整命令、冻结顺序和发布边界见
+[v0.3.1 reproduction protocol](docs/benchmarks/v0.3.1/reproduction.md)；v0.3 证据目录不可覆盖。
+
 `benchmark:live` 暂保留为 `benchmark:explore` 的兼容别名，但已弃用。每个 definition 在固定本地
 ledger 中使用 `first-formal-execution-wins-v1`；selection 持久化后才输出 `executionId`，之后不得创建
 第二个 non-resume execution。终端输出丢失时用 `benchmark:status` 找回该 ID。这是可审计的本地防
@@ -224,6 +234,7 @@ report hash；有效的负面或 incomplete 报告仍是完整性有效。`bench
 | `corepack pnpm test:godot`        | 四 Fixture v0.3 + v0.2 兼容集成测试    |
 | `corepack pnpm demo:v03`          | 单 Fixture 离线完整诊断                |
 | `corepack pnpm diagnose:v03`      | 单 Fixture 真实 provider 诊断          |
+| `corepack pnpm pi:smoke`          | 正式 Fixture 外的真实 Pi 链路 smoke    |
 | `corepack pnpm benchmark`         | deterministic fake-model smoke         |
 | `corepack pnpm benchmark:explore` | 可配置的真实 provider 探索运行         |
 | `corepack pnpm benchmark:spec`    | 生成待提交的 formal v2 机器 spec       |

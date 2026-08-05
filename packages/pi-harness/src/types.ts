@@ -59,6 +59,16 @@ export interface AgentGameApi {
 export type PiThinkingLevel =
   "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
+export interface PiUsageStats {
+  readonly toolCalls: number;
+  readonly tokens: {
+    readonly input: number;
+    readonly output: number;
+    readonly total: number;
+  };
+  readonly cost: number;
+}
+
 interface PiHarnessBaseOptions {
   readonly cwd: string;
   readonly runDir: string;
@@ -81,6 +91,7 @@ export interface PiSessionReference {
   readonly provider: string;
   readonly model: string;
   readonly thinkingLevel: PiThinkingLevel;
+  readonly stats: PiUsageStats;
 }
 
 export interface PiDiagnosisRunResult {

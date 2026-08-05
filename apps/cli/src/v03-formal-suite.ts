@@ -3,6 +3,7 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 
 import {
+  BenchmarkCampaignV3Schema,
   BenchmarkSuiteSpecV3Schema,
   BenchmarkSuiteSpecV2Schema,
   FrozenContractV2Schema,
@@ -129,15 +130,37 @@ export const V032_LUNA_R1_CAMPAIGN = {
   orderSeed: "chronorift-v0.3.2-luna-r1-formal-1",
 } as const;
 
+export const V032_LUNA_R2_CAMPAIGN = {
+  campaignId: "v0.3.2-luna-r2",
+  freezeTag: "v0.3.2-luna-r2-benchmark-freeze",
+  evidenceDirectory: "docs/benchmarks/v0.3.2-luna-r2",
+  orderSeed: "chronorift-v0.3.2-luna-r2-formal-1",
+} as const;
+
 type FormalCampaignDescriptorV3 =
-  typeof V032_LUNA_CAMPAIGN | typeof V032_LUNA_R1_CAMPAIGN;
+  | typeof V032_LUNA_CAMPAIGN
+  | typeof V032_LUNA_R1_CAMPAIGN
+  | typeof V032_LUNA_R2_CAMPAIGN;
+
+export type FormalCampaignIdV3 = FormalCampaignDescriptorV3["campaignId"];
+
+export function formalCampaignForIdV3(
+  campaignId: FormalCampaignIdV3 = "v0.3.2-luna",
+): FormalCampaignDescriptorV3 {
+  switch (campaignId) {
+    case "v0.3.2-luna":
+      return V032_LUNA_CAMPAIGN;
+    case "v0.3.2-luna-r1":
+      return V032_LUNA_R1_CAMPAIGN;
+    case "v0.3.2-luna-r2":
+      return V032_LUNA_R2_CAMPAIGN;
+  }
+}
 
 export function formalCampaignForSuiteV3(
   suite: BenchmarkSuiteSpecV3,
 ): FormalCampaignDescriptorV3 {
-  return suite.campaign.campaignId === "v0.3.2-luna"
-    ? V032_LUNA_CAMPAIGN
-    : V032_LUNA_R1_CAMPAIGN;
+  return formalCampaignForIdV3(suite.campaign.campaignId);
 }
 
 const LEGACY_CAMPAIGN: FormalCampaignDescriptor = {
@@ -358,7 +381,7 @@ export interface BuildFormalBenchmarkSuiteV3Options {
   readonly cwd: string;
   readonly artifactRoot: string;
   readonly godotBin?: string | undefined;
-  readonly campaign?: "v0.3.2-luna" | "v0.3.2-luna-r1" | undefined;
+  readonly campaign?: FormalCampaignIdV3 | undefined;
 }
 
 export function assertFormalFixtureMaterialBindingV3(
@@ -371,20 +394,11 @@ export function assertFormalFixtureMaterialBindingV3(
 export async function buildFormalBenchmarkSuiteSpecV3(
   options: BuildFormalBenchmarkSuiteV3Options,
 ): Promise<BenchmarkSuiteSpecV3> {
-  const campaign =
-    options.campaign === "v0.3.2-luna-r1"
-      ? V032_LUNA_R1_CAMPAIGN
-      : V032_LUNA_CAMPAIGN;
-  const campaignIdentity =
-    campaign.campaignId === "v0.3.2-luna"
-      ? {
-          campaignId: campaign.campaignId,
-          freezeTag: campaign.freezeTag,
-        }
-      : {
-          campaignId: campaign.campaignId,
-          freezeTag: campaign.freezeTag,
-        };
+  const campaign = formalCampaignForIdV3(options.campaign);
+  const campaignIdentity = BenchmarkCampaignV3Schema.parse({
+    campaignId: campaign.campaignId,
+    freezeTag: campaign.freezeTag,
+  });
   const [subjectHash, runnerHash] = await Promise.all([
     formalSubjectHash(options.cwd),
     formalRunnerHash(options.cwd),

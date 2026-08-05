@@ -23,3 +23,7 @@ docs/benchmarks/v0.3.2-luna-r1/benchmark-report.v3.json
 docs/benchmarks/v0.3.2-luna-r1/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3.2-luna-r1/results.md
 docs/benchmarks/v0.3.2-luna-r1/canary-*.json
+docs/benchmarks/v0.3.2-luna-r2/benchmark-report.v3.json
+docs/benchmarks/v0.3.2-luna-r2/case-physics-tunneling-full-r1.json
+docs/benchmarks/v0.3.2-luna-r2/results.md
+docs/benchmarks/v0.3.2-luna-r2/canary-*.json

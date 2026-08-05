@@ -45,6 +45,12 @@ export const BenchmarkCampaignV3Schema = z.discriminatedUnion("campaignId", [
       freezeTag: z.literal("v0.3.2-luna-r1-benchmark-freeze"),
     })
     .strict(),
+  z
+    .object({
+      campaignId: z.literal("v0.3.2-luna-r2"),
+      freezeTag: z.literal("v0.3.2-luna-r2-benchmark-freeze"),
+    })
+    .strict(),
 ]);
 export type BenchmarkCampaignV3 = z.infer<typeof BenchmarkCampaignV3Schema>;
 
@@ -97,6 +103,7 @@ export const BenchmarkSuiteSpecV3Schema = z
     orderSeed: z.enum([
       "chronorift-v0.3.2-luna-formal-1",
       "chronorift-v0.3.2-luna-r1-formal-1",
+      "chronorift-v0.3.2-luna-r2-formal-1",
     ]),
     orderStrategy: z.literal("block_randomized_by_fixture_repetition"),
     provider: z.literal("openai-codex"),
@@ -182,11 +189,12 @@ export const BenchmarkSuiteSpecV3Schema = z
         path: ["preselectedCase", "fixtureId"],
       });
     }
-    const expectedOrderSeed =
-      spec.campaign.campaignId === "v0.3.2-luna"
-        ? "chronorift-v0.3.2-luna-formal-1"
-        : "chronorift-v0.3.2-luna-r1-formal-1";
-    if (spec.orderSeed !== expectedOrderSeed) {
+    const expectedOrderSeed = {
+      "v0.3.2-luna": "chronorift-v0.3.2-luna-formal-1",
+      "v0.3.2-luna-r1": "chronorift-v0.3.2-luna-r1-formal-1",
+      "v0.3.2-luna-r2": "chronorift-v0.3.2-luna-r2-formal-1",
+    } as const satisfies Record<BenchmarkCampaignV3["campaignId"], string>;
+    if (spec.orderSeed !== expectedOrderSeed[spec.campaign.campaignId]) {
       context.addIssue({
         code: "custom",
         message: "Benchmark order seed does not match its campaign",
@@ -202,6 +210,7 @@ export const BenchmarkProvenanceV3Schema = z
     freezeTag: z.enum([
       "v0.3.2-luna-benchmark-freeze",
       "v0.3.2-luna-r1-benchmark-freeze",
+      "v0.3.2-luna-r2-benchmark-freeze",
     ]),
     dirty: z.literal(false),
     lockfileHash: Sha256V1Schema,

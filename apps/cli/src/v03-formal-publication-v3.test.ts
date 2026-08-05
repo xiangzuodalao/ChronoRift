@@ -51,28 +51,38 @@ const fixtures: readonly BenchmarkFixtureSpecV3[] = mechanisms.map(
     aliasMapHash: hash,
   }),
 );
-const suiteForCampaign = (campaignId: "v0.3.2-luna" | "v0.3.2-luna-r1") => {
+const suiteForCampaign = (
+  campaignId: "v0.3.2-luna" | "v0.3.2-luna-r1" | "v0.3.2-luna-r2",
+) => {
   const isR1 = campaignId === "v0.3.2-luna-r1";
+  const isR2 = campaignId === "v0.3.2-luna-r2";
   return createBenchmarkSuiteSpecV3({
     schemaVersion: 3,
-    campaign: isR1
+    campaign: isR2
       ? {
-          campaignId: "v0.3.2-luna-r1",
-          freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+          campaignId: "v0.3.2-luna-r2",
+          freezeTag: "v0.3.2-luna-r2-benchmark-freeze",
         }
-      : {
-          campaignId: "v0.3.2-luna",
-          freezeTag: "v0.3.2-luna-benchmark-freeze",
-        },
+      : isR1
+        ? {
+            campaignId: "v0.3.2-luna-r1",
+            freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+          }
+        : {
+            campaignId: "v0.3.2-luna",
+            freezeTag: "v0.3.2-luna-benchmark-freeze",
+          },
     subjectHash: hash,
     runnerHash: "b".repeat(64),
     metricSet: "grounded-diagnosis-v3",
     fixtures,
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: isR1
-      ? "chronorift-v0.3.2-luna-r1-formal-1"
-      : "chronorift-v0.3.2-luna-formal-1",
+    orderSeed: isR2
+      ? "chronorift-v0.3.2-luna-r2-formal-1"
+      : isR1
+        ? "chronorift-v0.3.2-luna-r1-formal-1"
+        : "chronorift-v0.3.2-luna-formal-1",
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "openai-codex",
     model: "gpt-5.6-luna",
@@ -123,6 +133,7 @@ const suiteForCampaign = (campaignId: "v0.3.2-luna" | "v0.3.2-luna-r1") => {
 };
 const suite = suiteForCampaign("v0.3.2-luna");
 const r1Suite = suiteForCampaign("v0.3.2-luna-r1");
+const r2Suite = suiteForCampaign("v0.3.2-luna-r2");
 const executionId = asBenchmarkExecutionId("benchmark-execution:v3-publish");
 const report = buildBenchmarkReportV3({
   suite,
@@ -195,6 +206,28 @@ describe("formal benchmark V3 publication", () => {
       assertPublicationOutputScopeV3(cwd, r1Output, "", suite),
     ).toThrow(
       "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna",
+    );
+  });
+
+  it("isolates Luna r2 publication from both earlier evidence directories", () => {
+    const cwd = "/workspace/chronorift";
+    const originalOutput = join(cwd, "docs", "benchmarks", "v0.3.2-luna");
+    const r1Output = join(cwd, "docs", "benchmarks", "v0.3.2-luna-r1");
+    const r2Output = join(cwd, "docs", "benchmarks", "v0.3.2-luna-r2");
+    const r2Status = `?? docs/benchmarks/v0.3.2-luna-r2/${FORMAL_REPORT_FILENAME_V3}\n`;
+
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r2Output, r2Status, r2Suite),
+    ).not.toThrow();
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, originalOutput, "", r2Suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r2",
+    );
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r1Output, "", r2Suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r2",
     );
   });
 

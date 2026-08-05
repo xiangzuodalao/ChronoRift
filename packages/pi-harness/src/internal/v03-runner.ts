@@ -57,6 +57,7 @@ import type {
   V03ExperimentResult,
   V03PiDiagnosisRunResult,
   V03PiHarnessOptions,
+  V03PiPartialObservationV3,
   V03PiProgressSnapshotV3,
   V03ReplayResult,
 } from "../v03-types.js";
@@ -999,6 +1000,16 @@ export class V03ToolFlow {
   public getReceipts(): readonly EvidenceAccessReceiptV1[] {
     return structuredClone(this.receipts);
   }
+
+  public getPartialFlow(): V03PiPartialObservationV3["flow"] {
+    return {
+      matchingReplay:
+        this.replays.length > 0 &&
+        this.replays.every((replay) => replay.matches),
+      interventionCount: this.experimentResults.length,
+      comparisonCount: this.comparisons.length,
+    };
+  }
 }
 
 const jsonContent = (value: unknown) => [
@@ -1326,7 +1337,8 @@ export const runV03PiDiagnosisWithRuntime = async (
   const enqueueProgress = (): void => {
     if (
       options.onProgress === undefined &&
-      options.onProgressV3 === undefined
+      options.onProgressV3 === undefined &&
+      options.onPartialObservationV3 === undefined
     ) {
       return;
     }
@@ -1342,6 +1354,9 @@ export const runV03PiDiagnosisWithRuntime = async (
         0,
         "game.diagnosticExecutions",
       );
+      const sessionPersisted = session.sessionFile !== undefined;
+      const accessReceipts = flow.getReceipts();
+      const partialFlow = flow.getPartialFlow();
       const signature = canonicalJson({
         modelRequestStarted,
         modelOutputObserved,
@@ -1355,6 +1370,9 @@ export const runV03PiDiagnosisWithRuntime = async (
         baselineExecutions,
         diagnosticExecutions,
         proposalSubmitted: flow.hasSubmittedProposal(),
+        sessionPersisted,
+        accessReceiptIds: accessReceipts.map((receipt) => receipt.receiptId),
+        partialFlow,
       });
       if (signature === progressSignature) return;
       const snapshot: V03PiProgressSnapshotV3 = {
@@ -1389,11 +1407,21 @@ export const runV03PiDiagnosisWithRuntime = async (
         proposalSubmitted: flow.hasSubmittedProposal(),
       };
       assertV03ProgressMonotonic(previousProgress, snapshot);
+      const partialObservation: V03PiPartialObservationV3 = {
+        schemaVersion: 3,
+        progress: structuredClone(snapshot),
+        sessionPersisted,
+        accessReceipts,
+        flow: partialFlow,
+      };
       progressSignature = signature;
       progressSequence = snapshot.sequence;
       previousProgress = structuredClone(snapshot);
       progressChain = progressChain
         .then(async () => {
+          await options.onPartialObservationV3?.(
+            structuredClone(partialObservation),
+          );
           await options.onProgressV3?.(structuredClone(snapshot));
           if (
             snapshot.tools.started > 0 ||

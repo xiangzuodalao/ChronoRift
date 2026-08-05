@@ -4,12 +4,25 @@ import { join } from "node:path";
 
 import {
   FailureBriefV1Schema,
+  V03ExecutionLogSchema,
+  asBranchId,
   asCapsuleId,
+  asCheckpointId,
   asContractId,
+  asEventId,
   asExecutionId,
   asFixtureId,
+  asInputTraceId,
+  asInterventionId,
   asRunId,
   type BenchmarkArmV1,
+  type CapsuleId,
+  type EvidenceCapsuleV2,
+  type ExecutionId,
+  type ExperimentCandidateV1,
+  type InterventionId,
+  type V03ExecutionComparison,
+  type V03ExecutionLog,
 } from "@chronorift/domain";
 import {
   InMemoryCredentialStore,
@@ -36,7 +49,10 @@ import type {
 import type {
   DeterministicV03PiHarnessOptions,
   V03AgentGameApi,
+  V03ExperimentResult,
+  V03PiPartialObservationV3,
   V03PiProgressSnapshotV3,
+  V03ReplayResult,
 } from "../src/v03-types.js";
 
 const roots: string[] = [];
@@ -74,6 +90,160 @@ const failureBrief = FailureBriefV1Schema.parse({
 });
 
 const unavailableGame = {} as V03AgentGameApi;
+
+const experimentId = asInterventionId("intervention:v03:reliability-shift");
+
+const execution = (executionId: ExecutionId): V03ExecutionLog => {
+  const branchId = asBranchId("branch:v03-reliability");
+  const signalId = asEventId(`event:${executionId}:signal`);
+  return V03ExecutionLogSchema.parse({
+    schemaVersion: 2,
+    executionId,
+    runId: failureBrief.runId,
+    fixtureId: failureBrief.fixtureId,
+    branchId,
+    contractId: failureBrief.contractId,
+    startCheckpointId: asCheckpointId("checkpoint:v03-reliability"),
+    inputTraceId: asInputTraceId("trace:v03-reliability"),
+    status: "completed",
+    evaluation: {
+      status: "fail",
+      triggerEventId: signalId,
+      triggerTick: 0,
+      deadlineTick: 1,
+      observed: { present: true, value: false },
+    },
+    restoreReceipt: {
+      requestedCheckpointId: asCheckpointId("checkpoint:v03-reliability"),
+      restoredCheckpointId: asCheckpointId("checkpoint:v03-reliability"),
+      restored: true,
+      nextTick: 0,
+      simTimeUs: 0,
+      stateDigest: "b".repeat(64),
+    },
+    stepReceipts: [
+      {
+        requestedTick: 0,
+        realizedTick: 0,
+        requestedDeltaUs: 16_667,
+        realizedDeltaUs: 16_667,
+        appliedInputOrders: [],
+      },
+    ],
+    controlReceipt: {
+      schemaVersion: 1,
+      requested: { fixed_fps: 60 },
+      realized: { fixed_fps: 60 },
+      accepted: true,
+      mismatches: [],
+    },
+    observationHealth: {
+      schemaVersion: 1,
+      emittedEvents: 2,
+      droppedEvents: 0,
+      truncatedEvents: 0,
+      bufferedBytes: 1,
+      backpressure: false,
+      probeOverheadUs: 0,
+    },
+    events: [
+      {
+        schemaVersion: 2,
+        eventId: signalId,
+        executionId,
+        runId: failureBrief.runId,
+        branchId,
+        seq: 0,
+        tick: 0,
+        simTimeUs: 0,
+        kind: "signal",
+        source: "subject",
+        name: "triggered",
+        arguments: [],
+      },
+      {
+        schemaVersion: 2,
+        eventId: asEventId(`event:${executionId}:delivery`),
+        executionId,
+        runId: failureBrief.runId,
+        branchId,
+        seq: 1,
+        tick: 0,
+        simTimeUs: 0,
+        causedByEventId: signalId,
+        kind: "signal_delivery",
+        source: "subject",
+        name: "triggered",
+        receiver: "receiver",
+        delivered: false,
+        failureReason: "receiver_not_connected",
+      },
+    ],
+    finalState: { values: { "subject.result": false } },
+    timelineDigest: "a".repeat(64),
+    sealed: true,
+  });
+};
+
+class ScopedExperimentGame implements V03AgentGameApi {
+  public readonly baselineExecutions = 1;
+  public diagnosticExecutions = 0;
+  public runExperimentCalls = 0;
+  private readonly baseline = execution(failureBrief.baselineExecutionId);
+
+  public getEvidenceCapsule(
+    _capsuleId: CapsuleId,
+  ): Promise<EvidenceCapsuleV2 | null> {
+    void _capsuleId;
+    return Promise.resolve(null);
+  }
+
+  public getRawBaseline(_executionId: ExecutionId): Promise<unknown> {
+    void _executionId;
+    return Promise.resolve({ schemaVersion: 1, execution: this.baseline });
+  }
+
+  public replayExecution(_executionId: ExecutionId): Promise<V03ReplayResult> {
+    void _executionId;
+    this.diagnosticExecutions += 1;
+    return Promise.resolve({
+      execution: execution(asExecutionId("execution:v03-reliability-replay")),
+      matches: true,
+      sourceDigest: this.baseline.timelineDigest,
+      replayDigest: this.baseline.timelineDigest,
+    });
+  }
+
+  public listExperiments(): Promise<readonly ExperimentCandidateV1[]> {
+    return Promise.resolve([
+      {
+        schemaVersion: 1,
+        interventionId: experimentId,
+        label: "Shift input by one logical tick",
+        intervention: { kind: "shift_input", inputOrder: 0, deltaTicks: 1 },
+      },
+    ]);
+  }
+
+  public runExperiment(
+    _baselineExecutionId: ExecutionId,
+    _interventionId: InterventionId,
+  ): Promise<V03ExperimentResult> {
+    void _baselineExecutionId;
+    void _interventionId;
+    this.runExperimentCalls += 1;
+    return Promise.reject(new Error("Out-of-scope experiment reached game"));
+  }
+
+  public compareExecutions(
+    _baselineExecutionId: ExecutionId,
+    _candidateExecutionId: ExecutionId,
+  ): Promise<V03ExecutionComparison> {
+    void _baselineExecutionId;
+    void _candidateExecutionId;
+    return Promise.reject(new Error("Comparison is unavailable"));
+  }
+}
 
 const options = (
   cwd: string,
@@ -138,6 +308,93 @@ describe("V03 Pi runner reliability", () => {
       );
     },
   );
+
+  it("preserves partial facts when a model corrupts the scoped baseline ID", async () => {
+    const cwd = await root();
+    const game = new ScopedExperimentGame();
+    const corruptedBaselineId = "execution:v03-reliabilitx";
+    const fake = await runtime([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "game_get_raw_baseline",
+            { executionId: failureBrief.baselineExecutionId },
+            { id: "raw-baseline" },
+          ),
+        ],
+        { stopReason: "toolUse", timestamp: 1_735_689_600_001 },
+      ),
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "game_replay_raw_baseline",
+            { executionId: failureBrief.baselineExecutionId },
+            { id: "raw-replay" },
+          ),
+        ],
+        { stopReason: "toolUse", timestamp: 1_735_689_600_002 },
+      ),
+      fauxAssistantMessage(
+        [fauxToolCall("game_list_experiments_v2", {}, { id: "catalog" })],
+        { stopReason: "toolUse", timestamp: 1_735_689_600_003 },
+      ),
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "game_run_experiment_v2",
+            {
+              baselineExecutionId: corruptedBaselineId,
+              interventionId: experimentId,
+            },
+            { id: "corrupted-experiment" },
+          ),
+        ],
+        { stopReason: "toolUse", timestamp: 1_735_689_600_004 },
+      ),
+    ]);
+    const observations: V03PiPartialObservationV3[] = [];
+
+    const failure = await runV03PiDiagnosisWithRuntime(
+      options(
+        cwd,
+        createVirtualSourceAccess({
+          files: [{ path: "case/main.gd", content: "extends Node" }],
+        }),
+        {
+          game,
+          onPartialObservationV3: (observation) => {
+            observations.push(observation);
+            return Promise.resolve();
+          },
+        },
+      ),
+      fake,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      code: "INVALID_TOOL_FLOW",
+      message: "Experiment baseline is out of scope",
+    });
+    expect(game.runExperimentCalls).toBe(0);
+    expect(game.diagnosticExecutions).toBe(1);
+    expect(observations.at(-1)).toMatchObject({
+      schemaVersion: 3,
+      sessionPersisted: true,
+      flow: {
+        matchingReplay: true,
+        interventionCount: 0,
+        comparisonCount: 0,
+      },
+      progress: {
+        tools: { started: 4, completed: 4, failed: 1, semanticRevision: 3 },
+        game: { baselineExecutions: 1, diagnosticExecutions: 1 },
+        proposalSubmitted: false,
+      },
+    });
+    expect(
+      observations.at(-1)?.accessReceipts.map((receipt) => receipt.accessKind),
+    ).toEqual(["failure_brief", "raw_execution", "replay", "experiment"]);
+  });
 
   it("aborts a multi-tool batch immediately on its first tool error", async () => {
     const cwd = await root();

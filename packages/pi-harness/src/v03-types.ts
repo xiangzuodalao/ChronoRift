@@ -82,6 +82,24 @@ export interface V03PiProgressSnapshotV3 {
   readonly proposalSubmitted: boolean;
 }
 
+/**
+ * Validated facts that remain useful when the Agent Loop terminates before it
+ * can return a diagnosis. This deliberately omits the Pi session path and any
+ * unvalidated tool payloads.
+ */
+export interface V03PiPartialObservationV3 {
+  readonly schemaVersion: 3;
+  readonly progress: V03PiProgressSnapshotV3;
+  /** Reported by Pi's Session object; callers must not infer it from disk. */
+  readonly sessionPersisted: boolean;
+  readonly accessReceipts: readonly EvidenceAccessReceiptV1[];
+  readonly flow: {
+    readonly matchingReplay: boolean;
+    readonly interventionCount: number;
+    readonly comparisonCount: number;
+  };
+}
+
 export interface V03AgentBudgets {
   readonly maxToolCalls: 12;
   /** Number of tool errors tolerated before termination; v0.3 tolerates none. */
@@ -118,6 +136,12 @@ interface V03HarnessBaseOptions {
   /** Canonical structured progress for v0.3+ runtimes. */
   readonly onProgressV3?:
     ((snapshot: V03PiProgressSnapshotV3) => Promise<void>) | undefined;
+  /**
+   * Canonical partial facts, emitted for both successful and failed Agent
+   * Loops through the same serialized observation chain as progress.
+   */
+  readonly onPartialObservationV3?:
+    ((snapshot: V03PiPartialObservationV3) => Promise<void>) | undefined;
 }
 
 export interface V03PiHarnessOptions extends V03HarnessBaseOptions {

@@ -4,16 +4,45 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
-import { PiHarnessError, PiProviderFailureError } from "@chronorift/pi-harness";
+import {
+  asEvidenceAccessReceiptId,
+  asFixtureId,
+  asRunId,
+  type EvidenceAccessReceiptV1,
+} from "@chronorift/domain";
+import {
+  PiHarnessError,
+  PiProviderFailureError,
+  type V03PiPartialObservationV3,
+} from "@chronorift/pi-harness";
 import { describe, expect, it } from "vitest";
 
 import {
   classifyCanaryLiveFailure,
   classifyCanaryLiveFailureDetails,
   createCanaryImplementationReceipt,
+  summarizeCanaryPartialObservation,
 } from "./v03-canary-live.js";
 
 const execFileAsync = promisify(execFile);
+
+const receipt = (
+  accessKind: EvidenceAccessReceiptV1["accessKind"],
+  ordinal: number,
+): EvidenceAccessReceiptV1 => ({
+  schemaVersion: 1,
+  receiptId: asEvidenceAccessReceiptId(
+    `receipt:v1:${ordinal.toString(16).padStart(64, "0")}`,
+  ),
+  runId: asRunId("run:v03:partial-observation"),
+  fixtureId: asFixtureId("fixture:v03:partial-observation"),
+  accessKind,
+  resourceId: `${accessKind}:${ordinal}`,
+  requestHash: "a".repeat(64),
+  contentHash: "b".repeat(64),
+  sourceCoverage: [],
+  issuedAt: "2026-08-05T00:00:00.000Z",
+});
 
 const progress = (outputObserved: boolean) => ({
   sequence: outputObserved ? 2 : 0,
@@ -35,6 +64,67 @@ const progress = (outputObserved: boolean) => ({
 });
 
 describe("Luna canary live failure classification", () => {
+  it("maps typed partial observations into failure-cell flow facts", () => {
+    const observation: V03PiPartialObservationV3 = {
+      schemaVersion: 3,
+      sessionPersisted: true,
+      accessReceipts: [
+        receipt("failure_brief", 1),
+        receipt("raw_execution", 2),
+        receipt("replay", 3),
+        receipt("experiment", 4),
+      ],
+      flow: {
+        matchingReplay: true,
+        interventionCount: 0,
+        comparisonCount: 0,
+      },
+      progress: {
+        schemaVersion: 3,
+        sequence: 12,
+        wallTimeMs: 14_538,
+        fixtureStage: "fixture_validated",
+        model: {
+          requestStarted: true,
+          outputObserved: true,
+          turnCompleted: true,
+          tokens: {
+            input: 11_810,
+            output: 332,
+            cacheRead: 12_288,
+            cacheWrite: 0,
+            total: 24_430,
+          },
+        },
+        tools: {
+          started: 4,
+          completed: 4,
+          failed: 1,
+          semanticRevision: 3,
+          consecutiveNonProgressToolResults: 0,
+        },
+        game: { baselineExecutions: 1, diagnosticExecutions: 1 },
+        proposalSubmitted: false,
+      },
+    };
+
+    expect(summarizeCanaryPartialObservation(observation)).toEqual({
+      sessionPersisted: true,
+      flow: {
+        evidenceReceiptCount: 2,
+        rawExecutionReceiptCount: 1,
+        capsuleReceiptCount: 0,
+        sourceReceiptCount: 0,
+        replayReceiptCount: 1,
+        experimentReceiptCount: 1,
+        comparisonReceiptCount: 0,
+        matchingReplay: true,
+        interventionCount: 0,
+        comparisonCount: 0,
+      },
+    });
+  });
+
   it("preserves a typed provider cause ahead of a harness wrapper", () => {
     const provider = new PiProviderFailureError("redacted provider failure", {
       phase: "response_stream",

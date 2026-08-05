@@ -3,6 +3,7 @@ import {
   PiProviderFailureError,
   assertPiModelCapabilities,
   runV03PiDiagnosis,
+  type V03PiPartialObservationV3,
   type V03PiProgressSnapshotV3,
 } from "@chronorift/pi-harness";
 
@@ -12,6 +13,7 @@ import {
   type BenchmarkV3CanaryCellRunnerPort,
   type CanaryFailureCode,
   type CanaryFailureKind,
+  type CanaryFlowSummaryV1,
   type CanaryImplementationReceiptV2,
   type CanaryProgressSummaryV2,
   type CanaryProviderFailureV2,
@@ -194,6 +196,42 @@ const progressSummary = (
   proposalSubmitted: snapshot.proposalSubmitted,
 });
 
+const summarizeCanaryFlow = (
+  receipts: V03PiPartialObservationV3["accessReceipts"],
+  flow: V03PiPartialObservationV3["flow"],
+): CanaryFlowSummaryV1 => {
+  const receiptCount = (...kinds: readonly string[]): number =>
+    receipts.filter((receipt) => kinds.includes(receipt.accessKind)).length;
+  return {
+    evidenceReceiptCount: receiptCount(
+      "failure_brief",
+      "raw_execution",
+      "capsule",
+    ),
+    rawExecutionReceiptCount: receiptCount("raw_execution"),
+    capsuleReceiptCount: receiptCount("capsule"),
+    sourceReceiptCount: receiptCount("source_read", "source_search"),
+    replayReceiptCount: receiptCount("replay"),
+    experimentReceiptCount: receiptCount("experiment"),
+    comparisonReceiptCount: receiptCount("comparison"),
+    matchingReplay: flow.matchingReplay,
+    interventionCount: flow.interventionCount,
+    comparisonCount: flow.comparisonCount,
+  };
+};
+
+export function summarizeCanaryPartialObservation(
+  observation: V03PiPartialObservationV3,
+): {
+  readonly sessionPersisted: boolean;
+  readonly flow: CanaryFlowSummaryV1;
+} {
+  return {
+    sessionPersisted: observation.sessionPersisted,
+    flow: summarizeCanaryFlow(observation.accessReceipts, observation.flow),
+  };
+}
+
 const IMPLEMENTATION_ROOTS = [
   "apps/cli/src",
   "packages/domain/src",
@@ -362,6 +400,7 @@ export class LiveLunaCanaryRunner implements BenchmarkV3CanaryCellRunnerPort {
     let game: ChronoRiftV03AgentGameApi | undefined;
     let sessionPersisted = false;
     let proposalPresent = false;
+    let partialFlow: CanaryFlowSummaryV1 | undefined;
     let lastProgress = emptyProgress();
     let lastTokens = {
       input: 0,
@@ -413,13 +452,19 @@ export class LiveLunaCanaryRunner implements BenchmarkV3CanaryCellRunnerPort {
         thinkingLevel: input.spec.model.thinkingLevel,
         timeoutMs: input.spec.budgets.timeoutMs,
         sdkRetry: false,
-        onProgressV3: (snapshot) => {
-          lastProgress = progressSummary(snapshot);
-          lastTokens = snapshot.model.tokens;
-          maxToolErrors = Math.max(maxToolErrors, snapshot.tools.failed);
+        onPartialObservationV3: (observation) => {
+          const partial = summarizeCanaryPartialObservation(observation);
+          sessionPersisted = partial.sessionPersisted;
+          partialFlow = partial.flow;
+          lastProgress = progressSummary(observation.progress);
+          lastTokens = observation.progress.model.tokens;
+          maxToolErrors = Math.max(
+            maxToolErrors,
+            observation.progress.tools.failed,
+          );
           maxConsecutiveNonProgressToolResults = Math.max(
             maxConsecutiveNonProgressToolResults,
-            snapshot.tools.consecutiveNonProgressToolResults,
+            observation.progress.tools.consecutiveNonProgressToolResults,
           );
           return Promise.resolve();
         },
@@ -455,9 +500,6 @@ export class LiveLunaCanaryRunner implements BenchmarkV3CanaryCellRunnerPort {
         diagnosis.proposal,
         diagnosis.accessReceipts,
       );
-      const receipts = diagnosis.accessReceipts;
-      const receiptCount = (...kinds: readonly string[]): number =>
-        receipts.filter((receipt) => kinds.includes(receipt.accessKind)).length;
       let matchingReplay = false;
       if (diagnosis.proposal.replayExecutionId !== undefined) {
         const replay = await context.repository.getExecution(
@@ -471,22 +513,11 @@ export class LiveLunaCanaryRunner implements BenchmarkV3CanaryCellRunnerPort {
         verdict: verdict.status,
         mechanismCorrect:
           diagnosis.proposal.mechanismCode === expectedMechanism(input.fixture),
-        flow: {
-          evidenceReceiptCount: receiptCount(
-            "failure_brief",
-            "raw_execution",
-            "capsule",
-          ),
-          rawExecutionReceiptCount: receiptCount("raw_execution"),
-          capsuleReceiptCount: receiptCount("capsule"),
-          sourceReceiptCount: receiptCount("source_read", "source_search"),
-          replayReceiptCount: receiptCount("replay"),
-          experimentReceiptCount: receiptCount("experiment"),
-          comparisonReceiptCount: receiptCount("comparison"),
+        flow: summarizeCanaryFlow(diagnosis.accessReceipts, {
           matchingReplay,
           interventionCount: diagnosis.proposal.candidateExecutionIds.length,
           comparisonCount: diagnosis.proposal.comparisonIds.length,
-        },
+        }),
         progress: {
           ...lastProgress,
           model: { ...lastProgress.model, turnCompleted: true },
@@ -509,6 +540,7 @@ export class LiveLunaCanaryRunner implements BenchmarkV3CanaryCellRunnerPort {
         providerFailure: classified.providerFailure,
         sessionPersisted,
         proposalPresent: proposalPresent || lastProgress.proposalSubmitted,
+        ...(partialFlow === undefined ? {} : { flow: partialFlow }),
         progress: lastProgress,
         metrics: observedMetrics(),
       });

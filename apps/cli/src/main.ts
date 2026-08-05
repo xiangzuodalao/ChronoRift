@@ -21,6 +21,7 @@ import {
 import {
   V01JsonArtifactRepository,
   V03BenchmarkJsonArtifactRepository,
+  V03BenchmarkJsonArtifactRepositoryV3,
 } from "@chronorift/json-artifacts";
 import {
   listAvailablePiModels,
@@ -50,9 +51,18 @@ import {
   publishFormalBenchmark,
   verifyFormalBenchmarkReport,
 } from "./v03-formal-publication.js";
-import { runFormalBenchmark } from "./v03-formal-runtime.js";
 import {
+  publishFormalBenchmarkV3,
+  verifyFormalBenchmarkReportV3,
+} from "./v03-formal-publication-v3.js";
+import {
+  runFormalBenchmark,
+  runFormalBenchmarkV3,
+} from "./v03-formal-runtime.js";
+import {
+  buildFormalBenchmarkSuiteSpecV3,
   buildFormalBenchmarkSuiteSpecV2,
+  parseFormalBenchmarkSuiteSpecV3,
   parseFormalBenchmarkSuiteSpecV2,
 } from "./v03-formal-suite.js";
 import {
@@ -62,6 +72,20 @@ import {
 } from "./v01-runtime.js";
 import { createV03Run, type V03RunContext } from "./v03-runtime.js";
 import { createV03NeutralSourceAccess } from "./v03-source-view.js";
+import {
+  assertCanaryC1Prerequisite,
+  buildLunaCanarySpec,
+  executeCanaryStage,
+  parseCanaryStageReport,
+  publishCanaryReport,
+  readCanaryReport,
+  readCanarySpec,
+  type CanaryStage,
+} from "./v03-canary.js";
+import {
+  LiveLunaCanaryRunner,
+  createCanaryImplementationReceipt,
+} from "./v03-canary-live.js";
 
 interface Arguments {
   readonly command: string;
@@ -481,6 +505,145 @@ async function runBenchmarkCommand(
   });
 }
 
+const canaryArtifactRoot = (cwd: string): string => resolve(cwd, ".chronorift");
+
+function canaryStageFlag(args: Arguments): CanaryStage {
+  const stage = requiredFlag(args, "stage");
+  if (stage !== "c0" && stage !== "c1") {
+    throw new Error("--stage must be c0 or c1");
+  }
+  return stage;
+}
+
+async function buildCanarySpecCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["id"]);
+  printJson(
+    buildLunaCanarySpec(
+      flag(args, "id"),
+      await createCanaryImplementationReceipt(cwd),
+    ),
+  );
+}
+
+async function runCanaryCommand(args: Arguments, cwd: string): Promise<void> {
+  assertOnlyFlags(args, ["spec", "stage", "c0-report", "godot-bin"]);
+  const stage = canaryStageFlag(args);
+  const spec = await readCanarySpec(resolve(cwd, requiredFlag(args, "spec")));
+  const prerequisitePath = flag(args, "c0-report");
+  if (stage === "c1" && prerequisitePath === undefined) {
+    throw new Error("--c0-report is required for C1");
+  }
+  if (stage === "c0" && prerequisitePath !== undefined) {
+    throw new Error("--c0-report is only valid for C1");
+  }
+  const prerequisiteReport =
+    prerequisitePath === undefined
+      ? undefined
+      : await readCanaryReport(resolve(cwd, prerequisitePath));
+  const artifactRoot = canaryArtifactRoot(cwd);
+  const report = await executeCanaryStage({
+    cwd,
+    artifactRoot,
+    spec,
+    stage,
+    ...(prerequisiteReport === undefined ? {} : { prerequisiteReport }),
+    runner: new LiveLunaCanaryRunner({
+      cwd,
+      artifactRoot,
+      ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+        ? {}
+        : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
+    }),
+  });
+  printJson({
+    canaryId: report.spec.canaryId,
+    stage: report.stage,
+    reportHash: report.reportHash,
+    readiness: report.readiness,
+  });
+  if (report.readiness.status !== "ready") process.exitCode = 2;
+}
+
+async function publishCanaryCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["spec", "stage", "output"]);
+  const spec = await readCanarySpec(resolve(cwd, requiredFlag(args, "spec")));
+  const stage = canaryStageFlag(args);
+  const output =
+    flag(args, "output") ??
+    `.chronorift/v0.3/canary-publications/${encodeURIComponent(spec.canaryId)}/${stage}.report.json`;
+  printJson({
+    canaryId: spec.canaryId,
+    stage,
+    reportPath: await publishCanaryReport({
+      cwd,
+      artifactRoot: canaryArtifactRoot(cwd),
+      canaryId: spec.canaryId,
+      stage,
+      outputPath: output,
+    }),
+  });
+}
+
+async function verifyCanaryCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, ["report", "c0-report"]);
+  const report = parseCanaryStageReport(
+    await readCanaryReport(resolve(cwd, requiredFlag(args, "report"))),
+  );
+  const prerequisitePath = flag(args, "c0-report");
+  if (report.stage === "c1" && prerequisitePath === undefined) {
+    throw new Error("--c0-report is required to verify C1 linkage");
+  }
+  if (report.stage === "c0" && prerequisitePath !== undefined) {
+    throw new Error("--c0-report is only valid when verifying C1");
+  }
+  let prerequisiteEligibility: "not_eligible" | "legacy_only" | "hardened" =
+    report.readiness.status !== "ready"
+      ? "not_eligible"
+      : report.implementationReceipt === undefined
+        ? "legacy_only"
+        : "hardened";
+  if (prerequisitePath !== undefined) {
+    const prerequisite = await readCanaryReport(resolve(cwd, prerequisitePath));
+    assertCanaryC1Prerequisite(
+      report.spec,
+      prerequisite,
+      report.prerequisiteReportHash ?? undefined,
+    );
+    if (report.implementationReceipt === undefined) {
+      if (report.readiness.status === "ready") {
+        prerequisiteEligibility = "legacy_only";
+      }
+    } else {
+      assertCanaryC1Prerequisite(
+        report.spec,
+        prerequisite,
+        report.prerequisiteReportHash ?? undefined,
+        report.implementationReceipt,
+      );
+      if (report.readiness.status === "ready") {
+        prerequisiteEligibility = "hardened";
+      }
+    }
+  }
+  printJson({
+    canaryId: report.spec.canaryId,
+    stage: report.stage,
+    reportHash: report.reportHash,
+    readiness: report.readiness,
+    prerequisiteEligibility,
+  });
+  if (report.readiness.status !== "ready") process.exitCode = 2;
+}
+
 const formalSpecPath = (args: Arguments, cwd: string): string =>
   resolve(
     cwd,
@@ -489,14 +652,34 @@ const formalSpecPath = (args: Arguments, cwd: string): string =>
 
 const formalArtifactRoot = (cwd: string): string => resolve(cwd, ".chronorift");
 
+function formalSchemaVersion(input: unknown, label: string): 2 | 3 {
+  if (input === null || Array.isArray(input) || typeof input !== "object") {
+    throw new Error(`${label} is not an object`);
+  }
+  const version = (input as Readonly<Record<string, unknown>>)["schemaVersion"];
+  if (version !== 2 && version !== 3) {
+    throw new Error(`${label} has an unsupported schemaVersion`);
+  }
+  return version;
+}
+
+async function readFormalJson(path: string): Promise<unknown> {
+  return JSON.parse(await readFile(resolve(path), "utf8")) as unknown;
+}
+
 async function runFormalBenchmarkCommand(
   args: Arguments,
   cwd: string,
 ): Promise<void> {
   assertOnlyFlags(args, ["spec", "resume", "godot-bin"]);
-  const result = await runFormalBenchmark({
+  const specPath = formalSpecPath(args, cwd);
+  const version = formalSchemaVersion(
+    await readFormalJson(specPath),
+    "Formal benchmark specification",
+  );
+  const commonOptions = {
     cwd,
-    specPath: formalSpecPath(args, cwd),
+    specPath,
     artifactRoot: formalArtifactRoot(cwd),
     ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
       ? {}
@@ -504,12 +687,16 @@ async function runFormalBenchmarkCommand(
     ...(flag(args, "resume") === undefined
       ? {}
       : { resumeExecutionId: flag(args, "resume") }),
-    onExecutionSelected: (executionId) => {
+    onExecutionSelected: (executionId: string) => {
       process.stderr.write(
         `${JSON.stringify({ executionId, status: "execution_identified" })}\n`,
       );
     },
-  });
+  };
+  const result =
+    version === 3
+      ? await runFormalBenchmarkV3(commonOptions)
+      : await runFormalBenchmark(commonOptions);
   printJson({
     executionId: result.report.executionId,
     status: result.report.status,
@@ -532,22 +719,28 @@ async function buildFormalSpecCommand(
   if (
     campaign !== undefined &&
     campaign !== "v0.3.1" &&
-    campaign !== "v0.3.1-r2"
+    campaign !== "v0.3.1-r2" &&
+    campaign !== "v0.3.2-luna"
   ) {
     throw new Error(`Unsupported benchmark campaign: ${campaign}`);
   }
-  printJson(
-    await buildFormalBenchmarkSuiteSpecV2({
+  const commonOptions = {
+    cwd,
+    artifactRoot: resolve(
       cwd,
-      artifactRoot: resolve(
-        cwd,
-        flag(args, "artifacts") ?? ".chronorift/formal-spec-build",
-      ),
-      ...(campaign === undefined ? {} : { campaign }),
-      ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
-        ? {}
-        : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
-    }),
+      flag(args, "artifacts") ?? ".chronorift/formal-spec-build",
+    ),
+    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
+      ? {}
+      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
+  };
+  printJson(
+    campaign === "v0.3.2-luna"
+      ? await buildFormalBenchmarkSuiteSpecV3(commonOptions)
+      : await buildFormalBenchmarkSuiteSpecV2({
+          ...commonOptions,
+          ...(campaign === undefined ? {} : { campaign }),
+        }),
   );
 }
 
@@ -568,13 +761,27 @@ async function formalBenchmarkStatusCommand(
   cwd: string,
 ): Promise<void> {
   assertOnlyFlags(args, ["spec"]);
-  const suite = parseFormalBenchmarkSuiteSpecV2(
-    JSON.parse(await readFile(formalSpecPath(args, cwd), "utf8")) as unknown,
+  const specInput = await readFormalJson(formalSpecPath(args, cwd));
+  const version = formalSchemaVersion(
+    specInput,
+    "Formal benchmark specification",
   );
-  const repository = new V03BenchmarkJsonArtifactRepository(
-    formalArtifactRoot(cwd),
-  );
-  const selection = await repository.getExecutionSelection(suite.definitionId);
+  const suite =
+    version === 3
+      ? parseFormalBenchmarkSuiteSpecV3(specInput)
+      : parseFormalBenchmarkSuiteSpecV2(specInput);
+  const v3Repository =
+    version === 3
+      ? new V03BenchmarkJsonArtifactRepositoryV3(formalArtifactRoot(cwd))
+      : null;
+  const v2Repository =
+    version === 2
+      ? new V03BenchmarkJsonArtifactRepository(formalArtifactRoot(cwd))
+      : null;
+  const selection =
+    version === 3
+      ? await v3Repository?.getExecutionSelectionV3(suite.definitionId)
+      : await v2Repository?.getExecutionSelection(suite.definitionId);
   if (selection === null) {
     printJson({
       definitionId: suite.definitionId,
@@ -583,16 +790,34 @@ async function formalBenchmarkStatusCommand(
     });
     return;
   }
-  const [started, completed] = await Promise.all([
-    repository.getExecutionStarted(suite.definitionId, selection.executionId),
-    repository.getCompleted(suite.definitionId, selection.executionId),
-  ]);
+  if (selection === undefined) {
+    throw new Error("Formal benchmark repository dispatch failed");
+  }
+  const [started, completed] =
+    version === 3
+      ? await Promise.all([
+          v3Repository?.getExecutionStartedV3(
+            suite.definitionId,
+            selection.executionId,
+          ),
+          v3Repository?.getCompletedV3(
+            suite.definitionId,
+            selection.executionId,
+          ),
+        ])
+      : await Promise.all([
+          v2Repository?.getExecutionStarted(
+            suite.definitionId,
+            selection.executionId,
+          ),
+          v2Repository?.getCompleted(suite.definitionId, selection.executionId),
+        ]);
   printJson({
     definitionId: suite.definitionId,
     selected: true,
     executionId: selection.executionId,
     selectionHash: selection.selectionHash,
-    started: started !== null,
+    started: started !== null && started !== undefined,
     status: completed?.status ?? (started === null ? "selected" : "running"),
     reportHash: completed?.reportHash ?? null,
   });
@@ -603,13 +828,22 @@ async function publishFormalBenchmarkCommand(
   cwd: string,
 ): Promise<void> {
   assertOnlyFlags(args, ["spec", "execution", "output"]);
-  const files = await publishFormalBenchmark({
+  const specPath = formalSpecPath(args, cwd);
+  const version = formalSchemaVersion(
+    await readFormalJson(specPath),
+    "Formal benchmark specification",
+  );
+  const options = {
     cwd,
     artifactRoot: formalArtifactRoot(cwd),
-    specPath: formalSpecPath(args, cwd),
+    specPath,
     executionId: requiredFlag(args, "execution"),
     outputDirectory: resolve(cwd, requiredFlag(args, "output")),
-  });
+  };
+  const files =
+    version === 3
+      ? await publishFormalBenchmarkV3(options)
+      : await publishFormalBenchmark(options);
   printJson({ published: true, files });
 }
 
@@ -619,10 +853,19 @@ async function verifyFormalBenchmarkCommand(
 ): Promise<void> {
   assertOnlyFlags(args, ["spec", "report"]);
   const path = resolve(cwd, requiredFlag(args, "report"));
-  const verification = await verifyFormalBenchmarkReport({
+  const specPath = formalSpecPath(args, cwd);
+  const specVersion = formalSchemaVersion(
+    await readFormalJson(specPath),
+    "Formal benchmark specification",
+  );
+  const options = {
     reportPath: path,
-    specPath: formalSpecPath(args, cwd),
-  });
+    specPath,
+  };
+  const verification =
+    specVersion === 3
+      ? await verifyFormalBenchmarkReportV3(options)
+      : await verifyFormalBenchmarkReport(options);
   printJson({
     verified: verification.valid,
     reportPath: path,
@@ -638,10 +881,19 @@ async function gateFormalBenchmarkCommand(
 ): Promise<void> {
   assertOnlyFlags(args, ["spec", "report"]);
   const path = resolve(cwd, requiredFlag(args, "report"));
-  const verification = await verifyFormalBenchmarkReport({
+  const specPath = formalSpecPath(args, cwd);
+  const specVersion = formalSchemaVersion(
+    await readFormalJson(specPath),
+    "Formal benchmark specification",
+  );
+  const options = {
     reportPath: path,
-    specPath: formalSpecPath(args, cwd),
-  });
+    specPath,
+  };
+  const verification =
+    specVersion === 3
+      ? await verifyFormalBenchmarkReportV3(options)
+      : await verifyFormalBenchmarkReport(options);
   printJson({
     verified: verification.valid,
     reportPath: path,
@@ -760,18 +1012,30 @@ function printHelp(): void {
   process.stdout.write(
     `  pnpm benchmark:explore -- --provider PROVIDER --model MODEL [--thinking LEVEL --repetitions 3 --report PATH]\n`,
   );
+  process.stdout.write(`  pnpm benchmark:canary:spec [-- --id CANARY_ID]\n`);
+  process.stdout.write(
+    `  pnpm benchmark:canary -- --spec PATH --stage c0|c1 [--c0-report PATH] [--godot-bin PATH]\n`,
+  );
+  process.stdout.write(
+    `  pnpm benchmark:canary:publish -- --spec PATH --stage c0|c1 [--output PATH]\n`,
+  );
+  process.stdout.write(
+    `  pnpm benchmark:canary:verify -- --report PATH [--c0-report PATH]\n`,
+  );
   process.stdout.write(
     `  pnpm benchmark:formal -- --spec PATH [--resume EXECUTION_ID]\n`,
   );
   process.stdout.write(
-    `  pnpm benchmark:spec [-- --campaign v0.3.1|v0.3.1-r2 --godot-bin PATH]\n`,
+    `  pnpm benchmark:spec [-- --campaign v0.3.1|v0.3.1-r2|v0.3.2-luna --godot-bin PATH]\n`,
   );
   process.stdout.write(`  pnpm benchmark:status [-- --spec PATH]\n`);
   process.stdout.write(
-    `  pnpm benchmark:publish -- --execution EXECUTION_ID --output DIR\n`,
+    `  pnpm benchmark:publish -- --spec PATH --execution EXECUTION_ID --output DIR\n`,
   );
-  process.stdout.write(`  pnpm benchmark:verify -- --report PATH\n`);
-  process.stdout.write(`  pnpm benchmark:gate -- --report PATH\n`);
+  process.stdout.write(
+    `  pnpm benchmark:verify -- --spec PATH --report PATH\n`,
+  );
+  process.stdout.write(`  pnpm benchmark:gate -- --spec PATH --report PATH\n`);
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -799,6 +1063,18 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "benchmark-live":
     case "benchmark-explore":
       await runBenchmarkCommand(args, cwd, "live");
+      return;
+    case "benchmark-canary-spec":
+      await buildCanarySpecCommand(args, cwd);
+      return;
+    case "benchmark-canary":
+      await runCanaryCommand(args, cwd);
+      return;
+    case "benchmark-canary-publish":
+      await publishCanaryCommand(args, cwd);
+      return;
+    case "benchmark-canary-verify":
+      await verifyCanaryCommand(args, cwd);
       return;
     case "benchmark-formal":
       await runFormalBenchmarkCommand(args, cwd);

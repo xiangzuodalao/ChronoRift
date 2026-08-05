@@ -52,7 +52,7 @@ const suiteHashBasis = (input: CreateBenchmarkSuiteSpecV2Input): JsonValue => {
   const { subjectHash, runnerHash, ...basis } = input;
   void subjectHash;
   void runnerHash;
-  return { ...basis, fixtures: [...input.fixtures] };
+  return { ...basis, fixtures: [...input.fixtures] } as unknown as JsonValue;
 };
 
 export function createBenchmarkSuiteSpecV2(
@@ -248,7 +248,7 @@ export type BenchmarkReportHashBasisV2 = Omit<BenchmarkReportV2, "reportHash">;
 export function benchmarkReportHashV2(
   input: BenchmarkReportHashBasisV2,
 ): string {
-  return digest(input);
+  return digest(input as unknown as JsonValue);
 }
 
 interface ExpectedCell {
@@ -733,7 +733,10 @@ export function verifyBenchmarkReportV2(
       cells: report.cells,
       auditIssues: report.auditIssues,
     });
-    if (canonicalStringify(rebuilt) !== canonicalStringify(report)) {
+    if (
+      canonicalStringify(rebuilt as unknown as JsonValue) !==
+      canonicalStringify(report as unknown as JsonValue)
+    ) {
       throw new Error("Benchmark report fields do not match recomputation");
     }
     return {

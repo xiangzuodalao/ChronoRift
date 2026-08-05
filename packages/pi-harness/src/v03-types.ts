@@ -32,6 +32,9 @@ export interface V03ExperimentResult {
 }
 
 export interface V03AgentGameApi {
+  /** Optional monotonic counters exposed by instrumented adapters. */
+  readonly baselineExecutions?: number | undefined;
+  readonly diagnosticExecutions?: number | undefined;
   getEvidenceCapsule(capsuleId: CapsuleId): Promise<EvidenceCapsuleV2 | null>;
   getRawBaseline(executionId: ExecutionId): Promise<unknown>;
   replayExecution(executionId: ExecutionId): Promise<V03ReplayResult>;
@@ -53,6 +56,46 @@ export interface V03PiProgressSnapshot {
   readonly wallTimeMs: number;
 }
 
+export interface V03PiProgressSnapshotV3 {
+  readonly schemaVersion: 3;
+  /** Monotonic sequence within one Pi Session. */
+  readonly sequence: number;
+  readonly wallTimeMs: number;
+  readonly fixtureStage: "fixture_validated";
+  readonly model: {
+    readonly requestStarted: boolean;
+    readonly outputObserved: boolean;
+    readonly turnCompleted: boolean;
+    readonly tokens: PiUsageStats["tokens"];
+  };
+  readonly tools: {
+    readonly started: number;
+    readonly completed: number;
+    readonly failed: number;
+    readonly semanticRevision: number;
+    readonly consecutiveNonProgressToolResults: number;
+  };
+  readonly game: {
+    readonly baselineExecutions: number;
+    readonly diagnosticExecutions: number;
+  };
+  readonly proposalSubmitted: boolean;
+}
+
+export interface V03AgentBudgets {
+  readonly maxToolCalls: 12;
+  /** Number of tool errors tolerated before termination; v0.3 tolerates none. */
+  readonly maxToolErrors: 0;
+  /** Successful tool results tolerated without semantic progress. */
+  readonly maxConsecutiveNonProgressToolResults: 0;
+}
+
+export const V03_AGENT_BUDGETS: V03AgentBudgets = Object.freeze({
+  maxToolCalls: 12,
+  maxToolErrors: 0,
+  maxConsecutiveNonProgressToolResults: 0,
+});
+
 interface V03HarnessBaseOptions {
   readonly cwd: string;
   readonly runDir: string;
@@ -72,6 +115,9 @@ interface V03HarnessBaseOptions {
   readonly receiptIssuedAt?: string | undefined;
   readonly onProgress?:
     ((snapshot: V03PiProgressSnapshot) => Promise<void>) | undefined;
+  /** Canonical structured progress for v0.3+ runtimes. */
+  readonly onProgressV3?:
+    ((snapshot: V03PiProgressSnapshotV3) => Promise<void>) | undefined;
 }
 
 export interface V03PiHarnessOptions extends V03HarnessBaseOptions {

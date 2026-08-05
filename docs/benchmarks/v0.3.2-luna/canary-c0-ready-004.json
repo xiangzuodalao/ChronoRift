@@ -1,0 +1,195 @@
+{
+  "armOrder": ["generic", "evidence-only", "chronorift-full"],
+  "cells": [
+    {
+      "arm": "generic",
+      "attemptOrdinal": 1,
+      "canaryId": "v0.3.2-luna-canary-004",
+      "cellHash": "92ffe5ef851a28646fa0f12662cd6832f2e90d8f8963fee674aa166e8fc08236",
+      "failureCode": null,
+      "fixture": "signal-ordering",
+      "flow": {
+        "capsuleReceiptCount": 0,
+        "comparisonCount": 0,
+        "comparisonReceiptCount": 0,
+        "evidenceReceiptCount": 2,
+        "experimentReceiptCount": 2,
+        "interventionCount": 1,
+        "matchingReplay": true,
+        "rawExecutionReceiptCount": 1,
+        "replayReceiptCount": 1,
+        "sourceReceiptCount": 2
+      },
+      "incorrectConfirmation": false,
+      "mechanismCorrect": true,
+      "metrics": {
+        "gameExecutions": 3,
+        "maxConsecutiveNonProgressToolResults": 0,
+        "tokens": {
+          "cacheRead": 31744,
+          "cacheWrite": 0,
+          "input": 28856,
+          "output": 2067,
+          "total": 62667
+        },
+        "toolCalls": 7,
+        "toolErrors": 0,
+        "wallTimeMs": 46563
+      },
+      "proposalPresent": true,
+      "schemaVersion": 1,
+      "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+      "sessionPersisted": true,
+      "specHash": "30d21adcfe092c44cf7c854d321dbb88857e7e11b67c50281259d938f6dc736d",
+      "stage": "c0",
+      "stageId": "v0.3.2-luna-c0-001",
+      "status": "scored",
+      "verdict": "inconclusive"
+    },
+    {
+      "arm": "evidence-only",
+      "attemptOrdinal": 1,
+      "canaryId": "v0.3.2-luna-canary-004",
+      "cellHash": "4b69c41d7f7a232af8bf35d94b50b5260d9c74ea5041726a8e43c600f0e6bc3d",
+      "failureCode": null,
+      "fixture": "signal-ordering",
+      "flow": {
+        "capsuleReceiptCount": 1,
+        "comparisonCount": 0,
+        "comparisonReceiptCount": 0,
+        "evidenceReceiptCount": 2,
+        "experimentReceiptCount": 0,
+        "interventionCount": 0,
+        "matchingReplay": true,
+        "rawExecutionReceiptCount": 0,
+        "replayReceiptCount": 1,
+        "sourceReceiptCount": 2
+      },
+      "incorrectConfirmation": false,
+      "mechanismCorrect": true,
+      "metrics": {
+        "gameExecutions": 2,
+        "maxConsecutiveNonProgressToolResults": 0,
+        "tokens": {
+          "cacheRead": 16896,
+          "cacheWrite": 0,
+          "input": 12306,
+          "output": 1948,
+          "total": 31150
+        },
+        "toolCalls": 5,
+        "toolErrors": 0,
+        "wallTimeMs": 41045
+      },
+      "proposalPresent": true,
+      "schemaVersion": 1,
+      "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+      "sessionPersisted": true,
+      "specHash": "30d21adcfe092c44cf7c854d321dbb88857e7e11b67c50281259d938f6dc736d",
+      "stage": "c0",
+      "stageId": "v0.3.2-luna-c0-001",
+      "status": "scored",
+      "verdict": "inconclusive"
+    },
+    {
+      "arm": "chronorift-full",
+      "attemptOrdinal": 1,
+      "canaryId": "v0.3.2-luna-canary-004",
+      "cellHash": "7eebea24a6081341432911e529d6678381776694838c0ffd118a2cd316faadba",
+      "failureCode": null,
+      "fixture": "signal-ordering",
+      "flow": {
+        "capsuleReceiptCount": 1,
+        "comparisonCount": 1,
+        "comparisonReceiptCount": 1,
+        "evidenceReceiptCount": 2,
+        "experimentReceiptCount": 2,
+        "interventionCount": 1,
+        "matchingReplay": true,
+        "rawExecutionReceiptCount": 0,
+        "replayReceiptCount": 1,
+        "sourceReceiptCount": 2
+      },
+      "incorrectConfirmation": false,
+      "mechanismCorrect": true,
+      "metrics": {
+        "gameExecutions": 3,
+        "maxConsecutiveNonProgressToolResults": 0,
+        "tokens": {
+          "cacheRead": 48640,
+          "cacheWrite": 0,
+          "input": 23095,
+          "output": 1987,
+          "total": 73722
+        },
+        "toolCalls": 8,
+        "toolErrors": 0,
+        "wallTimeMs": 48589
+      },
+      "proposalPresent": true,
+      "schemaVersion": 1,
+      "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+      "sessionPersisted": true,
+      "specHash": "30d21adcfe092c44cf7c854d321dbb88857e7e11b67c50281259d938f6dc736d",
+      "stage": "c0",
+      "stageId": "v0.3.2-luna-c0-001",
+      "status": "scored",
+      "verdict": "confirmed"
+    }
+  ],
+  "finishedAt": "2026-08-05T09:59:23.256Z",
+  "modelReceipt": {
+    "contextWindow": 272000,
+    "mappedThinkingValue": "max",
+    "maxTokens": 128000,
+    "model": "gpt-5.6-luna",
+    "provider": "openai-codex"
+  },
+  "prerequisiteReportHash": null,
+  "readiness": { "reasons": [], "status": "ready" },
+  "reportHash": "78915077d2881d1b0eed232e34abc3b16a894b4bd8a51841c73f3004f698dc07",
+  "schemaVersion": 1,
+  "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+  "spec": {
+    "adapterContract": "benchmark-v3-canary-cell-runner-v1",
+    "budgets": {
+      "maxConsecutiveNonProgressToolResults": 0,
+      "maxGameExecutions": 4,
+      "maxToolCalls": 12,
+      "maxToolErrors": 0,
+      "timeoutMs": 600000
+    },
+    "campaignTarget": "v0.3.2-luna",
+    "canaryId": "v0.3.2-luna-canary-004",
+    "model": {
+      "contextWindow": 272000,
+      "mappedThinkingValue": "max",
+      "maxTokens": 128000,
+      "model": "gpt-5.6-luna",
+      "provider": "openai-codex",
+      "thinkingLevel": "max"
+    },
+    "retryPolicy": { "maxAttemptsPerCell": 1, "providerInternalRetries": 0 },
+    "schemaVersion": 1,
+    "specHash": "30d21adcfe092c44cf7c854d321dbb88857e7e11b67c50281259d938f6dc736d",
+    "stages": [
+      {
+        "arms": ["generic", "evidence-only", "chronorift-full"],
+        "fixture": "signal-ordering",
+        "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+        "stage": "c0",
+        "stageId": "v0.3.2-luna-c0-001"
+      },
+      {
+        "arms": ["generic", "evidence-only", "chronorift-full"],
+        "fixture": "physics-tunneling",
+        "seed": "chronorift-v0.3.2-luna-canary-c1-1",
+        "stage": "c1",
+        "stageId": "v0.3.2-luna-c1-001"
+      }
+    ]
+  },
+  "stage": "c0",
+  "stageId": "v0.3.2-luna-c0-001",
+  "startedAt": "2026-08-05T09:57:05.049Z"
+}

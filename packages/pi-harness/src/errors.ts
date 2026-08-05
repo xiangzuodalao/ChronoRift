@@ -12,6 +12,7 @@ export type PiHarnessErrorCode =
   | "AUTH_FAILED"
   | "AGENT_TIMEOUT"
   | "AGENT_FAILED"
+  | "AGENT_BUDGET_EXHAUSTED"
   | "PROPOSAL_MISSING";
 
 export class PiHarnessError extends Error {
@@ -29,5 +30,54 @@ export class PiHarnessError extends Error {
     this.name = "PiHarnessError";
     this.code = code;
     this.details = options?.details;
+  }
+}
+
+export type PiProviderFailurePhase = "request" | "response_stream";
+
+export type PiProviderFailureCode =
+  | "connection"
+  | "timeout"
+  | "http_408"
+  | "http_429"
+  | "http_5xx"
+  | "auth"
+  | "model_not_found"
+  | "non_retryable_4xx"
+  | "provider_error_unknown"
+  | "aborted";
+
+export type PiProviderRetryClass = "transient" | "permanent" | "unknown";
+
+export interface PiProviderFailureOptions extends ErrorOptions {
+  readonly phase: PiProviderFailurePhase;
+  readonly code: PiProviderFailureCode;
+  readonly httpStatus?: number | null | undefined;
+  readonly retryClass: PiProviderRetryClass;
+  readonly provider?: string | undefined;
+  readonly model?: string | undefined;
+}
+
+/**
+ * Structured provider terminal state. It is intentionally distinct from a
+ * PiHarnessError so proposal, tool-flow, and provider failures cannot collapse.
+ */
+export class PiProviderFailureError extends Error {
+  public readonly phase: PiProviderFailurePhase;
+  public readonly code: PiProviderFailureCode;
+  public readonly httpStatus: number | null;
+  public readonly retryClass: PiProviderRetryClass;
+  public readonly provider: string | undefined;
+  public readonly model: string | undefined;
+
+  public constructor(message: string, options: PiProviderFailureOptions) {
+    super(message, options);
+    this.name = "PiProviderFailureError";
+    this.phase = options.phase;
+    this.code = options.code;
+    this.httpStatus = options.httpStatus ?? null;
+    this.retryClass = options.retryClass;
+    this.provider = options.provider;
+    this.model = options.model;
   }
 }

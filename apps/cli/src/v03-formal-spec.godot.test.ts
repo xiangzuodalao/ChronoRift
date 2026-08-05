@@ -1,17 +1,17 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import {
-  buildFormalBenchmarkSuiteSpecV2,
+  buildFormalBenchmarkSuiteSpecV3,
   parseFormalBenchmarkSuiteSpecV2,
-  sameFormalSuite,
+  sameFormalSuiteV3,
 } from "./v03-formal-suite.js";
 
 describe("committed formal benchmark specification", () => {
-  it("matches the current v0.3.1-r2 subject and runner hashes", async () => {
+  it("keeps the frozen v0.3.1-r2 specification parseable", async () => {
     const cwd = process.cwd();
     const committed = parseFormalBenchmarkSuiteSpecV2(
       JSON.parse(
@@ -21,11 +21,31 @@ describe("committed formal benchmark specification", () => {
         ),
       ) as unknown,
     );
-    const current = await buildFormalBenchmarkSuiteSpecV2({
-      cwd,
-      artifactRoot: await mkdtemp(join(tmpdir(), "chronorift-formal-spec-")),
-      campaign: "v0.3.1-r2",
+    expect(committed.campaign).toEqual({
+      campaignId: "v0.3.1-r2",
+      freezeTag: "v0.3.1-r2-benchmark-freeze",
     });
-    expect(sameFormalSuite(committed, current)).toBe(true);
+  });
+
+  it("builds the current V3 Luna specification deterministically", async () => {
+    const cwd = process.cwd();
+    const artifactRoot = await mkdtemp(
+      join(tmpdir(), "chronorift-formal-spec-v3-"),
+    );
+    try {
+      const first = await buildFormalBenchmarkSuiteSpecV3({
+        cwd,
+        artifactRoot,
+      });
+      const second = await buildFormalBenchmarkSuiteSpecV3({
+        cwd,
+        artifactRoot,
+      });
+      expect(sameFormalSuiteV3(first, second)).toBe(true);
+      expect(first.provider).toBe("openai-codex");
+      expect(first.model).toBe("gpt-5.6-luna");
+    } finally {
+      await rm(artifactRoot, { recursive: true, force: true });
+    }
   });
 });

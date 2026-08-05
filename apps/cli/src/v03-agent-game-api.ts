@@ -24,6 +24,20 @@ export class ChronoRiftV03AgentGameApi implements V03AgentGameApi {
     return this.executionCount;
   }
 
+  public get baselineExecutions(): number {
+    return 1;
+  }
+
+  /** Baseline setup is tracked separately from Agent-triggered executions. */
+  public get diagnosticExecutions(): number {
+    return Math.max(0, this.executionCount - 1);
+  }
+
+  /** Successful Agent-facing game reads and commands, excluding setup. */
+  public get diagnosticAccesses(): number {
+    return this.accessCount;
+  }
+
   /** Used only to distinguish no-progress infrastructure timeouts. */
   public get progressObserved(): boolean {
     return this.accessCount > 0;

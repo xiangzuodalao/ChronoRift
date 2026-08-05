@@ -1,6 +1,6 @@
 {
   "name": "chronorift",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.20.0",
@@ -24,6 +24,10 @@
     "fixtures": "tsx apps/cli/src/main.ts fixtures",
     "benchmark": "tsx apps/cli/src/main.ts benchmark",
     "benchmark:explore": "tsx apps/cli/src/main.ts benchmark-explore",
+    "benchmark:canary:spec": "tsx apps/cli/src/main.ts benchmark-canary-spec",
+    "benchmark:canary": "tsx apps/cli/src/main.ts benchmark-canary",
+    "benchmark:canary:publish": "tsx apps/cli/src/main.ts benchmark-canary-publish",
+    "benchmark:canary:verify": "tsx apps/cli/src/main.ts benchmark-canary-verify",
     "benchmark:live": "tsx apps/cli/src/main.ts benchmark-explore",
     "benchmark:formal": "tsx apps/cli/src/main.ts benchmark-formal",
     "benchmark:spec": "tsx apps/cli/src/main.ts benchmark-spec",

@@ -1,12 +1,53 @@
 # ChronoRift 路线图
 
-## 当前里程碑：GPT-5.6 Luna provider migration（实现中）
+## 当前里程碑：v0.3.2-luna Benchmark V3（hardened canary pending）
 
-v0.3.1-r2 已完成并原样发布负结果。当前 real-Pi smoke、`test:live` 与探索诊断迁移到 Pi
-`openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级 OAuth store。
-迁移只改变当前 canary/探索路径；v0.3、v0.3.1 与 v0.3.1-r2 的冻结 spec、ledger 和报告仍保留原
-Volcengine/GLM-5.2 事实。新正式矩阵必须先修复已知工具串行与基础设施分类问题，通过小规模 canary，
-再使用新的 campaign identity、freeze tag、order seed 和发布目录。
+v0.3.1-r2 已完成并原样发布负结果。当前 Pi 路径使用
+`openai-codex/gpt-5.6-luna`、`thinkingLevel=max`，认证复用 ChatGPT Plus/Pro 的用户级
+OAuth store。历史 v0.3、v0.3.1 与 v0.3.1-r2 的 V2 spec、ledger、hash、verifier 和报告仍保留
+原 Volcengine/GLM-5.2 事实；V3 使用新 schema 与 campaign identity，不迁移或改写 V2。
+
+已实现的 V3 可靠性边界：
+
+- provider 失败保留 request/response-stream 阶段、typed code、HTTP status 和 retry class；
+- progress journal 显式记录 fixture、model、tool、game 和 proposal，并检查序列单调性；
+- 只有诊断进展之前的 transient infrastructure failure 可重试，最多 3 次 initial
+  attempts + 1 个最多 3 次 attempts 的 recovery cycle；
+- Pi 工具强制 sequential；每 cell 最多 12 次工具调用、0 次工具错误、0 个连续
+  无语义进展结果；
+- Agent 使用 Session-local `@rN` receipt handle，Harness 在提交时解析并重验精确
+  content-addressed receipt ID；confidence 仍不决定 confirmed。
+- score-eligible attempt 使用严格 terminal raw manifest 绑定 frozen Fixture material、terminal
+  progress/metrics、证据、receipt、proposal、verdict 与 oracle；账本 seal 后拒绝追加 progress；
+- verifier 从 terminal manifest 或公开的 prose-free `scoringProofs` 重算引用、机制、分数及
+  baseline/replay/intervention/source/tool/game/time 等冻结预算，per-kind 用量由 canonical receipt 计算；
+- interrupted attempt 可从 durable progress 收敛为 terminal progress/finished/cell；已完成 attempt
+  不重跑，已封存 execution 不追加。
+
+真实链路前置已完成：两次 Luna smoke 均为 5 次工具调用、Harness `confirmed`，
+total tokens 分别为 30,828 与 30,039；`corepack pnpm test:live` 通过。C0-001、C0-002、
+C0-003 均为 `not_ready` 并已原样保留。历史 C0/C1-004 JSON 的 readiness 字段均为 `ready`，
+六个 cells 均为零 tool errors、零无进展违规、零 incorrect confirmation；但它们缺少 V2
+implementation receipt，强化 verifier 将其前置资格归为 `legacy_only`，不能授权 hardened C1 或 freeze。
+
+### v0.3.2 交付顺序
+
+1. **已完成**：V3 schema/classifier/progress/recovery、严格 terminal manifest、sealed ledger、
+   sanitized scoring proof、冻结 material/per-kind budget verifier、串行工具与 receipt handle；
+2. **已完成**：两次 Luna smoke 和一次 `test:live`；
+3. **已保留负结果**：C0-001/002/003 `not_ready`，不删除、不覆盖、不改写；
+4. **历史事实**：C0-004 readiness 为 ready，report hash 为
+   `78915077d2881d1b0eed232e34abc3b16a894b4bd8a51841c73f3004f698dc07`；
+5. **历史事实**：C1-004 readiness 为 ready，report hash 为
+   `9526f486d9dea9619a748a867757861c588c77e90e58f43c4327dd0820195e3b`；004 linkage 仅
+   `legacy_only`，两份 JSON 保持原字节；
+6. **pending**：以新 identity 005 运行 implementation-bound V2 C0，并仅由其精确 report hash 与
+   implementation receipt 授权同 identity C1；
+7. **pending**：005 C0/C1 均为 `hardened` 后生成 `benchmark-spec.v3.json`，审核并与实现一起冻结在
+   `v0.3.2-luna-benchmark-freeze`；
+8. **pending**：从干净 freeze checkout 启动唯一 36-cell first-selection，按 3+3 规则恢复或封存；
+9. **pending**：无论 pass、fail、invalid 或 recovery-exhausted incomplete，都发布 sanitized V3
+   report，分别运行 verifier 与 Gate，再更新作品证据。
 
 ## 已发布里程碑：v0.3.1-r2 provider recovery（负结果）
 

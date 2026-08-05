@@ -6,6 +6,10 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import {
+  BenchmarkAttemptProgressStateV3Schema,
+  BenchmarkCellMetricsV3Schema,
+  BenchmarkInfrastructureFailureV3Schema,
+  BenchmarkRawAttemptManifestV3Schema,
   BenchmarkReportV2Schema,
   BenchmarkCaseEvidenceV2Schema,
   BenchmarkBaselineProgressManifestV2Schema,
@@ -14,33 +18,54 @@ import {
   asRunId,
   type BenchmarkExecutionId,
   type BenchmarkCellMetricsV2,
+  type BenchmarkAttemptProgressStateV3,
+  type BenchmarkCellMetricsV3,
+  type BenchmarkInfrastructureFailureV3,
   type BenchmarkProvenanceV2,
+  type BenchmarkProvenanceV3,
   type BenchmarkReportV2,
+  type BenchmarkReportV3,
   type BenchmarkSuiteSpecV2,
+  type BenchmarkSuiteSpecV3,
   type EvidenceCapsuleV2,
   type JsonValue,
   type V03TelemetryEvent,
   type V03ExecutionLog,
 } from "@chronorift/domain";
 import {
+  benchmarkAttemptIdV3,
+  scoreBenchmarkDiagnosisV3,
   scoreBenchmarkDiagnosisV2,
   type V03IdGeneratorPort,
 } from "@chronorift/gamebranch";
 import { doctorGodot, v03FixtureNameForId } from "@chronorift/godot-adapter";
 import {
+  V03BenchmarkJsonArtifactRepositoryV3,
   V03BenchmarkJsonArtifactRepository,
   contentHash,
 } from "@chronorift/json-artifacts";
 import {
   PiHarnessError,
+  PiProviderFailureError,
   assertPiModelCapabilities,
   auditV03BlindPrompt,
   createVirtualSourceAccess,
   runV03PiDiagnosis,
+  v03FailureBriefAccessReceipt,
+  type V03PiProgressSnapshotV3,
 } from "@chronorift/pi-harness";
 
 import { ChronoRiftV03AgentGameApi } from "./v03-agent-game-api.js";
 import { classifyFormalAttemptError } from "./v03-formal-classifier.js";
+import { classifyFormalAttemptErrorV3 } from "./v03-formal-classifier-v3.js";
+import {
+  emptyFormalProgressV3,
+  executeFormalBenchmarkV3,
+  type ExecuteFormalBenchmarkV3Result,
+  type FormalAttemptProgressSnapshotV3,
+  type FormalBenchmarkAttemptResultV3,
+  type FormalBenchmarkCellV3,
+} from "./v03-formal-execution-v3.js";
 import {
   executeFormalBenchmarkV2,
   type ExecuteFormalBenchmarkV2Result,
@@ -49,11 +74,16 @@ import {
   type FormalBenchmarkCellV2,
 } from "./v03-formal-execution.js";
 import {
+  assertFormalFixtureMaterialBindingV3,
+  buildFormalBenchmarkSuiteSpecV3,
   assertFormalFixtureMaterialBinding,
   buildFormalBenchmarkSuiteSpecV2,
   formalCampaignForSuite,
   parseFormalBenchmarkSuiteSpecV2,
   sameFormalSuite,
+  formalCampaignForSuiteV3,
+  parseFormalBenchmarkSuiteSpecV3,
+  sameFormalSuiteV3,
 } from "./v03-formal-suite.js";
 import { createV03Run } from "./v03-runtime.js";
 
@@ -542,7 +572,12 @@ async function buildCaseEvidence(
       firstDivergenceTick: comparison.firstDivergenceTick,
       contentHash: contentHash(comparison as unknown as JsonValue),
     })),
-    accessReceipts: diagnosis?.accessReceipts ?? [],
+    accessReceipts: diagnosis?.accessReceipts ?? [
+      v03FailureBriefAccessReceipt(
+        context.failureBrief,
+        deterministicClock.nowIso(),
+      ),
+    ],
   }) as unknown as JsonValue;
 }
 
@@ -576,6 +611,40 @@ const sourceScore = (
     location: grounded
       ? suspected.path === expected.virtualPath &&
         suspectedSymbol === expected.symbol
+      : null,
+    grounded,
+  };
+};
+
+const sourceScoreV3 = (
+  cell: FormalBenchmarkCellV3,
+  suite: BenchmarkSuiteSpecV3,
+  diagnosis: Awaited<ReturnType<typeof runV03PiDiagnosis>>,
+): { readonly location: boolean | null; readonly grounded: boolean } => {
+  const suspected = diagnosis.proposal.suspectedSource;
+  if (suspected === undefined || suspected.symbol === undefined) {
+    return { location: null, grounded: false };
+  }
+  const expected = suite.fixtures.find(
+    (fixture) => fixture.fixtureId === cell.fixtureId,
+  )?.expectedSource;
+  if (expected === undefined) throw new Error("Missing Fixture source oracle");
+  const cited = new Set(diagnosis.proposal.accessReceiptIds);
+  const grounded = diagnosis.accessReceipts.some(
+    (receipt) =>
+      cited.has(receipt.receiptId) &&
+      (receipt.accessKind === "source_read" ||
+        receipt.accessKind === "source_search") &&
+      receipt.sourceCoverage.some(
+        (coverage) =>
+          coverage.virtualPath === suspected.path &&
+          coverage.coveredSymbols.includes(suspected.symbol ?? ""),
+      ),
+  );
+  return {
+    location: grounded
+      ? suspected.path === expected.virtualPath &&
+        suspected.symbol === expected.symbol
       : null,
     grounded,
   };
@@ -1156,3 +1225,642 @@ export async function runFormalBenchmark(
 export const parsePublishedBenchmarkReport = (
   input: unknown,
 ): BenchmarkReportV2 => BenchmarkReportV2Schema.parse(input);
+
+const progressMetricsV3 = (
+  gameExecutions: number,
+  toolCalls: number,
+  wallTimeMs: number,
+  tokens: BenchmarkCellMetricsV3["tokens"],
+): BenchmarkCellMetricsV3 =>
+  BenchmarkCellMetricsV3Schema.parse({
+    gameExecutions,
+    toolCalls,
+    wallTimeMs,
+    tokens,
+  });
+
+const zeroTokensV3 = (): BenchmarkCellMetricsV3["tokens"] => ({
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  total: 0,
+});
+
+const progressFromPi = (
+  snapshot: V03PiProgressSnapshotV3,
+): BenchmarkAttemptProgressStateV3 =>
+  BenchmarkAttemptProgressStateV3Schema.parse({
+    fixtureStage: snapshot.fixtureStage,
+    model: {
+      requestStarted: snapshot.model.requestStarted,
+      outputObserved: snapshot.model.outputObserved,
+      turnCompleted: snapshot.model.turnCompleted,
+    },
+    tools: {
+      started: snapshot.tools.started,
+      completed: snapshot.tools.completed,
+      failed: snapshot.tools.failed,
+      semanticRevision: snapshot.tools.semanticRevision,
+    },
+    game: {
+      baselineExecutions: snapshot.game.baselineExecutions,
+      diagnosticExecutions: snapshot.game.diagnosticExecutions,
+    },
+    proposalSubmitted: snapshot.proposalSubmitted,
+  });
+
+const safeManifestErrorV3 = (error: unknown): JsonValue =>
+  error instanceof PiProviderFailureError
+    ? {
+        kind: "provider",
+        phase: error.phase,
+        code: error.code,
+        httpStatus: error.httpStatus,
+        retryClass: error.retryClass,
+        messageHash: sha256Text(error.message),
+      }
+    : {
+        kind: "harness",
+        code: error instanceof PiHarnessError ? error.code : "unknown",
+        messageHash: sha256Text(
+          error instanceof Error ? error.message : String(error),
+        ),
+      };
+
+const infrastructureFailureV3 = (
+  failure: Extract<
+    ReturnType<typeof classifyFormalAttemptErrorV3>,
+    { readonly kind: "infrastructure" }
+  >["failure"],
+): BenchmarkInfrastructureFailureV3 => {
+  if (failure.code === "no_progress_timeout") {
+    return BenchmarkInfrastructureFailureV3Schema.parse({
+      kind: "harness_timeout",
+      code: "no_progress_timeout",
+      retryClass: "transient",
+    });
+  }
+  return BenchmarkInfrastructureFailureV3Schema.parse({
+    kind: "provider",
+    provider: failure,
+    retryClass: failure.retryClass,
+  });
+};
+
+interface AttemptExecutorOptionsV3 {
+  readonly cwd: string;
+  readonly artifactRoot: string;
+  readonly godotBin?: string | undefined;
+  readonly suite: BenchmarkSuiteSpecV3;
+  readonly executionId: ReturnType<typeof asBenchmarkExecutionId>;
+}
+
+export const createAttemptExecutorV3 =
+  (options: AttemptExecutorOptionsV3) =>
+  async (
+    cell: FormalBenchmarkCellV3,
+    ordinal: number,
+    recordProgress: (
+      snapshot: FormalAttemptProgressSnapshotV3,
+    ) => Promise<void>,
+  ): Promise<FormalBenchmarkAttemptResultV3> => {
+    const fixtureName = v03FixtureNameForId(cell.fixtureId);
+    const investigationBasis = stableKey(
+      options.suite.definitionId,
+      cell.fixtureId,
+      String(cell.repetition),
+    );
+    const attemptRoot = resolve(
+      options.artifactRoot,
+      "formal-v3-cell-runs",
+      stableKey(options.executionId, cell.cellId),
+      String(ordinal),
+    );
+    const runId = asRunId(`run:formal:${investigationBasis}`);
+    const started = Date.now();
+    const context = await createV03Run({
+      cwd: options.cwd,
+      fixture: fixtureName,
+      artifactRoot: attemptRoot,
+      runId,
+      ids: new FormalRuntimeIds(
+        investigationBasis,
+        stableKey(investigationBasis, cell.cellId, String(ordinal)),
+      ),
+      clock: deterministicClock,
+      ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
+    });
+    let lastProgress = BenchmarkAttemptProgressStateV3Schema.parse({
+      ...emptyFormalProgressV3(),
+      fixtureStage: "baseline_captured",
+      game: { baselineExecutions: 1, diagnosticExecutions: 0 },
+    });
+    let lastTokens = zeroTokensV3();
+    let lastToolCalls = 0;
+    await recordProgress({
+      observedAt: new Date().toISOString(),
+      progress: lastProgress,
+      metrics: progressMetricsV3(
+        1,
+        0,
+        Math.max(0, Date.now() - started),
+        lastTokens,
+      ),
+      rawManifest: {
+        schemaVersion: 3,
+        stage: "baseline_captured",
+        cellId: cell.cellId,
+        fixtureId: cell.fixtureId,
+        arm: cell.arm,
+        repetition: cell.repetition,
+        baselineExecutionId: context.baselineExecution.executionId,
+        baselineTimelineDigest: context.baselineExecution.timelineDigest,
+      },
+    });
+
+    const promptAudit = auditV03BlindPrompt(context.failureBrief);
+    const sourceText = await readNeutralSource(
+      context.preparedFixture.sourceDirectory,
+      context.preparedFixture.oracle.sourcePath,
+    );
+    const fixtureSpec = options.suite.fixtures.find(
+      (fixture) => fixture.fixtureId === cell.fixtureId,
+    );
+    if (fixtureSpec === undefined) {
+      throw new Error("Formal V3 cell Fixture is absent from its suite");
+    }
+    const materialHashes = assertFormalFixtureMaterialBindingV3(fixtureSpec, {
+      contract: context.contract as unknown as JsonValue,
+      inputTrace: context.preparedFixture.fixture
+        .inputTrace as unknown as JsonValue,
+      interventionCatalog: context.preparedFixture.fixture
+        .experiments as unknown as JsonValue,
+      oracle: context.preparedFixture.oracle as unknown as JsonValue,
+      sourceText,
+    });
+    if (
+      fixtureSpec.expectedSource.virtualPath !== "case/main.gd" ||
+      fixtureSpec.expectedSource.symbol !==
+        context.preparedFixture.oracle.sourceSymbol
+    ) {
+      throw new Error("Formal V3 Fixture source oracle does not match suite");
+    }
+    const sourceAccess = createVirtualSourceAccess({
+      files: [{ path: "case/main.gd", content: sourceText }],
+    });
+    const formalAudit: JsonValue = {
+      ...promptAudit,
+      baselineTimelineDigest: context.baselineExecution.timelineDigest,
+      checkpointId: context.baselineExecution.startCheckpointId,
+      checkpointHash: contentHash(
+        context.preparedFixture
+          .initialCheckpointContent as unknown as JsonValue,
+      ),
+      contractId: context.contract.contractId,
+      contractHash: materialHashes.contractHash,
+      inputTraceId: context.baselineExecution.inputTraceId,
+      inputTraceHash: materialHashes.inputTraceHash,
+      runtimeFingerprintHash: contentHash(
+        (context.baselineExecution.runtimeFingerprint ??
+          context.preparedFixture.environment
+            .runtimeFingerprint) as unknown as JsonValue,
+      ),
+      sourceViewHash: materialHashes.aliasMapHash,
+      experimentCatalogHash: materialHashes.interventionCatalogHash,
+      oracleHash: materialHashes.oracleHash,
+    };
+    const terminalManifestIdentity = {
+      schemaVersion: 3,
+      manifestKind: "benchmark_attempt_terminal",
+      suiteId: options.suite.suiteId,
+      definitionId: options.suite.definitionId,
+      executionId: options.executionId,
+      cellId: cell.cellId,
+      attemptId: benchmarkAttemptIdV3(
+        options.executionId,
+        cell.cellId,
+        ordinal,
+      ),
+      fixtureId: cell.fixtureId,
+      arm: cell.arm,
+      repetition: cell.repetition,
+      ordinal,
+      runId: context.runId,
+      promptAudit: formalAudit,
+      oracle: {
+        oracleHash: materialHashes.oracleHash,
+        expectedMechanism: cell.expectedMechanism,
+        expectedSource: fixtureSpec.expectedSource,
+      },
+    } as const;
+    const game = new ChronoRiftV03AgentGameApi(context);
+    const initialCaseEvidence = await buildCaseEvidence(context, null);
+    lastProgress = BenchmarkAttemptProgressStateV3Schema.parse({
+      ...lastProgress,
+      fixtureStage: "fixture_validated",
+    });
+    await recordProgress({
+      observedAt: new Date().toISOString(),
+      progress: lastProgress,
+      metrics: progressMetricsV3(
+        game.gameExecutions,
+        0,
+        Math.max(0, Date.now() - started),
+        lastTokens,
+      ),
+      rawManifest: {
+        schemaVersion: 3,
+        stage: "fixture_validated",
+        cellId: cell.cellId,
+        fixtureId: cell.fixtureId,
+        arm: cell.arm,
+        repetition: cell.repetition,
+        promptAudit: formalAudit,
+        caseEvidence: initialCaseEvidence,
+      },
+    });
+
+    const remainingTimeoutMs =
+      options.suite.budgets.timeoutMs - Math.max(0, Date.now() - started);
+    if (remainingTimeoutMs <= 0) {
+      return {
+        status: "invalid",
+        code: "harness_failure",
+        infrastructureFailure: null,
+        message: "Formal V3 setup exhausted the cell budget",
+        progress: lastProgress,
+        metrics: progressMetricsV3(
+          game.gameExecutions,
+          0,
+          Math.max(0, Date.now() - started),
+          lastTokens,
+        ),
+      };
+    }
+
+    try {
+      const diagnosis = await runV03PiDiagnosis({
+        cwd: options.cwd,
+        runDir: context.runDirectory,
+        arm: cell.arm,
+        initialCapsuleId: context.evidenceCapsule.capsuleId,
+        baselineExecutionId: context.baselineExecution.executionId,
+        failureBrief: context.failureBrief,
+        game,
+        source: sourceAccess,
+        provider: options.suite.provider,
+        model: options.suite.model,
+        thinkingLevel: "max",
+        sdkRetry: false,
+        receiptIssuedAt: deterministicClock.nowIso(),
+        timeoutMs: remainingTimeoutMs,
+        onProgressV3: async (snapshot) => {
+          lastProgress = progressFromPi(snapshot);
+          lastTokens = snapshot.model.tokens;
+          lastToolCalls = snapshot.tools.started;
+          await recordProgress({
+            observedAt: new Date().toISOString(),
+            progress: lastProgress,
+            metrics: progressMetricsV3(
+              game.gameExecutions,
+              lastToolCalls,
+              Math.max(0, Date.now() - started),
+              lastTokens,
+            ),
+            rawManifest: {
+              schemaVersion: 3,
+              stage: "agent_progress",
+              cellId: cell.cellId,
+              fixtureId: cell.fixtureId,
+              arm: cell.arm,
+              repetition: cell.repetition,
+              promptAudit: formalAudit,
+              caseEvidence: initialCaseEvidence,
+              progress: lastProgress,
+            },
+          });
+        },
+      });
+      if (
+        diagnosis.piSession.promptHashes.system !== promptAudit.systemHash ||
+        diagnosis.piSession.promptHashes.user !== promptAudit.userHash ||
+        diagnosis.piSession.thinkingLevel !== "max" ||
+        diagnosis.piSession.modelMetadata.contextWindow !==
+          options.suite.modelRequirements.contextWindow ||
+        diagnosis.piSession.modelMetadata.maxTokens !==
+          options.suite.modelRequirements.maxTokens ||
+        diagnosis.piSession.modelMetadata.mappedThinkingValue !==
+          options.suite.modelRequirements.thinkingLevelMapMax ||
+        diagnosis.piSession.stats.toolCalls >
+          options.suite.budgets.maxToolCalls ||
+        game.gameExecutions > options.suite.budgets.maxGameExecutions
+      ) {
+        return {
+          status: "invalid",
+          code: "harness_failure",
+          infrastructureFailure: null,
+          message: "Formal V3 prompt, model, or budget audit failed",
+          progress: lastProgress,
+          metrics: progressMetricsV3(
+            game.gameExecutions,
+            diagnosis.piSession.stats.toolCalls,
+            Math.max(0, Date.now() - started),
+            diagnosis.piSession.stats.tokens,
+          ),
+        };
+      }
+      const verdict = await context.gameBranch.concludeV3(
+        diagnosis.proposal,
+        diagnosis.accessReceipts,
+      );
+      const sourceAssessment = sourceScoreV3(cell, options.suite, diagnosis);
+      const caseEvidence = await buildCaseEvidence(context, diagnosis);
+      const score = scoreBenchmarkDiagnosisV3({
+        proposalId: diagnosis.proposal.proposalId,
+        candidateExecutionIds: diagnosis.proposal.candidateExecutionIds,
+        accessReceiptIds: diagnosis.proposal.accessReceiptIds,
+        expectedMechanism: cell.expectedMechanism,
+        proposedMechanism: diagnosis.proposal.mechanismCode,
+        verdict: verdict.status,
+        sourceLocationCorrect: sourceAssessment.location,
+        sourceGrounded: sourceAssessment.grounded,
+        confidence: diagnosis.proposal.confidence,
+      });
+      const metrics = progressMetricsV3(
+        game.gameExecutions,
+        diagnosis.piSession.stats.toolCalls,
+        Math.max(0, Date.now() - started),
+        diagnosis.piSession.stats.tokens,
+      );
+      const rawManifest = BenchmarkRawAttemptManifestV3Schema.parse({
+        ...terminalManifestIdentity,
+        terminalStatus: "completed",
+        caseEvidence,
+        progress: lastProgress,
+        metrics,
+        proposal: diagnosis.proposal,
+        accessReceipts: diagnosis.accessReceipts,
+        verdict,
+      }) as unknown as JsonValue;
+      return {
+        status: "completed",
+        progress: lastProgress,
+        rawManifest,
+        score,
+        metrics,
+      };
+    } catch (error) {
+      const classified = classifyFormalAttemptErrorV3(error, lastProgress);
+      const metrics = progressMetricsV3(
+        game.gameExecutions,
+        lastToolCalls,
+        Math.max(0, Date.now() - started),
+        lastTokens,
+      );
+      if (classified.kind === "infrastructure") {
+        return {
+          status: "infra_failure",
+          failure: infrastructureFailureV3(classified.failure),
+          retryable: classified.retryable,
+          message: classified.message,
+          progress: lastProgress,
+          metrics,
+        };
+      }
+      if (classified.kind === "diagnostic") {
+        const rawManifest = BenchmarkRawAttemptManifestV3Schema.parse({
+          ...terminalManifestIdentity,
+          terminalStatus: "diagnostic_failure",
+          diagnosticCode: classified.code,
+          caseEvidence: await buildCaseEvidence(context, null),
+          progress: lastProgress,
+          metrics,
+          error: safeManifestErrorV3(error),
+        }) as unknown as JsonValue;
+        return {
+          status: "diagnostic_failure",
+          code: classified.code,
+          message: classified.message,
+          rawManifest,
+          progress: lastProgress,
+          metrics,
+        };
+      }
+      const providerFailure =
+        error instanceof PiProviderFailureError
+          ? BenchmarkInfrastructureFailureV3Schema.parse({
+              kind: "provider",
+              provider: {
+                phase: error.phase,
+                code: error.code,
+                httpStatus: error.httpStatus,
+                retryClass: error.retryClass,
+              },
+              retryClass: error.retryClass,
+            })
+          : null;
+      return {
+        status: "invalid",
+        code: classified.code,
+        infrastructureFailure: providerFailure,
+        message: classified.message,
+        progress: lastProgress,
+        metrics,
+      };
+    }
+  };
+
+async function assertPromptFairnessV3(
+  report: BenchmarkReportV3,
+  repository: V03BenchmarkJsonArtifactRepositoryV3,
+): Promise<void> {
+  if (report.status !== "complete") return;
+  const groups = new Map<string, Set<string>>();
+  const counts = new Map<string, number>();
+  for (const cell of report.cells) {
+    const selected = report.attempts.find(
+      (attempt) => attempt.attemptId === cell.selectedAttemptId,
+    );
+    if (selected === undefined) throw new Error("Selected attempt is missing");
+    const finished = await repository.getAttemptFinishedV3(
+      report.suite.definitionId,
+      report.executionId,
+      cell.cellId,
+      selected.ordinal,
+      selected.attemptId,
+    );
+    const progress = await repository.getAttemptProgressV3(
+      report.suite.definitionId,
+      report.executionId,
+      cell.cellId,
+      selected.ordinal,
+      selected.attemptId,
+    );
+    const manifest =
+      finished?.rawManifest ??
+      [...progress].reverse().find((entry) => {
+        try {
+          return (
+            recordOf(entry.rawManifest, "progress manifest")["promptAudit"] !==
+            undefined
+          );
+        } catch {
+          return false;
+        }
+      })?.rawManifest;
+    if (manifest === undefined || manifest === null) {
+      throw new Error("Complete V3 cell lacks a prompt-audited manifest");
+    }
+    const group = `${cell.fixtureId}\0${cell.repetition}`;
+    const signatures = groups.get(group) ?? new Set<string>();
+    signatures.add(auditSignature(manifest as unknown as JsonValue));
+    groups.set(group, signatures);
+    counts.set(group, (counts.get(group) ?? 0) + 1);
+  }
+  if (
+    groups.size !== 12 ||
+    [...groups.entries()].some(
+      ([group, signatures]) => signatures.size !== 1 || counts.get(group) !== 3,
+    )
+  ) {
+    throw new Error("Formal V3 arms did not receive byte-identical prompts");
+  }
+}
+
+async function formalProvenanceV3(
+  cwd: string,
+  godotBin: string | undefined,
+  model: Awaited<ReturnType<typeof assertPiModelCapabilities>>,
+  suite: BenchmarkSuiteSpecV3,
+): Promise<BenchmarkProvenanceV3> {
+  const campaign = formalCampaignForSuiteV3(suite);
+  const [
+    gitCommit,
+    status,
+    freezeCommit,
+    lockfile,
+    pnpmVersion,
+    piPackage,
+    doctor,
+  ] = await Promise.all([
+    commandText(cwd, "git", "rev-parse", "HEAD"),
+    commandText(cwd, "git", "status", "--porcelain"),
+    commandText(cwd, "git", "rev-list", "-n", "1", campaign.freezeTag),
+    readFile(resolve(cwd, "pnpm-lock.yaml")),
+    commandText(cwd, "corepack", "pnpm", "--version"),
+    readFile(resolve(cwd, "packages/pi-harness/package.json"), "utf8"),
+    doctorGodot({
+      cwd,
+      ...(godotBin === undefined ? {} : { godotBin }),
+    }),
+  ]);
+  if (status.length > 0 || freezeCommit !== gitCommit) {
+    throw new Error(
+      `Formal V3 benchmark requires a clean checkout exactly at ${campaign.freezeTag}`,
+    );
+  }
+  const pi = JSON.parse(piPackage) as {
+    dependencies?: Record<string, unknown>;
+  };
+  const piVersion = pi.dependencies?.["@earendil-works/pi-coding-agent"];
+  if (typeof piVersion !== "string") {
+    throw new Error("Pinned Pi package version is unavailable");
+  }
+  if (
+    model.provider !== suite.provider ||
+    model.model !== suite.model ||
+    model.name !== "GPT-5.6 Luna" ||
+    model.contextWindow !== suite.modelRequirements.contextWindow ||
+    model.maxTokens !== suite.modelRequirements.maxTokens
+  ) {
+    throw new Error(
+      "Resolved Pi model metadata does not match the frozen Luna benchmark contract",
+    );
+  }
+  return {
+    gitCommit,
+    freezeTag: campaign.freezeTag,
+    dirty: false,
+    lockfileHash: sha256Text(lockfile),
+    piPackageVersion: piVersion,
+    nodeVersion: process.version,
+    pnpmVersion,
+    godotVersion: doctor.version,
+    godotExecutableHash: sha256Text(await readFile(doctor.binary)),
+    resolvedProvider: suite.provider,
+    resolvedModelId: suite.model,
+    resolvedModelName: "GPT-5.6 Luna",
+    resolvedContextWindow: 272_000,
+    resolvedMaxTokens: 128_000,
+    mappedThinkingLevel: "max",
+    requestedThinkingLevel: "max",
+    os: osType(),
+    arch: arch(),
+    platform: platform(),
+  };
+}
+
+export type RunFormalBenchmarkV3Options = RunFormalBenchmarkOptions;
+
+export async function runFormalBenchmarkV3(
+  options: RunFormalBenchmarkV3Options,
+): Promise<ExecuteFormalBenchmarkV3Result> {
+  const suite = parseFormalBenchmarkSuiteSpecV3(
+    JSON.parse(await readFile(resolve(options.specPath), "utf8")) as unknown,
+  );
+  const expected = await buildFormalBenchmarkSuiteSpecV3({
+    cwd: options.cwd,
+    artifactRoot: resolve(options.artifactRoot, "formal-v3-preflight"),
+    ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
+  });
+  if (!sameFormalSuiteV3(suite, expected)) {
+    throw new Error("Committed V3 suite does not match subject or runner");
+  }
+  const model = await assertPiModelCapabilities({
+    provider: suite.provider,
+    model: suite.model,
+    contextWindow: suite.modelRequirements.contextWindow,
+    maxTokens: suite.modelRequirements.maxTokens,
+    thinkingLevel: "max",
+    mappedThinkingValue: suite.modelRequirements.thinkingLevelMapMax,
+  });
+  const provenance = await formalProvenanceV3(
+    options.cwd,
+    options.godotBin,
+    model,
+    suite,
+  );
+  const executionId = asBenchmarkExecutionId(
+    options.resumeExecutionId ?? `benchmark-execution:${randomUUID()}`,
+  );
+  const repository = new V03BenchmarkJsonArtifactRepositoryV3(
+    options.artifactRoot,
+  );
+  return executeFormalBenchmarkV3({
+    suite,
+    executionId,
+    provenance,
+    repository,
+    allowRecoveryCycle: options.resumeExecutionId !== undefined,
+    runAttempt: createAttemptExecutorV3({
+      cwd: options.cwd,
+      artifactRoot: options.artifactRoot,
+      suite,
+      executionId,
+      ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
+    }),
+    recover: () => Promise.resolve(),
+    nowIso: () => new Date().toISOString(),
+    sleep: (milliseconds) =>
+      new Promise((resolveSleep) => setTimeout(resolveSleep, milliseconds)),
+    ...(options.onExecutionSelected === undefined
+      ? {}
+      : {
+          onExecutionSelected: async (selectedExecutionId) =>
+            options.onExecutionSelected?.(selectedExecutionId),
+        }),
+    validateBeforePersist: (report) =>
+      assertPromptFairnessV3(report, repository),
+  });
+}

@@ -3,16 +3,21 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 
 import {
+  BenchmarkSuiteSpecV3Schema,
   BenchmarkSuiteSpecV2Schema,
   FrozenContractV2Schema,
   type BenchmarkCampaignV1,
   type BenchmarkFixtureSpecV2,
+  type BenchmarkFixtureSpecV3,
   type BenchmarkFreezeTagV1,
   type BenchmarkSuiteSpecV2,
+  type BenchmarkSuiteSpecV3,
   type JsonValue,
 } from "@chronorift/domain";
 import {
+  assertBenchmarkSuiteSpecV3Integrity,
   assertBenchmarkSuiteSpecV2Integrity,
+  createBenchmarkSuiteSpecV3,
   createBenchmarkSuiteSpecV2,
   v03ContractIdFor,
 } from "@chronorift/gamebranch";
@@ -40,7 +45,9 @@ const SUBJECT_ROOTS = [
 const RUNNER_ROOTS = [
   "apps/cli/src",
   "packages/gamebranch/src/services/v03-benchmark-v2-service.ts",
+  "packages/gamebranch/src/services/v03-benchmark-v3-service.ts",
   "packages/gamebranch/src/ports/v03-benchmark-artifact-repository.ts",
+  "packages/gamebranch/src/ports/v03-benchmark-artifact-repository-v3.ts",
   "packages/json-artifacts/src",
 ] as const;
 
@@ -106,6 +113,20 @@ export interface FormalCampaignDescriptor {
     | "chronorift-v0.3-formal-1"
     | "chronorift-v0.3.1-formal-1"
     | "chronorift-v0.3.1-r2-formal-1";
+}
+
+export const V032_LUNA_CAMPAIGN = {
+  campaignId: "v0.3.2-luna",
+  freezeTag: "v0.3.2-luna-benchmark-freeze",
+  evidenceDirectory: "docs/benchmarks/v0.3.2-luna",
+  orderSeed: "chronorift-v0.3.2-luna-formal-1",
+} as const;
+
+export function formalCampaignForSuiteV3(
+  suite: BenchmarkSuiteSpecV3,
+): typeof V032_LUNA_CAMPAIGN {
+  void suite;
+  return V032_LUNA_CAMPAIGN;
 }
 
 const LEGACY_CAMPAIGN: FormalCampaignDescriptor = {
@@ -320,4 +341,139 @@ export function sameFormalSuite(
     canonicalJson(left as unknown as JsonValue) ===
     canonicalJson(right as unknown as JsonValue)
   );
+}
+
+export interface BuildFormalBenchmarkSuiteV3Options {
+  readonly cwd: string;
+  readonly artifactRoot: string;
+  readonly godotBin?: string | undefined;
+}
+
+export function assertFormalFixtureMaterialBindingV3(
+  expected: BenchmarkFixtureSpecV3,
+  input: FormalFixtureMaterialInput,
+): FormalFixtureMaterialHashes {
+  return assertFormalFixtureMaterialBinding(expected, input);
+}
+
+export async function buildFormalBenchmarkSuiteSpecV3(
+  options: BuildFormalBenchmarkSuiteV3Options,
+): Promise<BenchmarkSuiteSpecV3> {
+  const [subjectHash, runnerHash] = await Promise.all([
+    formalSubjectHash(options.cwd),
+    formalRunnerHash(options.cwd),
+  ]);
+  const fixtures: BenchmarkFixtureSpecV3[] = [];
+  for (const fixtureName of V03_FIXTURE_IDS) {
+    const prepared = await prepareV03GodotFixture(fixtureName, {
+      cwd: options.cwd,
+      artifactRoot: options.artifactRoot,
+      ...(options.godotBin === undefined ? {} : { godotBin: options.godotBin }),
+    });
+    const contract = FrozenContractV2Schema.parse({
+      ...prepared.fixture.contractInput,
+      contractId: v03ContractIdFor(prepared.fixture.contractInput),
+    });
+    const sourceText = await readFile(
+      resolve(prepared.sourceDirectory, prepared.oracle.sourcePath),
+      "utf8",
+    );
+    fixtures.push({
+      fixtureId: prepared.fixture.fixtureId,
+      expectedMechanism: prepared.oracle.mechanismCode,
+      expectedSource: {
+        virtualPath: "case/main.gd",
+        symbol: prepared.oracle.sourceSymbol,
+      },
+      ...formalFixtureMaterialHashes({
+        contract: contract as unknown as JsonValue,
+        inputTrace: prepared.fixture.inputTrace as unknown as JsonValue,
+        interventionCatalog: prepared.fixture
+          .experiments as unknown as JsonValue,
+        oracle: prepared.oracle as unknown as JsonValue,
+        sourceText,
+      }),
+    });
+  }
+  const physics = fixtures.find(
+    (fixture) => fixture.expectedMechanism === "discrete_physics_tunneling",
+  );
+  if (physics === undefined) {
+    throw new Error("Formal physics Fixture is missing");
+  }
+  return createBenchmarkSuiteSpecV3({
+    schemaVersion: 3,
+    campaign: {
+      campaignId: V032_LUNA_CAMPAIGN.campaignId,
+      freezeTag: V032_LUNA_CAMPAIGN.freezeTag,
+    },
+    subjectHash,
+    runnerHash,
+    metricSet: "grounded-diagnosis-v3",
+    fixtures,
+    arms: ["generic", "evidence-only", "chronorift-full"],
+    repetitions: 3,
+    orderSeed: V032_LUNA_CAMPAIGN.orderSeed,
+    orderStrategy: "block_randomized_by_fixture_repetition",
+    provider: "openai-codex",
+    model: "gpt-5.6-luna",
+    thinkingLevel: "max",
+    modelRequirements: {
+      contextWindow: 272_000,
+      maxTokens: 128_000,
+      thinkingLevelMapMax: "max",
+    },
+    budgets: {
+      baselineExecutions: 1,
+      maxReplays: 1,
+      maxInterventions: 2,
+      maxSourceCalls: 4,
+      maxGameExecutions: 4,
+      maxToolCalls: 12,
+      maxToolErrors: 0,
+      maxConsecutiveNonProgressToolResults: 0,
+      timeoutMs: 600_000,
+      concurrency: 1,
+    },
+    retryPolicy: {
+      initialInfraRetries: 2,
+      initialBackoffMs: [1_000, 3_000],
+      maxRecoveryCycles: 1,
+      maxAttemptsPerCell: 6,
+      providerInternalRetries: 0,
+    },
+    gate: {
+      fullRequiredGroundedSuccesses: 9,
+      fullExpectedCells: 12,
+      minimumFullMinusGeneric: 0.2,
+      fullMaximumIncorrectConfirmations: 0,
+      requiredScoreEligibleCellsByArm: {
+        generic: 12,
+        evidenceOnly: 12,
+        chronoriftFull: 12,
+      },
+    },
+    calibrationStatus: "calibrated_on_same_fixtures",
+    samplingSeedAvailable: false,
+    preselectedCase: {
+      fixtureId: physics.fixtureId,
+      arm: "chronorift-full",
+      repetition: 1,
+    },
+  });
+}
+
+export function parseFormalBenchmarkSuiteSpecV3(
+  input: unknown,
+): BenchmarkSuiteSpecV3 {
+  return assertBenchmarkSuiteSpecV3Integrity(
+    BenchmarkSuiteSpecV3Schema.parse(input),
+  );
+}
+
+export function sameFormalSuiteV3(
+  left: BenchmarkSuiteSpecV3,
+  right: BenchmarkSuiteSpecV3,
+): boolean {
+  return canonicalJson(left) === canonicalJson(right);
 }

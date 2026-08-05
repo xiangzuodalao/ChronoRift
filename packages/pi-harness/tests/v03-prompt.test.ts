@@ -4,6 +4,7 @@ import {
   auditV03BlindPrompt,
   buildV03BlindSystemPrompt,
   buildV03BlindUserPrompt,
+  v03FailureBriefAccessReceipt,
   v03FailureBriefReceiptId,
 } from "../src/index.js";
 import { FailureBriefV1Schema } from "@chronorift/domain";
@@ -51,5 +52,20 @@ describe("v0.3 blind benchmark prompts", () => {
     expect(
       new Set(audits.map((audit) => audit.failureBriefReceiptId)),
     ).toHaveLength(1);
+  });
+
+  it("reconstructs the canonical prompt receipt without changing its identity", () => {
+    const receipt = v03FailureBriefAccessReceipt(
+      parsedBrief,
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(receipt).toMatchObject({
+      receiptId: v03FailureBriefReceiptId(parsedBrief),
+      runId: parsedBrief.runId,
+      fixtureId: parsedBrief.fixtureId,
+      accessKind: "failure_brief",
+      resourceId: parsedBrief.capsuleId,
+      issuedAt: "2026-01-01T00:00:00.000Z",
+    });
   });
 });

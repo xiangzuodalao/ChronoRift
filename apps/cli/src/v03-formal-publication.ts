@@ -336,7 +336,14 @@ export function sanitizeFormalCaseEvidence(
     raw["verdict"] === undefined
       ? null
       : DiagnosisVerdictV2Schema.parse(raw["verdict"]);
-  const gameExecutions = raw["gameExecutions"];
+  const isV3TerminalManifest =
+    raw["schemaVersion"] === 3 &&
+    raw["manifestKind"] === "benchmark_attempt_terminal";
+  const rawMetrics = isV3TerminalManifest
+    ? recordOf(raw["metrics"] ?? null, "V3 terminal metrics")
+    : null;
+  const gameExecutions =
+    rawMetrics === null ? raw["gameExecutions"] : rawMetrics["gameExecutions"];
   if (
     gameExecutions !== undefined &&
     (typeof gameExecutions !== "number" ||
@@ -378,7 +385,11 @@ export function sanitizeFormalCaseEvidence(
     }
   }
   const evidenceCompleteness =
-    proposal !== null && verdict !== null && raw["piSession"] !== undefined
+    proposal !== null &&
+    verdict !== null &&
+    (isV3TerminalManifest
+      ? raw["terminalStatus"] === "completed"
+      : raw["piSession"] !== undefined)
       ? "complete"
       : "partial";
   return BenchmarkPublishedCaseEvidenceV2Schema.parse({

@@ -69,7 +69,10 @@ export class V03BenchmarkJsonArtifactRepository implements V03BenchmarkArtifactR
 
   public putDefinition(spec: BenchmarkSuiteSpecV2): Promise<void> {
     const parsed = BenchmarkSuiteSpecV2Schema.parse(spec);
-    return this.ledger.writeDefinition(parsed.definitionId, parsed);
+    return this.ledger.writeDefinition(
+      parsed.definitionId,
+      parsed as unknown as JsonValue,
+    );
   }
 
   public async getDefinition(
@@ -339,7 +342,7 @@ export class V03BenchmarkJsonArtifactRepository implements V03BenchmarkArtifactR
     return this.ledger.writeExecutionCompleted(
       parsed.suite.definitionId,
       parsed.executionId,
-      parsed,
+      parsed as unknown as JsonValue,
     );
   }
 

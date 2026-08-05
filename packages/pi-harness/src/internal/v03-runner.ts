@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import {
   InMemoryCredentialStore,
@@ -37,6 +38,7 @@ import {
   type BenchmarkArmV1,
   type DiagnosisProposalV3,
   type EvidenceAccessKindV1,
+  type EvidenceAccessReceiptId,
   type EvidenceAccessReceiptV1,
   type EvidenceCapsuleV2,
   type ExperimentCandidateV1,
@@ -47,21 +49,28 @@ import {
   type V03ExecutionComparison,
   type V03ExecutionLog,
 } from "@chronorift/domain";
-import { Type } from "typebox";
+import { Type, type TSchema } from "typebox";
 
-import { PiHarnessError } from "../errors.js";
+import { PiHarnessError, PiProviderFailureError } from "../errors.js";
 import type {
   DeterministicV03PiHarnessOptions,
   V03ExperimentResult,
   V03PiDiagnosisRunResult,
   V03PiHarnessOptions,
+  V03PiProgressSnapshotV3,
   V03ReplayResult,
 } from "../v03-types.js";
+import { createPiProviderFailureError } from "./provider-failure.js";
+import { V03SessionGuard } from "./v03-session-guard.js";
 import {
   buildV03BlindSystemPrompt,
   buildV03BlindUserPrompt,
   v03FailureBriefReceiptId,
 } from "./v03-prompt.js";
+import {
+  assertV03ProgressMonotonic,
+  legacyV03ProgressSnapshot,
+} from "./v03-progress.js";
 
 const DETERMINISTIC_PROVIDER = "chronorift-faux";
 const DETERMINISTIC_MODEL = "chronorift-v0.3";
@@ -76,6 +85,14 @@ const BUILTIN_TOOL_NAMES = [
 ] as const;
 const strictObject = { additionalProperties: false } as const;
 const IdSchema = Type.String({ minLength: 1 });
+
+const defineSequentialTool = <
+  TParams extends TSchema,
+  TDetails = unknown,
+  TState = unknown,
+>(
+  tool: ToolDefinition<TParams, TDetails, TState>,
+) => defineTool({ ...tool, executionMode: "sequential" });
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -304,8 +321,13 @@ export class V03ToolFlow {
   private proposal: DiagnosisProposalV3 | undefined;
   private sourceCalls = 0;
   private readonly receipts: EvidenceAccessReceiptV1[] = [];
+  private readonly receiptIdsByHandle = new Map<
+    string,
+    EvidenceAccessReceiptId
+  >();
   private readonly accessKeys = new Set<string>();
   private readonly failureBrief: FailureBriefV1;
+  private semanticRevision = 0;
   private toolInFlight = false;
   private terminalToolViolation: PiHarnessError | undefined;
 
@@ -328,20 +350,20 @@ export class V03ToolFlow {
       { delivery: "initial_prompt" },
       this.failureBrief,
       [],
+      false,
     );
   }
 
   public get progressObserved(): boolean {
-    return (
-      this.genericBaseline !== undefined ||
-      this.capsule !== undefined ||
-      this.replays.length > 0 ||
-      this.experiments !== undefined ||
-      this.experimentResults.length > 0 ||
-      this.comparisons.length > 0 ||
-      this.sourceCalls > 0 ||
-      this.proposal !== undefined
-    );
+    return this.semanticRevision > 0;
+  }
+
+  public getSemanticRevision(): number {
+    return this.semanticRevision;
+  }
+
+  public hasSubmittedProposal(): boolean {
+    return this.proposal !== undefined;
   }
 
   public get failureBriefReceiptId(): string {
@@ -388,6 +410,7 @@ export class V03ToolFlow {
     request: unknown,
     content: unknown,
     sourceCoverage: readonly SourceCoverageV1[],
+    semanticProgress = true,
   ): EvidenceAccessReceiptV1 {
     const requestHash = digestValue(request);
     const key = `${accessKind}\0${requestHash}`;
@@ -432,7 +455,19 @@ export class V03ToolFlow {
     });
     this.accessKeys.add(key);
     this.receipts.push(receipt);
+    this.receiptIdsByHandle.set(`@r${this.receipts.length - 1}`, receiptId);
+    if (semanticProgress) this.semanticRevision += 1;
     return structuredClone(receipt);
+  }
+
+  private receiptHandle(receiptId: EvidenceAccessReceiptId): string {
+    for (const [handle, candidate] of this.receiptIdsByHandle) {
+      if (candidate === receiptId) return handle;
+    }
+    throw new PiHarnessError(
+      "AGENT_FAILED",
+      "Evidence receipt handle table is inconsistent",
+    );
   }
 
   private accessed<T>(
@@ -441,16 +476,24 @@ export class V03ToolFlow {
     request: unknown,
     data: T,
     sourceCoverage: readonly SourceCoverageV1[] = [],
-  ): { readonly data: T; readonly accessReceipt: EvidenceAccessReceiptV1 } {
+    semanticProgress = true,
+  ): {
+    readonly data: T;
+    readonly accessReceipt: EvidenceAccessReceiptV1;
+    readonly accessHandle: string;
+  } {
+    const accessReceipt = this.recordAccess(
+      accessKind,
+      resourceId,
+      request,
+      data,
+      sourceCoverage,
+      semanticProgress,
+    );
     return {
       data,
-      accessReceipt: this.recordAccess(
-        accessKind,
-        resourceId,
-        request,
-        data,
-        sourceCoverage,
-      ),
+      accessReceipt,
+      accessHandle: this.receiptHandle(accessReceipt.receiptId),
     };
   }
 
@@ -662,6 +705,8 @@ export class V03ToolFlow {
       "experiment-catalog",
       {},
       structuredClone(this.experiments),
+      [],
+      this.experiments.length > 0,
     ) as unknown as readonly ExperimentCandidateV1[];
   }
 
@@ -783,12 +828,14 @@ export class V03ToolFlow {
       ...(request.limit === undefined ? {} : { limit: request.limit }),
     };
     const data = await this.options.source.read(sourceRequest);
+    const coverage = readCoverage(data);
     return this.accessed(
       "source_read",
       data.path,
       sourceRequest,
       data,
-      readCoverage(data),
+      coverage,
+      data.content.trim().length > 0 && coverage.length > 0,
     );
   }
 
@@ -810,12 +857,14 @@ export class V03ToolFlow {
         : { maxResults: request.maxResults }),
     };
     const data = await this.options.source.search(sourceRequest);
+    const coverage = searchCoverage(data);
     return this.accessed(
       "source_search",
       request.path ?? ".",
       sourceRequest,
       data,
-      searchCoverage(data),
+      coverage,
+      data.matches.length > 0 && coverage.length > 0,
     );
   }
 
@@ -832,7 +881,26 @@ export class V03ToolFlow {
 
   public submit(raw: unknown): DiagnosisProposalV3 {
     this.assertOpen();
-    const parsed = DiagnosisProposalV3Schema.safeParse(raw);
+    const normalized =
+      raw !== null && typeof raw === "object" && !Array.isArray(raw)
+        ? {
+            ...raw,
+            accessReceiptIds: Array.isArray(
+              (raw as Record<string, unknown>)["accessReceiptIds"],
+            )
+              ? (
+                  (raw as Record<string, unknown>)[
+                    "accessReceiptIds"
+                  ] as unknown[]
+                ).map((reference) =>
+                  typeof reference === "string"
+                    ? (this.receiptIdsByHandle.get(reference) ?? reference)
+                    : reference,
+                )
+              : (raw as Record<string, unknown>)["accessReceiptIds"],
+          }
+        : raw;
+    const parsed = DiagnosisProposalV3Schema.safeParse(normalized);
     if (!parsed.success) {
       throw new PiHarnessError(
         "INVALID_DIAGNOSIS",
@@ -897,6 +965,7 @@ export class V03ToolFlow {
       );
     }
     this.proposal = structuredClone(proposal);
+    this.semanticRevision += 1;
     return structuredClone(proposal);
   }
 
@@ -957,14 +1026,14 @@ const ProposalToolSchema = Type.Object(
   strictObject,
 );
 
-const toolsFor = (
+export const createV03Tools = (
   flow: V03ToolFlow,
   arm: BenchmarkArmV1,
 ): readonly ToolDefinition[] => {
   const tools: ToolDefinition[] = [];
   if (arm === "generic") {
     tools.push(
-      defineTool({
+      defineSequentialTool({
         name: "game_get_raw_baseline",
         label: "Get raw baseline",
         description:
@@ -975,11 +1044,11 @@ const toolsFor = (
             await flow.runTool(() => flow.rawBaseline(params.executionId)),
           ),
       }),
-      defineTool({
+      defineSequentialTool({
         name: "game_replay_raw_baseline",
         label: "Replay raw baseline",
         description:
-          "Rerun the baseline and return its raw runtime transcript.",
+          "Rerun the baseline and return its raw runtime transcript. Complete this before any experiment tool.",
         parameters: Type.Object({ executionId: IdSchema }, strictObject),
         execute: async (_id, params) =>
           toolResult(
@@ -989,7 +1058,7 @@ const toolsFor = (
     );
   } else {
     tools.push(
-      defineTool({
+      defineSequentialTool({
         name: "game_get_evidence_capsule_v2",
         label: "Get Evidence Capsule v2",
         description: "Read the immutable causal evidence Capsule.",
@@ -999,10 +1068,11 @@ const toolsFor = (
             await flow.runTool(() => flow.capsuleById(params.capsuleId)),
           ),
       }),
-      defineTool({
+      defineSequentialTool({
         name: "game_replay_execution_v2",
         label: "Strict replay",
-        description: "Restore the frozen checkpoint and replay the baseline.",
+        description:
+          "Restore the frozen checkpoint and replay the baseline. Complete this before any experiment tool.",
         parameters: Type.Object({ executionId: IdSchema }, strictObject),
         execute: async (_id, params) =>
           toolResult(await flow.runTool(() => flow.replay(params.executionId))),
@@ -1011,19 +1081,20 @@ const toolsFor = (
   }
   if (arm !== "evidence-only") {
     tools.push(
-      defineTool({
+      defineSequentialTool({
         name: "game_list_experiments_v2",
         label: "List experiments",
-        description: "List the two allowlisted single-variable experiments.",
+        description:
+          "List the two allowlisted single-variable experiments. Prerequisite: the active baseline replay succeeded.",
         parameters: Type.Object({}, strictObject),
         execute: async () =>
           toolResult(await flow.runTool(() => flow.listExperiments())),
       }),
-      defineTool({
+      defineSequentialTool({
         name: "game_run_experiment_v2",
         label: "Run experiment",
         description:
-          "Run one allowlisted experiment; at most two are permitted.",
+          "Run one interventionId returned by the experiment list after replay. baselineExecutionId must be the frozen FailureBrief baseline, never the replay result; at most two are permitted.",
         parameters: Type.Object(
           { baselineExecutionId: IdSchema, interventionId: IdSchema },
           strictObject,
@@ -1042,11 +1113,11 @@ const toolsFor = (
   }
   if (arm === "chronorift-full") {
     tools.push(
-      defineTool({
+      defineSequentialTool({
         name: "game_compare_executions_v2",
         label: "Compare executions",
         description:
-          "Validate lineage, realized controls, outcomes, and divergence.",
+          "Compare the frozen FailureBrief baselineExecutionId with a candidateExecutionId returned by an experiment; validates lineage, realized controls, outcomes, and divergence.",
         parameters: Type.Object(
           { baselineExecutionId: IdSchema, candidateExecutionId: IdSchema },
           strictObject,
@@ -1064,7 +1135,7 @@ const toolsFor = (
     );
   }
   tools.push(
-    defineTool({
+    defineSequentialTool({
       name: "source_read_v1",
       label: "Read Fixture source",
       description: "Read bounded text from the current Fixture source root.",
@@ -1079,7 +1150,7 @@ const toolsFor = (
       execute: async (_id, params) =>
         toolResult(await flow.runTool(() => flow.sourceRead(params))),
     }),
-    defineTool({
+    defineSequentialTool({
       name: "source_search_v1",
       label: "Search Fixture source",
       description: "Search bounded text in the current Fixture source root.",
@@ -1097,10 +1168,11 @@ const toolsFor = (
       execute: async (_id, params) =>
         toolResult(await flow.runTool(() => flow.sourceSearch(params))),
     }),
-    defineTool({
+    defineSequentialTool({
       name: "submit_diagnosis_proposal",
       label: "Submit diagnosis",
-      description: "Submit a proposal; only the Harness can emit a verdict.",
+      description:
+        "Final call after replay and evidence gathering. Populate every required field and array, including evidenceEventIds. For accessReceiptIds, use the short accessHandle values returned by tools; the Harness resolves them to exact content-addressed receipt IDs before validation. Only the Harness can emit a verdict.",
       parameters: ProposalToolSchema,
       execute: async (_id, params) => {
         const proposal = await flow.runTool(() => flow.submit(params));
@@ -1139,13 +1211,28 @@ const normalizeThinking = (value: string) => {
   );
 };
 
-const runWithRuntime = async (
+const progressCounter = (
+  value: number | undefined,
+  fallback: number,
+  label: string,
+): number => {
+  const result = value ?? fallback;
+  if (!Number.isSafeInteger(result) || result < 0) {
+    throw new PiHarnessError(
+      "AGENT_FAILED",
+      `Pi v0.3 progress counter ${label} is invalid`,
+    );
+  }
+  return result;
+};
+
+export const runV03PiDiagnosisWithRuntime = async (
   options: DeterministicV03PiHarnessOptions,
   runtime: { readonly modelRuntime: ModelRuntime; readonly model: Model<Api> },
 ): Promise<V03PiDiagnosisRunResult> => {
   const arm = BenchmarkArmV1Schema.parse(options.arm);
   const flow = new V03ToolFlow(options);
-  const customTools = toolsFor(flow, arm);
+  const customTools = createV03Tools(flow, arm);
   const activeNames = customTools.map((tool) => tool.name);
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: false },
@@ -1187,43 +1274,201 @@ const runWithRuntime = async (
     ),
     settingsManager,
   });
-  const started = Date.now();
+  const started = performance.now();
   let progressChain = Promise.resolve();
-  let progressError: unknown;
+  let progressError: PiHarnessError | undefined;
   let progressSignature = "";
+  let progressSequence = 0;
+  let previousProgress: V03PiProgressSnapshotV3 | undefined;
+  let modelRequestStarted = false;
+  let modelOutputObserved = false;
+  let currentResponseOutputObserved = false;
+  let modelTurnCompleted = false;
+  let abortPromise: Promise<void> | undefined;
+  let abortError: unknown;
+  const requestAbort = (): void => {
+    if (abortPromise !== undefined) return;
+    try {
+      abortPromise = session.abort().catch((error: unknown) => {
+        abortError ??= error;
+      });
+    } catch (error) {
+      abortError ??= error;
+    }
+  };
+  const guard = new V03SessionGuard({
+    semanticRevision: () => flow.getSemanticRevision(),
+    terminalToolViolation: () => flow.getTerminalToolViolation(),
+    requestAbort,
+  });
+
   const enqueueProgress = (): void => {
-    if (options.onProgress === undefined) return;
-    const stats = session.getSessionStats();
     if (
-      !flow.progressObserved &&
-      stats.toolCalls === 0 &&
-      stats.tokens.total === 0
+      options.onProgress === undefined &&
+      options.onProgressV3 === undefined
     ) {
       return;
     }
-    const signature = `${flow.progressObserved}\0${stats.toolCalls}\0${stats.tokens.input}\0${stats.tokens.output}\0${stats.tokens.cacheRead}\0${stats.tokens.cacheWrite}\0${stats.tokens.total}`;
-    if (signature === progressSignature) return;
-    progressSignature = signature;
-    const snapshot = {
-      progressObserved: flow.progressObserved,
-      toolCalls: stats.toolCalls,
-      tokens: {
-        input: stats.tokens.input,
-        output: stats.tokens.output,
-        cacheRead: stats.tokens.cacheRead,
-        cacheWrite: stats.tokens.cacheWrite,
-        total: stats.tokens.total,
-      },
-      wallTimeMs: Math.max(0, Date.now() - started),
-    };
-    progressChain = progressChain
-      .then(() => options.onProgress?.(snapshot))
-      .then(() => undefined)
-      .catch((error: unknown) => {
-        progressError = error;
+    try {
+      const stats = session.getSessionStats();
+      const baselineExecutions = progressCounter(
+        options.game.baselineExecutions,
+        1,
+        "game.baselineExecutions",
+      );
+      const diagnosticExecutions = progressCounter(
+        options.game.diagnosticExecutions,
+        0,
+        "game.diagnosticExecutions",
+      );
+      const signature = canonicalJson({
+        modelRequestStarted,
+        modelOutputObserved,
+        modelTurnCompleted,
+        tokens: stats.tokens,
+        toolsStarted: guard.toolCalls,
+        toolsCompleted: guard.completedToolCalls,
+        toolsFailed: guard.toolErrors,
+        semanticRevision: flow.getSemanticRevision(),
+        consecutiveNonProgress: guard.consecutiveNonProgressToolResults,
+        baselineExecutions,
+        diagnosticExecutions,
+        proposalSubmitted: flow.hasSubmittedProposal(),
       });
+      if (signature === progressSignature) return;
+      const snapshot: V03PiProgressSnapshotV3 = {
+        schemaVersion: 3,
+        sequence: progressSequence + 1,
+        wallTimeMs: Math.max(0, Math.round(performance.now() - started)),
+        fixtureStage: "fixture_validated",
+        model: {
+          requestStarted: modelRequestStarted,
+          outputObserved: modelOutputObserved || stats.tokens.output > 0,
+          turnCompleted: modelTurnCompleted,
+          tokens: {
+            input: stats.tokens.input,
+            output: stats.tokens.output,
+            cacheRead: stats.tokens.cacheRead,
+            cacheWrite: stats.tokens.cacheWrite,
+            total: stats.tokens.total,
+          },
+        },
+        tools: {
+          started: guard.toolCalls,
+          completed: guard.completedToolCalls,
+          failed: guard.toolErrors,
+          semanticRevision: flow.getSemanticRevision(),
+          consecutiveNonProgressToolResults:
+            guard.consecutiveNonProgressToolResults,
+        },
+        game: {
+          baselineExecutions,
+          diagnosticExecutions,
+        },
+        proposalSubmitted: flow.hasSubmittedProposal(),
+      };
+      assertV03ProgressMonotonic(previousProgress, snapshot);
+      progressSignature = signature;
+      progressSequence = snapshot.sequence;
+      previousProgress = structuredClone(snapshot);
+      progressChain = progressChain
+        .then(async () => {
+          await options.onProgressV3?.(structuredClone(snapshot));
+          if (
+            snapshot.tools.started > 0 ||
+            snapshot.tools.semanticRevision > 0 ||
+            snapshot.model.tokens.total > 0
+          ) {
+            await options.onProgress?.(
+              legacyV03ProgressSnapshot(structuredClone(snapshot)),
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          const failure = new PiHarnessError(
+            "AGENT_FAILED",
+            "Formal progress journal could not be persisted",
+            { cause: error },
+          );
+          progressError ??= failure;
+          guard.fail(progressError);
+        });
+    } catch (error) {
+      const failure =
+        error instanceof PiHarnessError
+          ? error
+          : new PiHarnessError(
+              "AGENT_FAILED",
+              "Pi v0.3 progress snapshot could not be created",
+              { cause: error },
+            );
+      progressError ??= failure;
+      guard.fail(progressError);
+    }
   };
+
+  const providerFailureFromMessages = (
+    messages: readonly (typeof session.messages)[number][],
+  ): PiProviderFailureError | undefined => {
+    const latestAssistant = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (
+      latestAssistant?.role !== "assistant" ||
+      (latestAssistant.stopReason !== "error" &&
+        latestAssistant.stopReason !== "aborted")
+    ) {
+      return undefined;
+    }
+    return createPiProviderFailureError({
+      message:
+        latestAssistant.errorMessage ??
+        session.agent.state.errorMessage ??
+        "Pi provider request failed",
+      phase: currentResponseOutputObserved ? "response_stream" : "request",
+      provider: runtime.model.provider,
+      model: runtime.model.id,
+      stopReason:
+        latestAssistant.stopReason === "aborted" ? "aborted" : "error",
+    });
+  };
+
+  const unsubscribe = session.subscribe((event) => {
+    if (event.type === "turn_start") {
+      currentResponseOutputObserved = false;
+    } else if (event.type === "tool_execution_start") {
+      guard.onToolExecutionStart(event.toolName);
+    } else if (event.type === "tool_execution_end") {
+      guard.onToolExecutionEnd(event.toolName, event.isError);
+    } else if (event.type === "message_update") {
+      const update = event.assistantMessageEvent;
+      if (
+        (update.type === "text_delta" ||
+          update.type === "thinking_delta" ||
+          update.type === "toolcall_delta") &&
+        update.delta.length > 0
+      ) {
+        modelOutputObserved = true;
+        currentResponseOutputObserved = true;
+      } else if (
+        update.type === "toolcall_end" ||
+        (update.type === "text_end" && update.content.length > 0) ||
+        (update.type === "thinking_end" && update.content.length > 0)
+      ) {
+        modelOutputObserved = true;
+        currentResponseOutputObserved = true;
+      }
+    } else if (event.type === "turn_end") {
+      modelTurnCompleted = true;
+    } else if (event.type === "agent_end" && !event.willRetry) {
+      const providerFailure = providerFailureFromMessages(event.messages);
+      if (providerFailure !== undefined) guard.fail(providerFailure);
+    }
+    enqueueProgress();
+  });
   const progressTimer = setInterval(enqueueProgress, 100);
+  let primaryError: unknown;
+  let result: V03PiDiagnosisRunResult | undefined;
   try {
     const actualNames = session.getActiveToolNames().sort();
     const expectedNames = [...activeNames].sort();
@@ -1240,28 +1485,32 @@ const runWithRuntime = async (
         `Pi changed thinking level from ${requestedThinking} to ${session.thinkingLevel}`,
       );
     }
-    const timeoutMs = options.timeoutMs ?? 300_000;
+    const timeoutMs = options.timeoutMs ?? 600_000;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    modelRequestStarted = true;
+    enqueueProgress();
+    const prompt = session.prompt(blindUserPrompt, {
+      expandPromptTemplates: false,
+    });
     await Promise.race([
-      session.prompt(blindUserPrompt, { expandPromptTemplates: false }),
+      prompt,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          const stats = session.getSessionStats();
-          void session.abort();
-          reject(
-            new PiHarnessError(
-              "AGENT_TIMEOUT",
-              `Pi v0.3 diagnosis timed out after ${timeoutMs}ms`,
-              {
-                details: {
-                  progressObserved:
-                    flow.progressObserved ||
-                    stats.toolCalls > 0 ||
-                    stats.tokens.total > 0,
-                },
+          const timeout = new PiHarnessError(
+            "AGENT_TIMEOUT",
+            `Pi v0.3 diagnosis timed out after ${timeoutMs}ms`,
+            {
+              details: {
+                progressObserved:
+                  modelOutputObserved ||
+                  guard.toolCalls > 0 ||
+                  (options.game.diagnosticExecutions ?? 0) > 0 ||
+                  flow.hasSubmittedProposal(),
               },
-            ),
+            },
           );
+          guard.fail(timeout);
+          reject(guard.terminalError ?? timeout);
         }, timeoutMs);
       }),
     ]).finally(() => {
@@ -1269,13 +1518,8 @@ const runWithRuntime = async (
     });
     enqueueProgress();
     await progressChain;
-    if (progressError !== undefined) {
-      throw new PiHarnessError(
-        "AGENT_FAILED",
-        "Formal progress journal could not be persisted",
-        { cause: progressError },
-      );
-    }
+    if (guard.terminalError !== undefined) throw guard.terminalError;
+    if (progressError !== undefined) throw progressError;
     const toolResultError = session.messages.find(
       (message) => message.role === "toolResult" && message.isError,
     );
@@ -1288,6 +1532,8 @@ const runWithRuntime = async (
         )
       );
     }
+    const providerFailure = providerFailureFromMessages(session.messages);
+    if (providerFailure !== undefined) throw providerFailure;
     const proposal = flow.getProposal();
     if (proposal === undefined) {
       throw new PiHarnessError(
@@ -1299,10 +1545,10 @@ const runWithRuntime = async (
       throw new PiHarnessError("AGENT_FAILED", "Pi session was not persisted");
     }
     const stats = session.getSessionStats();
-    return {
+    result = {
       proposal,
       accessReceipts: flow.getReceipts(),
-      wallTimeMs: Date.now() - started,
+      wallTimeMs: Math.max(0, Math.round(performance.now() - started)),
       piSession: {
         sessionId: session.sessionId,
         sessionFile: session.sessionFile,
@@ -1335,19 +1581,40 @@ const runWithRuntime = async (
         },
       },
     };
+  } catch (error) {
+    primaryError = guard.terminalError ?? error;
+    throw primaryError;
   } finally {
     clearInterval(progressTimer);
+    unsubscribe();
+    if (!session.isIdle) requestAbort();
+    if (abortPromise !== undefined) await abortPromise;
     enqueueProgress();
     await progressChain;
-    session.dispose();
-    if (progressError !== undefined) {
-      throw new PiHarnessError(
-        "AGENT_FAILED",
-        "Formal progress journal could not be persisted",
-        { cause: progressError },
-      );
+    let disposeError: unknown;
+    try {
+      session.dispose();
+    } catch (error) {
+      disposeError = error;
+    }
+    if (primaryError === undefined) {
+      if (progressError !== undefined) throw progressError;
+      if (abortError !== undefined) {
+        throw new PiHarnessError("AGENT_FAILED", "Pi session cleanup failed", {
+          cause: abortError,
+        });
+      }
+      if (disposeError !== undefined) {
+        throw new PiHarnessError("AGENT_FAILED", "Pi session disposal failed", {
+          cause: disposeError,
+        });
+      }
     }
   }
+  if (result === undefined) {
+    throw new PiHarnessError("AGENT_FAILED", "Pi v0.3 result was not built");
+  }
+  return result;
 };
 
 const response = (step: number, name: string, arguments_: UnknownRecord) =>
@@ -1611,7 +1878,7 @@ export const runDeterministicV03PiDiagnosisWithSdk = async (
   );
   if (!model)
     throw new PiHarnessError("MODEL_NOT_FOUND", "Faux v0.3 model missing");
-  const result = await runWithRuntime(
+  const result = await runV03PiDiagnosisWithRuntime(
     { ...options, thinkingLevel: "off" },
     { modelRuntime, model },
   );
@@ -1633,17 +1900,31 @@ export const runV03PiDiagnosisWithSdk = async (
   const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false });
   const model = modelRuntime.getModel(options.provider, options.model);
   if (!model) {
-    throw new PiHarnessError(
-      "MODEL_NOT_FOUND",
+    throw new PiProviderFailureError(
       `Pi model ${options.provider}/${options.model} is not registered`,
+      {
+        phase: "request",
+        code: "model_not_found",
+        httpStatus: null,
+        retryClass: "permanent",
+        provider: options.provider,
+        model: options.model,
+      },
     );
   }
   const available = await modelRuntime.getAvailable(options.provider);
   if (!available.some((candidate) => candidate.id === options.model)) {
-    throw new PiHarnessError(
-      "MODEL_UNAVAILABLE",
+    throw new PiProviderFailureError(
       `Pi model ${options.provider}/${options.model} is not authenticated`,
+      {
+        phase: "request",
+        code: "auth",
+        httpStatus: null,
+        retryClass: "permanent",
+        provider: options.provider,
+        model: options.model,
+      },
     );
   }
-  return runWithRuntime(options, { modelRuntime, model });
+  return runV03PiDiagnosisWithRuntime(options, { modelRuntime, model });
 };

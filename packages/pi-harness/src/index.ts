@@ -1,4 +1,12 @@
-export { PiHarnessError, type PiHarnessErrorCode } from "./errors.js";
+export {
+  PiHarnessError,
+  PiProviderFailureError,
+  type PiHarnessErrorCode,
+  type PiProviderFailureCode,
+  type PiProviderFailureOptions,
+  type PiProviderFailurePhase,
+  type PiProviderRetryClass,
+} from "./errors.js";
 export {
   assertPiModelCapabilities,
   listAvailablePiModels,
@@ -16,6 +24,7 @@ export {
   auditV03BlindPrompt,
   buildV03BlindSystemPrompt,
   buildV03BlindUserPrompt,
+  v03FailureBriefAccessReceipt,
   v03FailureBriefReceiptId,
   type V03BlindPromptAudit,
 } from "./internal/v03-prompt.js";
@@ -51,4 +60,5 @@ export type {
   VirtualSourceAccessOptions,
   VirtualSourceFile,
 } from "./types.js";
+export { V03_AGENT_BUDGETS } from "./v03-types.js";
 export type * from "./v03-types.js";

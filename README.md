@@ -3,16 +3,24 @@
 ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游戏运行时 Bug 转换成可恢复、
 可干预、可重放、可比较的实验，并由 Harness 根据运行时证据裁决结论，而不是相信模型置信度。
 
-> 当前开发版本：**v0.3.1**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容。v0.3.1-r2 已完成唯一的
+> 当前开发版本：**v0.3.2**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容。v0.3.1-r2 已完成唯一的
 > 36-cell 正式 execution 并发布可验证报告；报告完整性通过，但冻结 Gate 失败。32 个 cells 的本地
 > manifest 记录底层 `Connection error`，另外 2 个为 `invalid_tool_flow`、2 个为
 > `progress_timeout`。因此该 execution 验收了 cache-aware ledger、fail-closed 封存与负结果发布，
 > 不能证明 GLM-5.2 的诊断质量，也不能证明 ChronoRift 相对 generic arm 的优势。
 > 当前交互诊断、real-Pi smoke 与 `test:live` 已迁移到
-> `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`；历史报告与冻结 spec 不会被改写。
+> `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`。Benchmark V3 的 typed provider failure、结构化
+> progress、串行零错误工具预算、receipt handle、严格 terminal manifest、sealed ledger 与
+> 3+3 recovery 已落地；两次 Luna smoke（各 5 次工具调用，30,828 / 30,039 total tokens）和
+> `test:live` 已通过。C0-001/002/003 均为 `not_ready`；历史 C0/C1-004 JSON 的 readiness
+> 字段均为 `ready`，但它们缺少 V2 implementation receipt，强化 verifier 将其前置资格分类为
+> `legacy_only`。它们不会被改写，也不能授权新的 hardened C1 或 freeze。新身份 005、V3
+> machine spec、freeze tag 与 36-cell formal campaign 均尚未执行；
+> 历史 V2 报告与冻结 spec 不会被改写。
 
 [Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
-边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)。
+边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)；面向简历/面试的事实摘要见
+[v0.3.2 中文作品集](docs/portfolio-v0.3.2.md)。
 
 ## v0.3 做到了什么
 
@@ -116,6 +124,37 @@ cells 因 Pi 发起并发诊断工具调用而得到 `invalid_tool_flow`，2 个
 [results](docs/benchmarks/v0.3.1-r2/results.md)与
 [case study](docs/benchmarks/v0.3.1-r2/case-study-physics-tunneling.md)。
 
+### v0.3.2-luna 可靠性与 Benchmark V3（进行中）
+
+V3 不改写 V2 artifact、hash 或 verifier。它把 provider 失败保留为 typed cause（阶段、错误
+code、HTTP status 与 retry class），并持久化 model/tool/game/proposal 的单调 progress。只有
+发生在诊断进展之前的 transient infrastructure failure 才可进入最多 3 次 initial attempts；
+一次 recovery cycle 再提供最多 3 次 attempts。已观察到 model output、工具开始、诊断性
+游戏执行或 proposal 后的基础设施故障不重试、不计分；证据不足仍由 Harness 输出
+`inconclusive`，模型 confidence 不决定 confirmed。
+
+诊断工具由 Pi 以 `executionMode=sequential` 调度，每 cell 最多 12 次工具调用、
+0 次工具错误、0 个连续无语义进展结果。工具返回 `@rN` 短 receipt handle，提交时
+由 Harness 解析回本 Session 中的精确 content-addressed receipt ID，不放宽引用完整性。
+
+score-eligible attempt 必须封存 strict terminal raw manifest；manifest 精确绑定 suite/execution/cell/
+attempt lineage、冻结 Fixture material、prompt audit、terminal progress/metrics、证据、receipt、proposal、
+verdict 与 oracle。账本要求 terminal progress、finished attempt、cell 和 completed report 彼此精确对应，
+finish 后拒绝追加 progress。Harness 按冻结的 baseline/replay/intervention/source/tool/game/time 等预算
+重新校验，其中 replay、intervention 与 source 的 per-kind 用量从 canonical receipts 计算；超预算结果
+不能成为 scored cell。公开报告不复制完整 raw manifest 或模型散文，只嵌入可独立重算分数的 sanitized
+`scoringProofs`，并在封存时逐项核对其来自账本中被选中的 terminal manifest。
+
+两次独立 Luna smoke 均以 5 次工具调用获得 Harness `confirmed`，total tokens 分别为
+30,828 和 30,039；`corepack pnpm test:live` 随后通过。已发布的 C0-001、C0-002 和 C0-003
+均为 `not_ready` 并作为负向工程证据原样保留。历史 C0-004 与 C1-004 报告的 readiness 字段
+均为 `ready`，六个 cells 为零 tool errors、零无进展违规、零 incorrect confirmation；但二者是
+缺少 implementation receipt 的 V1 linkage，强化 verifier 返回 `prerequisiteEligibility=legacy_only`。
+因此正式冻结前置**尚未满足**：必须以新 identity 005 完成绑定精确 Git HEAD 与 runtime source hash
+的 V2 C0，再由同一 implementation receipt 和精确 C0 report hash 授权 C1。005、machine spec、
+freeze tag 和 36-cell formal campaign 均尚未执行。
+详见 [v0.3.2-luna evidence workspace](docs/benchmarks/v0.3.2-luna/README.md)。
+
 ## 项目结构
 
 依赖方向保持为 `domain ← gamebranch ← adapters ← CLI composition root`。
@@ -205,52 +244,83 @@ corepack pnpm benchmark:explore -- \
   --model gpt-5.6-luna \
   --thinking max
 
-# 维护者在最终实现通过检查后生成机器 spec；精确 JSON 必须与 freeze commit/tag 一起提交
-corepack pnpm --silent benchmark:spec \
-  > docs/benchmarks/v0.3/benchmark-spec.v2.json
+# 历史 004 报告保持原字节；重验会显示 prerequisiteEligibility=legacy_only
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna/canary-c0-ready-004.json
+corepack pnpm benchmark:canary:verify -- \
+  --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-004.json \
+  --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-004.json
+
+# hardened identity 005 尚未运行；先生成绑定当前实现的 V2 spec
+corepack pnpm --silent benchmark:canary:spec -- \
+  --id v0.3.2-luna-canary-005 \
+  > .chronorift/v0.3/canary-plans/luna-005.spec.json
+
+corepack pnpm benchmark:canary -- \
+  --spec .chronorift/v0.3/canary-plans/luna-005.spec.json \
+  --stage c0
+
+# 只有 005 C0 hardened-ready 后才可运行；PATH 必须是精确发布的 C0 报告
+corepack pnpm benchmark:canary -- \
+  --spec .chronorift/v0.3/canary-plans/luna-005.spec.json \
+  --stage c1 \
+  --c0-report PATH_TO_C0_005_REPORT
+
+# 005 C0/C1 都为 hardened-ready 后才生成；精确 JSON 必须与 freeze commit/tag 一起提交
+corepack pnpm --silent benchmark:spec -- \
+  --campaign v0.3.2-luna \
+  > docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
 
 # 正式 36-cell；新执行时不要传 --resume
 corepack pnpm benchmark:formal -- \
-  --spec docs/benchmarks/v0.3/benchmark-spec.v2.json
+  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
 
 # 从 durable first-execution selection 找回 ID，不调用 provider
 corepack pnpm benchmark:status -- \
-  --spec docs/benchmarks/v0.3/benchmark-spec.v2.json
+  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
 
 # 只恢复已选中的同一 execution，不创建或拼接另一个 suite
 corepack pnpm benchmark:formal -- \
-  --spec docs/benchmarks/v0.3/benchmark-spec.v2.json \
+  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
   --resume BENCHMARK_EXECUTION_ID
 
 corepack pnpm benchmark:publish -- \
+  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
   --execution BENCHMARK_EXECUTION_ID \
-  --output docs/benchmarks/v0.3
+  --output docs/benchmarks/v0.3.2-luna
 
 corepack pnpm benchmark:verify -- \
-  --report docs/benchmarks/v0.3/benchmark-report.v2.json
+  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
+  --report docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
 
 corepack pnpm benchmark:gate -- \
-  --report docs/benchmarks/v0.3/benchmark-report.v2.json
+  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json \
+  --report docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
 ```
 
 `pi:smoke` 使用 Luna Max、v0.1 Mock switch-door 与真实 Pi Session/Agent Loop，但不接触四个正式 Fixture；只有
 Session 文件已持久化、token 和 tool call 均非零且 Harness verdict 为 `confirmed` 才返回成功。输出仅含
-provider/model、thinking、用量与 verdict，不含 credential、prompt、Session ID 或本地路径。v0.3.1
-正式 campaign 的完整命令、冻结顺序和发布边界见
-[v0.3.1 reproduction protocol](docs/benchmarks/v0.3.1/reproduction.md)；v0.3 证据目录不可覆盖。
+provider/model、thinking、用量与 verdict，不含 credential、prompt、Session ID 或本地路径。本轮 V3
+campaign 的完整命令、冻结顺序和发布边界见
+[v0.3.2-luna reproduction protocol](docs/benchmarks/v0.3.2-luna/reproduction.md)；历史证据目录不可覆盖。
 
 `benchmark:live` 暂保留为 `benchmark:explore` 的兼容别名，但已弃用。每个 definition 在固定本地
 ledger 中使用 `first-formal-execution-wins-v1`；selection 持久化后才输出 `executionId`，之后不得创建
 第二个 non-resume execution。终端输出丢失时用 `benchmark:status` 找回该 ID。这是可审计的本地防
 cherry-pick 规则，不是外部签名；拥有同一用户文件权限的人仍可删除整个本地 ledger。
 
-每个 attempt 持久化 `baseline_completed_unvalidated → fixture_material_validated → agent_progress`
-阶段。只有未观察到 Agent/model/tool/game 进展的中断或 closed classifier 明确列出的 infrastructure
-failure 可以继续；一旦记录 `agent_progress`，超时、provider 错误或进程中断都是 terminal
-diagnostic，不会通过重试筛选模型回答。
+V3 每个 attempt 持久化结构化、单调的 fixture/model/tool/game/proposal progress，并保留
+typed infrastructure cause。只有诊断进展之前的 transient infrastructure failure 可重试：首轮
+最多 3 attempts，唯一 recovery cycle 再最多 3 attempts。已有诊断进展后失败不重试、
+不计分，避免通过重试筛选模型回答。恢复时 Harness 会把已中断 attempt 从最后一个 durable
+progress 收敛成 terminal progress、finished attempt 与 terminal cell；已完成的 attempt 不会重跑，
+已封存 execution 不能继续追加。V2 的三阶段 journal 与历史 retry 语义仅用于
+重验已发布 artifact，不被 V3 迁移或改写。
 
-`benchmark:verify` 只验证 schema、canonical cell identity、attempt hash chain、oracle 重算、聚合与
-report hash；有效的负面或 incomplete 报告仍是完整性有效。`benchmark:gate` 单独解释产品 Gate。
+`benchmark:verify` 验证 schema、canonical identity、严格 terminal manifest hash、sanitized
+`scoringProofs` 的引用与机制条件、冻结 material/per-kind budgets、attempt/terminal ledger 对应、
+oracle、聚合与 report hash；有效的负面或 incomplete 报告仍可完整性有效。封存到本地仓库时还会
+把 report proof 与原始账本逐项对照。`benchmark:gate` 单独解释产品 Gate。
 这不是 provider attestation，也不能证明模型请求确由声明供应商执行。正式 benchmark 需要网络与
 用户凭据，不是默认 CI gate。
 
@@ -266,7 +336,8 @@ report hash；有效的负面或 incomplete 报告仍是完整性有效。`bench
 | `corepack pnpm pi:smoke`          | 正式 Fixture 外的真实 Pi 链路 smoke    |
 | `corepack pnpm benchmark`         | deterministic fake-model smoke         |
 | `corepack pnpm benchmark:explore` | 可配置的真实 provider 探索运行         |
-| `corepack pnpm benchmark:spec`    | 生成待提交的 formal v2 机器 spec       |
+| `corepack pnpm benchmark:canary`  | 运行分阶段 V3 Luna canary              |
+| `corepack pnpm benchmark:spec`    | 生成待提交的 formal V2/V3 机器 spec    |
 | `corepack pnpm benchmark:formal`  | 冻结 spec 的可恢复 36-cell 正式执行    |
 | `corepack pnpm benchmark:status`  | 查询 durable first-execution selection |
 | `corepack pnpm benchmark:publish` | 从 ledger 生成 sanitized evidence 包   |
@@ -308,9 +379,12 @@ realized receipt 后才能用于比较与 Gate。
     completed.json
 ```
 
-每个文件以 create-only 方式写入；attempt 通过 previous hash 串联。`completed.json` 只存在于已封存
-execution；首轮可恢复的 incomplete 尚未封存，不能 publish。发布器只导出 allowlisted、脱敏字段，
-不导出 prompt、源码正文、Pi Session 路径、API key 或 credential store。历史 ledger 与
+每个文件以 create-only 方式写入；attempt 通过 previous hash 串联。每个 score-eligible finished
+attempt 必须带 strict terminal raw manifest，并与最后一条 terminal progress、terminal cell、冻结
+Fixture material 和 canonical budgets 精确一致；finish 后不能追加 progress。`completed.json` 只存在于
+已封存 execution；首轮可恢复的 incomplete 尚未封存，不能 publish。发布器只导出 allowlisted、脱敏
+字段以及无模型散文的 `scoringProofs`，不导出完整 raw manifest、prompt、源码正文、Pi Session 路径、
+API key 或 credential store。历史 ledger 与
 `.chronorift/` 仍是本地状态，不提交 Git。
 
 正式命令退出码约定：
@@ -339,12 +413,13 @@ v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 G
 - report verifier 是本地可重算的完整性检查，不是签名、CI attestation 或 provider attestation。
 - v0.3 与 v0.3.1-r2 两个 formal execution 都完整且通过 report integrity verification，但都未产生
   grounded success；r2 又被 32 个底层连接错误主导，不能衡量三组 treatment 或模型诊断效果。
-- 当前 `REPORT_MISSING` 会把 Agent state 中的 `Connection error.` 包装成 `proposal_missing`；下一轮
-  必须保留 typed provider failure cause，避免 sanitized report 丢失基础设施归因。
-- GLM-5.2 可能发起并发诊断工具调用，而当前受控工具流要求串行；需要在 Agent tool scheduling 边界
-  明确串行化或将违规反馈给模型，并增加完成/工具预算后的终止策略。
+- V3 已保留 typed provider failure、串行化诊断工具、strict terminal manifest、sealed ledger、
+  sanitized scoring proof，并在 verifier 施加冻结 material 与 per-kind budget；这些机制已离线回归，
+  但尚未经 hardened canary 或 36-cell formal 评测。
+- C0-001/002/003 均为 `not_ready` 且已保留；历史 C0/C1-004 的 readiness 字段为 `ready`，但强化
+  verifier 只将其 V1 linkage 归为 `legacy_only`。005 和正式 campaign 仍是 pending，因此目前仍没有
+  Luna 下的 treatment 优势结论。
 
-下一步先实现 provider 错误 cause chain、串行工具调度与 Agent 终止预算，并在 formal suite 外用故障注入
-回归连接中断、并发工具调用和超时。不得删除 selection 或重跑已冻结 execution 来筛掉负结果。随后以
-新 campaign 身份跑小规模 canary；只有 canary 能稳定提交合法 proposal 后，才预注册下一轮 36-cell
-矩阵。真实 Godot 项目接入继续作为下一条独立垂直切片。
+下一步是保留全部历史 canary 证据，以新 identity 005 跑完 implementation-bound C0/C1；只有两阶段
+均为 `hardened` 后才生成并人工复核 V3 spec，将实现与 spec 冻结在不可移动的 tag，再从干净 freeze
+checkout 启动唯一 36-cell execution。真实 Godot 项目接入继续作为下一条独立垂直切片。

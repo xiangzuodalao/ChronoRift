@@ -1,0 +1,201 @@
+{
+  "armOrder": ["generic", "evidence-only", "chronorift-full"],
+  "cells": [
+    {
+      "arm": "generic",
+      "attemptOrdinal": 1,
+      "canaryId": "v0.3.2-luna-canary-002",
+      "cellHash": "8076d7dffc97e775c1ae222f58a101e185c44e51e9cf2394c3dabcf5ffd77576",
+      "failureCode": "invalid_tool_flow",
+      "fixture": "signal-ordering",
+      "flow": {
+        "capsuleReceiptCount": 0,
+        "comparisonCount": 0,
+        "comparisonReceiptCount": 0,
+        "evidenceReceiptCount": 0,
+        "experimentReceiptCount": 0,
+        "interventionCount": 0,
+        "matchingReplay": false,
+        "rawExecutionReceiptCount": 0,
+        "replayReceiptCount": 0,
+        "sourceReceiptCount": 0
+      },
+      "incorrectConfirmation": false,
+      "mechanismCorrect": null,
+      "metrics": {
+        "gameExecutions": 0,
+        "maxConsecutiveNonProgressToolResults": 0,
+        "tokens": {
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        },
+        "toolCalls": 0,
+        "toolErrors": 0,
+        "wallTimeMs": 0
+      },
+      "proposalPresent": false,
+      "schemaVersion": 1,
+      "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+      "sessionPersisted": false,
+      "specHash": "244df1f0459443e18d644779bd6eb0f1a00e556add16595304d7be9bc7d0f19e",
+      "stage": "c0",
+      "stageId": "v0.3.2-luna-c0-001",
+      "status": "diagnostic_failure",
+      "verdict": null
+    },
+    {
+      "arm": "evidence-only",
+      "attemptOrdinal": 1,
+      "canaryId": "v0.3.2-luna-canary-002",
+      "cellHash": "a5068b0768e5de593447c56b630867fe97a2307435fd798cbe5324e20596eccd",
+      "failureCode": null,
+      "fixture": "signal-ordering",
+      "flow": {
+        "capsuleReceiptCount": 1,
+        "comparisonCount": 0,
+        "comparisonReceiptCount": 0,
+        "evidenceReceiptCount": 2,
+        "experimentReceiptCount": 0,
+        "interventionCount": 0,
+        "matchingReplay": true,
+        "rawExecutionReceiptCount": 0,
+        "replayReceiptCount": 1,
+        "sourceReceiptCount": 2
+      },
+      "incorrectConfirmation": false,
+      "mechanismCorrect": true,
+      "metrics": {
+        "gameExecutions": 2,
+        "maxConsecutiveNonProgressToolResults": 0,
+        "tokens": {
+          "cacheRead": 14336,
+          "cacheWrite": 0,
+          "input": 14417,
+          "output": 1584,
+          "total": 30337
+        },
+        "toolCalls": 5,
+        "toolErrors": 0,
+        "wallTimeMs": 39245
+      },
+      "proposalPresent": true,
+      "schemaVersion": 1,
+      "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+      "sessionPersisted": true,
+      "specHash": "244df1f0459443e18d644779bd6eb0f1a00e556add16595304d7be9bc7d0f19e",
+      "stage": "c0",
+      "stageId": "v0.3.2-luna-c0-001",
+      "status": "scored",
+      "verdict": "inconclusive"
+    },
+    {
+      "arm": "chronorift-full",
+      "attemptOrdinal": 1,
+      "canaryId": "v0.3.2-luna-canary-002",
+      "cellHash": "0f1af3143dcaea887d7e0679d4a5761f655988cc1792eb2654776eebcd0e91e0",
+      "failureCode": "invalid_tool_flow",
+      "fixture": "signal-ordering",
+      "flow": {
+        "capsuleReceiptCount": 0,
+        "comparisonCount": 0,
+        "comparisonReceiptCount": 0,
+        "evidenceReceiptCount": 0,
+        "experimentReceiptCount": 0,
+        "interventionCount": 0,
+        "matchingReplay": false,
+        "rawExecutionReceiptCount": 0,
+        "replayReceiptCount": 0,
+        "sourceReceiptCount": 0
+      },
+      "incorrectConfirmation": false,
+      "mechanismCorrect": null,
+      "metrics": {
+        "gameExecutions": 0,
+        "maxConsecutiveNonProgressToolResults": 0,
+        "tokens": {
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "input": 0,
+          "output": 0,
+          "total": 0
+        },
+        "toolCalls": 0,
+        "toolErrors": 0,
+        "wallTimeMs": 0
+      },
+      "proposalPresent": false,
+      "schemaVersion": 1,
+      "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+      "sessionPersisted": false,
+      "specHash": "244df1f0459443e18d644779bd6eb0f1a00e556add16595304d7be9bc7d0f19e",
+      "stage": "c0",
+      "stageId": "v0.3.2-luna-c0-001",
+      "status": "diagnostic_failure",
+      "verdict": null
+    }
+  ],
+  "finishedAt": "2026-08-05T09:48:04.072Z",
+  "modelReceipt": {
+    "contextWindow": 272000,
+    "mappedThinkingValue": "max",
+    "maxTokens": 128000,
+    "model": "gpt-5.6-luna",
+    "provider": "openai-codex"
+  },
+  "prerequisiteReportHash": null,
+  "readiness": {
+    "reasons": [
+      "generic:failure:invalid_tool_flow",
+      "chronorift-full:failure:invalid_tool_flow"
+    ],
+    "status": "not_ready"
+  },
+  "reportHash": "fe51f478a6ad688a7b3068a1c37fdfd8999850ada09cbc3b660927ad8fc5c345",
+  "schemaVersion": 1,
+  "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+  "spec": {
+    "adapterContract": "benchmark-v3-canary-cell-runner-v1",
+    "budgets": {
+      "maxConsecutiveNonProgressToolResults": 0,
+      "maxGameExecutions": 4,
+      "maxToolCalls": 12,
+      "maxToolErrors": 0,
+      "timeoutMs": 600000
+    },
+    "campaignTarget": "v0.3.2-luna",
+    "canaryId": "v0.3.2-luna-canary-002",
+    "model": {
+      "contextWindow": 272000,
+      "mappedThinkingValue": "max",
+      "maxTokens": 128000,
+      "model": "gpt-5.6-luna",
+      "provider": "openai-codex",
+      "thinkingLevel": "max"
+    },
+    "retryPolicy": { "maxAttemptsPerCell": 1, "providerInternalRetries": 0 },
+    "schemaVersion": 1,
+    "specHash": "244df1f0459443e18d644779bd6eb0f1a00e556add16595304d7be9bc7d0f19e",
+    "stages": [
+      {
+        "arms": ["generic", "evidence-only", "chronorift-full"],
+        "fixture": "signal-ordering",
+        "seed": "chronorift-v0.3.2-luna-canary-c0-1",
+        "stage": "c0",
+        "stageId": "v0.3.2-luna-c0-001"
+      },
+      {
+        "arms": ["generic", "evidence-only", "chronorift-full"],
+        "fixture": "physics-tunneling",
+        "seed": "chronorift-v0.3.2-luna-canary-c1-1",
+        "stage": "c1",
+        "stageId": "v0.3.2-luna-c1-001"
+      }
+    ]
+  },
+  "stage": "c0",
+  "stageId": "v0.3.2-luna-c0-001",
+  "startedAt": "2026-08-05T09:45:43.122Z"
+}

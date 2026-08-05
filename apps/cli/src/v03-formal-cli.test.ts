@@ -23,13 +23,15 @@ describe("formal benchmark CLI", () => {
     ).rejects.toThrow("Unsupported benchmark campaign");
   });
 
-  it("lists the isolated Luna r1 and r2 campaigns in CLI help", async () => {
+  it("lists the isolated Luna r1, r2, and r3 campaigns in CLI help", async () => {
     const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
     try {
       await main(["help"]);
       expect(
         write.mock.calls.map(([chunk]) => String(chunk)).join(""),
-      ).toContain("v0.3.1|v0.3.1-r2|v0.3.2-luna|v0.3.2-luna-r1|v0.3.2-luna-r2");
+      ).toContain(
+        "v0.3.1|v0.3.1-r2|v0.3.2-luna|v0.3.2-luna-r1|v0.3.2-luna-r2|v0.3.2-luna-r3",
+      );
     } finally {
       write.mockRestore();
     }

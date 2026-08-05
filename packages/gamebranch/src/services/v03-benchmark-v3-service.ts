@@ -526,6 +526,7 @@ const assertFailureBriefReceiptBindingV3 = (
     receipt.resourceId !== manifest.caseEvidence.capsule.capsuleId ||
     receipt.contentHash !== manifest.promptAudit.failureBriefHash ||
     (manifest.terminalStatus === "completed" &&
+      manifest.verdict.status === "confirmed" &&
       !manifest.proposal.accessReceiptIds.includes(receipt.receiptId))
   ) {
     throw new Error("Benchmark V3 Failure Brief receipt binding is invalid");
@@ -617,23 +618,40 @@ const assertCompletedManifestReferencesV3 = (
     citedReceipts.some(
       (receipt) => receipt.accessKind === kind && receipt.resourceId === id,
     );
+  const coverageGaps: {
+    readonly blocker: string;
+    readonly integrityError: string;
+  }[] = [];
   if (!covers("failure_brief", proposal.capsuleId)) {
-    throw new Error("Benchmark V3 Failure Brief receipt is missing");
+    coverageGaps.push({
+      blocker:
+        "The initial Failure Brief is not covered by a referenced receipt",
+      integrityError: "Benchmark V3 Failure Brief receipt is missing",
+    });
   }
   if (
     proposal.replayExecutionId !== undefined &&
     !covers("replay", proposal.replayExecutionId)
   ) {
-    throw new Error("Benchmark V3 replay receipt is missing");
+    coverageGaps.push({
+      blocker: "The cited replay is not covered by a referenced receipt",
+      integrityError: "Benchmark V3 replay receipt is missing",
+    });
   }
   for (const candidateId of proposal.candidateExecutionIds) {
     if (!covers("experiment", candidateId)) {
-      throw new Error("Benchmark V3 candidate receipt is missing");
+      coverageGaps.push({
+        blocker: `Candidate execution ${candidateId} is not covered by a referenced experiment receipt`,
+        integrityError: "Benchmark V3 candidate receipt is missing",
+      });
     }
   }
   for (const comparisonId of proposal.comparisonIds) {
     if (!covers("comparison", comparisonId)) {
-      throw new Error("Benchmark V3 comparison receipt is missing");
+      coverageGaps.push({
+        blocker: `Comparison ${comparisonId} is not covered by a referenced comparison receipt`,
+        integrityError: "Benchmark V3 comparison receipt is missing",
+      });
     }
   }
   if (
@@ -643,7 +661,21 @@ const assertCompletedManifestReferencesV3 = (
     !covers("raw_execution", proposal.baselineExecutionId) &&
     !covers("capsule", proposal.capsuleId)
   ) {
-    throw new Error("Benchmark V3 cited Capsule events lack receipt coverage");
+    coverageGaps.push({
+      blocker: "Cited baseline events are not covered by a referenced receipt",
+      integrityError: "Benchmark V3 cited Capsule events lack receipt coverage",
+    });
+  }
+  if (manifest.verdict.status === "confirmed") {
+    const gap = coverageGaps[0];
+    if (gap !== undefined) throw new Error(gap.integrityError);
+    return;
+  }
+  const verdictBlockers = new Set(manifest.verdict.blockers);
+  if (coverageGaps.some((gap) => !verdictBlockers.has(gap.blocker))) {
+    throw new Error(
+      "Benchmark V3 inconclusive receipt coverage blockers are incomplete",
+    );
   }
 };
 
@@ -1291,27 +1323,6 @@ export function assertBenchmarkCellScoringProofV3Integrity(
     citedReceipts.some(
       (receipt) => receipt.accessKind === kind && receipt.resourceId === id,
     );
-  if (!covers("failure_brief", proposal.capsuleId)) {
-    throw new Error(
-      "Benchmark V3 scoring proof lacks the Failure Brief receipt",
-    );
-  }
-  if (
-    proposal.replayExecutionId !== null &&
-    !covers("replay", proposal.replayExecutionId)
-  ) {
-    throw new Error("Benchmark V3 scoring proof lacks its replay receipt");
-  }
-  if (
-    proposal.candidateExecutionIds.some(
-      (candidateId) => !covers("experiment", candidateId),
-    ) ||
-    proposal.comparisonIds.some(
-      (comparisonId) => !covers("comparison", comparisonId),
-    )
-  ) {
-    throw new Error("Benchmark V3 scoring proof lacks experiment receipts");
-  }
   if (
     verdict.proposalId !== proposal.proposalId ||
     verdict.runId !== proposal.runId ||
@@ -1323,6 +1334,40 @@ export function assertBenchmarkCellScoringProofV3Integrity(
     throw new Error("Benchmark V3 scoring proof verdict is invalid");
   }
   if (verdict.status === "confirmed") {
+    if (!covers("failure_brief", proposal.capsuleId)) {
+      throw new Error(
+        "Benchmark V3 scoring proof lacks the Failure Brief receipt",
+      );
+    }
+    if (
+      proposal.replayExecutionId !== null &&
+      !covers("replay", proposal.replayExecutionId)
+    ) {
+      throw new Error("Benchmark V3 scoring proof lacks its replay receipt");
+    }
+    if (
+      proposal.candidateExecutionIds.some(
+        (candidateId) => !covers("experiment", candidateId),
+      ) ||
+      proposal.comparisonIds.some(
+        (comparisonId) => !covers("comparison", comparisonId),
+      )
+    ) {
+      throw new Error("Benchmark V3 scoring proof lacks experiment receipts");
+    }
+    if (
+      proposal.evidenceEventIds.some((eventId) =>
+        evidence.capsule.causalEvents.some(
+          (event) => event.eventId === eventId,
+        ),
+      ) &&
+      !covers("raw_execution", proposal.baselineExecutionId) &&
+      !covers("capsule", proposal.capsuleId)
+    ) {
+      throw new Error(
+        "Benchmark V3 scoring proof lacks baseline event receipt coverage",
+      );
+    }
     const passingCandidates = evidence.candidates.filter(
       (candidate) => candidate.evaluationStatus === "pass",
     );

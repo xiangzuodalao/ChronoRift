@@ -51,38 +51,42 @@ const fixtures: readonly BenchmarkFixtureSpecV3[] = mechanisms.map(
     aliasMapHash: hash,
   }),
 );
-const suiteForCampaign = (
-  campaignId: "v0.3.2-luna" | "v0.3.2-luna-r1" | "v0.3.2-luna-r2",
-) => {
-  const isR1 = campaignId === "v0.3.2-luna-r1";
-  const isR2 = campaignId === "v0.3.2-luna-r2";
+const campaignById = {
+  "v0.3.2-luna": {
+    campaignId: "v0.3.2-luna",
+    freezeTag: "v0.3.2-luna-benchmark-freeze",
+  },
+  "v0.3.2-luna-r1": {
+    campaignId: "v0.3.2-luna-r1",
+    freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+  },
+  "v0.3.2-luna-r2": {
+    campaignId: "v0.3.2-luna-r2",
+    freezeTag: "v0.3.2-luna-r2-benchmark-freeze",
+  },
+  "v0.3.2-luna-r3": {
+    campaignId: "v0.3.2-luna-r3",
+    freezeTag: "v0.3.2-luna-r3-benchmark-freeze",
+  },
+} as const;
+const orderSeedByCampaign = {
+  "v0.3.2-luna": "chronorift-v0.3.2-luna-formal-1",
+  "v0.3.2-luna-r1": "chronorift-v0.3.2-luna-r1-formal-1",
+  "v0.3.2-luna-r2": "chronorift-v0.3.2-luna-r2-formal-1",
+  "v0.3.2-luna-r3": "chronorift-v0.3.2-luna-r3-formal-1",
+} as const;
+
+const suiteForCampaign = (campaignId: keyof typeof campaignById) => {
   return createBenchmarkSuiteSpecV3({
     schemaVersion: 3,
-    campaign: isR2
-      ? {
-          campaignId: "v0.3.2-luna-r2",
-          freezeTag: "v0.3.2-luna-r2-benchmark-freeze",
-        }
-      : isR1
-        ? {
-            campaignId: "v0.3.2-luna-r1",
-            freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
-          }
-        : {
-            campaignId: "v0.3.2-luna",
-            freezeTag: "v0.3.2-luna-benchmark-freeze",
-          },
+    campaign: campaignById[campaignId],
     subjectHash: hash,
     runnerHash: "b".repeat(64),
     metricSet: "grounded-diagnosis-v3",
     fixtures,
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: isR2
-      ? "chronorift-v0.3.2-luna-r2-formal-1"
-      : isR1
-        ? "chronorift-v0.3.2-luna-r1-formal-1"
-        : "chronorift-v0.3.2-luna-formal-1",
+    orderSeed: orderSeedByCampaign[campaignId],
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "openai-codex",
     model: "gpt-5.6-luna",
@@ -134,6 +138,7 @@ const suiteForCampaign = (
 const suite = suiteForCampaign("v0.3.2-luna");
 const r1Suite = suiteForCampaign("v0.3.2-luna-r1");
 const r2Suite = suiteForCampaign("v0.3.2-luna-r2");
+const r3Suite = suiteForCampaign("v0.3.2-luna-r3");
 const executionId = asBenchmarkExecutionId("benchmark-execution:v3-publish");
 const report = buildBenchmarkReportV3({
   suite,
@@ -226,6 +231,27 @@ describe("formal benchmark V3 publication", () => {
     );
     expect(() =>
       assertPublicationOutputScopeV3(cwd, r1Output, "", r2Suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r2",
+    );
+  });
+
+  it("isolates Luna r3 publication from every earlier evidence directory", () => {
+    const cwd = "/workspace/chronorift";
+    const r2Output = join(cwd, "docs", "benchmarks", "v0.3.2-luna-r2");
+    const r3Output = join(cwd, "docs", "benchmarks", "v0.3.2-luna-r3");
+    const r3Status = `?? docs/benchmarks/v0.3.2-luna-r3/${FORMAL_REPORT_FILENAME_V3}\n`;
+
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r3Output, r3Status, r3Suite),
+    ).not.toThrow();
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r2Output, "", r3Suite),
+    ).toThrow(
+      "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r3",
+    );
+    expect(() =>
+      assertPublicationOutputScopeV3(cwd, r3Output, "", r2Suite),
     ).toThrow(
       "Formal V3 publication output must be docs/benchmarks/v0.3.2-luna-r2",
     );

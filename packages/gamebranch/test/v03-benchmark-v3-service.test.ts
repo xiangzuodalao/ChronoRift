@@ -31,6 +31,7 @@ import {
   type BenchmarkCellScoringProofV3,
   type BenchmarkInfrastructureFailureV3,
   type BenchmarkProvenanceV3,
+  type BenchmarkRawAttemptManifestV3,
   type BenchmarkSuiteSpecV3,
   type EvidenceAccessReceiptV1,
   type JsonValue,
@@ -57,6 +58,11 @@ import {
   canonicalStringify,
 } from "../src/index.js";
 
+type CompletedBenchmarkRawAttemptManifestV3 = Extract<
+  BenchmarkRawAttemptManifestV3,
+  { readonly terminalStatus: "completed" }
+>;
+
 const hash = (character: string): string => character.repeat(64);
 const hashJson = (value: unknown): string =>
   createHash("sha256")
@@ -70,20 +76,27 @@ const mechanisms = [
 ] as const satisfies readonly Exclude<MechanismCodeV2, "unknown">[];
 
 const suite = (
-  campaignId: "v0.3.2-luna" | "v0.3.2-luna-r1" = "v0.3.2-luna",
+  campaignId:
+    "v0.3.2-luna" | "v0.3.2-luna-r1" | "v0.3.2-luna-r2" = "v0.3.2-luna",
 ): BenchmarkSuiteSpecV3 => {
   const isR1 = campaignId === "v0.3.2-luna-r1";
+  const isR2 = campaignId === "v0.3.2-luna-r2";
   return createBenchmarkSuiteSpecV3({
     schemaVersion: 3,
-    campaign: isR1
+    campaign: isR2
       ? {
-          campaignId: "v0.3.2-luna-r1",
-          freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+          campaignId: "v0.3.2-luna-r2",
+          freezeTag: "v0.3.2-luna-r2-benchmark-freeze",
         }
-      : {
-          campaignId: "v0.3.2-luna",
-          freezeTag: "v0.3.2-luna-benchmark-freeze",
-        },
+      : isR1
+        ? {
+            campaignId: "v0.3.2-luna-r1",
+            freezeTag: "v0.3.2-luna-r1-benchmark-freeze",
+          }
+        : {
+            campaignId: "v0.3.2-luna",
+            freezeTag: "v0.3.2-luna-benchmark-freeze",
+          },
     subjectHash: hash("a"),
     runnerHash: hash("b"),
     metricSet: "grounded-diagnosis-v3",
@@ -102,9 +115,11 @@ const suite = (
     })),
     arms: ["generic", "evidence-only", "chronorift-full"],
     repetitions: 3,
-    orderSeed: isR1
-      ? "chronorift-v0.3.2-luna-r1-formal-1"
-      : "chronorift-v0.3.2-luna-formal-1",
+    orderSeed: isR2
+      ? "chronorift-v0.3.2-luna-r2-formal-1"
+      : isR1
+        ? "chronorift-v0.3.2-luna-r1-formal-1"
+        : "chronorift-v0.3.2-luna-formal-1",
     orderStrategy: "block_randomized_by_fixture_repetition",
     provider: "openai-codex",
     model: "gpt-5.6-luna",
@@ -206,8 +221,13 @@ const progress = (
   proposalSubmitted: overrides.proposalSubmitted ?? true,
 });
 
-const completedRawAttempt = (spec: BenchmarkSuiteSpecV3) => {
-  const ordered = benchmarkCellOrderV3(spec)[0]!;
+const completedRawAttempt = (
+  spec: BenchmarkSuiteSpecV3,
+  ordered = benchmarkCellOrderV3(spec)[0]!,
+): {
+  readonly attempt: BenchmarkCellAttemptV3;
+  readonly manifest: CompletedBenchmarkRawAttemptManifestV3;
+} => {
   const fixture = spec.fixtures.find(
     (candidate) => candidate.fixtureId === ordered.fixtureId,
   )!;
@@ -413,6 +433,9 @@ const completedRawAttempt = (spec: BenchmarkSuiteSpecV3) => {
       blockers: ["A replay and intervention are required"],
     },
   });
+  if (manifest.terminalStatus !== "completed") {
+    throw new Error("Expected completed test manifest");
+  }
   const attemptBasis: Omit<BenchmarkCellAttemptV3, "attemptHash"> = {
     schemaVersion: 3,
     suiteId: spec.suiteId,
@@ -477,12 +500,14 @@ const evidenceReceipt = (
 
 const attemptBoundToManifest = (
   attempt: BenchmarkCellAttemptV3,
-  manifest: ReturnType<typeof completedRawAttempt>["manifest"],
+  manifest: CompletedBenchmarkRawAttemptManifestV3,
 ): BenchmarkCellAttemptV3 => {
   const { attemptHash: _attemptHash, ...oldBasis } = attempt;
   void _attemptHash;
   const basis = {
     ...oldBasis,
+    progress: manifest.progress,
+    metrics: manifest.metrics,
     outcome: {
       status: "completed" as const,
       rawManifestHash: hashJson(manifest),
@@ -492,6 +517,195 @@ const attemptBoundToManifest = (
     ...basis,
     attemptHash: benchmarkAttemptHashV3(basis),
   });
+};
+
+const r2CoverageOmissionAttempt = (): {
+  readonly spec: BenchmarkSuiteSpecV3;
+  readonly attempt: BenchmarkCellAttemptV3;
+  readonly manifest: CompletedBenchmarkRawAttemptManifestV3;
+} => {
+  const spec = suite("v0.3.2-luna-r2");
+  const fixture = spec.fixtures.find(
+    (candidate) =>
+      candidate.expectedMechanism === "frame_count_used_for_time_window",
+  );
+  if (fixture === undefined) throw new Error("Missing frame-window Fixture");
+  const ordered = benchmarkCellOrderV3(spec).find(
+    (candidate) =>
+      candidate.fixtureId === fixture.fixtureId &&
+      candidate.arm === "generic" &&
+      candidate.repetition === 3,
+  );
+  if (ordered === undefined) throw new Error("Missing Luna r2 target cell");
+  const original = completedRawAttempt(spec, ordered);
+  if (original.manifest.terminalStatus !== "completed") {
+    throw new Error("Expected completed Luna r2 manifest");
+  }
+
+  const replayExecutionId = asExecutionId("execution:r2:replay");
+  const candidateExecutionId = asExecutionId("execution:r2:candidate");
+  const baselineEvent = {
+    eventId: asEventId("event:r2:baseline:window-closed"),
+    role: "state_transition" as const,
+    seq: 0,
+    tick: 9,
+    simTimeUs: 74_997,
+    causedByEventId: null,
+    contentHash: hashJson({ event: "baseline-window-closed" }),
+    kind: "property_changed" as const,
+    path: "player.window_open",
+    before: true,
+    after: false,
+    entity: null,
+  };
+  const candidateEvent = {
+    eventId: asEventId("event:r2:candidate:jumped"),
+    role: "agent_citation" as const,
+    seq: 0,
+    tick: 5,
+    simTimeUs: 83_335,
+    causedByEventId: null,
+    contentHash: hashJson({ event: "candidate-jumped" }),
+    kind: "property_changed" as const,
+    path: "player.jumping",
+    before: false,
+    after: true,
+    entity: null,
+  };
+  const baseline = {
+    ...original.manifest.caseEvidence.baseline,
+    evaluation: {
+      ...original.manifest.caseEvidence.baseline.evaluation,
+      triggerEventId: baselineEvent.eventId,
+    },
+    causalEvents: [baselineEvent],
+  };
+  const replay = {
+    ...baseline,
+    executionId: replayExecutionId,
+    timelineMatchesBaseline: true,
+  };
+  const candidate = {
+    ...baseline,
+    executionId: candidateExecutionId,
+    evaluationStatus: "pass" as const,
+    evaluation: {
+      status: "pass" as const,
+      triggerEventId: candidateEvent.eventId,
+      triggerTick: 5,
+      deadlineTick: 10,
+      satisfiedTick: 5,
+      observed: { present: true as const, value: true },
+    },
+    timelineDigest: hashJson({ executionId: candidateExecutionId }),
+    contentHash: hashJson({ executionId: candidateExecutionId, sealed: true }),
+    finalStateHash: hashJson({ "player.jumping": true }),
+    finalState: { values: { "player.jumping": true } },
+    timelineMatchesBaseline: false,
+    causalEvents: [candidateEvent],
+  };
+  const failureBriefReceipt = original.manifest.accessReceipts[0]!;
+  const rawBaselineReceipt = evidenceReceipt(
+    original.manifest,
+    "raw_execution",
+    original.manifest.proposal.baselineExecutionId,
+    0,
+  );
+  const replayReceipt = evidenceReceipt(
+    original.manifest,
+    "replay",
+    replayExecutionId,
+    1,
+  );
+  const experimentReceipt = evidenceReceipt(
+    original.manifest,
+    "experiment",
+    candidateExecutionId,
+    2,
+  );
+  const sourceReceipt = evidenceReceipt(
+    original.manifest,
+    "source_read",
+    "case/main.gd",
+    3,
+  );
+  const accessReceipts = [
+    failureBriefReceipt,
+    rawBaselineReceipt,
+    replayReceipt,
+    experimentReceipt,
+    sourceReceipt,
+  ];
+  const citedReceiptIds = [
+    failureBriefReceipt.receiptId,
+    replayReceipt.receiptId,
+    experimentReceipt.receiptId,
+    sourceReceipt.receiptId,
+  ];
+  const terminalProgress = progress({
+    tools: {
+      started: 7,
+      completed: 7,
+      failed: 0,
+      semanticRevision: 7,
+    },
+    game: { baselineExecutions: 1, diagnosticExecutions: 2 },
+  });
+  const metrics = {
+    ...original.manifest.metrics,
+    gameExecutions: 3,
+    toolCalls: 7,
+  };
+  const manifest = BenchmarkRawAttemptManifestV3Schema.parse({
+    ...original.manifest,
+    caseEvidence: {
+      ...original.manifest.caseEvidence,
+      capsule: {
+        ...original.manifest.caseEvidence.capsule,
+        evidenceLinks: [
+          { role: baselineEvent.role, eventId: baselineEvent.eventId },
+        ],
+        causalEvents: [baselineEvent],
+      },
+      baseline,
+      replay,
+      candidates: [candidate],
+      comparisons: [],
+      accessReceipts,
+    },
+    progress: terminalProgress,
+    metrics,
+    proposal: {
+      ...original.manifest.proposal,
+      replayExecutionId,
+      candidateExecutionIds: [candidateExecutionId],
+      comparisonIds: [],
+      accessReceiptIds: citedReceiptIds,
+      evidenceEventIds: [baselineEvent.eventId, candidateEvent.eventId],
+      blockers: [],
+      nextExperiment: null,
+      confidence: 0.99,
+    },
+    accessReceipts,
+    verdict: {
+      ...original.manifest.verdict,
+      blockers: [
+        `Candidate execution ${candidateExecutionId} has no Agent-cited comparison`,
+        "No comparable single-variable intervention changed fail to pass",
+        "Proposal cites an event outside the validated investigation",
+        "Cited baseline events are not covered by a referenced receipt",
+        "Evidence does not validate the proposed mechanism",
+      ],
+    },
+  });
+  if (manifest.terminalStatus !== "completed") {
+    throw new Error("Expected completed Luna r2 manifest");
+  }
+  return {
+    spec,
+    manifest,
+    attempt: attemptBoundToManifest(original.attempt, manifest),
+  };
 };
 
 const scoringProofFor = (
@@ -868,7 +1082,8 @@ const scoringProofFor = (
     candidateControls,
   );
   const receipt = (
-    accessKind: "failure_brief" | "replay" | "experiment" | "comparison",
+    accessKind:
+      "failure_brief" | "capsule" | "replay" | "experiment" | "comparison",
     resourceId: string,
   ) => {
     const basis = {
@@ -901,6 +1116,7 @@ const scoringProofFor = (
     receipt("failure_brief", capsuleId),
     ...(confirmed
       ? [
+          receipt("capsule", capsuleId),
           receipt("replay", replayId),
           receipt("experiment", candidateId),
           receipt("comparison", comparisonId),
@@ -1510,6 +1726,98 @@ describe("Benchmark V3 semantics", () => {
         modelClaim: "trusted",
       }).success,
     ).toBe(false);
+  });
+
+  it("seals the Luna r2 inconclusive manifest when only receipt coverage is omitted", () => {
+    const { spec, attempt, manifest } = r2CoverageOmissionAttempt();
+    const citedReceipts = new Set(manifest.proposal.accessReceiptIds);
+    expect(
+      manifest.accessReceipts.some(
+        (receipt) =>
+          receipt.accessKind === "raw_execution" &&
+          receipt.resourceId === manifest.proposal.baselineExecutionId,
+      ),
+    ).toBe(true);
+    expect(
+      manifest.accessReceipts.some(
+        (receipt) =>
+          citedReceipts.has(receipt.receiptId) &&
+          ((receipt.accessKind === "raw_execution" &&
+            receipt.resourceId === manifest.proposal.baselineExecutionId) ||
+            (receipt.accessKind === "capsule" &&
+              receipt.resourceId === manifest.proposal.capsuleId)),
+      ),
+    ).toBe(false);
+
+    expect(
+      assertBenchmarkRawAttemptManifestV3Integrity({
+        suite: spec,
+        attempt,
+        manifest,
+      }).score,
+    ).toMatchObject({
+      mechanismCorrect: true,
+      verdict: "inconclusive",
+      groundedSuccess: false,
+      incorrectConfirmation: false,
+    });
+  });
+
+  it("rejects deletion or replacement of the Luna r2 coverage blocker", () => {
+    const original = r2CoverageOmissionAttempt();
+    const coverageBlocker =
+      "Cited baseline events are not covered by a referenced receipt";
+    const blockerVariants = [
+      original.manifest.verdict.blockers.filter(
+        (blocker) => blocker !== coverageBlocker,
+      ),
+      original.manifest.verdict.blockers.map((blocker) =>
+        blocker === coverageBlocker
+          ? "An unrelated blocker cannot attest the coverage gap"
+          : blocker,
+      ),
+    ];
+
+    for (const blockers of blockerVariants) {
+      const manifest = BenchmarkRawAttemptManifestV3Schema.parse({
+        ...original.manifest,
+        verdict: { ...original.manifest.verdict, blockers },
+      });
+      if (manifest.terminalStatus !== "completed") {
+        throw new Error("Expected completed Luna r2 manifest");
+      }
+      expect(() =>
+        assertBenchmarkRawAttemptManifestV3Integrity({
+          suite: original.spec,
+          attempt: attemptBoundToManifest(original.attempt, manifest),
+          manifest,
+        }),
+      ).toThrow("inconclusive receipt coverage blockers are incomplete");
+    }
+  });
+
+  it("rejects a forged confirmed Luna r2 manifest without baseline receipt coverage", () => {
+    const original = r2CoverageOmissionAttempt();
+    const manifest = BenchmarkRawAttemptManifestV3Schema.parse({
+      ...original.manifest,
+      verdict: {
+        ...original.manifest.verdict,
+        status: "confirmed",
+        summary: `Harness evidence confirms ${original.manifest.proposal.mechanismCode}`,
+        blockers: [],
+      },
+    });
+    if (manifest.terminalStatus !== "completed") {
+      throw new Error("Expected completed Luna r2 manifest");
+    }
+
+    expect(() =>
+      assertBenchmarkRawAttemptManifestV3Integrity({
+        suite: original.spec,
+        attempt: attemptBoundToManifest(original.attempt, manifest),
+        manifest,
+      }),
+    ).toThrow("cited Capsule events lack receipt coverage");
   });
 
   it("binds every suite-frozen material hash and the delivered Failure Brief", () => {

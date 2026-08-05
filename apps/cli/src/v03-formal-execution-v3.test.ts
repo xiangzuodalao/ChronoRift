@@ -31,6 +31,7 @@ import {
   benchmarkCellOrderV3,
   createBenchmarkSuiteSpecV3,
   scoreBenchmarkDiagnosisV3,
+  verifyBenchmarkReportV3,
 } from "@chronorift/gamebranch";
 import {
   V03BenchmarkJsonArtifactRepositoryV3,
@@ -421,6 +422,69 @@ const success = (
   };
 };
 
+const successWithUncitedBaselineReceipt = (
+  executionId: BenchmarkExecutionId,
+  cell: FormalBenchmarkCellV3,
+  ordinal: number,
+): Extract<
+  FormalBenchmarkAttemptResultV3,
+  { readonly status: "completed" }
+> => {
+  const completed = success(executionId, cell, ordinal);
+  const manifest = BenchmarkRawAttemptManifestV3Schema.parse(
+    completed.rawManifest,
+  );
+  if (manifest.terminalStatus !== "completed") {
+    throw new Error("Expected a completed raw manifest");
+  }
+  const eventId = manifest.caseEvidence.baseline.evaluation.triggerEventId;
+  const citedEvent = {
+    eventId,
+    role: "trigger" as const,
+    seq: 0,
+    tick: 0,
+    simTimeUs: 0,
+    causedByEventId: null,
+    contentHash: hash,
+    kind: "input" as const,
+    action: "activate",
+    target: "switch",
+    requestedTick: 0,
+    realizedTick: 0,
+  };
+  const caseEvidence = {
+    ...manifest.caseEvidence,
+    capsule: {
+      ...manifest.caseEvidence.capsule,
+      evidenceLinks: [{ role: "trigger" as const, eventId }],
+      causalEvents: [citedEvent],
+    },
+    baseline: {
+      ...manifest.caseEvidence.baseline,
+      causalEvents: [citedEvent],
+    },
+  };
+  const rawManifest = BenchmarkRawAttemptManifestV3Schema.parse({
+    ...manifest,
+    caseEvidence,
+    proposal: {
+      ...manifest.proposal,
+      evidenceEventIds: [eventId],
+    },
+    verdict: {
+      ...manifest.verdict,
+      blockers: [
+        ...manifest.verdict.blockers,
+        "Cited baseline events are not covered by a referenced receipt",
+      ],
+    },
+  });
+  return {
+    ...completed,
+    rawManifest: rawManifest as unknown as JsonValue,
+  };
+};
+
 const invalidProposalFailure = (
   executionId: BenchmarkExecutionId,
   cell: FormalBenchmarkCellV3,
@@ -554,6 +618,58 @@ const executionOptions = (
 });
 
 describe("executeFormalBenchmarkV3", () => {
+  it("keeps an r2-shaped receipt omission inconclusive and runs all 36 cells", async () => {
+    const artifactRepository = await repository();
+    const executionId = asBenchmarkExecutionId(
+      "benchmark-execution:v3-receipt-gap",
+    );
+    const target = benchmarkCellOrderV3(suite)[4]!.cellId;
+    let calls = 0;
+    const result = await executeFormalBenchmarkV3(
+      executionOptions(
+        artifactRepository,
+        executionId,
+        clock(),
+        async (cell, ordinal) => {
+          calls += 1;
+          return cell.cellId === target
+            ? successWithUncitedBaselineReceipt(executionId, cell, ordinal)
+            : success(executionId, cell, ordinal);
+        },
+      ),
+    );
+
+    expect(calls).toBe(36);
+    expect(result.recoverable).toBe(false);
+    expect(result.report.status).toBe("complete");
+    expect(result.report.cells).toHaveLength(36);
+    expect(result.report.aggregate).not.toBeNull();
+    expect(verifyBenchmarkReportV3(result.report)).toMatchObject({
+      valid: true,
+      issues: [],
+    });
+    expect(
+      result.report.cells.find((cell) => cell.cellId === target),
+    ).toMatchObject({
+      status: "scored",
+      terminalCode: null,
+      score: {
+        mechanismCorrect: true,
+        verdict: "inconclusive",
+        groundedSuccess: false,
+      },
+    });
+    expect(
+      result.report.scoringProofs.find((proof) => proof.cellId === target),
+    ).toMatchObject({
+      proofKind: "scored",
+      verdict: { status: "inconclusive" },
+    });
+    await expect(
+      artifactRepository.getCompletedV3(suite.definitionId, executionId),
+    ).resolves.toEqual(result.report);
+  }, 20_000);
+
   it("runs three initial transient attempts, then one recovery cycle, and stops at six", async () => {
     const artifactRepository = await repository();
     const executionId = asBenchmarkExecutionId("benchmark-execution:v3-retry");

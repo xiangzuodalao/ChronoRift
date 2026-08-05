@@ -4,6 +4,7 @@ import {
   V032_LUNA_CAMPAIGN,
   V032_LUNA_R1_CAMPAIGN,
   V032_LUNA_R2_CAMPAIGN,
+  V032_LUNA_R3_CAMPAIGN,
   formalCampaignForIdV3,
 } from "./v03-formal-suite.js";
 
@@ -17,11 +18,18 @@ describe("formal Benchmark V3 campaign descriptors", () => {
       evidenceDirectory: "docs/benchmarks/v0.3.2-luna-r2",
       orderSeed: "chronorift-v0.3.2-luna-r2-formal-1",
     });
+    expect(formalCampaignForIdV3("v0.3.2-luna-r3")).toEqual({
+      campaignId: "v0.3.2-luna-r3",
+      freezeTag: "v0.3.2-luna-r3-benchmark-freeze",
+      evidenceDirectory: "docs/benchmarks/v0.3.2-luna-r3",
+      orderSeed: "chronorift-v0.3.2-luna-r3-formal-1",
+    });
 
     const descriptors = [
       V032_LUNA_CAMPAIGN,
       V032_LUNA_R1_CAMPAIGN,
       V032_LUNA_R2_CAMPAIGN,
+      V032_LUNA_R3_CAMPAIGN,
     ];
     expect(new Set(descriptors.map(({ campaignId }) => campaignId)).size).toBe(
       descriptors.length,

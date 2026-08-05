@@ -722,7 +722,8 @@ async function buildFormalSpecCommand(
     campaign !== "v0.3.1-r2" &&
     campaign !== "v0.3.2-luna" &&
     campaign !== "v0.3.2-luna-r1" &&
-    campaign !== "v0.3.2-luna-r2"
+    campaign !== "v0.3.2-luna-r2" &&
+    campaign !== "v0.3.2-luna-r3"
   ) {
     throw new Error(`Unsupported benchmark campaign: ${campaign}`);
   }
@@ -739,7 +740,8 @@ async function buildFormalSpecCommand(
   printJson(
     campaign === "v0.3.2-luna" ||
       campaign === "v0.3.2-luna-r1" ||
-      campaign === "v0.3.2-luna-r2"
+      campaign === "v0.3.2-luna-r2" ||
+      campaign === "v0.3.2-luna-r3"
       ? await buildFormalBenchmarkSuiteSpecV3({
           ...commonOptions,
           campaign,
@@ -1033,7 +1035,7 @@ function printHelp(): void {
     `  pnpm benchmark:formal -- --spec PATH [--resume EXECUTION_ID]\n`,
   );
   process.stdout.write(
-    `  pnpm benchmark:spec [-- --campaign v0.3.1|v0.3.1-r2|v0.3.2-luna|v0.3.2-luna-r1|v0.3.2-luna-r2 --godot-bin PATH]\n`,
+    `  pnpm benchmark:spec [-- --campaign v0.3.1|v0.3.1-r2|v0.3.2-luna|v0.3.2-luna-r1|v0.3.2-luna-r2|v0.3.2-luna-r3 --godot-bin PATH]\n`,
   );
   process.stdout.write(`  pnpm benchmark:status [-- --spec PATH]\n`);
   process.stdout.write(

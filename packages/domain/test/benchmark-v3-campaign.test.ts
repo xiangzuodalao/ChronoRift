@@ -112,6 +112,22 @@ const r2Provenance = {
   platform: "linux",
 } as const;
 
+const r3Suite = {
+  ...r2Suite,
+  suiteId: "benchmark-suite:r3",
+  definitionId: "benchmark-definition:r3",
+  campaign: {
+    campaignId: "v0.3.2-luna-r3",
+    freezeTag: "v0.3.2-luna-r3-benchmark-freeze",
+  },
+  orderSeed: "chronorift-v0.3.2-luna-r3-formal-1",
+} as const;
+
+const r3Provenance = {
+  ...r2Provenance,
+  freezeTag: "v0.3.2-luna-r3-benchmark-freeze",
+} as const;
+
 describe("Benchmark V3 campaign identity", () => {
   it("accepts the isolated Luna r2 campaign, freeze tag, and order seed", () => {
     expect(BenchmarkSuiteSpecV3Schema.parse(r2Suite)).toMatchObject({
@@ -121,6 +137,52 @@ describe("Benchmark V3 campaign identity", () => {
     expect(BenchmarkProvenanceV3Schema.parse(r2Provenance).freezeTag).toBe(
       "v0.3.2-luna-r2-benchmark-freeze",
     );
+  });
+
+  it("accepts the isolated Luna r3 campaign, freeze tag, and order seed", () => {
+    expect(BenchmarkSuiteSpecV3Schema.parse(r3Suite)).toMatchObject({
+      campaign: r3Suite.campaign,
+      orderSeed: r3Suite.orderSeed,
+    });
+    expect(BenchmarkProvenanceV3Schema.parse(r3Provenance).freezeTag).toBe(
+      "v0.3.2-luna-r3-benchmark-freeze",
+    );
+  });
+
+  it("rejects crossed r3 campaign, tag, seed, and provenance pairings", () => {
+    expect(
+      BenchmarkCampaignV3Schema.safeParse({
+        campaignId: "v0.3.2-luna-r3",
+        freezeTag: "v0.3.2-luna-r2-benchmark-freeze",
+      }).success,
+    ).toBe(false);
+    expect(
+      BenchmarkSuiteSpecV3Schema.safeParse({
+        ...r3Suite,
+        orderSeed: "chronorift-v0.3.2-luna-r2-formal-1",
+      }).success,
+    ).toBe(false);
+    expect(
+      BenchmarkReportV3Schema.safeParse({
+        schemaVersion: 3,
+        suite: r3Suite,
+        executionId: "benchmark-execution:r3",
+        selectionHash: hash,
+        startedAt: "2026-08-06T00:00:00.000Z",
+        finishedAt: "2026-08-06T00:01:00.000Z",
+        provenance: {
+          ...r3Provenance,
+          freezeTag: "v0.3.2-luna-r2-benchmark-freeze",
+        },
+        attempts: [],
+        cells: [],
+        scoringProofs: [],
+        auditIssues: [],
+        status: "invalid",
+        aggregate: null,
+        reportHash: hash,
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects crossed r2 campaign, tag, seed, and provenance pairings", () => {

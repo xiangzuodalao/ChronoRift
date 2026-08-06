@@ -840,32 +840,22 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         );
         if (terminalReason !== undefined) return;
         await runtime.scope.attach(runtime.session.pid);
-        await runtime.scope.verifyAttached(
-          runtime.session.identity.namespacePids,
-        );
+        await runtime.scope.verifyAttached(runtime.session.pid);
         if (terminalReason !== undefined) return;
         await runtime.session.launch({
           executable: plan.executable,
           args: plan.args,
         });
-        const childIdentity = await runtime.session.waitForChildStarted();
+        const childPid = await runtime.session.waitForChildStarted();
         if (terminalReason !== undefined) return;
-        const statusReceipt = await runtime.session.waitForSandboxStatus();
-        if (
-          statusReceipt.document["child-pid"] !==
-          statusReceipt.childIdentity.pid
-        ) {
+        const status = await runtime.session.waitForSandboxStatus();
+        if (status["child-pid"] !== childPid) {
           throw new M1Error(
             "sandbox_launch_failed",
-            "bubblewrap status child-pid does not match its process identity",
+            "bubblewrap status child-pid does not match the launched child",
           );
         }
-        await Promise.all([
-          runtime.scope.verifyAttached(childIdentity.namespacePids),
-          runtime.scope.verifyAttached(
-            statusReceipt.childIdentity.namespacePids,
-          ),
-        ]);
+        await runtime.scope.verifyAttached(childPid);
         if (terminalReason !== undefined) return;
         await runtime.session.authorize();
       } catch (error) {

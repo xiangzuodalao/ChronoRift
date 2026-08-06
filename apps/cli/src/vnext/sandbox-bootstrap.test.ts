@@ -50,7 +50,7 @@ describe("sandbox bootstrap", () => {
       args: ["-e", blockedChildSource, marker],
     });
     const status = await session.waitForSandboxStatus();
-    expect(typeof status.document["child-pid"]).toBe("number");
+    expect(typeof status["child-pid"]).toBe("number");
     await expect(readFile(marker, "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -102,7 +102,7 @@ describe("sandbox bootstrap", () => {
       args: ["-e", fragmentedStatusChildSource, marker],
     });
     const status = await session.waitForSandboxStatus();
-    expect(typeof status.document["child-pid"]).toBe("number");
+    expect(typeof status["child-pid"]).toBe("number");
     await expect(readFile(marker, "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });

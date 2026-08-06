@@ -21,7 +21,6 @@ import { createSandboxPolicyV1 } from "./sandbox-policy.js";
 import type {
   SandboxBootstrapLaunchPlan,
   SandboxBootstrapSession,
-  SandboxProcessIdentity,
 } from "./sandbox-bootstrap.js";
 import {
   createBwrapCgroupTaskSandbox,
@@ -120,9 +119,8 @@ class FakeScope implements ExecutionCgroupScope {
     this.populatedValue = true;
   }
 
-  public async verifyAttached(namespacePids: readonly number[]): Promise<void> {
-    const pid = namespacePids.at(-1);
-    this.log.push(`verify:${String(pid)}`);
+  public async verifyAttached(pid: number): Promise<void> {
+    this.log.push(`verify:${pid}`);
     if (pid === 200 && this.rejectChildVerification) {
       throw new Error("child is outside execution cgroup");
     }
@@ -188,19 +186,6 @@ class FakeController implements SandboxBrokerCgroupController {
 
 class FakeBootstrapSession implements SandboxBootstrapSession {
   public readonly pid = 100;
-  public readonly identity: SandboxProcessIdentity = {
-    pid: 100,
-    namespacePids: [100],
-    namespaces: {
-      mnt: "mnt:[1]",
-      pid: "pid:[1]",
-      ipc: "ipc:[1]",
-      uts: "uts:[1]",
-      net: "net:[1]",
-      user: "user:[1]",
-      cgroup: "cgroup:[1]",
-    },
-  };
   public readonly stdout = new PassThrough();
   public readonly stderr = new PassThrough();
   public authorized = false;
@@ -225,30 +210,16 @@ class FakeBootstrapSession implements SandboxBootstrapSession {
     this.log.push("launch");
   }
 
-  public async waitForChildStarted(): Promise<SandboxProcessIdentity> {
+  public async waitForChildStarted(): Promise<number> {
     this.log.push("child_started");
-    return {
-      ...this.identity,
-      pid: 200,
-      namespacePids: [200],
-    };
+    return 200;
   }
 
-  public async waitForSandboxStatus(): Promise<{
-    readonly document: Readonly<Record<string, unknown>>;
-    readonly childIdentity: SandboxProcessIdentity;
-  }> {
+  public async waitForSandboxStatus(): Promise<
+    Readonly<Record<string, unknown>>
+  > {
     this.log.push("status");
-    const documentPid = this.options.statusChildPid ?? 200;
-    const identityPid = 200;
-    return {
-      document: { "child-pid": documentPid },
-      childIdentity: {
-        ...this.identity,
-        pid: identityPid,
-        namespacePids: [identityPid],
-      },
-    };
+    return { "child-pid": this.options.statusChildPid ?? 200 };
   }
 
   public async authorize(): Promise<void> {
@@ -436,7 +407,6 @@ describe("Task-bound sandbox broker", () => {
       "launch",
       "child_started",
       "status",
-      "verify:200",
       "verify:200",
       "authorize",
     ].map((entry) => harness.log.indexOf(entry));

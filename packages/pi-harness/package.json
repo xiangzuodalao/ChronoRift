@@ -1,6 +1,6 @@
 {
   "name": "@chronorift/pi-harness",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -15,6 +15,7 @@
     "test": "vitest run --root ../.. packages/pi-harness/tests --exclude='**/*.live.test.ts'"
   },
   "dependencies": {
+    "@chronorift/agent-protocol": "workspace:*",
     "@chronorift/domain": "workspace:*",
     "@earendil-works/pi-ai": "0.83.0",
     "@earendil-works/pi-coding-agent": "0.83.0",

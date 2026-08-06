@@ -15,6 +15,8 @@ export {
   runPiDiagnosis,
   runV03PiDiagnosis,
   runDeterministicV03PiDiagnosis,
+  runV04PiDiagnosis,
+  runScriptedV04PiDiagnosis,
 } from "./harness.js";
 export {
   createRestrictedSourceAccess,
@@ -62,3 +64,4 @@ export type {
 } from "./types.js";
 export { V03_AGENT_BUDGETS } from "./v03-types.js";
 export type * from "./v03-types.js";
+export type * from "./v04-types.js";

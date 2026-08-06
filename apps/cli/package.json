@@ -1,9 +1,10 @@
 {
   "name": "@chronorift/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "dependencies": {
+    "@chronorift/agent-protocol": "workspace:*",
     "@chronorift/domain": "workspace:*",
     "@chronorift/gamebranch": "workspace:*",
     "@chronorift/godot-adapter": "workspace:*",

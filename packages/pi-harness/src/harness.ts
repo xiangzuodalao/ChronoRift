@@ -13,6 +13,11 @@ import type {
   V03PiDiagnosisRunResult,
   V03PiHarnessOptions,
 } from "./v03-types.js";
+import type {
+  ScriptedV04PiHarnessOptions,
+  V04PiDiagnosisRunResult,
+  V04PiHarnessOptions,
+} from "./v04-types.js";
 
 /** Run a real Pi SDK diagnostic loop. Pi is loaded lazily for offline callers. */
 export async function runPiDiagnosis(
@@ -70,4 +75,24 @@ export async function runDeterministicV03PiDiagnosis(
   const { runDeterministicV03PiDiagnosisWithSdk } =
     await import("./internal/v03-runner.js");
   return runDeterministicV03PiDiagnosisWithSdk(options);
+}
+
+/** Run a real Pi Session/Agent Loop against the SDK-neutral v0.4 API. */
+export async function runV04PiDiagnosis(
+  options: V04PiHarnessOptions,
+): Promise<V04PiDiagnosisRunResult> {
+  const { runV04PiDiagnosisWithSdk } = await import("./internal/v04-runner.js");
+  return runV04PiDiagnosisWithSdk(options);
+}
+
+/**
+ * Run a real Pi Session/Agent Loop with a caller-authored, offline faux-model
+ * script. ChronoRift executes the script but never infers its mechanism.
+ */
+export async function runScriptedV04PiDiagnosis(
+  options: ScriptedV04PiHarnessOptions,
+): Promise<V04PiDiagnosisRunResult> {
+  const { runScriptedV04PiDiagnosisWithSdk } =
+    await import("./internal/v04-runner.js");
+  return runScriptedV04PiDiagnosisWithSdk(options);
 }

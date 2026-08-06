@@ -3,7 +3,8 @@
 ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游戏运行时 Bug 转换成可恢复、
 可干预、可重放、可比较的实验，并由 Harness 根据运行时证据裁决结论，而不是相信模型置信度。
 
-> 当前开发版本：**v0.3.2**。v0.1 Mock 与 v0.2 switch-door 命令继续兼容。最新 r4 在
+> 当前开发版本：**v0.4.0**。v0.4 以独立、并行路径收敛 Harness 核心架构；v0.1 Mock、v0.2
+> switch-door、v0.3 诊断和全部已冻结 benchmark artifact 继续兼容且不被迁移。历史 r4 在
 > `openai-codex/gpt-5.6-luna`、`thinkingLevel=max` 下完成了唯一 36-cell 正式 execution：
 > 30 `scored` + 6 `diagnostic_failure`（5 `invalid_proposal` + 1 `invalid_tool_flow`），36/36 均计入
 > score eligibility。独立 verifier 返回 `issues=[]`，但冻结产品 Gate **失败**：generic / evidence-only /
@@ -25,7 +26,36 @@ ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游�
 边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)；面向简历/面试的事实摘要见
 [v0.3.2 中文作品集](docs/portfolio-v0.3.2.md)。
 
-## v0.3 做到了什么
+## v0.4 当前垂直切片
+
+v0.4 将一次诊断从 Fixture 专用编排提升为通用 `InvestigationSpecV1`，同时继续复用已经验证过的
+Godot Protocol v2 与 v0.3 runtime facts。新路径目前已经实现：
+
+- `FrozenContractBundleV3`：把 Contract scope、冻结 authority、evaluator identity 与 temporal rule
+  绑定到 content-addressed `contract:v3` 身份；
+- `ExecutionFingerprintV2`：把 source/build、runtime、Contract、checkpoint、input、realized controls、
+  intervention、probe 与 telemetry 绑定到每次执行，并单独计算可比较性基准；
+- `InvestigationSpecV1`：以 `investigationId`、intervention catalog 和明确实验预算描述一次调查，
+  Fixture ID 只留在兼容的 v2 runtime 边界；
+- 开放 `ClaimEvidencePolicyRegistry`：mechanism ID 与 strict typed assertion 由注册策略评估；Godot
+  Adapter 提供四种现有机制策略，GameBranch Gate 不再内置 Fixture 分支；排序后的
+  `ClaimPolicyManifestV1` 同时绑定 Investigation 与每个 execution fingerprint，registry 漂移会 fail closed；
+- append-only `ExperimentReservationV1`：在运行实验前持久占用预算，重启 Harness 也不会重置已用
+  intervention 名额；
+- 独立 `@chronorift/agent-protocol`：Agent 用 session-scoped opaque resource handles 引用资源、事件和
+  receipt，并获得显式 capability/budget manifest；manifest 同时公开全部已注册 claim 的字段约束与
+  证据引用义务，但不包含 Fixture 到正确机制的映射或预填值；canonical ID 不能替代 handle 授权，每次
+  读取仍产生 content-addressed receipt；
+- `DiagnosisProposalV4` 与独立 `DiagnosisVerdictV3` Gate：Agent 只提议，Harness 重新解析 assertion、
+  重验 scope、artifact、receipt、fingerprint、replay、comparison 与策略证据；confidence 没有裁决权，
+  未知机制或证据不足都返回 `inconclusive`；
+- `.chronorift/v0.4/runs/<run-id>/` 下的 run-scoped write-once repository；v0.3 artifact 保持原字节。
+
+这仍是受控的四 Fixture 垂直切片，不是完整 Target Architecture。v0.4 尚未实现通用 World Graph、
+重复 replay/完整 Determinism Certificate、Experiment DAG 或边界搜索、自动修复、Git worktree、外部项目
+接入、视觉、多 Agent、容器 sandbox、复杂 artifact 服务或 UI。
+
+## v0.3 已实现的运行时基础
 
 四个 Fixture 分别覆盖游戏调试中不同于普通代码 Agent 的运行时机制：
 
@@ -226,13 +256,14 @@ full − generic 为 0 低于 +0.20；仅“full incorrect confirmations = 0”�
 依赖方向保持为 `domain ← gamebranch ← adapters ← CLI composition root`。
 
 ```text
-apps/cli                         参数解析、v0.3 composition、exploratory/formal benchmark runner
-packages/domain                  engine-neutral ID、DTO、strict Zod schema
-packages/gamebranch              replay、experiment、evidence、compare、Gate、评分
+apps/cli                         参数解析、v0.3/v0.4 composition、exploratory/formal benchmark runner
+packages/domain                  engine-neutral ID、DTO、strict Zod schema、v0.4 investigation facts
+packages/agent-protocol          opaque handle、capability manifest、SDK-neutral Agent API
+packages/gamebranch              replay、experiment、evidence、compare、policy registry、canonical Gate
 packages/godot-protocol          versioned wire DTO、hash、TCP framing
-packages/godot-adapter           Godot 进程、能力协商、Fixture registry、runtime port
-packages/json-artifacts          v0.1 兼容 store + v0.3 run store + append-only benchmark ledger
-packages/pi-harness              真实 Pi Session/Loop、三组受限工具、fake/production model
+packages/godot-adapter           Godot 进程、能力协商、Fixture registry、runtime port、claim policies
+packages/json-artifacts          v0.1 兼容 + v0.3/v0.4 write-once run store + benchmark ledger
+packages/pi-harness              真实 Pi Session/Loop、v0.3/v0.4 受限工具、fake/production model
 packages/mock-game               v0.1 deterministic switch-door Mock
 godot/addons/chronorift           EditorPlugin + ChronoProbe Autoload
 fixtures/godot-*                 四个显式插桩的真实 Godot Fixture
@@ -255,6 +286,16 @@ corepack pnpm godot:doctor
 corepack pnpm fixtures
 
 # 一个真实 Godot Fixture + 真实 Pi Loop + 离线 fake model
+corepack pnpm demo:v04 -- --fixture signal-ordering
+
+# 同一 v0.4 调查 API + 真实 provider
+corepack pnpm diagnose:v04 -- \
+  --fixture signal-ordering \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max
+
+# v0.3 兼容路径
 corepack pnpm demo:v03 -- --fixture signal-ordering
 
 # 离线 deterministic smoke；不声称模型优势
@@ -285,7 +326,7 @@ corepack pnpm pi \
 # 登录后验证用户级凭据可解析的模型目录
 corepack pnpm models -- --provider openai-codex
 
-corepack pnpm diagnose:v03 -- \
+corepack pnpm diagnose:v04 -- \
   --fixture physics-tunneling \
   --provider openai-codex \
   --model gpt-5.6-luna \
@@ -432,8 +473,10 @@ oracle、聚合与 report hash；有效的负面或 incomplete 报告仍可完�
 | --------------------------------- | -------------------------------------- |
 | `corepack pnpm check`             | lint、格式、strict typecheck、离线测试 |
 | `corepack pnpm test:godot`        | 四 Fixture v0.3 + v0.2 兼容集成测试    |
-| `corepack pnpm demo:v03`          | 单 Fixture 离线完整诊断                |
-| `corepack pnpm diagnose:v03`      | 单 Fixture 真实 provider 诊断          |
+| `corepack pnpm demo:v04`          | v0.4 opaque-handle 离线完整诊断        |
+| `corepack pnpm diagnose:v04`      | v0.4 单调查真实 provider 诊断          |
+| `corepack pnpm demo:v03`          | v0.3 单 Fixture 离线兼容诊断           |
+| `corepack pnpm diagnose:v03`      | v0.3 单 Fixture provider 兼容诊断      |
 | `corepack pnpm pi`                | 启动仓库所依赖的 Pi CLI                |
 | `corepack pnpm pi:smoke`          | 正式 Fixture 外的真实 Pi 链路 smoke    |
 | `corepack pnpm benchmark`         | deterministic fake-model smoke         |
@@ -452,7 +495,16 @@ oracle、聚合与 report hash；有效的负面或 incomplete 报告仍可完�
 
 ## Artifact 与可信边界
 
-单次诊断 artifact 位于 `.chronorift/v0.3/runs/<run-id>/`：
+v0.4 单次诊断 artifact 位于 `.chronorift/v0.4/runs/<run-id>/`；v0.3 兼容路径继续写入
+`.chronorift/v0.3/runs/<run-id>/`，两者不会互相迁移或覆盖。v0.4 在稳定的 runtime artifact 之外增加：
+
+```text
+contract-bundles-v3/          execution-fingerprints-v2/
+experiment-reservations-v1/  evidence-access-receipts-v2/
+proposals-v4/                 verdicts-v3/
+```
+
+v0.3 的单次诊断目录结构为：
 
 ```text
 contracts/     checkpoints/   traces/       branches/
@@ -502,14 +554,19 @@ API key 或 credential store。历史 ledger 与
 
 ## 当前限制
 
-v0.3 是四个小型、显式插桩 Fixture 的诊断 benchmark，不是任意 Godot 项目即插即用的 debugger：
+v0.4 仍建立在四个小型、显式插桩 Fixture 上，不是任意 Godot 项目即插即用的 debugger：
 
 - Addon 使用 allowlist 和注册式 property/entity/lifecycle/spatial probe，不声称全局拦截。
 - checkpoint 只恢复注册 participant；physics internals、Timer/Tween/coroutine、线程、未注册 RNG、
   caches、网络和外部服务仍标为 missing state。
-- matching replay 是当前 Fixture 的确认条件，不是完整 Determinism Certificate。
-- 没有自动修复、Git worktree、通用 World Graph、Experiment DAG、视觉、多 Agent、容器 sandbox、
-  复杂 artifact 服务或 UI。
+- matching replay 是当前 Fixture 的确认条件；`ExecutionFingerprintV2` 证明声明维度相同，不等同于
+  重复 replay 或完整 Determinism Certificate。
+- 没有自动修复、Git worktree、通用 World Graph、Experiment DAG、边界搜索、视觉、多 Agent、容器
+  sandbox、复杂 artifact 服务或 UI。
+- `ClaimEvidencePolicyRegistry` 已解除 Gate 对四个 Fixture ID 的硬编码，但默认 Godot 策略仍只覆盖当前
+  四种校准机制；这不是跨游戏的通用因果证明器。
+- v0.4 暂未完成仓库外真实 Godot 项目接入与成本测量，opaque handle 只提供 Session capability 边界，
+  不是 OS 级进程隔离或完整 egress audit。
 - suite 在同一四个 Fixture 上校准，不能用于统计显著性、跨项目泛化或与 Claude Code 的比较。
 - provider 没有 sampling seed；三次 repetition 不是独立、可复现实验随机样本。
 - report verifier 是本地可重算的完整性检查，不是签名、CI attestation 或 provider attestation。

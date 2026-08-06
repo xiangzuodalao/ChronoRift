@@ -72,6 +72,7 @@ import {
 } from "./v01-runtime.js";
 import { createV03Run, type V03RunContext } from "./v03-runtime.js";
 import { createV03NeutralSourceAccess } from "./v03-source-view.js";
+import { runV04Diagnosis, type V04DiagnosisOutput } from "./v04-diagnosis.js";
 import {
   assertCanaryC1Prerequisite,
   buildLunaCanarySpec,
@@ -463,6 +464,61 @@ async function runV03DiagnosisCommand(
   const output = await v03DiagnosisOutput(context, result);
   if (hasFlag(args, "json")) printJson(output);
   else printHumanV03Diagnosis(output);
+}
+
+function printHumanV04Diagnosis(output: V04DiagnosisOutput): void {
+  process.stdout.write(
+    [
+      `ChronoRift v0.4 ${output.fixture}`,
+      `run: ${output.runId}`,
+      `investigation: ${output.investigationId}`,
+      `baseline: ${output.baseline.outcome} (${output.baseline.executionId})`,
+      `verdict: ${output.verdict.status} / ${output.verdict.claimLevel}`,
+      `mechanism: ${output.verdict.mechanismId ?? "unresolved"}`,
+      `artifacts: ${output.runDirectory}`,
+    ].join("\n") + "\n",
+  );
+  if (output.verdict.blockers.length > 0) {
+    process.stdout.write(
+      `blockers:\n${output.verdict.blockers.map((item) => `- ${item}`).join("\n")}\n`,
+    );
+  }
+}
+
+async function runV04DiagnosisCommand(
+  args: Arguments,
+  cwd: string,
+  mode: "scripted" | "live",
+): Promise<void> {
+  assertOnlyFlags(args, [
+    "fixture",
+    "artifacts",
+    "godot-bin",
+    "provider",
+    "model",
+    "thinking",
+    "timeout-ms",
+    "json",
+  ]);
+  const artifactRoot = flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT");
+  const godotBin = flag(args, "godot-bin", "GODOT_BIN");
+  const output = await runV04Diagnosis({
+    cwd,
+    fixture: asV03FixtureName(flag(args, "fixture") ?? "signal-ordering"),
+    mode,
+    ...(artifactRoot === undefined ? {} : { artifactRoot }),
+    ...(godotBin === undefined ? {} : { godotBin }),
+    ...(mode === "live"
+      ? {
+          provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
+          model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
+          thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
+          timeoutMs: positiveIntegerFlag(args, "timeout-ms", 600_000),
+        }
+      : {}),
+  });
+  if (hasFlag(args, "json")) printJson(output);
+  else printHumanV04Diagnosis(output);
 }
 
 async function runBenchmarkCommand(
@@ -995,7 +1051,7 @@ async function persistVolcengineAuthCommand(): Promise<void> {
 }
 
 function printHelp(): void {
-  process.stdout.write(`ChronoRift v0.3.1\n\n`);
+  process.stdout.write(`ChronoRift v0.4.0\n\n`);
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
   );
@@ -1016,6 +1072,12 @@ function printHelp(): void {
   );
   process.stdout.write(
     `  pnpm diagnose:v03 -- --fixture FIXTURE --provider PROVIDER --model MODEL [--thinking LEVEL] [--json]\n`,
+  );
+  process.stdout.write(
+    `  pnpm demo:v04 -- --fixture FIXTURE [--godot-bin PATH] [--json]\n`,
+  );
+  process.stdout.write(
+    `  pnpm diagnose:v04 -- --fixture FIXTURE --provider PROVIDER --model MODEL [--thinking LEVEL] [--timeout-ms MS] [--json]\n`,
   );
   process.stdout.write(
     `  pnpm benchmark [-- --repetitions N --seed SEED --report PATH]\n`,
@@ -1064,6 +1126,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     case "diagnose-v03":
       await runV03DiagnosisCommand(args, cwd, "live");
+      return;
+    case "demo-v04":
+      await runV04DiagnosisCommand(args, cwd, "scripted");
+      return;
+    case "diagnose-v04":
+      await runV04DiagnosisCommand(args, cwd, "live");
       return;
     case "fixtures":
       printJson({ schemaVersion: 1, fixtures: V03_FIXTURE_IDS });

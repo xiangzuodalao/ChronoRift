@@ -50,7 +50,7 @@ describe("committed formal benchmark specification", () => {
     }
   });
 
-  it("keeps the committed V3 Luna r4 specification identical to the implementation", async () => {
+  it("keeps the committed V3 Luna r4 identity frozen while v0.4 evolves in parallel", async () => {
     const cwd = process.cwd();
     const artifactRoot = await mkdtemp(
       join(tmpdir(), "chronorift-formal-spec-v3-r4-"),
@@ -73,7 +73,18 @@ describe("committed formal benchmark specification", () => {
         campaign: "v0.3.2-luna-r4",
       });
 
-      expect(sameFormalSuiteV3(committed, rebuilt)).toBe(true);
+      expect(sameFormalSuiteV3(committed, rebuilt)).toBe(false);
+      expect(committed.definitionId).toBe(
+        "benchmark-definition:61a0cf9b8240945d61d8c614baf91f2e8da440794a33ca8dee657cd78552210f",
+      );
+      expect(committed.subjectHash).toBe(
+        "314958f7037241fbdb0a4c02f9b7e5bf617f7e1fd4eccd253449e18843e9066a",
+      );
+      expect(committed.runnerHash).toBe(
+        "87a0d0351e981c41fda51ad5c1f48c3a1612424c7ae2a14a85c935ae6d1edcf0",
+      );
+      expect(rebuilt.subjectHash).not.toBe(committed.subjectHash);
+      expect(rebuilt.runnerHash).not.toBe(committed.runnerHash);
       expect(committed.campaign).toEqual({
         campaignId: "v0.3.2-luna-r4",
         freezeTag: "v0.3.2-luna-r4-benchmark-freeze",

@@ -19,3 +19,4 @@ export * from "./telemetry.js";
 export * from "./time.js";
 export * from "./timeline.js";
 export * from "./v03.js";
+export * from "./v04.js";

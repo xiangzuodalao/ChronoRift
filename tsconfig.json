@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/domain" },
+    { "path": "./packages/agent-protocol" },
     { "path": "./packages/godot-protocol" },
     { "path": "./packages/godot-adapter" },
     { "path": "./packages/gamebranch" },

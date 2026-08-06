@@ -32,6 +32,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@chronorift/agent-protocol':
+        specifier: workspace:*
+        version: link:../../packages/agent-protocol
       '@chronorift/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -50,6 +53,15 @@ importers:
       '@chronorift/pi-harness':
         specifier: workspace:*
         version: link:../../packages/pi-harness
+
+  packages/agent-protocol:
+    dependencies:
+      '@chronorift/domain':
+        specifier: workspace:*
+        version: link:../domain
+      typebox:
+        specifier: 1.3.7
+        version: 1.3.7
 
   packages/domain:
     dependencies:
@@ -104,6 +116,9 @@ importers:
 
   packages/pi-harness:
     dependencies:
+      '@chronorift/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
       '@chronorift/domain':
         specifier: workspace:*
         version: link:../domain

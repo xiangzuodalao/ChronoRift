@@ -29,6 +29,9 @@ export type BenchmarkExecutionId = Id<"BenchmarkExecutionId">;
 export type BenchmarkCellId = Id<"BenchmarkCellId">;
 export type BenchmarkAttemptId = Id<"BenchmarkAttemptId">;
 export type EvidenceAccessReceiptId = Id<"EvidenceAccessReceiptId">;
+export type InvestigationId = Id<"InvestigationId">;
+export type ClaimPolicyId = Id<"ClaimPolicyId">;
+export type ExperimentReservationId = Id<"ExperimentReservationId">;
 
 const idSchema = <T extends string>(): z.ZodType<Id<T>> =>
   z.string().min(1) as unknown as z.ZodType<Id<T>>;
@@ -58,6 +61,10 @@ export const BenchmarkCellIdSchema = idSchema<"BenchmarkCellId">();
 export const BenchmarkAttemptIdSchema = idSchema<"BenchmarkAttemptId">();
 export const EvidenceAccessReceiptIdSchema =
   idSchema<"EvidenceAccessReceiptId">();
+export const InvestigationIdSchema = idSchema<"InvestigationId">();
+export const ClaimPolicyIdSchema = idSchema<"ClaimPolicyId">();
+export const ExperimentReservationIdSchema =
+  idSchema<"ExperimentReservationId">();
 
 export const asRunId = (value: string): RunId => RunIdSchema.parse(value);
 export const asBranchId = (value: string): BranchId =>
@@ -106,3 +113,10 @@ export const asBenchmarkAttemptId = (value: string): BenchmarkAttemptId =>
 export const asEvidenceAccessReceiptId = (
   value: string,
 ): EvidenceAccessReceiptId => EvidenceAccessReceiptIdSchema.parse(value);
+export const asInvestigationId = (value: string): InvestigationId =>
+  InvestigationIdSchema.parse(value);
+export const asClaimPolicyId = (value: string): ClaimPolicyId =>
+  ClaimPolicyIdSchema.parse(value);
+export const asExperimentReservationId = (
+  value: string,
+): ExperimentReservationId => ExperimentReservationIdSchema.parse(value);

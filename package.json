@@ -1,6 +1,6 @@
 {
   "name": "chronorift",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.20.0",
@@ -21,6 +21,8 @@
     "demo:v03": "tsx apps/cli/src/main.ts demo-v03",
     "diagnose": "tsx apps/cli/src/main.ts diagnose",
     "diagnose:v03": "tsx apps/cli/src/main.ts diagnose-v03",
+    "demo:v04": "tsx apps/cli/src/main.ts demo-v04",
+    "diagnose:v04": "tsx apps/cli/src/main.ts diagnose-v04",
     "fixtures": "tsx apps/cli/src/main.ts fixtures",
     "benchmark": "tsx apps/cli/src/main.ts benchmark",
     "benchmark:explore": "tsx apps/cli/src/main.ts benchmark-explore",

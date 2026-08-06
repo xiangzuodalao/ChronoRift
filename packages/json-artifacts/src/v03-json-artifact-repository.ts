@@ -82,15 +82,16 @@ interface RuntimeSchema<T> {
 
 export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
   public readonly runDirectory: string;
-  private readonly artifactDirectory: string;
-  private readonly storageDirectory: string;
+  protected readonly artifactDirectory: string;
+  protected readonly storageDirectory: string;
 
   public constructor(
     artifactRoot: string,
     public readonly runId: RunId,
+    storageNamespace: "v0.3" | "v0.4" = "v0.3",
   ) {
     this.artifactDirectory = resolve(artifactRoot);
-    this.storageDirectory = resolve(this.artifactDirectory, "v0.3");
+    this.storageDirectory = resolve(this.artifactDirectory, storageNamespace);
     this.runDirectory = resolve(
       this.storageDirectory,
       "runs",
@@ -182,7 +183,7 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     }
   }
 
-  private async put<T>(
+  protected async put<T>(
     kind: string,
     id: string,
     schema: RuntimeSchema<T>,
@@ -212,7 +213,7 @@ export class V03JsonArtifactRepository implements V03ArtifactRepositoryPort {
     }
   }
 
-  private async get<T>(
+  protected async get<T>(
     kind: string,
     id: string,
     schema: RuntimeSchema<T>,

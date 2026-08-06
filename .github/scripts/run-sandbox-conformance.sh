@@ -107,4 +107,5 @@ for controller in cpu memory pids; do
 done
 
 export CHRONORIFT_TEST_CGROUP_ROOT="${test_root}"
+export CI=true
 corepack pnpm test:sandbox

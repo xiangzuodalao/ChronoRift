@@ -1,1242 +1,765 @@
-# ChronoRift Game-native Agent Harness 总体架构
+# ChronoRift Game-native Agent Harness 目标架构
 
-> 状态：目标架构（Target Architecture）；决策日期：2026-08-04；当前实现：ChronoRift v0.4.0
-> 受控 Godot 诊断垂直切片。v0.4 以并行 schema/API 收敛 Contract、execution identity、Agent
-> capability 与 Gate 边界；历史 v0.1-v0.3 路径、V2/V3 benchmark 负结果和 artifact 保持不可变。
-> v0.3.2-luna 使用真实 `openai-codex/gpt-5.6-luna`、Pi Session/Agent Loop 与 Benchmark V3。
-> r3 在 16/36 因 proposal scope Harness 缺陷停止，并暴露 publisher receipt schema 缺陷；两者均已修复。
-> r4 freeze commit `c03237b` 的唯一 execution 已完成 36/36：30 scored、6 diagnostic failure、零
-> infra/Harness-invalid；verifier `issues=[]`，产品 Gate 失败，尚无 treatment 或跨产品优势结论。
-> 本文同时定义尚未实现的完整
-> Godot、修复与验证能力。
+> 状态：vNext 目标架构；决策日期：2026-08-06；当前可执行版本：ChronoRift v0.4.0。
 >
-> 关键词：Godot-first、Runtime Experiment、Game Contract、Checkpoint、Replay、Causal Evidence
+> vNext 尚未实现。当前 v0.4 仍是受控诊断 workflow：它禁用通用 coding tools，要求固定的
+> Capsule/replay/intervention/compare/proposal 流程，并由 Harness 产生 canonical verdict。本文定义的
+> sandbox、自由 Pi Loop、rolling black box、Runtime State Index 和新 game tools 都是下一条垂直切片的
+> 目标，不得描述成当前能力。
+>
+> v0.1–v0.4 schema、artifact、benchmark spec、ledger、报告与冻结 tag 保持不可变。新路径不会静默迁移、
+> 覆盖或重新解释历史结果。
 
-## 1. 架构命题
+## 1. 产品契约
 
-ChronoRift 不是“给通用编码 Agent 增加几个 Godot 工具”，而是把游戏运行时变成一个可恢复、
-可干预、可重复、可裁决的实验环境，再让 Agent 在这个环境里提出假设和候选修复。
+ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。ChronoRift 拥有产品 Harness，Pi 是
+ChronoRift 选择的 Loop Engine。
 
-它的核心价值不来自模型比 Claude Code 更聪明，也不来自 Pi SDK 本身。Pi SDK 负责 Agent
-Loop、Session、模型调用与工具调度；ChronoRift 的壁垒来自通用代码 Agent 默认不具备的游戏
-运行时基础设施：
+目标产品契约是：
 
-1. 用可执行 Game Contract 表达设计意图和时序约束。
-2. 从同一个逻辑世界起点创建 matched intervention 实验分支。
-3. 把游戏状态、Signal、输入、生命周期、空间关系和日志编译为时空世界图。
-4. 通过重复 replay 测量确定性，而不是假设游戏确定。
-5. 用渐进式 probe 获取最小充分证据，而不是把全量帧日志发送给模型。
-6. 把候选 patch、Git worktree、游戏构建、checkpoint 和验证结果绑定为一个可审计事实链。
+> Harness 只保证 Agent 的文件、命令和游戏操作在受控环境中被真实执行，并把真实输出返回给 Agent；
+> Agent 负责自主调查、修改代码、选择并运行验证手段，并根据结果迭代；任务结果由 Agent 根据实际工具
+> 执行结果产生；ChronoRift 的成功表示 Agent Loop 正常完成、留下候选修改，并展示它实际执行过的命令、
+> 游戏操作和验证结果，不表示系统已经从逻辑上证明 Bug 必然被彻底修复。
 
-ChronoRift 对外只作以下可验证承诺：
+这里的“真实”有严格但有限的含义：ChronoRift 可以证明某个受控动作被请求、是否被执行、runtime
+实际返回了什么、哪些数据被捕获以及哪些数据缺失；它不能保证游戏自身上报的内容正确，也不能保证
+Agent 对工具结果的最终叙述正确。
 
-> 对已经安装 ChronoRift 插件、拥有版本化 Game Contract、且运行时能力满足对应 Contract
-> 要求的 Godot Bug，ChronoRift 提供通用代码 Agent 在未采用等价运行时实验基础设施时默认
-> 不能原生、稳定提供的可恢复实验、matched intervention evidence 和机器裁决闭环。
+因此：
 
-如果 Claude Code 或其他 Agent 接入完整的 ChronoRift 工具，它也能使用这些能力；优势属于
-Harness，而不属于某个模型品牌。所谓“绝对优势”是需要通过同模型 head-to-head 基准验证的
-产品假设，不是未经测试即可成立的宣传结论。
+- `completed` 是 Agent Loop 和交付生命周期状态，不是 `verified` 或 `fixed` 的同义词；
+- 对要求修改代码的任务，候选 diff、实际工具记录和已执行验证结果是可审阅交付物；
+- Agent 可以犯错、遗漏测试、误读日志或高估修复效果；用户通过 diff、命令输出、execution lineage 和
+  项目自己的 CI/review 接受或拒绝结果；
+- ChronoRift 产品路径不产生 `confirmed`、`probable`、`inconclusive`、canonical diagnosis 或
+  canonical fix verdict；
+- 项目测试、断言和未来可选 Game Contract 都是 Agent 可以调用的验证手段，不是 Harness 的最高权威；
+- 协议、schema、权限、路径、资源和 requested/realized receipt 校验仍属于环境安全与真实性边界，
+  不属于 Bug 结论验证。
 
-## 2. 与通用代码 Agent 的结构性差异
+## 2. 核心价值
 
-| 维度       | 通用代码 Agent 的默认工作单元 | ChronoRift 的工作单元                                      |
-| ---------- | ----------------------------- | ---------------------------------------------------------- |
-| 被调试对象 | 文件、命令和文本日志          | 带时钟、实体身份和 Contract 的运行中世界                   |
-| 正确性来源 | 模型对代码和日志的解释        | Harness 对冻结 Game Contract 的机器评测                    |
-| 复现       | 临时启动游戏并人工描述结果    | checkpoint + trace + seed + environment 的版本化 replay    |
-| 实验       | Agent 自由修改参数后再次运行  | 共同祖先上的类型化干预和可比性检查                         |
-| 时间       | 墙钟时间和日志顺序            | process frame、physics tick、模拟时间和偏序关系            |
-| 状态       | 日志片段或临时 Inspector 读取 | 可查询的双层时空 Game World Graph                          |
-| 非确定性   | 常被当成噪声或偶发失败        | 重复 replay、首次漂移和结果分布组成的确定性证书            |
-| 上下文     | 原始日志、源码和截图          | 带出处、闭合窗口和限制条件的 Causal Capsule                |
-| 修复判定   | 测试通过或模型认为已修复      | 原 Bug 复现、目标 Contract、边界矩阵和回归晶格             |
-| 可恢复性   | Agent 对话与工作区状态        | Pi Session、Git、build、checkpoint、trace、branch 全部关联 |
+普通 coding agent 加一个基础 Godot MCP，已经可以启动游戏、读取日志、查看 SceneTree、注入输入和截图。
+ChronoRift 必须提供更难由普通工具临时拼装的运行时原语，否则没有理由成为独立 Harness。
 
-## 3. 目标与边界
+| 维度       | 普通 coding agent + 基础 Godot 工具 | ChronoRift 目标能力                                               |
+| ---------- | ----------------------------------- | ----------------------------------------------------------------- |
+| 工作单元   | 当前进程和当前文件                  | 有身份、lineage 和 capture coverage 的 Execution                  |
+| 失败历史   | 失败后才开始读日志                  | 有预算的 pre-failure rolling black box                            |
+| 状态恢复   | 重启场景或重新操作                  | 带 manifest、fidelity 和缺失域的 checkpoint/restore               |
+| 实验分支   | 手工重跑并修改参数                  | 从已授权 Execution/checkpoint/build/workspace 任意 fork           |
+| 输入复现   | 再次模拟输入                        | 区分 tick/phase 的 trace replay 与 realized receipt               |
+| 时间       | 日志顺序和墙钟                      | process frame、physics tick、simulation time、host monotonic time |
+| 运行时查询 | 当前 SceneTree 或文本日志           | 可重建、可查询的 Runtime State Index                              |
+| 跨运行比较 | 人工比较输出                        | 实体、时钟、状态和 coverage 对齐后的描述性 diff                   |
+| 不确定性   | 常被隐含忽略                        | first divergence、uncontrolled state 和 observer effect 显式返回  |
 
-### 3.1 首要任务
+ChronoRift 的创新命题是：
 
-首要胜负手是运行时 Bug 的完整闭环：
+> Codex 式自主 coding-agent Harness
+>
+> - 游戏运行时 checkpoint/fork
+> - phase-aware replay
+> - 可查询的世界状态
+> - 跨 Execution 的语义对齐与比较。
 
-```text
-复现 → 采集 → 违反 Contract → 编译证据 → 提出假设
-    → matched intervention 实验 → 定位 → 隔离修复 → replay 验证
-```
+世界结构帮助 Agent 查询“发生了什么、何时发生、哪些状态不同”；为什么发生、哪个机制成立以及修复是否
+正确，留给 Agent、项目测试、外部 Eval 和人类 review。
 
-优先覆盖：
+## 3. 目标与非目标
 
-- 帧率、Timer、输入采样和调度相关的时序 Bug；
-- Signal 连接、断开、顺序和缺失；
-- Node/实体生命周期、对象池复用和场景切换；
-- gameplay 状态机、任务状态和属性传播；
-- 物理 tick、接触、碰撞边界和空间条件；
-- 随机种子、异步资源加载和保存/恢复问题。
+### 3.1 目标
+
+1. 让 Pi Agent 在隔离 workspace 中拥有正常 coding-agent 自由：读码、搜索、执行命令、修改文件、运行
+   测试以及调用 game-runtime tools。
+2. 为 Godot runtime 提供有诚实边界的 capture、checkpoint、restore、fork、replay、query 和 compare。
+3. 让工具能力可组合、可重复、可并发演进，不把某条诊断步骤写进 Harness 状态机。
+4. 保留实际执行、资源消耗、安全拒绝、capture coverage、lineage 和结果，供 Agent 与用户审阅。
+5. 先用一个窄的真实 Godot 垂直切片证明 game-native 原语，再扩展外部项目和公开 benchmark。
 
 ### 3.2 非目标
 
-- 首版不支持无插件的黑盒诊断模式。
-- 首版不覆盖 Shader、像素错误和纯视觉 UI Bug。
-- 首版只实现单个本地 Godot 进程；多人能力只预留协议字段。
-- 不修改或 fork Pi SDK。
-- Agent 不直接编辑开发者当前工作区，也不拥有任意 shell。
-- Harness 不自动授权最终 merge、发布或部署。
-- 不承诺任意 Godot 项目都能达到字节级确定性或完整内存恢复。
-
-视觉能力未来作为与 tick、camera、entity、checkpoint 对齐的可选 Sensor；它可以补充证据，
-但不能覆盖 Game Contract 的最终裁决。
+- 不重新实现 Pi 的 Session、Agent Loop、模型调用或工具调度。
+- 不要求 Agent 按 Capsule → replay → intervention → compare → proposal 的固定顺序工作。
+- 不由 Harness 生成根因、因果边、下一实验建议或 canonical verdict。
+- 不承诺任意 Godot 项目都能零配置捕获 gameplay 私有状态。
+- 不承诺 GDScript Addon 可以完整快照 physics internals、线程、coroutine、网络或外部服务。
+- 不把 Git worktree 当成 OS sandbox，也不让 Agent 直接修改用户当前工作区。
+- 不自动 merge、commit、push、发布或部署候选修改。
+- vNext 首个切片不实现视觉诊断、多 Agent、多人游戏、跨机器分支或通用 Contract DSL。
+- 产品 Harness 不持有 hidden benchmark oracle，也不根据自己的输出给自己评分。
 
 ## 4. 不可违反的架构规则
 
-以下使用 MUST 表示实现不得绕过的规则。
+以下规则使用 MUST 表示实现不得绕过。
 
-1. Game Contract MUST 携带版本、内容哈希、作者/审批者和适用范围，并且是 pass/fail 的最高
-   权威。
-2. Runtime 产生不可信观测，Harness 校验后产生事实和 verdict；Agent 只产生假设、实验提案和
-   候选 patch。
-3. Agent 自报 confidence MUST NOT 决定 `confirmed`；可信等级由 Harness 的证据门槛计算。
-4. 每个结论 MUST 引用不可变 evidence、execution、evaluation 和 checkpoint；只有源码级 claim
-   MUST 引用真实源码位置，其他结论使用 `source/config/resource/engine/external/unknown`
-   等 typed locus。
-5. 每个 BranchSpec MUST 在创建后不可变且具有可追溯共同祖先；Execution/EventLog 只能追加并在
-   seal 后不可变；比较前 MUST 通过可比性检查。
-6. 干预 MUST 类型化并记录 requested value、realized value、作用域和观测到的副作用；未实际
-   施加的参数不得算作实验。
-7. replay 分歧、事件丢失、背压、缓冲覆盖和时钟不确定性 MUST 成为 artifact，不能被规范化
-   静默抹平。
-8. 并发事件 MUST 保留偏序；展示层不得伪造一个不存在的全局因果顺序。
-9. entity ID MUST 包含 incarnation/lifetime，避免对象池复用或场景重载后身份串联。
-10. checkpoint MUST 声明 capture consistency model 和 adapter 语义 barrier，并携带覆盖
-    范围、在途状态、缺失状态与恢复限制；不得伪称引擎全局静止。
-11. BranchSpec、Execution/EventLog、evidence 和 certificate 等原始事实 MUST 只追加；状态转换写成
-    事件。manifest/index 可以使用版本化 CAS head，但 MUST 保留历史版本；schema 升级通过
-    派生视图完成并保留原始内容哈希。
-12. 候选 patch MUST NOT 修改冻结的 Contract、评测器、ChronoRift 插件或测试基线来获得通过。
-13. 所有 Agent 工具 MUST 受 capability、路径、调用次数、时间和运行成本预算约束。
-14. 源码、日志、节点名和游戏文本 MUST 视为不可信数据，不能成为工具指令。
-15. 证据不足时系统 MUST 返回 `inconclusive` 和下一项最小实验，不得强行输出根因。
-16. 未修改版本未达到 Contract 预声明的确定性或统计复现门槛时，候选 patch MUST NOT 被
-    宣称为有效修复。
+1. ChronoRift MUST 通过官方 Pi SDK 创建 `AgentSession`，由 Pi 执行模型调用、工具调度、消息历史、
+   compaction 和 Loop 终止；ChronoRift 不得再实现第二套 Agent Loop。
+2. Agent MUST 可以在任务 sandbox 内使用正常的 coding tools；Harness 不得因为诊断阶段或既定 workflow
+   禁止本来已授权的动作。
+3. Game tools MUST 按 capability、资源依赖和安全权限校验调用，而不是按全局 phase machine 校验。
+   “checkpoint 不存在”是资源错误；“还没有先读 Capsule”不是合法的环境错误。
+4. 工具失败 MUST 以可诊断结果返回 Agent，并在安全允许时让 Loop 继续；一次工具错误不得自动成为
+   Session 终止条件。
+5. Runtime control MUST 返回 requested value、realized value、作用范围、实际时钟位置和已知副作用；
+   请求本身不是执行事实。
+6. 外部数据、游戏日志、源码文本、节点名、资源字符串、插件输出与模型最终文本 MUST 视为不可信内容；
+   它们不能提升 capability 或改变 sandbox policy。
+7. Execution、checkpoint、trace、capture window 和 comparison MUST 带版本化 schema、稳定身份和
+   lineage；外部及持久化数据每次读取都重新验证。
+8. Checkpoint MUST 声明 captured、reset、externally-controlled、unsupported 和 uncontrolled 状态；
+   未声明状态不得默认为相等或已恢复。
+9. Restore success MUST 只表示已声明状态被成功写回；后续 replay 只能暴露所选投影和窗口内的
+   divergence，即使没有观察到 divergence，也不能据此证明完整实验起点等价。
+10. Fork MUST 允许 Agent 在权限和资源预算内改变任意代码、build、adapter、probe、input、seed 或运行
+    参数，并把所有已知变化写入 lineage；Harness 不得替 Agent 禁止“设计不佳”的探索实验。
+11. Compare MUST 只描述捕获范围内已知和可观测的差异、匹配歧义、coverage 差异与混杂项；它 MUST NOT
+    声称某个差异导致了结果或某项假设已被证明。
+12. Event loss、降采样、buffer overwrite、clock uncertainty、observer effect、restore 缺口和首个 replay
+    divergence MUST 可见，不能被规范化静默删除。
+13. Agent 最终结果 MUST 使用普通 Pi assistant 输出；Harness 不得要求固定 Proposal schema、receipt
+    引用仪式或唯一 submit 工具来结束 Loop。
+14. 用户当前工作区、宿主凭据和未授权网络 MUST 与 Agent 命令隔离；越权动作必须在执行前拒绝并记录
+    结构化安全事件。
+15. 历史 raw artifact MUST 保持不可变；新 schema 通过新 namespace 或派生只读视图演进。
+16. 当前代码、目标设计和外部 Eval 结果 MUST 在文档中明确区分，计划能力不得写成已经实现。
 
 ## 5. 系统总览
 
 ```mermaid
 flowchart LR
-  subgraph GAME["Godot Game Runtime（不可信被测对象）"]
-    ADDON["ChronoProbe Addon + Autoload"]
-    WORLD["SceneTree / Physics / Gameplay"]
-    RECORDER["Sentinel Ring Buffer"]
-    WORLD --> ADDON
-    ADDON --> RECORDER
+  USER["User"] --> CLI["ChronoRift CLI"]
+
+  subgraph HOST["ChronoRift Host Control Plane"]
+    CLI --> TASK["Task / Workspace Manager"]
+    CLI --> PI["Pi SDK AgentSession"]
+    PI --> CODETOOLS["Sandboxed coding-tool broker"]
+    PI --> GAMETOOLS["Game-runtime tool bridge"]
+    STORE["Task records and artifacts"]
   end
 
-  subgraph LOCAL["Local Harness Control Plane（可信计算基）"]
-    CONTRACT["Frozen Contract Bundle"]
-    HOST["Godot Host Adapter"]
-    CLOCK["Clock & Identity Normalizer"]
-    MODEL["Game World Graph"]
-    EVAL["Contract Evaluator"]
-    CKPT["Checkpoint Manager"]
-    DET["Determinism Lab"]
-    EXP["GameBranch Experiment Graph"]
-    EVID["Causal Capsule Compiler"]
-    GATE["Conclusion & Verification Gates"]
-    STORE["Append-only Artifact Ledger"]
-
-    CONTRACT --> EVAL
-    HOST --> CLOCK --> MODEL --> EVAL
-    HOST --> CKPT
-    EVAL --> EVID
-    CKPT --> EXP
-    DET --> EXP
-    EXP --> EVID --> GATE
-    CLOCK --> STORE
-    MODEL --> STORE
-    CKPT --> STORE
-    EXP --> STORE
-    EVID --> STORE
-    GATE --> STORE
+  subgraph SANDBOX["Task Sandbox"]
+    WORKSPACE["Managed /workspace"]
+    GODOT["Godot + ChronoProbe"]
+    CAPTURE["Capture / checkpoint / replay"]
+    INDEX["Runtime State Index"]
+    WORKSPACE --> GODOT
+    GODOT --> CAPTURE --> INDEX
   end
 
-  subgraph AGENT["Agent Plane（不可信规划器）"]
-    AP["SDK-neutral Agent Protocol"]
-    PI["Pi Session / Agent Loop / Model"]
-    PI <--> AP
-  end
+  MODEL["Model provider"] <--> PI
+  CODETOOLS <--> WORKSPACE
+  GAMETOOLS <--> CAPTURE
+  TASK --> WORKSPACE
+  CAPTURE --> STORE
+  INDEX --> STORE
+  PI --> STORE
 
-  subgraph PATCH["Isolated Build & Repair Plane"]
-    WT["Git Worktree Manager"]
-    EXEC["OS / Container Build+Run Sandbox"]
-    BUILD["Sandboxed Build + Game Run"]
-    VERIFY["Verification Lattice"]
-    WT --> EXEC --> BUILD --> VERIFY
-  end
-
-  ADDON <-->|versioned loopback protocol| HOST
-  BUILD -.->|launches instrumented runtime| WORLD
-  CONTRACT -.->|compiled probe plan| ADDON
-  AP <-->|typed, budgeted tools| EXP
-  AP <-->|causal capsules / graph queries| EVID
-  AP <-->|candidate patch API| WT
-  VERIFY --> GATE
+  EVAL["External Eval / project CI / human review"] -.-> CLI
+  STORE -.-> EVAL
 ```
 
-最小可信计算基包括：
+ChronoRift 拥有 CLI、任务生命周期、sandbox policy、Pi composition、game tools、runtime substrate 和结果
+展示。Pi 是 Loop Engine；Godot 项目、模型和 Agent 产生的修改都在不可信任务边界内。
 
-- 被测进程外冻结的 Contract bundle、审批根和 canonical evaluator；
-- schema/sensor-health 校验、Clock & Identity Normalizer；
-- verdict 所依赖的 deterministic World Graph reducer 和 Capsule verifier；或者由 Gate 直接从
-  raw artifact 独立重算同一结果；
-- artifact 身份、schema、哈希和 lineage 校验；
-- 实验执行器、比较器和 Conclusion Gate；
-- 权限策略和 Verification Gate。
+Host control plane 对以下有限事实负责：
 
-游戏代码、运行时插件、遥测 payload、Agent、模型供应商、候选 patch 和持久化介质都不能单独
-作为真相来源。Addon 产生的是带 sensor health 的“观测”，只有通过上述校验和 Contract
-评测后才能成为 Harness 事实。项目仓库中的 Contract 文件只是来源；canonical frozen bundle
-及其预期 hash/审批信息在被测进程外固定，Addon 只接收由 Host 编译的 probe plan。
+- 创建了哪个任务 workspace 和 sandbox；
+- 哪个工具调用被接受、拒绝或执行；
+- 命令的 exit code、stdout/stderr 和文件 diff；
+- runtime 返回的消息、健康状态和 requested/realized receipt；
+- artifact 的 schema、identity、lineage 和捕获覆盖。
 
-Artifact 每次读取仍需重新校验。存储在同一用户权限下的 hash ledger 能检测意外损坏，不能
-抵抗同权限恶意篡改；需要防篡改保证时，必须将 head hash 锚定到独立签名、CI attestation 或
-外部只写存储。
+它不对以下内容背书：
 
-## 6. 三个核心坐标系
+- 游戏遥测是否代表完整世界；
+- Agent 的假设或最终报告是否正确；
+- 某次 pass 是否证明修复无回归；
+- 某个 compare 差异是否具有因果意义。
 
-### 6.1 Execution Fingerprint 与 Comparison Basis
+## 6. 任务生命周期
 
-每个实际 Execution 都有完整 `ExecutionFingerprint`：
+目标默认流程是：
 
 ```text
-source commit + dirty patch/worktree hash
-+ game build/import-cache hash
-+ Godot version + platform + renderer/physics configuration
-+ adapter/protocol/plugin version
-+ Contract bundle hash
-+ checkpoint descriptor + restore recipe + coverage hash
-+ input trace hash + InputMap hash
-+ all registered RNG domains
-+ runtime controls and typed interventions
-+ telemetry schema + probe/filter profile
+用户启动 chronorift 并提供项目与目标
+→ CLI 解析项目、provider/model、sandbox 与 capture 配置
+→ 创建任务级 managed workspace 和 execution sandbox
+→ 准备 Godot Addon、项目配置与已声明 snapshot adapter
+→ 使用 Pi SDK 创建 AgentSession
+→ 启用 Pi coding tools、ChronoRift game tools、AGENTS.md 与 skills
+→ 调用 session.prompt(user goal)
+→ Pi Agent Loop 自主读码、执行、观测、实验、修改和验证
+→ 模型输出普通最终结果，当前 turn 结束
+→ ChronoRift 展示 diff、工具记录、Execution lineage 和资源/安全记录
+→ 停止 Godot 与残留子进程，撤销临时网络/凭据授权
+→ 保留 Session、workspace 和 artifact，直到用户继续、应用或显式清理
 ```
 
-strict replay 要求完整 fingerprint 相等。干预实验则使用三部分定义：
+一次 `session.prompt()` 返回不关闭整个任务。用户可以在同一 Pi Session 和同一 managed workspace 中
+继续追问。自动清理只针对运行进程和临时授权；任务代码与 artifact 采用显式 discard 或保留期策略。
 
-- `MatchSpec`：基线与候选必须相等的坐标；
-- `InterventionSpec`：唯一允许不同的坐标及预期副作用；
-- `ComparabilityResult`：运行后实际差异、realized value 和发现的混杂项。
+## 7. Task Workspace 与执行沙箱
 
-因此 matched-pair 的两个 Execution fingerprint 本来就不同，但除 InterventionSpec 外的
-Comparison Basis 必须相等。即使 fingerprint 完全相同，也不保证真实游戏产生相同结果；它
-只定义应该被测量是否一致的条件。
+### 7.1 Workspace 语义
 
-### 6.2 World / Process / Peer
+Pi Session 的 `cwd` 指向任务级 `/workspace`。它来自宿主项目的 Codex 式 managed Git workspace，
+不是用户正在编辑的原始 checkout。具体 Git 物化机制可以按平台演进，但必须满足：
 
-所有事件从第一版开始携带：
+- 每个任务有独立、可审阅、可丢弃的代码视图；
+- Agent 修改不会直接落入用户当前工作区；
+- 宿主 refs、其他 worktree 和 Git 配置不能被任务命令任意修改；
+- ChronoRift 能稳定提取 diff/patch，并在用户明确选择后 handoff/apply；
+- worktree/workspace 是版本隔离机制，不被宣称为安全沙箱。
+
+该产品语义参考 Codex 的
+[managed worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees)，但 ChronoRift 不依赖其
+私有实现。
+
+### 7.2 OS 边界
+
+`bash`、`edit`、`write`、构建脚本和 Godot 子进程运行在 ChronoRift 管理的无特权容器或等价 Linux
+namespace sandbox 中：
+
+- 默认只允许写 `/workspace`、任务临时目录和 artifact 目录；
+- 宿主文件系统默认不挂载；必要输入只读挂载并经过 canonical containment；
+- 网络默认关闭；显式开启时只能访问任务配置的域名或服务 allowlist，并阻止局域网、link-local 和宿主
+  管理端口；
+- 用户凭据、SSH Agent、云 Token、浏览器数据和宿主环境变量默认不继承；
+- 需要的短期凭据按任务、工具和目标服务授权，不进入游戏进程或普通命令环境；
+- Godot 在同一任务 sandbox、独立进程组和 CPU/内存/进程/时间限制中运行；
+- headless 是默认模式；图形、音频、GPU 和显示代理只按显式 capability 开放；
+- 越界动作在执行前拒绝，写入结构化 security event，并作为工具错误返回 Agent。
+
+Pi Host 可以在 sandbox 外使用用户的 Pi credential store 调用模型；工具子进程不得继承这些凭据。
+这与 Codex 将 sandbox 作为自主行动技术边界的模式一致，参见
+[Codex sandboxing](https://learn.chatgpt.com/docs/sandboxing.md)。
+
+## 8. Pi SDK 集成
+
+当前仓库固定使用 `@earendil-works/pi-coding-agent@0.83.0` 和
+`@earendil-works/pi-ai@0.83.0`。已安装 package 的 source、types、docs 和 examples 是实现 API 的
+权威；升级 Pi 必须单独执行兼容测试。
+
+vNext 采用 Pi 官方推荐的 programmatic embedding：
+
+- `ModelRuntime` 负责 provider/model 与用户 credential store；
+- `createAgentSession()` 创建单个 Agent Session；需要 Session replacement 时使用
+  `AgentSessionRuntime`，不自行复制其生命周期；
+- `SessionManager` 持久化和恢复 Session；
+- `DefaultResourceLoader` 加载项目 `AGENTS.md`、skills、extensions 和 context；
+- `defineTool()` / `customTools` 或等价 extension API 注册 ChronoRift game tools；
+- `session.subscribe()` 驱动进度、工具记录与结果 UI；
+- `session.prompt()` 启动当前 turn，并由 Pi 决定正常 Loop 终止。
+
+Pi 官方 SDK 文档见 [pi.dev](https://pi.dev/docs/latest/sdk)。
+
+### 8.1 Prompt 与资源
+
+- 保留 Pi 默认 coding-agent system prompt，不再用诊断 workflow 整段覆盖；
+- ChronoRift 只追加短小环境说明：sandbox 边界、game tool 语义、fidelity、coverage 和缺失数据；
+- 正常加载任务 workspace 中适用的 `AGENTS.md`；其内容不能改变 Host 或 sandbox policy；
+- 正常启用 Pi skills；ChronoRift 可以提供 game-runtime debugging skill，介绍常见方法但不规定必选步骤；
+- 工具描述只说明能力、输入、输出、权限、成本和失败行为，不使用 `call first`、`only after` 或
+  `exactly once`；
+- 项目内容或 runtime 文本不能覆盖 system/sandbox policy。
+
+### 8.2 Coding tools
+
+vNext 显式启用 Pi 提供的 `read`、`bash`、`edit`、`write`、`grep`、`find` 和 `ls`。其中 Pi 0.83.0
+默认启用的是 `read/bash/edit/write`，其余工具由 ChronoRift 显式选择；所有工具的底层文件与命令操作都
+必须指向任务 sandbox。单纯给 `createAgentSession({ cwd })` 传 workspace 路径不等于完成安全隔离；
+具体 tool backend 必须受 sandbox broker 约束。
+
+### 8.3 终止与失败
+
+- 不提供唯一 `submit_diagnosis_proposal` 终止工具；
+- 不因为第一次 tool error 自动 `abort()`；
+- 安全拒绝、资源不足、runtime crash 和 unsupported capability 都作为结构化工具结果进入 Loop；
+- 用户取消、显式超时、不可恢复的 Pi/provider failure 或 Host 自身失败才终止当前 turn；
+- 最终 assistant 文本与实际工具记录分别保存，前者不能覆盖或改写后者。
+
+## 9. Runtime 资源模型
+
+vNext 使用少量稳定资源组织游戏运行历史：
+
+| 资源            | 含义                                                             |
+| --------------- | ---------------------------------------------------------------- |
+| `Task`          | 一个用户目标、Pi Session、workspace 和 runtime artifact 集合     |
+| `Build`         | source revision、workspace diff、Godot/import 配置与构建输出身份 |
+| `Runtime`       | 一个正在运行或已终止的 Godot 进程及其 negotiated capabilities    |
+| `Execution`     | 一次从明确 build/scene/config/trace 起点产生的实际运行记录       |
+| `CaptureWindow` | rolling buffer 中被 pin 的时间窗口及覆盖/丢失信息                |
+| `Checkpoint`    | 某个语义 barrier 上按 manifest 捕获的可恢复状态                  |
+| `Trace`         | 输入与控制事件及其目标 tick/phase                                |
+| `Branch`        | 从 Execution/checkpoint/build/workspace 派生的 lineage edge      |
+| `Comparison`    | 两个 Execution 的描述性对齐与差异结果                            |
+
+资源 ID 是稳定、不透明的业务身份，但不承担 Session capability 仪式，也不能被解释为文件路径。工具直接
+返回资源 ID；每次使用仍验证任务归属、权限、schema 和存在性。
+
+Execution 在运行中追加记录，终止后 seal。其 manifest 至少描述：
 
 ```text
-worldId
-processId
-peerId?          # 首版为空，预留多人
-entityId?
-incarnation?
-clock
-sequence
+task / workspace / source / diff / build
+Godot / platform / runtime / addon / protocol
+scene / launch parameters / environment controls
+snapshot adapters / probes / capture policy
+checkpoint or recovery recipe
+input trace / registered RNG configuration
+requested and realized controls
+clock domains / observation coverage / loss
+parent lineage
 ```
 
-单进程内按 clock domain 和 sequence 建立稳定顺序；未来跨进程只建立可证明的
-happens-before 和逻辑时钟关系，不强行线性化。
+该 manifest 说明已知运行条件，不证明两次运行确定，也不作为 comparison Gate。
 
-### 6.3 Session / BranchSpec / Execution / ExperimentNode / CodeBranch
+## 10. Rolling Black Box
 
-- 一个调查默认保持一个 Pi Session。
-- 一个 Pi Session 可以创建多个不可变 BranchSpec；GameBranch 不会隐式分叉 Pi Session。
-- 每次执行 BranchSpec 产生一个 append-only Execution，seal 后不可变。
-- ExperimentNode 聚合同一实验条件下的一组重复 Execution。
-- ExperimentEdge 表示两个节点之间的 InterventionSpec。
-- 每个候选 patch 使用独立 Git worktree，即一个 CodeBranch。
-- 一个 CodeBranch 可以关联多个 BranchSpec/ExperimentNode，用不同 checkpoint、seed 和运行
-  条件验证同一 patch。
+Agent 尚未识别 Bug 时，ChronoRift 目标默认滚动保留最近 10 秒、最多 600 个 tick 的低成本黑匣子数据；
+达到任一窗口边界时开始淘汰旧数据，并在 capture metadata 中记录实际生效的边界：
 
-这三个分支维度必须显式关联，不能只靠目录名或 Agent 对话记忆。
+- 输入事件及 requested/realized tick/phase；
+- process frame、physics tick、simulation time 与 host monotonic timeline；
+- SceneTree 与已注册实体生命周期；
+- 结构化日志、crash/hang/error；
+- 已注册 RNG 的 seed/state 变化；
+- 已启用 probe 事件；
+- 周期性的轻量状态摘要。
 
-## 7. Game Contract：设计意图的机器权威
+这些值是首个切片的 Capture Policy 目标默认值，不是跨项目无条件性能保证。默认任务预算目标为：
 
-Game Contract 是版本化、可哈希、可执行的声明式规则。自然语言或 Agent 可以生成 Contract
-草案，但只有经过开发者审批并冻结的版本才具有裁决权。
+- 内存最多 256 MB；
+- 磁盘最多 1 GB；
+- 平均运行开销不超过基线帧时间的 5%；
+- 单次主线程采集不阻塞超过 2 ms。
 
-canonical Contract 只在 Host 侧 evaluator 执行。Addon 可以用编译后的 probe plan 做环形缓冲
-冻结或 provisional trigger，但它不能生成最终 pass/fail。
+Runtime 必须记录实际开销。超出预算时降低采样率、合并或丢弃低优先级数据，并保留 dropped/overwritten
+标记；不能通过暂停游戏伪装满足预算，也不能静默隐藏任何通道的数据损失。
 
-概念示例：
+Capture Policy 决定 rolling data 与可恢复 checkpoint 的触发和采样策略，并综合项目预配置的 snapshot
+adapter、当前 Execution 开始前已注册的 trigger，以及 Agent 针对后续 Execution 提交的通道和采样请求。
+请求表达调查意图；runtime 在能力与上述预算内决定实际采集，并把 realized profile、降采样和丢失情况
+返回给 Agent。
 
-```yaml
-id: gameplay.switch_opens_door
-version: 2
-authority:
-  approved_by: gameplay-team
-scope:
-  scene: level/test_switch_door
-  entities:
-    switch: entity://fixture/switch
-    door: entity://fixture/door
-when:
-  signal:
-    source: $switch
-    name: activated
-then:
-  eventually:
-    property: $door.open
-    equals: true
-within:
-  physics_ticks: 2
-replay_policy:
-  required_checkpoint_level: L1
-  repetitions: 3
-observation:
-  required_probes:
-    - signal_connections
-    - property:door.open
-```
+### 10.1 Freeze 与 pin
 
-Contract Engine 逐步支持：
+Ring buffer 自动冻结于可客观检测的异常，例如：
 
-- `always`、`never`、`eventually within` 等安全性和活性规则；
-- Signal/输入/属性/生命周期事件序列；
-- gameplay state machine 的合法转换；
-- 空间、碰撞、接触和距离条件；
-- 资源加载、场景切换和对象释放；
-- 性能预算与 deadline；
-- 精确比较、预声明容差和统计判定策略。
+- crash、进程退出或 assertion failure；
+- 主线程 hang/timeout；
+- 结构化 engine error；
+- 任务开始前已注册的 capture trigger 命中。
 
-Contract 只能证明“本次运行违反了这个冻结版本的规则”。如果 Contract 本身陈旧或错误，
-ChronoRift 不能据此声称产品设计意图必然错误。
+Gameplay 语义 trigger 由项目开发者、用户或 Agent 显式定义，只是“值得保存附近历史”的 capture hint。
+Trigger 命中不表示 Bug 已确认、可选项目 Contract/测试失败或根因成立。
 
-## 8. 双层时空 Game World Graph
+用户或 Agent 可以随时 pin 当前窗口。若关键历史已经覆盖，工具返回
+`history_window_unavailable`，同时返回仍可用的 timeline、首个可见异常和 coverage gap；Agent 可以扩大
+后续窗口、提高特定通道采样率或新增 trigger 后重新运行。
 
-### 8.1 语义层
+若失败前历史仍在，但没有可恢复 checkpoint，工具返回 `pre_failure_checkpoint_unavailable`，并附上仍
+保留的 input trace、事件 timeline、首个可见异常和状态覆盖缺口。Agent 可以新增 probe 或 snapshot
+adapter、提高后续采样率，再次运行并等待问题重现；系统不得把普通历史窗口冒充等价分叉起点。
 
-Agent 默认查询紧凑、稳定的语义层：
+## 11. Checkpoint 与 Restore
 
-- 实体身份、incarnation 和生命周期；
-- scene/resource 归属、parent/child、owner、subscriber 等关系；
-- transform、速度、碰撞层、接触和空间邻接；
-- gameplay 状态机及关键属性；
-- 输入、Signal、日志、错误和异步任务；
-- process/physics tick、模拟时间与偏序；
-- 状态读取、写入、调度、生成和销毁关系。
+### 11.1 零 adapter 模式
 
-### 8.2 Godot 原始层
+这里的“零 adapter”只表示项目没有编写 snapshot adapter，不是无插件黑盒模式；它仍依赖
+ChronoProbe/Host runtime bridge。此时 ChronoRift 只保证捕获自己控制且可重建的执行外壳：
 
-语义节点保留可追溯的原始引用，例如 scene resource、相对 NodePath、脚本、方法、Signal、
-Godot instance ID 和引擎版本。原始引用用于定位，不充当跨 replay 的稳定身份：
+- source/build identity；
+- 启动场景、项目配置和运行参数；
+- 已记录 input trace；
+- seed 配置；
+- 基础日志和 capture metadata。
 
-- NodePath 会因重命名、重挂载和场景实例化变化；
-- instance ID 只在当前进程生命周期内有效；
-- 静态节点优先使用项目显式 `chronorift_id`，可回退为 scene resource UID 与 owner 内相对路径；
-- 动态实体由注册过的 spawn source、语义 key 和 spawn ordinal 做匹配；ordinal 在非确定性
-  replay 中未必稳定，因此匹配结果必须带 confidence，并允许 `ambiguous`；
-- 对象池复用时必须增加 incarnation。
+它不保证任意 gameplay 私有字段、对象关系、Timer、pending effect、状态机或异步任务可恢复。零 adapter
+模式可以支持重新启动和 trace replay，不能宣传为“从失败瞬间等价分叉”。
 
-### 8.3 边的证据等级
+### 11.2 Snapshot adapter
 
-世界图禁止把“时间相邻”直接命名为因果关系。边必须区分：
+项目开发者显式注册具有领域语义的 snapshot adapter，包括：
 
-- `observed-before`：只证明偏序；
-- `signal-subscription`：证明存在订阅关系；
-- `scheduled-by` / `spawned-by`：由运行时相关 ID 证明；
-- `engine-guaranteed`：来自已知 Godot 调度语义；
-- `contract-declared`：来自设计规则；
-- `intervention-supported`：matched intervention evidence 支持该机制；
-- `candidate-cause`：Agent 提议但尚未验证。
+- 要捕获的私有字段和容差/规范化规则；
+- 对象引用的稳定身份与 incarnation；
+- capture barrier 和 restore 顺序；
+- Timer、pending effect、状态机、RNG 和异步任务的重建逻辑；
+- 恢复后自检以及已知缺失域。
 
-UI 可以展示一条线性事件链，但 canonical artifact 必须保留原始偏序和边的证据类型。
+Agent 可以在调查期间新增临时 adapter、probe 或序列化代码，但只对安装之后产生的 Execution 和
+checkpoint 生效。它不能追溯补全首次失败，也不能在不同 build 之间假装同一 snapshot 自动兼容。
 
-## 9. Godot Runtime Bridge
+### 11.3 Manifest 与 receipt
 
-### 9.1 组成
+Checkpoint 与 restore 后状态的一致性，只在同一 manifest 声明为 `captured` 的 domains、序列化、
+canonicalization 和容差规则下定义。比较两个 coverage 或规则不同的 checkpoint 时，只能给出描述性结果；
+除非双方的 captured domains 和规则一致，否则不能称为 checkpoint 相等。未覆盖状态必须列入 manifest；
+缺少记录不能被解释为相等。
 
-Godot 接入包含两个不同组件：
-
-1. `EditorPlugin`：安装、版本检查、Contract/Probe 配置和自动注册 Autoload。
-2. `ChronoProbe` Autoload：在运行时负责握手、tick 标记、实体注册、输入、采集、
-   checkpoint hook 和本地通信。
-
-Godot 官方插件机制允许 EditorPlugin 自动注册 Autoload，因此项目接入不需要修改引擎源码。
-插件安装以官方
-[Making plugins](https://docs.godotengine.org/en/stable/tutorials/plugins/editor/making_plugins.html)
-能力为基础。Autoload 必须尽可能早地注册；在它之前已经发生的初始化事件属于明确的观测盲区。
-
-### 9.2 Host 与传输
-
-TypeScript `godot-adapter` 负责：
-
-- 在 `127.0.0.1` 启动临时 TCP server；
-- 生成单次运行 token；
-- 使用明确的 Godot binary、project、scene 和运行参数启动子进程；
-- 完成协议版本和 capability 握手；
-- 处理命令、事件、背压、心跳、stdout/stderr、进程退出和 artifact 落盘。
-
-Runtime Autoload 作为 client 主动连接本地 Host。首版使用长度前缀的 JSON message，不把控制
-协议混入 stdout；stdout/stderr 专门保留给早期日志和崩溃证据。Godot 官方
-[StreamPeerTCP](https://docs.godotengine.org/en/stable/classes/class_streampeertcp.html)
-与 [TCPServer](https://docs.godotengine.org/en/stable/classes/class_tcpserver.html)
-提供跨平台基础。传输层由 port 隔离，未来可以替换为 binary codec 或其他本地通道。
-
-每个消息 envelope 至少包含：
+Checkpoint manifest 至少包含：
 
 ```text
-protocolVersion, schemaVersion, requestId?
-investigationId, worldId, processId, peerId?
-clock, sequence, messageKind
-payload, payloadHash
+source / build / runtime / adapter identity
+capture consistency model and semantic barrier
+captured domains and serialization rules
+reset domains
+externally controlled domains
+unsupported domains
+unknown or uncontrolled domains
+restore dependency order
+per-domain hashes and tolerances
+known async or in-flight state
+limitations and portability
 ```
 
-握手返回准确的 engine/build/platform 指纹和 capability set，例如：
+Restore receipt 至少包含：
 
 ```text
-observe.scene_tree
-observe.signal_allowlist
-observe.property_sampling
-control.input
-launch.fixed_fps
-checkpoint.L0
-checkpoint.L1
-checkpoint.L2
-seed.registered_rng
+checkpoint and current build identity
+compatibility result
+per-domain requested/restored/rejected status
+before and after summary hashes
+uncovered and uncontrolled domains
+fidelity and deterministic boundary
+restore validation output
 ```
 
-不支持的能力必须明确拒绝，不得静默接受命令。
-
-### 9.3 时钟、step 与进程隔离
-
-首版每个 BranchSpec Execution 启动独立 Godot 进程，避免 Autoload、进程内缓存、deferred
-call 和单例状态在实验间泄漏。磁盘 import cache、`user://`、系统服务和外部状态仍可能跨
-Execution 共享，必须由 MatchSpec 固定或声明为缺失域。运行时区分：
-
-- physics tick；
-- idle/process frame；它不等同于真实 rendered/presented frame；
-- simulation time；
-- host monotonic time；
-- wall-clock 仅用于审计，不参与确定性比较。
-
-Godot `SceneTree` 暴露 `physics_frame`、`process_frame`、节点增删改名和 pause 状态，适合建立
-观测边界，详见官方
-[SceneTree](https://docs.godotengine.org/en/stable/classes/class_scenetree.html)。
-Godot 命令行支持 `--headless` 与 `--fixed-fps`，适合 CI 和受控速率 replay，详见
-[Command line tutorial](https://docs.godotengine.org/en/stable/tutorials/editor/command_line_tutorial.html)。
-
-但是 GDScript 没有真正的引擎硬单步 API：
-
-- `SceneTree.paused` 会停止物理、碰撞和部分 callback，它不是不改变语义的单步；
-- `physics_frame` 在节点 `_physics_process()` 之前发出，不是完整 physics tick 的结束回执；
-- 一个 idle frame 可能执行多个 physics tick；
-- `physics_ticks_per_second` 是整数，不能承诺 Mock 中任意微秒 `deltaUs` 都可实现。
-
-因此 Runtime port 不应假装执行了请求值，而要返回真实回执：
-
-```text
-StepReceipt {
-  logicalTick
-  idleFramesExecuted
-  physicsTicksExecuted
-  actualIdleDeltas[]
-  actualPhysicsDeltas[]
-  engineFrame
-  physicsFrame
-  phase
-}
-```
-
-`launch.fixed_fps` 是整数进程启动参数，改变它意味着以新参数启动分支进程后恢复逻辑起点；
-`runtime.physics_ticks_per_second` 和 `runtime.time_scale` 才是运行期控制。输入相位只允许
-adapter 握手中声明的离散注入点。无法精确实现的请求必须拒绝或返回量化后的 realized value。
-更强的 engine-level step 可能需要 GDExtension、自定义 MainLoop 或更深引擎能力，不属于首版。
-
-### 9.4 输入注入
-
-输入轨迹按 adapter 支持的离散 clock phase 安排，使用 `InputEventAction` 和
-[`Input.parse_input_event`](https://docs.godotengine.org/en/stable/classes/class_input.html#class-input-method-parse-input-event)
-注入。Trace 同时记录：
-
-- InputMap hash；
-- viewport/窗口条件；
-- 按下和释放配对；
-- requested/realized tick 与 phase；
-- Godot 无法模拟的 OS 焦点、设备驱动或真实鼠标行为。
-
-`Input.action_press()` 只改变查询状态，不触发完整 `_input()` 路径，不能作为默认 replay
-注入方式。
-
-### 9.5 可观测能力与限制
-
-在 probe 成功连接之后，Addon 可以对其 allowlist 范围提供：
-
-- SceneTree node added/removed/renamed；
-- Contract allowlist 中 Signal 的连接和回调；
-- tick 边界上的 allowlist 属性采样；
-- 项目通过 `record_transition()` 主动上报的瞬时属性变化；
-- 输入注入；
-- 运行中且脚本系统仍可工作的日志/错误。
-
-Host Process Supervisor 独立收集 stdout、stderr、日志文件、退出码、hang、signal 和 crash
-backtrace；真正崩溃后不能依靠 GDScript 回调。结构化 runtime Logger 是版本和 capability
-相关能力，不能成为所有 Godot build 的默认保证，详见官方
-[Logging](https://docs.godotengine.org/en/stable/tutorials/scripting/logging.html)。
-
-必须明确：
-
-- Godot 没有 GDScript 全局“任意 Signal 已发出”hook，只能连接预先选择的 Signal；
-- 任意属性也没有统一的高保真变化通知，边界采样会漏掉同 tick 内“改变后又恢复”；
-- Resource、RID、线程对象和不在 SceneTree 的对象，除非项目主动注册，否则不可见；
-- 子线程事件不能假设与主线程具有稳定全序；
-- 新增 Signal listener 本身属于 observer effect；收到回调只证明该 probe 被 dispatch，不证明
-  其他 subscriber 已执行，也不自动证明源代码级根因。
-
-关键 Signal 和瞬时状态应使用显式项目 API，例如 `ChronoRift.emit_observed()` 和
-`ChronoRift.record_transition()`。这种有意识的深度接入正是插件必装策略的一部分。
-
-### 9.6 随机源
-
-项目必须向插件注册 gameplay RNG 域。Godot 的 `RandomNumberGenerator` 可以保存 seed 和
-内部 state，官方文档也明确其适合 replay 场景，详见
-[Random number generation](https://docs.godotengine.org/en/stable/tutorials/math/random_number_generation.html)。
-未注册的全局 RNG、第三方库随机源、物理线程和外部服务都进入 checkpoint 缺失列表。
-
-## 10. 渐进式观测与观察者效应
-
-### 10.1 三档采集
-
-| Profile    | 用途           | 目标预算               | 数据策略                                           |
-| ---------- | -------------- | ---------------------- | -------------------------------------------------- |
-| Sentinel   | 常驻飞行记录器 | 平均 CPU ≤1%，固定内存 | Contract 关键事件、tick、生命周期和环形窗口        |
-| Diagnostic | 定位候选根因   | 平均 CPU ≤5%           | Agent 请求的定向 Signal、属性、状态机和空间 probes |
-| Forensic   | 短窗口深挖     | 按时间/字节硬限制      | 高频采样、调用相关、深状态和未来可选视觉 Sensor    |
-
-百分比是项目验收目标，不是跨游戏的无条件保证。每个 profile 必须记录 capability 能提供的
-指标及其数据来源。首版保证记录插件自身耗时、进程 RSS、idle/physics 帧时间、
-`Performance` 可用指标、事件丢失/合并/覆盖/背压、缓冲占用和 Contract 命中率。
-
-主线程/physics thread 的完整 p50/p95/p99 attribution、逐帧分配量和深度 profiler 数据只在
-对应 debug/GDExtension capability 可用时记录；缺失时必须显示为 unavailable，不能填零。
-Godot `Performance` 指标的范围和刷新限制见官方
-[Performance](https://docs.godotengine.org/en/stable/classes/class_performance.html)。
-
-Contract 关键事件不能被静默丢弃。发生丢失时，相应观察窗口标记为不完整，Conclusion Gate
-必须降低结论或强制弃权。
-
-### 10.2 渐进式闭环
-
-```text
-Sentinel ring buffer
-  → Contract 触发或引擎异常
-  → 冻结故障前后窗口
-  → World Graph 增量归约
-  → 编译第一份 Causal Capsule
-  → Agent 请求最小新增 probe
-  → 从同 checkpoint 以 Diagnostic profile replay
-  → 聚合关联证据并保留各 Execution/profile 的来源
-```
-
-不同 profile 来自不同 Execution，不能把它们的事件拼成一条虚构 timeline；只能通过共同逻辑
-起点、MatchSpec 和独立 Capsule 建立关联。
-
-### 10.3 Observer-effect 对照
-
-每次深度实验都包含 minimal-probe 对照分支。Harness 只在两个 profile 共同拥有的 canonical
-projection 上比较事件顺序，同时比较帧时分布、内存和 Bug 命中率；Diagnostic 新增事件不会
-被误判成游戏分歧。若 probes 改变结果，证据必须带 `observerEffectRisk`，并尝试更轻量 probe
-或重复实验。该对照只能测量 Diagnostic 相对 Sentinel 的影响，不能证明 Sentinel 自身没有
-观察者效应。
-
-## 11. 分级 Checkpoint
-
-| Level | 恢复方式                        | 典型用途                                 | 主要限制                                     |
-| ----- | ------------------------------- | ---------------------------------------- | -------------------------------------------- |
-| L0    | 新进程 + 场景重启 + 输入快进    | 无存档项目、最小 fixture                 | 慢，受早期非确定性影响                       |
-| L1    | 游戏原生 save/load              | 已有保存系统的项目                       | 通常缺失 Timer、Signal 队列和瞬时物理状态    |
-| L2    | ChronoRift participant 语义快照 | 已注册实体、状态机、RNG、pending effects | 依赖项目 adapter，不能覆盖全部引擎内部状态   |
-| L3    | 引擎/进程级快照                 | 极难恢复的短窗口问题                     | 首版不支持；平台相关且可能包含不一致外部状态 |
-
-Level 不是单一可信度排名。每个 checkpoint 都必须生成 `CheckpointCertificate`：
-
-```text
-level
-captureConsistencyModel
-adapterSemanticBarrier
-environment/build/protocol fingerprints
-coveredStateDomains[]
-missingStateDomains[]
-externalDependencies[]
-rngDomains[]
-pendingAsyncOperations[]
-restoreRecipeHash
-restoreValidation[]
-portability
-limitations[]
-```
-
-checkpoint 在 adapter 声明的语义 barrier 捕获，例如某个项目约定的 tick 边界并完成插件
-缓冲复制；这不是 Godot 全局 quiescence。证书必须列出未排空的 deferred call、Timer、异步
-加载、worker、网络和外部域。
-
-L2 只恢复注册 `CheckpointParticipant` 控制的实体拓扑、值、RNG、引用、Signal connection、
-timer 和 pending effects；普通 Timer 的内部精确相位、coroutine、SceneTreeTimer、Tween、
-线程、网络和物理接触缓存不能自动恢复。恢复后必须校验语义 hash 和 coverage。
-[`PackedScene.pack()`](https://docs.godotengine.org/en/stable/classes/class_packedscene.html)
-不是完整运行时快照。
-
-## 12. Determinism Lab：测量确定性
-
-严格 replay 不是一次 digest 相等测试，而是一组重复实验：
-
-1. 从相同 ExecutionFingerprint 重复运行 baseline。
-2. 对 Contract 相关的 canonical semantic projection 做精确比较。
-3. 对预声明容差字段做容差比较。
-4. 保存原始分歧并定位 first divergence frontier。
-5. 统计 Contract 结果、事件时间和状态值的分布。
-6. 输出 `DeterminismCertificate`，标明稳定字段、随机字段、未控制来源和适用范围。
-
-确定性分类不是全局标签，而是对投影和 Contract 的声明：
-
-- `unmeasured`：尚未重复；
-- `semantic-exact`：在证书记录的环境、样本数 N 和相关语义投影内观察到完全一致；
-- `bounded-stochastic`：结果在预声明分布/容差内；
-- `uncontrolled`：分歧超出模型，不能支撑强因果结论。
-
-所有运行都保留 raw divergence。规范化只决定比较语义，不能删除原始异常。真实物理即使在
-看似相同的运行条件下也不保证确定；跨平台或 Godot patch version 更不能假设 bit-exact
-replay。因此 ExecutionFingerprint 定义 matched conditions，而不是确定性证明，参见官方
-[Physics introduction](https://docs.godotengine.org/en/stable/tutorials/physics/physics_introduction.html)。
-
-## 13. GameBranch 自适应因果实验图
-
-GameBranch 从“timeline 的副本”升级为 append-only Experiment DAG。BranchSpec、sealed
-Execution 和 ExperimentEdge 创建后不可变；ExperimentNode 聚合一组已执行 Execution：
-
-```mermaid
-flowchart LR
-  C["Common logical recovery point"]
-  B0["Baseline × N"]
-  B1["Frame-rate intervention × N"]
-  B2["Input-offset boundary search"]
-  B3["Seed scan"]
-  B4["Approved 2-variable interaction"]
-  C --> B0
-  C --> B1
-  C --> B2
-  C --> B3
-  B1 --> B4
-```
-
-首批干预类型：
-
-- `launch.fixed_fps`、`runtime.physics_ticks_per_second`、`runtime.time_scale`；
-- `input.tick_offset`、`input.interval`、`input.jitter_profile`；
-- `rng.seed`、`rng.state`；
-- 受 allowlist 保护的 checkpoint 状态；
-- scene/build/platform 配置；
-- probe profile；
-- code patch。
-
-默认策略是 matched-pair 单变量实验。证据不足时，Experiment Planner 可以在预算内执行重复
-试验、二分边界搜索、seed 扫描和预先声明的两变量交互实验。
-
-“只改变一个配置字段”不等于没有混杂。例如修改 frame delta 会同时影响 Timer、物理积分和
-输入采样。因此每个 intervention 还要保存：
-
-```text
-declaredTarget
-requestedValue
-realizedValue
-expectedSideEffects
-observedEnvironmentDiff
-comparisonPolicy
-```
-
-Comparability Gate 检查共同祖先、MatchSpec、Contract/probe 版本、实际干预和意外环境差异。
-探索阶段的所有尝试都进入 artifact，但“完整记录”本身不能消除选择偏差：
-
-1. adaptive search 只生成 exploratory hypothesis；
-2. outcome、停止规则、重复次数和多重比较策略随后冻结；
-3. 使用未参与搜索的新 seed/新重复集进行 confirmatory run；
-4. 只有 confirmatory evidence 才能将机制升级为 confirmed。
-
-报告区分 `contract-violation-confirmed`、`association-supported`、
-`mechanism-supported` 和 `unique-root-cause-confirmed`，不得把一次干预命中直接描述为唯一
-根因。
-
-## 14. Causal Capsule
-
-Agent 不直接消费完整 World Graph 或原始日志。Evidence Compiler 为一次 Contract 失败生成
-紧凑、可扩展的 Causal Capsule：
-
-```text
-capsuleId
-contract ref + frozen hash
-closed observation window
-trigger and expected deadline
-relevant entities and incarnations
-state diff, including unchanged/missing negative evidence
-typed event/relationship subgraph
-missing expected events
-baseline and matched-intervention outcomes
-checkpoint and determinism certificates
-observer-effect and event-loss flags
-source/build/branch/probe provenance
-known limitations
-next minimal probe candidates
-```
-
-编译过程：
-
-```text
-Raw runtime events
-  → schema validation and identity normalization
-  → incremental World Graph
-  → Contract window evaluation
-  → relevance/causal slicing
-  → state and lifecycle diff
-  → matched-intervention comparison
-  → immutable Causal Capsule
-```
-
-Capsule 只陈述系统事实和规则违规。“某行代码是根因”属于 Agent hypothesis，只有经过
-intervention 和 Conclusion Gate 才能升级为 Harness 结论。
-
-## 15. Agent 与 Pi 边界
-
-Pi SDK 继续负责 provider/model 选择与认证、Pi Session、Agent Loop、模型调用、工具执行和
-Session 文件持久化。ChronoRift 不修改 Pi 源码。
-
-新增 SDK-neutral `agent-protocol`，定义 `InvestigationApi`、`DiagnosisProposal` 和工具
-DTO；`pi-harness` 只负责把这些 DTO 适配到 Pi。正式 `DiagnosisReport` 由 Harness 生成，
-避免 Pi 层和 domain 出现两套漂移的权威报告。
-
-Agent 工具分组：
-
-- 证据：读取 Capsule、查询 World Graph、展开原始引用；
-- 观测：建议 probe，查看成本和 event-loss；
-- 实验：计划、fork、repeat replay、边界搜索、compare；
-- checkpoint：查看能力和覆盖报告；
-- 源码：受限 read/search；
-- 修复阶段：向独立 worktree 提交结构化 patch；
-- 验证：启动允许列表中的 build/Contract/regression action；
-- 提交：`submit_diagnosis_proposal`，不能直接提交 canonical verdict。
-
-上下文编译遵循“最小充分证据”：初始只发送 Capsule，源码和更深图查询按需返回并设字节/token
-预算。Agent 必须引用本次工具返回的真实 ID，不能发明 branch、evidence 或运行结果。
-
-游戏日志、源码注释和字符串中的提示都放在不可信数据区；它们不能改变 system policy 或提升
-工具 capability。
-
-## 16. Conclusion Gate 与强制弃权
-
-`DiagnosisProposal` 明确区分：
-
-- Observed facts：只能引用 Harness artifact；
-- Hypotheses：Agent 的候选机制；
-- Claims：希望升级为 probable/confirmed 的结论；
-- Unknowns：尚未控制的变量；
-- Next experiment：证据不足时的最小下一步。
-
-Conclusion Gate 至少检查：
-
-1. Contract authority 和 hash 是否冻结；
-2. baseline 是否达到 Contract 声明的复现次数/命中率；
-3. checkpoint coverage 是否满足该 Contract；
-4. 是否存在关键事件丢失、时钟不确定或高 observer effect；
-5. 比较分支是否具有共同祖先并通过 comparability；
-6. 对 mechanism/root-cause claim，intervention 是否真实施加、隔离且结果支持候选机制；
-7. evidence、evaluation、source 和 branch 引用是否完整；
-8. 自适应实验预算与停止规则是否合规。
-9. 机制级 claim 是否通过独立 confirmatory run，而不只是 exploratory search 命中。
-
-前七项中 Contract authority、最低 checkpoint/replay 质量、关键数据完整性、comparability、
-引用完整性，以及机制/根因 claim 所需的干预隔离，共同构成 Evidence Admissibility Gate。
-任何最低条件缺失都必须是 `inconclusive`，不能降格为 `probable` 来绕过。
-
-若 capability 不足、checkpoint 损坏或预算耗尽，Agent 可以不创建不可执行的实验，直接提交
-包含 attempted actions、blockers、已有事实和 next minimum experiment 的弃权 proposal。
-
-Agent 的 confidence 仅作为 proposal 元数据。Harness 根据 policy 生成：
-
-- `confirmed`：通过 admissibility、预声明强门槛和需要的 confirmatory run；
-- `probable`：已经通过最低 admissibility，但仍有未排除替代解释或未达到强门槛；
-- `inconclusive`：缺少关键证据，并附下一项最小实验。
-
-canonical report 还要分别记录 Contract violation、association、mechanism 和 root-cause
-uniqueness 的 claim level，避免一个总状态掩盖不同证据强度。
-
-## 17. 隔离修复与 Verification Lattice
-
-修复能力只在诊断和 replay 稳定后开放：
-
-1. Worktree Manager 从已记录的 source revision 创建独立 Git worktree。
-2. Agent 只能修改允许列表路径，并受文件数、diff 大小和调用预算限制。
-3. Contract、Harness evaluator、ChronoProbe、benchmark ground truth 和原始测试基线被冻结并
-   记录哈希。
-4. 为 baseline/candidate 创建独立 OS principal/namespace/container，使用只读源码挂载、
-   最小可写 artifact/cache 目录、默认禁网、凭据剥离、CPU/内存/进程/时间限额和退出清理。
-5. 所有 build script、Godot import/tool plugin 和游戏运行都在该隔离边界内执行；patch 构建
-   产物获得新的 build hash。
-6. baseline 与 patch build 使用相同的逻辑恢复起点；Checkpoint Compatibility Gate 验证旧
-   snapshot 是否能在新 build 恢复。不兼容时生成经语义等价校验的新 checkpoint，不能强行
-   复用旧二进制状态。
-
-验证晶格按顺序执行：
-
-1. **Reproduction Gate**：未修改版本达到 Contract 预声明的确定性或统计复现门槛。
-2. **Target Gate**：patch 后目标 Contract 通过。
-3. **Boundary Gate**：frame rate、seed、input jitter 边界矩阵通过。
-4. **Behavior Gate**：已知因果锥之外的关键语义投影没有非预期变化。
-5. **Regression Gate**：相关 Contract、headless 测试和性能预算通过。
-6. **Integrity Gate**：冻结资产没有被修改，遥测质量没有降低。
-7. **Review Gate**：输出可审阅 patch、证据和限制；默认由人类决定 merge。
-
-因果锥之外没有观测到变化只能提供回归证据，不能证明绝对无回归；报告必须保留这一限制。
-Agent 新增的测试可以作为候选材料，但不能成为该 patch 自己唯一的通过依据。
-
-Git worktree 只隔离代码版本，不是安全沙箱。开发者显式关闭 OS/container 隔离时，Execution 必须
-标记为 `unsafe-local-execution`，且不能宣称已满足不可信代码执行边界。
-
-## 18. Artifact 与可恢复性
-
-目标布局：
+“restore 成功”只表示 manifest 中声明的状态已按规则写回。后续 replay 可以发现所选投影和窗口内的
+不等价；没有观察到 divergence 也不能证明完整实验起点等价。若第一个 tick 已分歧，Agent 必须收到：
+
+- `registered_state_restored_but_equivalence_unestablished`；
+- first divergence tick/phase；
+- 首个不同字段、实体或事件；
+- 可能相关的 uncovered/uncontrolled domains。
+
+`fidelity` 是 coverage 与恢复能力等级，不是模型置信度，也没有任何等级暗示完整运行时等价。无法可靠
+序列化或恢复的状态返回 `unsupported` 或 `uncontrolled`，并使该 checkpoint 不具备 equivalent-fork
+资格；Agent 仍可把它用于 descriptive exploration。
+
+## 12. Fork、Replay 与控制
+
+### 12.1 Fork
+
+Agent 可以从任何有效且已授权的 Execution、checkpoint、build 或 managed workspace/worktree 创建分支，
+并改变：
+
+- 代码和 build；
+- snapshot adapter 或 probe；
+- 输入及其 tick/phase；
+- seed/RNG state；
+- frame/physics/runtime 参数；
+- capture profile；
+- 项目自定义配置。
+
+每项 requested change、realized change 和已知副作用都进入 lineage。Fork API 不宣称“只改变一个变量”，
+也不因多变量实验而拒绝执行。
+
+### 12.2 Replay
+
+Trace 区分：
+
+- process frame 与 physics tick；
+- simulation time 与 host monotonic time；
+- input press/release 配对；
+- adapter 支持的离散注入 phase；
+- requested 与 realized tick/phase；
+- InputMap、viewport/window 和设备限制。
+
+Godot GDScript 没有无条件保持语义的引擎硬单步。`fixed_fps`、physics tick rate、pause、time scale 和
+输入注入都必须返回实际 receipt。Replay 可以观察相等或 divergence，不能预先承诺 bit-exact。
+
+## 13. Runtime State Index
+
+Runtime State Index 是从 raw execution records 派生、可重建的查询层。它保留：
+
+- entity stable ID、incarnation 和生命周期；
+- scene/resource 归属以及 parent/child/owner 等结构关系；
+- process/physics/simulation/host clocks 和可证明偏序；
+- 输入、Signal emission/delivery、日志、错误和已注册 transition；
+- 已注册 gameplay 属性、状态机、pending effect 和 RNG；
+- adapter 支持的 transform、碰撞、接触与空间 sample；
+- capture profile、coverage、loss 和 observer-effect metadata；
+- 到原始 runtime message、source/build 和 checkpoint 的引用。
+
+Agent 可以按实体、时间窗口、事件类型、状态路径或 Execution 查询，而不必把整个事件流一次塞进模型上下文。
+索引结果仍携带出处和缺失信息。
+
+Runtime State Index 不包含：
+
+- `candidate-cause`、`root-cause` 或 `intervention-supported` 结论；
+- Harness 选择的 relevance/causal slice；
+- 自动生成的“下一实验”；
+- Causal Capsule；
+- 对 Agent hypothesis 的置信等级。
+
+确有 runtime correlation ID 证明的 `scheduled-by`、`spawned-by` 或 delivery link 可以作为观测关系保存，
+但不得重命名为通用因果关系。跨 build 或非确定性运行中的实体匹配允许 `unmatched` 和 `ambiguous`。
+
+## 14. Semantic Alignment 与 Compare
+
+`compare(A, B)` 在两次 Execution 的声明和捕获范围内，真实列出所有已知、可观测的差异：
+
+- source、workspace diff 和 build；
+- runtime、addon、adapter、probe 和 capture policy；
+- checkpoint、fidelity 和 uncovered state；
+- trace、input、seed、RNG 和 runtime controls；
+- observation coverage、loss 和 clocks；
+- matched/unmatched/ambiguous entities；
+- state、event、timeline 和 outcome differences；
+- first divergence frontier。
+
+对齐可以使用稳定实体身份、incarnation、clock、trace anchor 和 adapter-provided semantic key。对不可靠的
+匹配不得强行合并。
+
+当 build、adapter、probe、coverage 或 checkpoint fidelity 不一致时，Comparison 标记为
+`confounded` 或 `descriptive_only` 并列出具体混杂项。该状态不阻止 Agent 读取结果或继续实验。
+
+Compare 绝不判断：
+
+- 实验设计是否合理；
+- 某个差异是否导致结果；
+- Agent hypothesis 是否成立；
+- Bug 是否修复；
+- 是否可以输出 canonical verdict。
+
+## 15. Agent 工具面
+
+目标工具按 capability 分组，确切名称在实现切片中以已安装 Pi types 为准：
+
+| 分组        | 目标动作                                                              |
+| ----------- | --------------------------------------------------------------------- |
+| Discovery   | 查询项目、runtime、adapter、probe、checkpoint 与 capture capabilities |
+| Lifecycle   | launch、status、stop runtime                                          |
+| Capture     | pin history、配置后续 capture/trigger/probe                           |
+| Observation | 查询 raw records 与 Runtime State Index                               |
+| Control     | 注入输入、step、调整受支持 runtime controls                           |
+| State       | create checkpoint、restore、fork                                      |
+| Replay      | 创建/运行 trace replay、查看 first divergence                         |
+| Compare     | 对齐两个 Execution 并读取描述性差异                                   |
+
+工具契约必须：
+
+- 使用 strict、versioned input/output schema；
+- 返回稳定 resource ID、实际 receipt、coverage、成本和限制；
+- 对 unsupported capability 明确失败；
+- 允许 Agent 在资源依赖满足时任意排序和重复调用；
+- 不把并发调用本身视为非法 tool flow；真实资源冲突由局部锁串行化，或返回明确的 busy/conflict 结果；
+- 把安全拒绝、预算耗尽、runtime crash、history unavailable 和 restore gap 返回为可恢复错误；
+- 不要求 Session opaque handles、access-receipt 引用仪式或最终 Proposal。
+
+## 16. Artifact 与任务恢复
+
+目标布局是实现指导，不是当前已存在的文件结构：
 
 ```text
 .chronorift/
-├── contracts/<bundle-hash>.json
-├── checkpoints/<checkpoint-id>/
-│   ├── descriptor.json
-│   ├── certificate.json
-│   └── adapter-owned/
-├── traces/<trace-id>.json
-├── investigations/<investigation-id>/
-│   ├── manifest.json
-│   ├── audit.jsonl
-│   └── pi-sessions/*.jsonl
-├── branches/<branch-id>/branch.json
-├── executions/<execution-id>/
-│   ├── events.jsonl
-│   ├── world-deltas.jsonl
-│   └── result.json
-├── experiments/<experiment-id>.json
-├── determinism/<certificate-id>.json
-├── evidence/<capsule-id>.json
-├── diagnoses/<report-id>.json
-├── patches/<candidate-id>/
-│   ├── patch.diff
-│   ├── build.json
-│   └── verification.json
-└── migrations/<derived-view-id>.json
+└── tasks/<task-id>/
+    ├── task.json
+    ├── workspace.json
+    ├── security.jsonl
+    ├── pi-sessions/
+    ├── builds/<build-id>/
+    ├── runtimes/<runtime-id>/
+    ├── executions/<execution-id>/
+    │   ├── manifest.json
+    │   ├── events.jsonl
+    │   ├── state-deltas.jsonl
+    │   ├── stdout.log
+    │   ├── stderr.log
+    │   └── result.json
+    ├── capture-windows/<window-id>/
+    ├── checkpoints/<checkpoint-id>/
+    ├── traces/<trace-id>.json
+    ├── comparisons/<comparison-id>.json
+    ├── patch.diff
+    └── handoff.json
 ```
 
-`branch.json` 保存不可变 BranchSpec；每次执行产生独立 Execution/EventLog，执行期只追加，
-seal 后不可变。ExperimentNode 只引用一组 Execution。manifest 是可重建索引，其 CAS head
-可以更新，但每个 revision 都要保留，不能覆盖掉历史事实。
+规则：
 
-Investigation manifest 关联：
+- `.chronorift/` 是本地运行状态，不提交 Git；
+- raw tool/runtime records 在产生期间 append，seal 后不原地修改；
+- final assistant text、candidate diff 和实际 execution records 分开保存；
+- manifest/index 可以演进，但历史 revision 不静默覆盖；
+- artifact ID 不是路径，所有文件访问经过 canonical containment；
+- hash 可以检测意外损坏，不能抵抗同一用户权限下重写整个任务目录；
+- 需要强防篡改时由外部 CI attestation、签名或只写存储提供，不塞进本地 Harness 默认路径。
 
-- Pi Session/provider/model；
-- Git commit、dirty patch 和 worktree；
-- Godot binary、平台、renderer、physics backend、import cache 和 game build；
-- adapter/protocol/plugin/schema 版本；
-- Contract/probe bundle；
-- checkpoint/coverage、trace、InputMap、seed/RNG domains；
-- ExecutionFingerprint、MatchSpec、InterventionSpec、BranchSpec/Experiment DAG；
-- evidence、diagnosis、patch 和 verification；
-- 数据外发 audit。
+## 17. Godot Runtime 边界
 
-JSON/JSONL 是首版实现，不是领域契约。原始 artifact 只追加；迁移器读取旧 schema、生成新
-derived view，并保存 source hash、migration version 和结果 hash。
+vNext 继续采用 Godot Addon/Autoload，不要求 engine fork。当前 Protocol v2 的握手、strict wire schema、
+payload hash、loopback transport、能力协商、真实 controls、显式实体注册和 participant checkpoint 是可复用
+基础，详见 [Godot Protocol v2](godot-protocol-v2.md)。
 
-## 19. Local-first、安全与数据外发
+目标 Godot 边界必须诚实保留以下限制：
 
-Godot 进程、源码、checkpoint、原始遥测、视频和 artifact 默认全部留在开发机或 CI。
-发给模型的数据必须经过 Egress Policy：
+- GDScript 不能全局拦截任意 Signal 或属性变化；
+- 只观测 allowlist、动态注册项和项目主动插桩；
+- PhysicsServer 内部、Timer/Tween/coroutine、线程、外部服务、cache 和未注册 RNG 默认不可恢复；
+- 新增 listener、采样和序列化本身可能改变时序；
+- stdout/stderr、crash exit 和结构化 runtime channel 是不同传感器；
+- process frame、physics tick、render/present 和 host time 不能混用；
+- unsupported control 必须拒绝或返回量化后的 realized value。
+
+视觉、音频和 GPU capture 以后可以作为与 camera/entity/tick 对齐的 Sensor 加入 Runtime State Index；首个
+vNext 切片保持 headless，不以视觉能力扩大不确定性。
+
+## 18. 产品 Harness 与外部 Eval
+
+产品不裁决自己。目标边界是：
 
 ```text
-LocalOnly     # 不得外发
-ModelAllowed  # 可按原文外发
-Redacted      # 脱敏后外发
-Denied        # 工具不得读取
+ChronoRift product harness
+  → 运行 Agent、sandbox 和 game-runtime tools
+  → 输出候选 patch、Session 与真实执行记录
+
+Independent Eval / project CI / human review
+  → 从外部启动或读取 ChronoRift 任务
+  → 可以持有 hidden Bug、预期行为和评分规则
+  → 评价 patch、运行结果、成本与可靠性
 ```
 
-每次模型调用和工具结果记录 provider、model、payload hash、分类、脱敏规则、字节/token 数和
-关联 artifact。Local-first 不等于零外发；Causal Capsule、源码片段和工具输出仍可能进入火山
-模型服务，必须在审计中可见。
+外部 Eval：
 
-其他安全边界：
+- 不得把 hidden oracle 注入 Agent prompt 或产品 tool result；
+- 不得反向要求产品 API 使用某条固定调查顺序；
+- 可以评分最终 patch、公开测试、隐藏测试、runtime 复现、资源成本和安全失败；
+- 后续优先采用可复现的开源 benchmark；若缺少 game-runtime checkpoint 类任务，再公开扩展规范；
+- benchmark 选型与正式运行是后期里程碑，不是 vNext 首个切片的默认完成 Gate。
 
-- bridge 只绑定 loopback，使用单次 token 和协议握手；
-- loopback token 只防误连接，不能证明消息一定来自 Addon 而不是同一被测进程中的游戏代码；
-  所有 payload 仍按不可信观测处理；
-- baseline 与 patched build 的构建脚本、Godot import/tool plugin 和游戏进程都在默认禁网、
-  无凭据、受资源限额的 OS/container 边界执行；
-- artifact ID 不直接接受路径，所有路径经过 canonical containment；
-- Agent 无权读取用户级 Pi 凭据；
-- 外部日志和项目内容不能请求新增权限；
-- build/test action 使用显式 allowlist；
-- 超预算、协议不兼容、schema 未知或引用损坏时 fail closed。
+历史 v0.3 Benchmark V2/V3 是旧受控诊断 workflow 的工具消融，继续作为工程历史保留。它们不是 vNext
+产品契约，也不是 Codex/Claude Code 产品 head-to-head。
 
-## 20. 目标模块结构
+## 19. 依赖方向与模块职责
 
-保留现有 `domain ← gamebranch ← adapters ← CLI` 方向，在稳定边界上增加少量专用包：
+继续保持依赖向内，不因重构创建一组空 package：
 
 ```text
-chronorift/
-├── apps/
-│   ├── cli/
-│   └── benchmark-runner/
-├── packages/
-│   ├── domain/                 # engine-neutral IDs、clock、artifact DTO
-│   ├── game-contracts/         # Contract AST、compiler、evaluator
-│   ├── world-model/            # graph reducer、index、query、causal slice
-│   ├── gamebranch/             # replay、experiment DAG、gates
-│   ├── agent-protocol/         # SDK-neutral tools 与 DiagnosisProposal
-│   ├── pi-harness/             # Pi SDK adapter
-│   ├── godot-protocol/         # versioned wire schema/capabilities
-│   ├── godot-adapter/          # process host 和 runtime ports
-│   ├── json-artifacts/         # local append-only repository
-│   ├── worktree-manager/       # Git candidate patch/lineage adapter
-│   ├── execution-sandbox/      # build+run 的 OS/container isolation 与资源策略
-│   └── mock-game/              # characterization fixture
-├── integrations/
-│   └── godot/addons/chronorift/
-├── fixtures/
-│   └── godot-switch-door/
-└── benchmarks/
-    └── godot-runtime-bugs/
+domain ← gamebranch ← runtime adapters ← CLI composition root
+domain ← agent-protocol ← pi-harness / optional external bridge
 ```
 
-不立即拆出更多小包。Experiment Planner、Determinism Lab、Conclusion Gate 和 Verification
-Lattice 先作为 `gamebranch` 内部 service；只有依赖和生命周期稳定后才独立。
+目标职责映射：
 
-核心不能导入 Pi SDK、Godot Node/Variant/NodePath、JSON 文件布局或 Git 实现。Godot 原生类型
-只能存在于 addon、wire protocol 或 adapter。
+| 现有模块                  | vNext 目标职责                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `apps/cli`                | 参数、用户目标、task composition、结果展示；不拥有实验策略或结论                             |
+| `packages/domain`         | engine-neutral Task/Execution/Checkpoint/Trace/Comparison DTO 与 strict schema               |
+| `packages/gamebranch`     | capture、checkpoint、fork、replay、Runtime State Index、alignment/compare 的纯服务与窄 ports |
+| `packages/agent-protocol` | SDK-neutral game-tool capability 与 DTO；删除 Proposal/Verdict/opaque-handle workflow        |
+| `packages/pi-harness`     | 薄 Pi SDK host、tool binding、Session events 与 prompt appendix；不拥有 Tool Flow FSM        |
+| `packages/godot-protocol` | versioned Godot wire messages、hash 与 framing                                               |
+| `packages/godot-adapter`  | Godot process/runtime capability、Addon staging、snapshot/probe adapter binding              |
+| `packages/json-artifacts` | task/runtime record adapter以及历史 v0.1–v0.4 只读兼容                                       |
+| `packages/mock-game`      | 历史 characterization；不作为 vNext 产品能力证明                                             |
+| `godot/addons/chronorift` | ChronoProbe、capture hooks、entity/state registration、runtime channel                       |
+| `fixtures/godot-*`        | 真实 Godot characterization；vNext 首先只迁移 `frame-input-window`                           |
 
-新 Runtime 能力使用窄接口组合，而不是继续向现有 `GameEnvironmentPort` 添加大量 optional
-方法：
+Task workspace 与 execution sandbox 是首个切片的真实生命周期边界。先以窄 port 和一个实现落地；只有依赖、
+平台和清理语义经过测试后才决定是否拆成新 package。不要仅为匹配旧目标目录图创建
+`worktree-manager` 或 `execution-sandbox` 空壳。
 
-```text
-ProcessLifecycleCapability
-ObservationCapability
-ProbeCapability
-InputInjectionCapability
-CheckpointCapability
-SeedControlCapability
-StepCapability
-```
+Pi、Godot `Node`/`Variant`、JSON 文件布局、Git/container 实现不得泄漏进 domain。各 package 通过公开
+`src/index.ts` 导入，不 deep-import 私有实现。
 
-不支持的能力返回显式 capability error。当前 Mock 通过兼容 adapter 继续实现已有 frame-step
-端口。Artifact persistence 同样拆成 WorldModel、Experiment、Determinism、Audit、Patch 和
-Verification 等窄 repository port，避免现有大接口继续膨胀。
+## 20. 首个 vNext 垂直切片
 
-推荐依赖方向：
+唯一迁移 Fixture 是现有 `fixtures/godot-frame-input-window`。它模拟角色离开平台后的跳跃输入窗口错误，
+已经包含适合语义 snapshot 的 `jumping`、`leftFrame` 等状态。
 
-```text
-domain ← game-contracts
-domain ← world-model
-game-contracts + world-model ← gamebranch
-gamebranch ← godot-adapter / json-artifacts / worktree-manager / execution-sandbox
-domain ← agent-protocol ← pi-harness
-domain + gamebranch + agent-protocol ← GameBranch bridge
-所有组件 ← CLI composition root
-```
+首个切片的用户目标是：让一个自由 Pi Agent 调查并修改该时序 Bug。ChronoRift 不告诉 Agent 固定步骤，
+也不要求它提交机制 Proposal。
 
-`godot-protocol` 只共享版本化 wire DTO，不把 Node 或 Variant 泄漏到 domain。
+完成条件：
 
-## 21. 当前实现映射与已知缺口
+1. CLI 为 Fixture 创建隔离任务 workspace 和 sandbox。
+2. Pi 使用官方 SDK 创建 Session，并拥有正常 coding tools 与无阶段 game tools。
+3. Rolling black box 可以 pin 失败窗口，并报告 coverage、降采样和 loss。
+4. Fixture snapshot adapter 可以创建带 manifest/fidelity 的 checkpoint。
+5. Agent 可以从 checkpoint fork，改变输入 tick/phase 后 replay。
+6. Runtime State Index 可以查询实体、时钟、输入、状态和相关 runtime events。
+7. Compare 可以对齐 Execution，并输出描述性差异、ambiguity 与 confounders。
+8. Agent 可以修改代码、运行自主选择的验证，并留下可审阅 patch。
+9. Session、workspace 和 artifacts 可以继续、handoff 或显式清理。
+10. 路径逃逸、宿主凭据、未授权网络和越界进程操作被执行前拒绝并记录。
+11. 新路径不存在 Proposal、Claim Policy、Causal Capsule、Conclusion Gate 或 canonical verdict。
+12. 离线测试覆盖成功、restore failure、first-tick divergence、history unavailable、capture budget degradation
+    和 security denial。
+13. `corepack pnpm check` 通过；真实模型 smoke 与开源 benchmark 暂不作为默认 Gate。
 
-旧 Phase 1 的 `RunManifest`、`BranchRecord/BranchRun`、`EvidenceBundle` 与 `DiagnosisReport`，以及 v0.3
-的 schema v2 runtime/experiment、Proposal v3、Benchmark V2/V3 与冻结报告全部保留兼容。v0.4 使用
-独立 schema、服务和 `.chronorift/v0.4/` namespace；不静默迁移、替换或覆盖任何历史 artifact。
+按以下依赖顺序推进；每个实现 PR 或里程碑仍只引入一个主要不确定性维度：
 
-下表只列可执行代码，不把本文其他章节的目标设计写成现状：
+1. 先建立 task workspace/sandbox，并让 Pi coding tools 安全运行，复用现有 Godot execution；
+2. 再把现有 frame-input runtime 能力暴露成无状态机的 game tools；
+3. 加入 rolling capture、pin、trigger 和预算退化；
+4. 加入 Fixture snapshot adapter、checkpoint manifest 和 restore receipt；
+5. 加入 trace fork/replay 与 first-divergence reporting；
+6. 从 raw records 派生 Runtime State Index；
+7. 在 Index 与 manifest 基础上加入 descriptive compare；
+8. 最后完成 patch/result handoff，并删除新路径对旧 verdict workflow 的依赖。
 
-| 目标能力       | v0.4 可执行锚点                                         | 当前已实现                                                                                                                                                | 尚未实现                                              |
-| -------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Contract       | `FrozenContractBundleV3`、`contract:v3` identity        | scope、冻结 authority、evaluator descriptor、temporal rule 参与 canonical identity                                                                        | Contract DSL、项目自动提取、authority workflow        |
-| Investigation  | `InvestigationSpecV1`                                   | engine-neutral 调查身份、runtime subject、catalog、预算与 fingerprint material                                                                            | 通用任务编译器与外部项目 discovery                    |
-| Runtime port   | `GameEnvironmentPort`、Godot Protocol v2                | 独立 Godot 4.7.1 进程、capability handshake、realized controls；v0.4 复用已验证 runtime facts                                                             | 任意项目即插即用 Adapter                              |
-| Fingerprint    | `ExecutionFingerprintV2`                                | 每次执行绑定 source/build/runtime/Contract/checkpoint/input/control/intervention/probe/schema                                                             | import/build provenance attestation                   |
-| Checkpoint     | v2 certificate + participant/state-provider registry    | Fixture L2 语义恢复；entity Fixture 捕获 pending effects/sequence                                                                                         | physics/async/thread/cache/network 完整恢复           |
-| Replay         | sealed `V03ExecutionLog` + v0.4 fingerprint validation  | confirmed 要求一次 matching strict replay，且关键执行身份一致                                                                                             | repeated replay、稳定投影、Determinism Certificate    |
-| Experiment     | immutable BranchSpec + `ExperimentReservationV1`        | allowlisted 单变量 intervention；预算在执行前 append-only 持久占用，进程重启不会重置                                                                      | Experiment DAG、matched pair 边界搜索、seed scan      |
-| Telemetry      | v2 typed event ledger                                   | input/signal/delivery/property/lifecycle/spatial/pending-effect + health/clocks                                                                           | 通用 async/resource probe 与 rendered clock           |
-| Evidence       | `EvidenceCapsuleV2` + `EvidenceAccessReceiptV2`         | Contract window、递归 causal ancestors、expected/actual、loss flag 与 content receipt                                                                     | 双层 World Graph、通用因果切片                        |
-| Agent boundary | `@chronorift/agent-protocol`、`InvestigationApiV1`      | SDK-neutral capability manifest、预算、session-scoped opaque handles；只读目录可提前发现，实验仍要求 matching replay；无 shell/写权限                     | 完整 egress audit、prompt-injection suite、OS sandbox |
-| Claim policy   | `ClaimEvidencePolicyRegistry` + `ClaimPolicyManifestV1` | open mechanism ID、strict assertion schema、注册冲突检查；Agent 可见全部字段契约与证据义务但无 Fixture 答案；排序 manifest 绑定 Investigation/fingerprint | 跨项目策略目录、策略签名/版本迁移                     |
-| Verdict        | `DiagnosisProposalV4` → `DiagnosisVerdictV3` Gate       | 重验 scope、artifact、receipt、fingerprint、replay、comparison 与 claim policy；confidence 无裁决权                                                       | Verification Lattice 与 patch 验证                    |
-| Artifact       | `V04JsonArtifactRepository`                             | run-scoped write-once v0.4 路径，Contract/fingerprint/reservation/receipt/proposal/verdict 严格校验                                                       | CAS history、外部签名或 CI attestation                |
-| Benchmark      | 不改动的 v0.3 Benchmark V2/V3                           | r4 36/36 与 Gate fail 作为历史证据原样保留；v0.4 不新增 campaign                                                                                          | 真实项目外部效度与独立产品对照                        |
-| Patch          | 无                                                      | 未实现                                                                                                                                                    | worktree、sandbox、候选修复与多层验证                 |
+其他三个 Godot Fixture 只保持历史兼容，不同时迁移。
 
-v0.4 仍有以下明确限制：
+## 21. 当前实现映射
 
-1. 四个小型 Fixture 依赖显式插桩；开放 claim policy 消除了 GameBranch Gate 对 Fixture ID 的硬编码，
-   但不等于跨游戏的通用因果证明器。
-2. checkpoint 不恢复物理内部、线程、异步、cache、外部服务或未注册 RNG。
-3. confirmed 只要求一次 matching replay 与一项通过的单变量干预；fingerprint 绑定执行维度，但不是
-   repeated replay 或完整 Determinism Certificate。
-4. logical/process/physics/host clocks 已区分，但没有 rendered/presented frame，也不承诺精确单步。
-5. Capsule 是 Contract window 与已记录 causal ancestors 的闭合切片，不是双层 World Graph。
-6. Agent draft 通过 opaque handle 引用资源，canonical ID 不作为 Session capability；V2 fact payload
-   仍保留自身 identity。claim catalog 公开所有 active policy 的字段和证据义务，但不选择本案机制。
-   source read/search 仍只有 neutral view、预算和 access receipt，尚无完整 egress audit 或 OS sandbox。
-7. persistent reservation 只覆盖当前 intervention 预算；没有通用 Experiment DAG、并行 scheduler、
-   边界搜索或跨 seed 统计。
-8. v0.4 尚未接入仓库外真实 Godot 项目，也未测量插件安装、Contract 编写和 probe 成本。
-9. report hash/验证器可发现内部不一致，但不是 provider attestation，也不能抵抗同权限重写整个证据包。
-10. 历史 r4 的 full 与 generic grounded success 均为 6/12，产品 Gate 失败；它是同一 Pi Loop 的工具
-    消融，不是 Claude Code/Codex 产品对照，不能证明 Harness 优势。
-11. 没有自动修复、worktree、Verification Lattice、视觉、多 Agent、容器或复杂 UI。
+本节把当前可执行代码映射到目标架构；它只描述 2026-08-06 的 v0.4，不把目标写成现状。
 
-这些限制是 Target Architecture 与可执行 v0.4 垂直切片之间的 backlog，不应描述成已经完成的能力。
+| 能力           | 当前 v0.4                                                         | vNext 差距                                                 |
+| -------------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| Pi SDK         | 已使用真实 `createAgentSession`、模型、工具和 Session persistence | 收缩为薄 host，恢复默认 resources 与 coding tools          |
+| Agent 自由度   | 仅受限诊断 tools；固定 system prompt、顺序、一次提交              | 无 Tool Flow FSM，自主 coding/game tools                   |
+| Workspace      | 当前仓库/Fixture staging，无候选修复 worktree                     | managed task workspace、handoff 和保留生命周期             |
+| OS sandbox     | 未实现；opaque handle 不是进程隔离                                | 无特权 sandbox、禁网/凭据、资源限制、安全事件              |
+| Godot runtime  | 四个显式插桩 Fixture、Protocol v2、Godot 4.7.1                    | 首先迁移 frame-input-window 到自由工具面                   |
+| Checkpoint     | Fixture participant 语义 snapshot，缺失域已声明                   | 通用 manifest/receipt/fidelity 与 adapter 接入契约         |
+| Replay/control | 有 input、FPS、physics TPS 与 realized receipt                    | phase-aware trace resource、first divergence 和自由 fork   |
+| Capture        | 有执行期 telemetry，无目标 rolling black box                      | 10 秒/600 tick ring、pin/trigger、预算退化                 |
+| 世界查询       | 有 typed event/capsule，尚无通用 World Graph                      | 可重建 Runtime State Index，不含因果解释                   |
+| Compare        | 有 baseline/candidate compare，并被 verdict Gate 使用             | 独立 descriptive compare、ambiguous alignment、confounders |
+| Patch          | 未实现                                                            | sandbox 内修改、实际验证记录、reviewable handoff           |
+| Product result | Proposal → Harness Verdict                                        | 普通 assistant result + diff + execution records           |
+| Eval           | v0.3 formal benchmark 与产品 Gate 耦合                            | 独立、后置、优先开源的 Eval Suite                          |
 
-## 22. 失败与降级策略
+当前 v0.4 仍实现并测试 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
+`DiagnosisProposalV4`、`DiagnosisVerdictV3`、固定 replay/intervention flow 和 write-once verdict artifact。
+它们是 legacy 可执行事实，不属于 vNext 目标。
 
-| 情况                      | Harness 行为                                    |
-| ------------------------- | ----------------------------------------------- |
-| 未安装插件                | 本架构下拒绝 game-native 诊断，不伪装为完整模式 |
-| 协议或 schema 不兼容      | fail closed，保留握手 artifact                  |
-| checkpoint 覆盖不足       | 降低可用 Contract 范围或返回 `inconclusive`     |
-| replay 漂移               | 生成 divergence artifact，进入 Determinism Lab  |
-| 关键事件丢失              | 使对应 observation window 无效                  |
-| probe 改变 Bug 命中率     | 标记 observer effect，回退轻量 probe/repeat     |
-| Contract 可能错误         | 只报告违反该 Contract，不自动修改它             |
-| Agent 超时/拒绝/非法 JSON | 保留 Session 和实验，允许换模型恢复             |
-| patch 构建失败            | 候选失败，不影响其他 worktree                   |
-| 外部服务不可控            | 记录依赖并限制结论，不伪造 replay 等价          |
-| 分支预算耗尽              | 停止扩展，返回已有事实和最有价值的下一实验      |
+## 22. 历史与迁移策略
 
-## 23. 分阶段落地
+- v0.1–v0.4 raw artifact、schema、benchmark material、报告、hash、spec、selection 和 tag 不改写；
+- 新执行路径使用独立 schema/namespace，不把旧 Proposal/Verdict 洗成新 Task result；
+- 历史 reader 可以继续存在，旧 write path 不进入 vNext 默认命令；
+- vNext 验收后，README 默认入口转向新 Harness，旧诊断和 benchmark 命令标记为 legacy/maintenance；
+- 旧代码只有在历史 artifact 仍可审计、相关回归测试有替代且边界明确后才删除；
+- 不为了兼容旧 CLI 把固定 workflow、receipt ceremony 或 claim taxonomy 带入新 API。
 
-### ChronoRift v0.1：Mock 最小垂直闭环（已实现）
+历史 r4 唯一 36-cell execution 已完整发布并通过报告完整性 verifier，但预注册产品 Gate 失败：generic
+和 full grounded success 都是 6/12，full 相对 generic 的增益为 0。`generic` 是同一 Pi Harness 的工具
+消融，不是 Codex 或 Claude Code 产品对照。该负结果继续作为旧架构的工程证据保留，不能支持
+game-native treatment 优势结论；详见
+[v0.3.2-luna-r4 evidence workspace](benchmarks/v0.3.2-luna-r4/README.md)。
 
-- strict TypeScript/pnpm monorepo，一个 switch-door Mock Fixture；
-- content-addressed frozen Contract、checkpoint/restore 与 realized receipts；
-- 原始 baseline、一个新 baseline replay、一个 one-tick input intervention；
-- typed `signal_delivery`、sealed Execution、comparison 与 closed Evidence Capsule；
-- 真实 Pi Session/Agent Loop，默认通过 deterministic faux model 离线运行；
-- Agent Proposal 与 Harness Conclusion Gate 分离；typed mechanism assertion 逐字段重验，confidence
-  不决定 verdict；
-- write-once v0.1 JSON artifact 与跨进程 `replay --execution`。
+## 23. 决策记录
 
-验收：原始 baseline/replay 均 fail，唯一 intervention pass；引用完整时由 Gate confirmed；证据
-不足时 inconclusive；伪造/跨 run 引用 fail closed。
+本轮架构重构明确选择：
 
-### Phase 1.1：事实与安全继续加固
+1. ChronoRift 拥有 Harness，Pi 是内嵌 Loop Engine；
+2. 产品契约采用 Codex 式可审阅交付，不承诺 Harness 证明修复正确；
+3. Agent 在 task sandbox 内拥有高自由度 coding/game tools；
+4. Workflow 放进用户 prompt、`AGENTS.md` 或 skill，不进 Harness phase machine；
+5. 验证手段由 Agent 自主选择，产品评分由外部 Eval/CI/human 承担；
+6. 核心 game-native 原语是 rolling capture、checkpoint/restore/fork、replay、query 和 compare；
+7. 保留世界的可查询结构，删除系统替 Agent 作出的因果解释；
+8. Checkpoint 只对声明状态负责，restore 成功不代表实验起点等价；
+9. Fork 允许任意已授权变化，Compare 只公开差异与混杂项；
+10. 零 adapter 模式只重建执行外壳，深度语义恢复需要项目 snapshot adapter；
+11. 产品不要求 Game Contract；Contract 以后只能作为可选验证工具；
+12. 首个 vNext 切片只迁移 `frame-input-window`；
+13. 历史 v0.1–v0.4 证据保留，但不再决定新产品 API；
+14. 后期 Eval 优先采用开源 benchmark，并与产品 Harness 单向分离。
 
-1. 为 checkpoint 增加 consistency、barrier、coverage、missing-state 与 nondeterminism 描述；
-2. 从单次 replay 演进到重复 replay、稳定投影与最小 Determinism Certificate；
-3. 把 v0.1 固定工具 DTO 演进为 SDK-neutral agent protocol，而不急于创建空包；
-4. 完成调用/time/byte/token budgets、egress 分类/脱敏/audit 与 prompt-injection 测试；
-5. 为 write-once artifact 增加 manifest/CAS head 历史和非破坏 schema migration；
-6. 清理旧 Phase 1 confidence/report/branch 覆盖写路径，不把 legacy debt 带入 Godot Adapter。
-
-验收：损坏、不完整或不稳定 artifact 都得到可诊断失败/弃权，且 v0.1 回归套件保持通过。
-
-### Phase 1.2：在 Mock 上建立语义实验内核
-
-1. entity/incarnation、clock domains 和跨帧关系；
-2. Contract v2 与当前 TemporalInvariant 兼容器；
-3. 流式 World Graph、Sentinel ring 和 Causal Capsule；
-4. observation profile 与 observer-effect 报告；
-5. 在 Mock 上验证重复 replay、精确语义投影和 Determinism Certificate 服务；
-6. matched pair、边界搜索和 seed scan。
-
-验收：先在 Mock 中验证新服务边界，避免一边调 Godot 协议一边重写核心语义。
-
-### Phase 2：最小 Godot 垂直闭环
-
-1. 固定准确 Godot patch version；
-2. Godot addon/Autoload、TCP 握手和 capability discovery；
-3. per-process headless/fixed-fps launch controls、真实时钟回执和 InputEvent 注入；
-4. stable entity registry、allowlisted Signal/property/lifecycle；
-5. Sentinel profile；
-6. 先实现 L0，再实现 fixture 专用 L2；
-7. Godot switch/door fixture 复用同一 Contract suite。
-8. 建立 head-to-head benchmark scaffold 和第一批 fixture case。
-
-验收：真实 Godot 进程完成 Contract → Capsule → fork → replay → canonical diagnosis，且采集
-开销与 observer-effect 数据可见。
-
-### ChronoRift v0.3：benchmark-first 多机制垂直切片（已实现）
-
-- Protocol v2 与四个真实 Godot Fixture：Signal 顺序、frame/time、physics sampling、entity reuse；
-- Contract/Trace/Execution/Capsule v2、Proposal v3、Failure Brief/access receipt 与 run-scoped write-once
-  artifact；
-- stable entity incarnation、lifecycle/spatial/pending-effect evidence、fixed FPS/physics TPS/Fixture
-  control receipt；
-- entity-reuse 使用跨 tick 延迟 effect：旧 incarnation target 在复用后被错误按 stable ID 解析；
-- 每 Fixture 两个 allowlisted 单变量候选，Agent 最多运行两个；
-- generic、evidence-only、chronorift-full 三组真实 Pi Session tool flow，prompt/Failure Brief byte-identical，
-  source 使用 neutral virtual path，游戏与源码预算冻结；
-- `BenchmarkSuiteSpecV2` 固定的 4 × 3 × 3 formal matrix、append-only attempt ledger、typed retry/resume、
-  sanitized report、完整性验证与独立 grounded-success Gate；
-- 默认 fake model 离线验编排；真实 provider report 非默认 CI gate。
-
-验收：四个 full-arm fake-model Fixture 均 baseline fail、matching replay fail、正确单变量候选 pass，
-由 Harness confirmed；高 confidence 缺少实验仍 inconclusive；v0.1/v0.2 回归保持通过。正式 GLM-5.2
-36-cell execution 已从独立 freeze tag 完成并如实发布：报告完整性验证通过，但所有 cell 都在一次
-baseline 后以 `proposal_missing` 结束，三组 grounded success 均为 0/12，Gate 失败。该结果验收了
-formal ledger/publisher 的负结果路径，没有验收真实模型的诊断能力。
-
-### Phase 2.5：非确定性与自适应实验
-
-- 在真实 Godot 上实现重复 replay、首次漂移、稳定投影、容差和分布比较；
-- 帧率边界二分、seed 扫描和受预算限制的两变量实验；
-- checkpoint/determinism/observer-effect 进入 Conclusion Gate。
-
-### Phase 3：隔离修复与验证
-
-- Worktree Manager、Execution Sandbox、保护资产和受限 patch；
-- build hash 与 BranchSpec/Execution 绑定；
-- 七层 Verification Lattice；
-- 输出可审阅 patch，不自动 merge。
-- 运行包含修复与回归指标的完整 head-to-head 对照。
-
-### Phase 4：后置能力
-
-- tick/entity/camera 对齐的视觉 Sensor；
-- coordinated multi-process checkpoint 和网络干预；
-- 更大规模实验调度；
-- 在证据证明需要后再评估 UI 和多 Agent。
-
-## 24. Head-to-head 基准
-
-ChronoRift 与通用 Agent 使用：
-
-- 同一模型、provider、thinking level；
-- 相同 token、墙钟时间和游戏运行预算；
-- 同一源码版本与隐藏 Bug；
-- 相同基础读码和运行权限；
-- 相同的 Contract 设计意图文本，避免 ChronoRift 组独占答案提示；
-- 统计插件安装、Contract 编写和 benchmark 维护成本。
-
-v0.3 已设置三组：`generic`（raw runtime + replay/experiment）、`evidence-only`（Capsule + replay）
-和 `chronorift-full`（Capsule + replay/experiment/canonical compare）。三组使用同一模型、byte-identical
-prompt/Failure Brief、neutral `case/main.gd` source view、source call 预算，以及 baseline 1、replay 1、
-intervention 2、总游戏执行 4 的冻结上限；tool availability 是唯一 treatment。隐藏 oracle 只在 Agent
-提交后评分。v0.3 尚未衡量插件接入与 Contract 编写的人力成本，因此 formal report 最多证明这四个
-校准 Fixture 上的诊断差异。
-
-v0.3 主指标不是模型自报 confidence 或单独 mechanism accuracy，而是
-`groundedSuccess = mechanismCorrect && canonical verdict == confirmed`。预注册 Gate 要求 full arm 至少
-9/12 grounded successes、full 相对 generic 至少 +0.20，且 full incorrect confirmations 为 0。完整性
-验证与 Gate 使用不同命令；有效负面/incomplete report 仍应发布。v0.3.1-r2 正式 GLM-5.2 report 已
-发布并通过内部完整性验证，但 full 与 generic 均为 0/12，Gate 失败，因此没有可发布的优势结论。
-本地 raw ledger 显示 32 个 `proposal_missing` 的底层 message 为 `Connection error`，另外 2 个
-`invalid_tool_flow`、2 个 `progress_timeout`；sanitized formal report 本身不导出底层 message，不能把
-公开 terminal code 强行归因为 provider 根因，也不能把非零 token aggregate 解释为有效 treatment 对比。
-
-v0.3.2-luna 保持相同的 4 × 3 × 3 treatment 问题和 Gate，但用独立 Benchmark V3
-身份修复评测基础设施：provider failure 保留阶段/code/status/retry class；progress 分开
-fixture、model、tool、game 和 proposal；只有诊断进展前的 transient 故障可在 3 次 initial
-attempts 与唯一 3-attempt recovery cycle 内重试。诊断进展后的 provider/超时/进程中断
-均不重试且不计分。所有 Agent 工具 sequential，预算为 12 次调用、0 次工具错误和
-0 个连续无语义进展结果；`@rN` receipt handle 只是 Session 内对已签发 receipt ID 的短引用。
-
-当前这些修复已有离线回归，两次 Luna smoke 均以 5 次工具调用获得 Harness
-`confirmed`，total tokens 为 30,828 / 30,039，`test:live` 通过。C0-001、C0-002 与 C0-003
-均为 `not_ready` 并已原样保留；历史 C0/C1-004 六个 cells 都是零 tool errors、零无进展违规、
-零 incorrect confirmation，但其 V1 linkage 在强化 verifier 下仅为 `legacy_only`，不能授权新
-C1 或 freeze。implementation-bound 005 C0/C1 已完成：两阶段均 `ready`，verifier 的
-`prerequisiteEligibility` 均为 `hardened`，C1 精确绑定 C0 report hash；六个 cells 均 mechanism correct，
-且零 tool errors、零无进展违规、零 incorrect confirmation。原 machine spec 与 freeze tag 已完成；其
-唯一 execution 在 36 个 cell 后因 3 个 unresolved event references 未通过终态封存，没有 canonical
-report。修复后的 007 C0/C1 均为 `ready` / `hardened`，独立 r1 spec/tag 已冻结。r1 execution
-`benchmark-execution:3207d7d4-9e14-40bc-bca0-840897416739` 发布了完整性可验证的 `invalid` 报告：2
-scored、1 `harness_failure`、aggregate `null`，Gate `not_evaluated`。根因是 ungrounded proposal 被
-正确拒绝为 `invalid_proposal` 后，其 tool error 因预算 allowlist 漏项被升级。不得据此声称 Luna 下的
-game-native treatment 优势已被验证。
-
-该分类缺陷经狭义修复与回归覆盖后使用独立 r2 identity 验证，不改写 r1。implementation commit
-`e00cba6cbe3e87e0e768af02284bdc2edb24a77a` 上的 008 C0 报告 hash 为
-`d1461034624816e2946a9e0f617c18a4ce9c76818230472d7faf5c96a7217caf`，其 readiness 为 `not_ready`、
-前置资格为 `not_eligible`：generic 错误复制 baseline execution ID 并产生一次 tool error，full 未使用
-source tool。C1 未启动，008 identity 不得复用。全新 009 在 implementation commit
-`9217764b2dceb16ca8a5d1604c0bb7767d42b157` 上完成 C0/C1：两份报告均为 `ready` / `hardened`，C1
-精确绑定 C0 report hash；六个 cells 均 scored、mechanism correct、零 tool errors、零无进展违规、零
-incorrect confirmations，并各有 2 个 source receipts。该结果只满足 hardened canary 前置。
-
-r2 machine spec 随后固定 suite
-`benchmark-suite:bbd73dedf76964618d0746e11609caa6d78dabe87eae26b7e3caf0ce8ae9d8e1`、definition
-`benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`、subject hash
-`5558e9e3582d38885d9f512583473ab07b849568141ee8d43df469489b8a8470` 与 runner hash
-`8a154f3ddc1581cbd3917d6c87620475e0103b9918f2a679b2425eda6dd243fd`；本地 annotated tag
-`v0.3.2-luna-r2-benchmark-freeze` 固定包含它的 freeze commit。唯一 execution
-`benchmark-execution:0d6c17c8-03f1-441b-aadd-83ed2623aa9b` 的 selection hash 为
-`906bea23e579fc37b6edab31df5570c7075a25477bb644033851944fbd2f8a96`；它以 5/36 terminal cells
-封存为不可恢复的 `invalid`，其中 4 scored、1 `harness_failure`。report hash 为
-`116a57fcc24c7e1e9493a466b6613de9cac7082648d8219575c75d3b2c84353d`，verifier 返回 true / `issues=[]`，
-aggregate 为 `null`，Gate `not_evaluated`（命令预期 exit 2）。
-
-四个 scored cells 都是 mechanism correct：case 04 r3 的 generic/evidence-only 为 `inconclusive`，full
-为 source-grounded `confirmed`；case 02 r3 evidence-only 为 source-grounded `inconclusive`。第五个 cell
-case 02 r3 generic 的 7 次工具调用全部成功，proposal 被工具接受，且其 `mechanismCode` 与 frozen oracle
-一致；但它引用了 Capsule baseline events、没有引用 `@r1` raw baseline receipt。post-run coverage 因此
-拒绝 completed manifest，并将 cell 与 execution 以 `invalid` 封存。这不是 provider、Godot 或工具调用
-故障；它暴露的是 Agent 引用协议与 terminal coverage
-分类之间的架构缺口。预选 case 03 / full / r1 未执行，公开案例证据只能是
-`raw_manifest_unavailable`。r2 的 spec、tag、selection、ledger 与报告保持不变；修复必须进入新的
-campaign/definition。上述局部事实不能形成 treatment aggregate，也不支持产品优势结论。
-
-r3 随后使用独立 identity 继续验证 receipt coverage 修复，但唯一 execution 在 16/36 停止：Agent proposal
-的 `runId` 越过 scoped submit，直到 terminal integrity 才被识别为跨 investigation Harness invalid。
-发布该 sealed 负结果时又发现 public receipt projection 遗漏 `schemaVersion`。r3 ledger 不改写；r4 在
-submit 边界拒绝 `runId` / `fixtureId` 不匹配，并保留 public receipt schema，同时维持下游 fail-closed。
-
-r4 annotated tag `v0.3.2-luna-r4-benchmark-freeze` 固定 commit
-`c03237bea8c9767aa8a956d4e3db9a17e680ad94`。唯一 execution
-`benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b` 完成 36/36：30 `scored`、6
-`diagnostic_failure`（5 `invalid_proposal`、1 `invalid_tool_flow`），零 infrastructure failure、零
-Harness-invalid；verifier `issues=[]`。generic/evidence-only/full 的 grounded success 为 6/12、0/12、6/12，
-mechanism correct 为 11/12、10/12、9/12，incorrect confirmation 均为 0，full-minus-generic 为 0，故预注册 Gate 为 `fail`。
-这里的 generic arm 只是同一 Pi Session/Agent Loop 的工具消融，不是 Claude Code 或 Codex；本结果只能
-描述冻结四 Fixture 协议内的表现，不能支持 game-native treatment 或跨产品优势宣称。
-
-Bug 集至少覆盖 frame/timer、Signal 生命周期和顺序、Node 复用与 scene reload、
-physics/contact 边界、RNG、异步资源、input sampling 和 save/restore。
-
-主要指标：
-
-- 首次成功复现率；
-- 根因定位准确率和错误根因率；
-- 修复后 Contract 通过率和错误修复率；
-- 独立机器 replay 成功率；
-- 回归引入率；
-- `inconclusive` 的校准质量；
-- 人工介入次数；
-- 从失败到首个可信 evidence 的时间；
-- 模型 token、游戏运行次数和 telemetry 成本。
-
-只有当 ChronoRift 在主要指标上显著领先，且接入成本可接受，才对外宣称 game-native 优势已被
-验证。
-
-## 25. Grill 决策记录
-
-本架构依据本轮 `$grill-me` 明确选择：
-
-1. v1 胜负手：运行时 Bug 闭环；
-2. Godot 项目必须安装运行时插件；
-3. 可执行 Game Contract 是最高裁决权威；
-4. 确定性内核 + 非确定性包络；
-5. 候选修复进入隔离 Git worktree；
-6. Godot-first，核心保持可扩展；
-7. 渐进式观测；
-8. L0–L3 分级 checkpoint；
-9. Harness 产出事实，Agent 产出假设；
-10. 自适应因果实验图；
-11. 分层 Verification Lattice；
-12. 双层时空 Game World Graph；
-13. 严格同模型 head-to-head 基准；
-14. Sentinel ≤1%、Diagnostic ≤5% 的目标预算及 observer-effect 对照；
-15. 单进程优先，协议预留 multiplayer；
-16. 视觉作为后置关联 Sensor；
-17. Local-first 控制面和外发审计；
-18. 证据不足时强制 `inconclusive`。
-
-这些决策共同限定了 ChronoRift：它首先是一个可信的游戏运行时实验系统，其次才是一个使用
-大模型的编码 Agent。
+该边界把 ChronoRift 定义为：**让通用 coding Agent 能安全操作、回退、分叉和比较游戏运行世界的专用
+runtime substrate，而不是替 Agent 规定调查方法或替用户宣布真相的诊断 workflow。**

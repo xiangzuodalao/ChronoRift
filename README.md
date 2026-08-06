@@ -1,278 +1,126 @@
 # ChronoRift
 
-ChronoRift 是一个基于 Pi SDK 的 **game-native Agent Harness**。它把游戏运行时 Bug 转换成可恢复、
-可干预、可重放、可比较的实验，并由 Harness 根据运行时证据裁决结论，而不是相信模型置信度。
+ChronoRift 的目标是成为一个 **Codex 式的 game-native Agent Harness**：它托管受控的代码 workspace 和
+Godot 运行环境，用 Pi SDK 驱动自主 Agent Loop，并为 Agent 提供普通游戏工具难以可靠实现的运行时
+checkpoint、fork、replay、query 和 compare 原语。
 
-> 当前开发版本：**v0.4.0**。v0.4 以独立、并行路径收敛 Harness 核心架构；v0.1 Mock、v0.2
-> switch-door、v0.3 诊断和全部已冻结 benchmark artifact 继续兼容且不被迁移。历史 r4 在
-> `openai-codex/gpt-5.6-luna`、`thinkingLevel=max` 下完成了唯一 36-cell 正式 execution：
-> 30 `scored` + 6 `diagnostic_failure`（5 `invalid_proposal` + 1 `invalid_tool_flow`），36/36 均计入
-> score eligibility。独立 verifier 返回 `issues=[]`，但冻结产品 Gate **失败**：generic / evidence-only /
-> chronorift-full 的 grounded success 分别为 6/12、0/12、6/12，mechanism correct 为
-> 11/12、10/12、9/12，三组 incorrect confirmation 均为 0；full 未达 9/12，且
-> full − generic 为 0，未达 +0.20。这里的 `generic` 是同一 Pi Session/Agent Loop 下的
-> 工具可用性消融组，不是 Claude Code、Codex 或其他通用 coding-agent 产品对照。
->
-> r4 报告绑定 annotated tag `v0.3.2-luna-r4-benchmark-freeze` 的 commit
-> `c03237bea8c9767aa8a956d4e3db9a17e680ad94`；execution 为
-> `benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b`，selection hash 为
-> `fd5faf448e71cbd8156ca4c202f70dc9074b67b32830634f796ba722e463eaf0`，report hash 为
-> `7aef5376cca43bfd01bdef8ca46b73357c9d5608c83295ba9812de80dd897b2f`。历史 r1 与 r2
-> 分别在 3/36 和 5/36 后封存为 `invalid`；r3 在 16/36 后因 proposal scope 缺口封存为
-> `invalid`，冻结 publisher 又因 receipt `schemaVersion` 投影缺陷拒绝生成公开证据。这些
-> spec、tag、selection、ledger 和已有报告均保持不变；r4 只在新 identity 中修复边界并完成全矩阵。
+> **产品方向与当前实现必须分开阅读。** [Target Architecture](docs/architecture.md) 描述的是 vNext
+> 北极星，尚未实现。当前可执行版本仍是 **v0.4.0 legacy diagnosis slice**：它只有四个受控 Fixture，
+> 禁用通用 coding tools，要求固定诊断流程，并由 Harness 输出 verdict。README 中标为“目标”的能力不是
+> 当前命令的承诺。
 
-[Target Architecture](docs/architecture.md) 是长期演进北极星，不是一次性实现清单。当前 Godot
-边界见 [Godot Protocol v2](docs/godot-protocol-v2.md)；面向简历/面试的事实摘要见
-[v0.3.2 中文作品集](docs/portfolio-v0.3.2.md)。
+## 产品契约（vNext 目标）
 
-## v0.4 当前垂直切片
+> Harness 只保证 Agent 的文件、命令和游戏操作在受控环境中被真实执行，并把真实输出返回给 Agent；
+> Agent 负责自主调查、修改代码、选择并运行验证手段，并根据结果迭代；任务结果由 Agent 根据实际工具
+> 执行结果产生；ChronoRift 的成功表示 Agent Loop 正常完成、留下候选修改，并同时展示底层记录中的
+> 实际命令、游戏操作和验证结果，不表示系统已经从逻辑上证明 Bug 必然被彻底修复。
 
-v0.4 将一次诊断从 Fixture 专用编排提升为通用 `InvestigationSpecV1`，同时继续复用已经验证过的
-Godot Protocol v2 与 v0.3 runtime facts。新路径目前已经实现：
+这个契约刻意限制 Harness 的权威：
 
-- `FrozenContractBundleV3`：把 Contract scope、冻结 authority、evaluator identity 与 temporal rule
-  绑定到 content-addressed `contract:v3` 身份；
-- `ExecutionFingerprintV2`：把 source/build、runtime、Contract、checkpoint、input、realized controls、
-  intervention、probe 与 telemetry 绑定到每次执行，并单独计算可比较性基准；
-- `InvestigationSpecV1`：以 `investigationId`、intervention catalog 和明确实验预算描述一次调查，
-  Fixture ID 只留在兼容的 v2 runtime 边界；
-- 开放 `ClaimEvidencePolicyRegistry`：mechanism ID 与 strict typed assertion 由注册策略评估；Godot
-  Adapter 提供四种现有机制策略，GameBranch Gate 不再内置 Fixture 分支；排序后的
-  `ClaimPolicyManifestV1` 同时绑定 Investigation 与每个 execution fingerprint，registry 漂移会 fail closed；
-- append-only `ExperimentReservationV1`：在运行实验前持久占用预算，重启 Harness 也不会重置已用
-  intervention 名额；
-- 独立 `@chronorift/agent-protocol`：Agent 用 session-scoped opaque resource handles 引用资源、事件和
-  receipt，并获得显式 capability/budget manifest；manifest 同时公开全部已注册 claim 的字段约束与
-  证据引用义务，但不包含 Fixture 到正确机制的映射或预填值；canonical ID 不能替代 handle 授权，每次
-  读取仍产生 content-addressed receipt；
-- `DiagnosisProposalV4` 与独立 `DiagnosisVerdictV3` Gate：Agent 只提议，Harness 重新解析 assertion、
-  重验 scope、artifact、receipt、fingerprint、replay、comparison 与策略证据；confidence 没有裁决权，
-  未知机制或证据不足都返回 `inconclusive`；
-- `.chronorift/v0.4/runs/<run-id>/` 下的 run-scoped write-once repository；v0.3 artifact 保持原字节。
+- ChronoRift 负责 workspace、sandbox、真实工具执行、requested/realized receipt、schema、lineage、
+  capture coverage、资源限制和安全拒绝；
+- Pi 负责 Session、模型调用、工具调度和 Agent Loop；Agent 自主读码、形成假设、修改代码和选择验证；
+- Agent 最终说明可能有误，不能覆盖底层 diff、命令输出、game execution 和工具记录；
+- `completed` 只是 Loop 与交付状态，不等于 `verified`、`fixed` 或“已证明”；
+- 项目测试、断言和未来可选 Game Contract 都只是 Agent 可调用的验证手段；
+- 用户、项目 CI、人类 review 或独立 Eval 决定是否接受候选修改；
+- 产品路径不产生 `confirmed`、`probable`、`inconclusive`、canonical diagnosis 或 canonical fix verdict。
 
-这仍是受控的四 Fixture 垂直切片，不是完整 Target Architecture。v0.4 尚未实现通用 World Graph、
-重复 replay/完整 Determinism Certificate、Experiment DAG 或边界搜索、自动修复、Git worktree、外部项目
-接入、视觉、多 Agent、容器 sandbox、复杂 artifact 服务或 UI。
+严格 schema、路径校验、权限检查和 artifact 完整性仍然保留。它们证明环境边界和执行记录是否成立，不替
+Agent 证明某个根因或修复成立。
 
-## v0.3 已实现的运行时基础
+## 为什么不只是 Godot MCP
 
-四个 Fixture 分别覆盖游戏调试中不同于普通代码 Agent 的运行时机制：
+如果 ChronoRift 最终只提供启动游戏、SceneTree、输入、截图和日志，它确实只应该是一个 Godot MCP
+插件。独立 Harness 的价值在于把游戏运行时变成一个带身份、历史和 lineage 的状态版本系统。
 
-| Fixture              | 冻结 Contract                       | 故障机制                                                   | 可证伪干预           |
-| -------------------- | ----------------------------------- | ---------------------------------------------------------- | -------------------- |
-| `signal-ordering`    | Signal 后门应在 1 tick 内打开       | Signal 早于 receiver connection                            | 输入延后 1 tick      |
-| `frame-input-window` | 离开平台后输入应触发 jump           | 用 frame count 表示时间窗口，受 FPS 影响                   | fixed FPS 120 → 60   |
-| `physics-tunneling`  | projectile fired 后 target 应被击中 | 低 physics TPS 下离散采样穿透                              | physics TPS 30 → 120 |
-| `entity-reuse`       | respawn 后 health 应保持 100        | incarnation 1 的延迟 effect 在复用后错误命中 incarnation 2 | 关闭 Fixture pooling |
+以“跳跃输入偶尔漏接”为例：失败可能只发生在两个 physics tick 之间。普通重启会同时改变帧时序、对象
+状态和输入落点，Agent 很难只改变一个条件。ChronoRift 的目标是保留失败附近的历史，从同一个声明过
+coverage 的 checkpoint 分叉，再分别改变输入 phase、physics tick、probe 或代码，并对齐比较各次真实
+Execution。
 
-每次完整诊断执行：
+目标环境原语包括：
+
+- 有预算的 pre-failure rolling black box；
+- 带 manifest、coverage、fidelity 和缺失域的 checkpoint/restore；
+- 任意已授权 Execution/checkpoint/build/workspace 的 lineage-aware fork；
+- 区分 process frame、physics tick 和输入 phase 的 trace replay；
+- 可重建、可查询的 Runtime State Index；
+- 跨 Execution 的实体、时钟、状态和事件语义对齐；
+- 对 first divergence、uncontrolled state、数据丢失、observer effect 和混杂项的诚实报告。
+
+这些原语只回答“实际观察到了什么”和“已知差异是什么”。ChronoRift 不生成 causal slice、候选原因、根因
+结论或下一实验建议；实验设计和解释留给 Agent。
+
+## 目标运行方式
 
 ```text
-冻结 Contract + 初始 checkpoint + 输入 trace
-→ baseline 复现失败并封存 Execution Log
-→ 编译状态差分、事件链、delivery/lifecycle/spatial 异常证据
-→ 真实 Pi Session/Agent Loop 调用受限工具
-→ strict replay 验证相同语义 timeline
-→ 从同一 checkpoint 运行一个候选单变量 intervention
-→ 比较 lineage、realized controls、结果和首个 divergence
-→ Agent 提交 DiagnosisProposal v3 及实际读取过的 receipt ID
-→ Harness 重验引用、receipt、replay、候选执行、比较、事件健康与机制条件
-→ confirmed，或带 blockers 的 inconclusive
+用户启动 ChronoRift 并提供项目与目标
+→ ChronoRift 创建 managed task workspace 与执行 sandbox
+→ ChronoRift 使用 Pi SDK 创建 AgentSession
+→ 加载正常 coding tools、AGENTS.md、skills 和 Godot tools
+→ session.prompt(user goal)
+→ Pi Agent Loop 自主调查、修改和验证
+→ 模型输出普通最终结果，当前 turn 结束
+→ ChronoRift 展示 diff、实际工具记录、Execution lineage 和资源/安全记录
+→ 回收游戏进程与临时授权，保留 Session、workspace 和 artifacts
 ```
 
-deterministic fake model 通过真实 Pi `createAgentSession`、Agent Loop、工具调度与持久化 Session，
-但不访问网络。它从事件形态选择实验，不读取 Fixture ID 或 benchmark oracle。`FailureBriefV1`
-向三组提供相同的冻结失败描述；每次证据与源码访问产生 content-addressed
-`EvidenceAccessReceiptV1`。`confidence=0` 的完整证据仍可 confirmed；`confidence=1` 缺少可验证
-引用时仍只能 inconclusive。
+Agent 的 `cwd` 目标为任务 sandbox 内的 `/workspace`，来自受管的临时代码视图，而不是用户正在编辑的
+checkout。coding tools 和 Godot 进程运行在无特权容器或等价 Linux namespace 中；网络、宿主文件、
+凭据、设备和显示代理默认关闭，越界动作在执行前拒绝并形成结构化安全事件。模型侧 Pi Host 可以使用用户
+自己的 Pi credential store，但工具和游戏进程不能继承这些凭据。
 
-`entity-reuse` 不再用同步扣血模拟问题。tick 0 调度一个目标为 incarnation 1、due tick 1 的 effect；
-tick 1 先回收实体并生成 incarnation 2，Buggy resolver 再按 stable ID 把旧 effect 错误应用到新实体。
-关闭 pooling 时 effect 以 `owner_destroyed` 丢弃且 Contract 通过；只提高 FPS 仍失败。checkpoint 会
-捕获 pending effect 与 sequence，Evidence Capsule 会把 Contract 窗口之前的调度事件作为因果祖先
-纳入证据。
+一次 `session.prompt()` 返回只结束当前 turn。候选 patch、Pi Session、Execution、checkpoint 和 trace
+继续保留，直到用户继续对话、显式 handoff/apply、discard，或保留期到期。自动 commit、merge、push 和
+直接修改用户 checkout 都不是成功条件。
 
-## 三组 benchmark arm
+具体边界、资源模型和迁移顺序见 [Target Architecture](docs/architecture.md)。Pi 集成遵循
+[Pi SDK 官方文档](https://pi.dev/docs/latest/sdk)；workspace 和 sandbox 采用 Codex 式产品语义，但不
+假设或复制其私有实现。
 
-| Arm               | Agent 可见能力                                                                  |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `generic`         | 原始 baseline/replay、allowlisted experiment、受限源码工具                      |
-| `evidence-only`   | Evidence Capsule、strict replay、受限源码工具                                   |
-| `chronorift-full` | Capsule、strict replay、allowlisted experiment、canonical compare、受限源码工具 |
+## 实现状态
 
-这是对 Harness 工具可用性的消融实验：`generic` 仍由 Pi SDK 管理 Session、Agent Loop、模型调用和
-受限诊断工具。它不是未改造的 Pi CLI，也不是 Claude Code、Codex 或另一个完整通用 coding-agent
-产品；因此 benchmark 只比较三组冻结工具 treatment，不支持产品间优势结论。
+下表描述 2026-08-06 的仓库事实。
 
-三组收到 byte-identical system/user prompt 与 `FailureBriefV1`，prompt 不包含 arm 名称；差别只在
-active tool set。三组均无 shell、任意文件读取、写文件、Contract 修改或源码修改能力，共享
-baseline 1、replay 1、intervention 2、source call 4、总游戏执行 4 的冻结上限，工具不可用不会转换为
-额外权限。源码只通过中性的虚拟路径 `case/main.gd` 暴露，真实文件、项目、场景与 UI 名称不会进入
-Agent 视图。隐藏 oracle 只在提交后用于评分，不会进入 prompt、工具结果或 Capsule。
+| 维度       | 当前 v0.4                                              | vNext 目标                                                   |
+| ---------- | ------------------------------------------------------ | ------------------------------------------------------------ |
+| Pi         | 已使用真实 `createAgentSession` 和 Session persistence | 保留 Pi 默认 coding-agent 资源，收缩为薄 Loop host           |
+| Agent 工具 | 受限诊断工具、固定 prompt/顺序、一次 Proposal          | 自主 `read/bash/edit/write/grep/find/ls` 与可组合 game tools |
+| Workspace  | Fixture staging；不产生候选修复 worktree               | 隔离 `/workspace`、patch handoff 和可恢复任务                |
+| OS sandbox | 尚未实现；opaque handle 不是进程隔离                   | 无特权 sandbox、默认禁网/凭据、资源限制和安全事件            |
+| Godot      | Addon/Autoload、Protocol v2、四个显式插桩 Fixture      | 任意项目可注册 snapshot adapter/probe                        |
+| Capture    | 有执行期 typed telemetry                               | 10 秒或 600 tick rolling buffer、pin/trigger 和预算退化      |
+| Checkpoint | 只恢复 Fixture 注册的 participant                      | manifest-driven coverage、fidelity、restore receipt          |
+| Replay     | 有 Fixture 输入/FPS/TPS control 与 realized receipt    | phase-aware trace、自由 fork 和 first divergence             |
+| 世界查询   | typed event 与 legacy Capsule                          | 不含因果解释的 Runtime State Index                           |
+| Compare    | baseline/candidate compare 服务于 verdict Gate         | 独立 descriptive compare、alignment ambiguity 和 confounders |
+| 代码修改   | 不支持                                                 | sandbox 内修改、实际验证、reviewable patch                   |
+| 结果       | Proposal → Harness Verdict                             | 普通 Agent 结果 + diff + 原始执行记录                        |
 
-当前 r4 正式矩阵为 4 Fixture × 3 arm × 3 repetition，共 36 cells。固定 seed
-`chronorift-v0.3.2-luna-r4-formal-1` 确定 Fixture/repetition block 顺序及每个 block 内的 arm
-顺序；provider 不提供 sampling seed。Pi 固定 `openai-codex/gpt-5.6-luna`、`thinkingLevel=max`、
-并发 1、每 cell 600 秒。运行前必须验证模型 metadata 为 272,000 context window、128,000
-max tokens，且 `max` 映射为 `max`。历史 V2 v0.3/v0.3.1 报告仍按各自冻结的
-Volcengine/GLM-5.2 spec 重验，不会被迁移或重写。
+当前 v0.4 中的 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
+`DiagnosisProposalV4`、`DiagnosisVerdictV3` 和固定 replay/intervention flow 是 legacy 可执行事实，不是
+vNext 产品 API。
 
-主指标是 `groundedSuccess = mechanism correct && Harness verdict confirmed`。冻结 Gate 为：
+## 首个 vNext 垂直切片（计划）
 
-- `chronorift-full` grounded success 至少 9/12；
-- `chronorift-full - generic` grounded-success rate 至少 +0.20；
-- `chronorift-full` incorrect confirmations 为 0。
+首个且唯一的迁移 Fixture 是 `fixtures/godot-frame-input-window`。目标不是一次实现全部北极星，而是让
+自由 Pi Agent 在隔离环境中调查并修改一个真实的输入时序 Bug，同时证明下列最小闭环：
 
-其他 arm 的 incorrect confirmations、mechanism accuracy、source grounding、token、工具/游戏调用和
-wall time 均报告，但不改变该 Gate。模型 confidence 不参与评分。
+1. managed workspace、OS sandbox 和安全的 coding/game tools；
+2. rolling black box、pin 和可见的 capture budget/loss；
+3. Fixture snapshot adapter、checkpoint manifest 与 restore fidelity；
+4. checkpoint fork、输入 tick/phase replay 和 first divergence；
+5. Runtime State Index 与只描述差异的 compare；
+6. Agent 自主修改、运行它选择的验证并留下 patch；
+7. Session/workspace/artifact 可继续、handoff 或清理；
+8. 新路径没有 Proposal、Claim Policy、Causal Capsule、Conclusion Gate 或 canonical verdict。
 
-### 首次正式结果（负结果）
+真实模型 smoke 和公开 benchmark 不作为首个切片的默认完成门槛。切片稳定后，Eval 优先使用开源、可
+复现 benchmark；若现有 benchmark 缺少 checkpoint/fork 类任务，再单独公开扩展规范。
 
-[已验证报告](docs/benchmarks/v0.3/benchmark-report.v2.json)对应一个 `complete` execution：36/36 cells
-均完成并封存，但全部是 `diagnostic_failure/proposal_missing`。每个 cell 只完成 1 次 baseline；三组
-分别为 0/12 grounded success，总计 token 0、工具调用 0、游戏执行 36，incorrect confirmation 为 0。
-因此完整性 verifier 通过，而预注册 Gate 失败。可读汇总与预选案例分别见
-[results.md](docs/benchmarks/v0.3/results.md)和
-[physics case study](docs/benchmarks/v0.3/case-study-physics-tunneling.md)。
-
-公开的 sanitized report 只能证明没有形成 proposal，不能单独证明 provider 侧的具体根因。本地忽略的
-raw ledger 在 36 个 finished manifests 中均记录 `PiHarnessError/PROPOSAL_MISSING: Connection error.`；
-相同环境下两次独立 `corepack pnpm test:live` 也返回 `Connection error`。这些本地观测一致并强烈指向
-连接路径，但不应改写为公开 report 已证明的 provider 归因。当前结果不能用于评价 GLM-5.2 的诊断
-质量或比较三种 arm 的效果。
-
-离线 `benchmark` 是保留的 V1 deterministic smoke，验证 Agent 工具流、权限、预算、基本矩阵和
-Gate 编排，不作为产品优势数据。formal v2 selection、progress journal、retry/recovery 与 ledger
-由 `corepack pnpm check` 中的离线测试验证。正式结果状态与复现实验协议见
-[v0.3 evidence package](docs/benchmarks/v0.3/README.md)。
-
-### v0.3.1-r2 provider-recovery 结果（负结果）
-
-[r2 已验证报告](docs/benchmarks/v0.3.1-r2/benchmark-report.v2.json)对应唯一、完整的 36-cell
-execution。三组 grounded success 仍均为 0/12，incorrect confirmation 为 0，Gate 因 full 未达到
-9/12 且 full − generic 未达到 +0.20 而失败。与 v0.3 的零用量报告不同，本轮记录到 2,527,181
-tokens、146 次工具调用和 36 次 baseline 游戏执行；非零用量集中在 4 个 cells。
-
-本地 write-once ledger 进一步显示：32 个 `proposal_missing` 的底层错误为 `Connection error.`，2 个
-cells 因 Pi 发起并发诊断工具调用而得到 `invalid_tool_flow`，2 个有持续进度但在 600 秒达到
-`progress_timeout`。sanitized report 不导出底层错误文本，所以公开证据只能把前 32 个解释为 proposal
-缺失；不能把这轮 aggregate 当作有效的 arm 能力对比。完整边界、汇总和预选案例见
-[v0.3.1-r2 evidence package](docs/benchmarks/v0.3.1-r2/README.md)、
-[results](docs/benchmarks/v0.3.1-r2/results.md)与
-[case study](docs/benchmarks/v0.3.1-r2/case-study-physics-tunneling.md)。
-
-### v0.3.2-luna 可靠性与 Benchmark V3（r4 已完成 36/36）
-
-V3 不改写 V2 artifact、hash 或 verifier。它把 provider 失败保留为 typed cause（阶段、错误
-code、HTTP status 与 retry class），并持久化 model/tool/game/proposal 的单调 progress。只有
-发生在诊断进展之前的 transient infrastructure failure 才可进入最多 3 次 initial attempts；
-一次 recovery cycle 再提供最多 3 次 attempts。已观察到 model output、工具开始、诊断性
-游戏执行或 proposal 后的基础设施故障不重试、不计分；证据不足仍由 Harness 输出
-`inconclusive`，模型 confidence 不决定 confirmed。
-
-诊断工具由 Pi 以 `executionMode=sequential` 调度，每 cell 最多 12 次工具调用、
-0 次工具错误、0 个连续无语义进展结果。工具返回 `@rN` 短 receipt handle，提交时
-由 Harness 解析回本 Session 中的精确 content-addressed receipt ID，不放宽引用完整性。
-
-score-eligible attempt 必须封存 strict terminal raw manifest；manifest 精确绑定 suite/execution/cell/
-attempt lineage、冻结 Fixture material、prompt audit、terminal progress/metrics、证据、receipt、proposal、
-verdict 与 oracle。账本要求 terminal progress、finished attempt、cell 和 completed report 彼此精确对应，
-finish 后拒绝追加 progress。Harness 按冻结的 baseline/replay/intervention/source/tool/game/time 等预算
-重新校验，其中 replay、intervention 与 source 的 per-kind 用量从 canonical receipts 计算；超预算结果
-不能成为 scored cell。公开报告不复制完整 raw manifest 或模型散文，只嵌入可独立重算分数的 sanitized
-`scoringProofs`，并在封存时逐项核对其来自账本中被选中的 terminal manifest。
-
-两次独立 Luna smoke 均以 5 次工具调用获得 Harness `confirmed`，total tokens 分别为
-30,828 和 30,039；`corepack pnpm test:live` 随后通过。已发布的 C0-001、C0-002 和 C0-003
-均为 `not_ready` 并作为负向工程证据原样保留。历史 C0-004 与 C1-004 报告的 readiness 字段
-均为 `ready`，六个 cells 为零 tool errors、零无进展违规、零 incorrect confirmation；但二者是
-缺少 implementation receipt 的 V1 linkage，强化 verifier 返回 `prerequisiteEligibility=legacy_only`。
-新 identity 005 已完成 implementation-bound V2 C0/C1：[C0](docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json)
-与 [C1](docs/benchmarks/v0.3.2-luna/canary-c1-ready-005.json) 均为 `ready`，verifier 的
-`prerequisiteEligibility` 均为 `hardened`，C1 精确绑定 C0 report hash
-`0c5ef20c0e8f16ee9d93175b36cb7b1fb85f9514c6d06e5267b3c9f7974545c1`。两阶段六个 cells
-均 mechanism correct，并保持零 tool errors、零无进展违规、零 incorrect confirmation；C0 verdict
-为 `confirmed`/`inconclusive`/`confirmed`，C1 三组均为 `inconclusive`。正式冻结的 canary 前置
-现已满足；machine spec 已生成并由 `v0.3.2-luna-benchmark-freeze` 固定。原 36-cell execution 因
-3 个 unresolved event references 未通过终态封存，没有 canonical report。修复后运行的 007 C0/C1
-均为 `ready` / `hardened`，r1 spec 已冻结。r1 report 已以 `invalid` 发布：3 cells 中 2 scored、1
-`harness_failure`，2 个 scoring proofs、aggregate `null`；verifier 通过，Gate 未评估。详见
-[历史 v0.3.2-luna workspace](docs/benchmarks/v0.3.2-luna/README.md) 与
-[r1 evidence workspace](docs/benchmarks/v0.3.2-luna-r1/README.md)。独立后继 008 C0 的两个 readiness
-blockers 分别是 generic 的 `invalid_tool_flow` 和 full 的 `source_receipt_missing`，因此报告为
-`not_ready`、前置资格为 `not_eligible`；C1 从未启动，008 不得复用。全新 009 C0/C1 已分别验证为
-`ready` / `hardened`，C1 精确绑定 C0 report hash；六个 cells 均 scored、mechanism correct，且每个
-cell 有 2 个 source receipts。r2 [machine spec](docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json)
-已生成，definition 为
-`benchmark-definition:6c073ede350ba0ceb902353b6dd701eae589453b2a0717b59e357ac9be26eb09`，并由本地 annotated
-freeze tag 固定。唯一 execution
-`benchmark-execution:0d6c17c8-03f1-441b-aadd-83ed2623aa9b` 已封存为不可恢复的 `invalid`：5/36 cells
-封存，4 scored、1 `harness_failure`，aggregate 为 `null`；report hash 为
-`116a57fcc24c7e1e9493a466b6613de9cac7082648d8219575c75d3b2c84353d`，verifier 返回 true 且无 issues，
-Gate 为 `not_evaluated`（命令预期 exit 2）。四个 scored cells 中只有 case 04 r3 full 为 grounded success；这组
-不完整样本不能形成 treatment aggregate。case 02 generic r3 的 7 次工具调用全部成功，proposal 已被工具
-接受，且其 `mechanismCode` 与 frozen oracle 一致；但它引用了 Capsule 中的 baseline events 而没有引用
-raw baseline receipt，终态 coverage 因此拒绝 completed manifest，并将 cell 与 execution 以 `invalid`
-封存。这不是 provider、Godot 或工具故障。原始 report hash、
-逐 arm 用量与边界见
-[r2 evidence workspace](docs/benchmarks/v0.3.2-luna-r2/README.md)。
-
-r3 在新 identity 中把 receipt coverage 缺口改为 canonical scored `inconclusive`，并允许后续 cell
-继续调度。它的唯一 execution 封存了 16/36 cells（11 scored、4 diagnostic failures、1
-`invalid/harness_failure`）；第 16 格暴露 scoped submit tool 没有校验 proposal `runId/fixtureId`。
-terminal manifest 仍正确 fail closed，但冻结 publisher 随后又因 sanitized receipt 投影遗漏
-`schemaVersion: 1` 拒绝生成公开 artifact。r3 的 spec、tag、selection 和本地 ledger 保持不变，
-不伪造 publication；详见 [r3 evidence workspace](docs/benchmarks/v0.3.2-luna-r3/README.md)。
-
-r4 在 scoped submit 边界将跨 investigation proposal 拒绝为 `INVALID_DIAGNOSIS`，formal classifier
-将其封存为 cell-local `diagnostic_failure/invalid_proposal`；publisher 同时保留 receipt schema 版本。
-Canary-011 C0/C1 均为 `ready` / `hardened`，随后由 commit
-`c03237bea8c9767aa8a956d4e3db9a17e680ad94` 上的 annotated tag
-`v0.3.2-luna-r4-benchmark-freeze` 固定正式 spec。唯一 r4 execution
-`benchmark-execution:22c2dee9-e508-41fe-b0db-2e90de8a2b7b` 已 `complete`：36/36 terminal cells、
-30 scored、6 diagnostic failures（5 `invalid_proposal`、1 `invalid_tool_flow`），无
-`infra_unavailable` 或 Harness-invalid cell。这些 diagnostic failures 是计分为零的局部 Agent 结果，
-不是被隐藏或重试筛选的基础设施故障。
-
-| Arm             | Score eligible | Grounded | Mechanism correct | Incorrect confirmations | Game runs | Tools |    Tokens |
-| --------------- | -------------: | -------: | ----------------: | ----------------------: | --------: | ----: | --------: |
-| generic         |          12/12 |     6/12 |             11/12 |                       0 |        36 |    85 | 1,103,071 |
-| evidence-only   |          12/12 |     0/12 |             10/12 |                       0 |        24 |    60 |   540,781 |
-| chronorift-full |          12/12 |     6/12 |              9/12 |                       0 |        36 |    94 | 1,213,944 |
-
-[r4 报告](docs/benchmarks/v0.3.2-luna-r4/benchmark-report.v3.json)的 hash 为
-`7aef5376cca43bfd01bdef8ca46b73357c9d5608c83295ba9812de80dd897b2f`，first-selection hash 为
-`fd5faf448e71cbd8156ca4c202f70dc9074b67b32830634f796ba722e463eaf0`；独立 verifier 返回
-`issues=[]`。产品 Gate 单独返回 **fail**：full grounded success 6/12 低于 9/12，
-full − generic 为 0 低于 +0.20；仅“full incorrect confirmations = 0”达标。完整汇总与
-预选物理案例见 [results](docs/benchmarks/v0.3.2-luna-r4/results.md)、
-[case evidence](docs/benchmarks/v0.3.2-luna-r4/case-physics-tunneling-full-r1.json) 与
-[r4 evidence workspace](docs/benchmarks/v0.3.2-luna-r4/README.md)。该结果是 Luna Max 在四个校准 Fixture
-上的 Harness 工具消融，不是与 Claude Code、Codex 或其他通用 Agent 的 head-to-head。
-
-## 项目结构
-
-依赖方向保持为 `domain ← gamebranch ← adapters ← CLI composition root`。
-
-```text
-apps/cli                         参数解析、v0.3/v0.4 composition、exploratory/formal benchmark runner
-packages/domain                  engine-neutral ID、DTO、strict Zod schema、v0.4 investigation facts
-packages/agent-protocol          opaque handle、capability manifest、SDK-neutral Agent API
-packages/gamebranch              replay、experiment、evidence、compare、policy registry、canonical Gate
-packages/godot-protocol          versioned wire DTO、hash、TCP framing
-packages/godot-adapter           Godot 进程、能力协商、Fixture registry、runtime port、claim policies
-packages/json-artifacts          v0.1 兼容 + v0.3/v0.4 write-once run store + benchmark ledger
-packages/pi-harness              真实 Pi Session/Loop、v0.3/v0.4 受限工具、fake/production model
-packages/mock-game               v0.1 deterministic switch-door Mock
-godot/addons/chronorift           EditorPlugin + ChronoProbe Autoload
-fixtures/godot-*                 四个显式插桩的真实 Godot Fixture
-```
-
-Pi 与 Godot 原生类型不会进入 domain/gamebranch。Addon 与 Fixture 会复制到被忽略的
-`.chronorift/godot-projects/`；源码树中的 symlink 会被拒绝。
-
-## 快速开始
+## 当前 v0.4 快速开始（legacy）
 
 要求 Node.js `>=22.19`；`.nvmrc` 固定 `22.23.1`，pnpm 固定 `11.20.0`。
 
@@ -285,309 +133,154 @@ corepack pnpm godot:install
 corepack pnpm godot:doctor
 corepack pnpm fixtures
 
-# 一个真实 Godot Fixture + 真实 Pi Loop + 离线 fake model
-corepack pnpm demo:v04 -- --fixture signal-ordering
+# 真实 Godot Fixture + 真实 Pi Loop + 离线 fake model
+corepack pnpm demo:v04 -- --fixture frame-input-window
 
-# 同一 v0.4 调查 API + 真实 provider
-corepack pnpm diagnose:v04 -- \
-  --fixture signal-ordering \
-  --provider openai-codex \
-  --model gpt-5.6-luna \
-  --thinking max
-
-# v0.3 兼容路径
-corepack pnpm demo:v03 -- --fixture signal-ordering
-
-# 离线 deterministic smoke；不声称模型优势
-corepack pnpm benchmark -- --seed local-smoke
-
-# 固定 Godot 的完整集成测试
+# 四个 Fixture 的 Godot 集成测试
 corepack pnpm test:godot
 ```
 
-系统没有全局 `pnpm` 时始终使用 `corepack pnpm <command>`。
+仓库管理的 Godot installer 当前固定 Godot `4.7.1`，只支持 Linux x86_64。其他平台需要自行提供 Godot
+二进制，并通过 `GODOT_BIN` 或命令支持的 `--godot-bin` 传入。系统没有全局 `pnpm` 时始终使用
+`corepack pnpm <command>`。
 
-## 使用 ChatGPT OAuth / GPT-5.6 Luna Max
+### 真实 Pi provider（legacy）
 
-Pi 依赖固定为 `@earendil-works/pi-coding-agent@0.83.0` 与
-`@earendil-works/pi-ai@0.83.0`，不修改、fork 或 vendor。凭据只写入 Pi 用户级 credential store，
-不会复制进仓库、Session Capsule 或 benchmark report。该版本 Pi 的 `openai-codex` provider 使用
-ChatGPT Plus/Pro OAuth；其目录为 Luna 声明 272,000 context、128,000 max output，并把 `max` 映射为
-真实的 `max` reasoning effort。
+Pi 依赖固定为 `@earendil-works/pi-coding-agent@0.83.0` 和 `@earendil-works/pi-ai@0.83.0`。已安装
+package 的 source、types 和 model catalog 是本仓库实现的权威；升级必须附带兼容测试。
 
 ```bash
-# 首次登录：启动 Pi 后执行 /login openai-codex，并在浏览器完成 ChatGPT 登录
-corepack pnpm pi \
-  --no-session \
-  --provider openai-codex \
-  --model gpt-5.6-luna \
-  --thinking max
+# 首次使用可启动仓库依赖的 Pi CLI，并在其中执行 /login <provider>
+corepack pnpm pi --no-session
 
-# 登录后验证用户级凭据可解析的模型目录
+# 查看用户 credential store 当前可用的 provider/model
 corepack pnpm models -- --provider openai-codex
 
+# 当前历史 live 路径使用过的显式配置；不会选择“最新模型”
 corepack pnpm diagnose:v04 -- \
-  --fixture physics-tunneling \
+  --fixture frame-input-window \
   --provider openai-codex \
   --model gpt-5.6-luna \
   --thinking max
 ```
 
-Pi OAuth 凭据保存在 `~/.pi/agent/auth.json`。不要复制或提交该文件。`corepack pnpm pi:smoke` 与
-`corepack pnpm test:live` 默认使用上述 Luna Max 组合；diagnose 命令仍可通过参数或
-`CHRONORIFT_PI_PROVIDER`、`CHRONORIFT_PI_MODEL` 显式选择 provider/model。此前
-Volcengine/GLM-5.2 只保留为历史 campaign 事实和兼容代码，不再是当前运行默认值。
+Pi credential store 默认位于 `~/.pi/agent/auth.json`；设置 `PI_CODING_AGENT_DIR` 后会随 agent directory
+改变。不要复制或提交它。当前 v0.4 还没有目标 OS sandbox，因此这里不能把“凭据不进入工具环境”描述为
+已实现保证。只有 `*.live.test.ts` 和显式 live 命令可以访问 provider；默认测试离线、无凭据且无网络。
 
-真实 provider 的探索运行与冻结正式运行是两个不同入口。`benchmark:explore` 允许调整参数，仅用于
-调试基础设施；`benchmark:formal` 只接受冻结 spec、可选的同 execution 恢复 ID 与 Godot 二进制路径，
-不接受 provider、model、thinking、seed、repetition 或 artifact-root 覆盖。formal、status 与 publish 固定使用
-仓库下的 `.chronorift/`：
+## 当前支持的 Fixture
 
-```bash
-corepack pnpm pi:smoke
+| Fixture              | legacy 运行时 Bug                                | 可观察控制           |
+| -------------------- | ------------------------------------------------ | -------------------- |
+| `signal-ordering`    | Signal 在 receiver connection 之前发出           | 输入延后一个 tick    |
+| `frame-input-window` | 用 frame count 表示输入时间窗口，行为受 FPS 影响 | fixed FPS 120 → 60   |
+| `physics-tunneling`  | 低 physics TPS 下离散采样穿透目标                | physics TPS 30 → 120 |
+| `entity-reuse`       | 延迟 effect 错误命中新 incarnation               | 关闭 Fixture pooling |
 
-corepack pnpm benchmark:explore -- \
-  --provider openai-codex \
-  --model gpt-5.6-luna \
-  --thinking max
-
-# 当前 r4 前置：canary-011 C0/C1 均为 ready/hardened
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna-r4/canary-c0-ready-011.json
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna-r4/canary-c1-ready-011.json \
-  --c0-report docs/benchmarks/v0.3.2-luna-r4/canary-c0-ready-011.json
-
-# 重建 r4 machine spec 以检查当前源码与冻结 material 是否漂移
-corepack pnpm --silent benchmark:spec -- \
-  --campaign v0.3.2-luna-r4 \
-  > /tmp/chronorift-v0.3.2-luna-r4-spec.json
-cmp /tmp/chronorift-v0.3.2-luna-r4-spec.json \
-  docs/benchmarks/v0.3.2-luna-r4/benchmark-spec.v3.json
-
-# 查看已 complete 的唯一 r4 execution；不要创建第二个 selection
-corepack pnpm benchmark:status -- \
-  --spec docs/benchmarks/v0.3.2-luna-r4/benchmark-spec.v3.json
-
-# 预期 exit 0：report 完整性有效，issues=[]
-corepack pnpm benchmark:verify -- \
-  --spec docs/benchmarks/v0.3.2-luna-r4/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna-r4/benchmark-report.v3.json
-
-# 预期 exit 2：execution complete，但产品 Gate fail
-corepack pnpm benchmark:gate -- \
-  --spec docs/benchmarks/v0.3.2-luna-r4/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna-r4/benchmark-report.v3.json
-
-# 历史 004 报告保持原字节；重验会显示 prerequisiteEligibility=legacy_only
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna/canary-c0-ready-004.json
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-004.json \
-  --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-004.json
-
-# 005 C0/C1 均为 ready/hardened；重验 C1 时必须提供它实际绑定的精确 C0 报告
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna/canary-c1-ready-005.json \
-  --c0-report docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
-
-# r1 hardened 007；006 C1 是不可恢复的 interrupted 负证据
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna-r1/canary-c0-ready-007.json
-corepack pnpm benchmark:canary:verify -- \
-  --report docs/benchmarks/v0.3.2-luna-r1/canary-c1-ready-007.json \
-  --c0-report docs/benchmarks/v0.3.2-luna-r1/canary-c0-ready-007.json
-
-# r1 machine spec 已冻结；可重建测试会拒绝实现与 spec 漂移
-corepack pnpm --silent benchmark:spec -- \
-  --campaign v0.3.2-luna-r1 \
-  > /tmp/chronorift-v0.3.2-luna-r1-spec.json
-
-# 只读查看旧 identity 的 durable selection；不要再次运行或恢复它
-corepack pnpm benchmark:status -- \
-  --spec docs/benchmarks/v0.3.2-luna/benchmark-spec.v3.json
-
-# 查看 r1 first-selection 状态
-corepack pnpm benchmark:status -- \
-  --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json
-
-# 查看 r2 唯一且已封存的 invalid execution
-corepack pnpm benchmark:status -- \
-  --spec docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json
-
-corepack pnpm benchmark:verify -- \
-  --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna-r1/benchmark-report.v3.json
-
-# 预期 exit 2：报告有效，但 execution invalid，Gate not_evaluated
-corepack pnpm benchmark:gate -- \
-  --spec docs/benchmarks/v0.3.2-luna-r1/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna-r1/benchmark-report.v3.json
-
-corepack pnpm benchmark:verify -- \
-  --spec docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna-r2/benchmark-report.v3.json
-
-# 预期 exit 2：r2 report 完整性有效，但 execution invalid，Gate not_evaluated
-corepack pnpm benchmark:gate -- \
-  --spec docs/benchmarks/v0.3.2-luna-r2/benchmark-spec.v3.json \
-  --report docs/benchmarks/v0.3.2-luna-r2/benchmark-report.v3.json
-```
-
-旧 selection `benchmark-execution:fd22f458-5640-4379-a290-a180dedb1c66` 没有 completed/report，不能
-publish、verify 或运行 Gate。r1、r2、r3 与 r4 均使用新 spec、tag、definition 和 first selection，
-不得复用、拼接或覆盖旧 spec、ID 及 ledger。
-
-`pi:smoke` 使用 Luna Max、v0.1 Mock switch-door 与真实 Pi Session/Agent Loop，但不接触四个正式 Fixture；只有
-Session 文件已持久化、token 和 tool call 均非零且 Harness verdict 为 `confirmed` 才返回成功。输出仅含
-provider/model、thinking、用量与 verdict，不含 credential、prompt、Session ID 或本地路径。本轮 V3
-campaign 的完整命令、冻结顺序和发布边界见
-[r4 protocol](docs/benchmarks/v0.3.2-luna-r4/protocol.md) 与
-[r4 reproduction](docs/benchmarks/v0.3.2-luna-r4/reproduction.md)；历史证据目录不可覆盖。
-
-`benchmark:live` 暂保留为 `benchmark:explore` 的兼容别名，但已弃用。每个 definition 在固定本地
-ledger 中使用 `first-formal-execution-wins-v1`；selection 持久化后才输出 `executionId`，之后不得创建
-第二个 non-resume execution。终端输出丢失时用 `benchmark:status` 找回该 ID。这是可审计的本地防
-cherry-pick 规则，不是外部签名；拥有同一用户文件权限的人仍可删除整个本地 ledger。
-
-V3 每个 attempt 持久化结构化、单调的 fixture/model/tool/game/proposal progress，并保留
-typed infrastructure cause。只有诊断进展之前的 transient infrastructure failure 可重试：首轮
-最多 3 attempts，唯一 recovery cycle 再最多 3 attempts。已有诊断进展后失败不重试、
-不计分，避免通过重试筛选模型回答。恢复时 Harness 会把已中断 attempt 从最后一个 durable
-progress 收敛成 terminal progress、finished attempt 与 terminal cell；已完成的 attempt 不会重跑，
-已封存 execution 不能继续追加。V2 的三阶段 journal 与历史 retry 语义仅用于
-重验已发布 artifact，不被 V3 迁移或改写。
-
-`benchmark:verify` 验证 schema、canonical identity、严格 terminal manifest hash、sanitized
-`scoringProofs` 的引用与机制条件、冻结 material/per-kind budgets、attempt/terminal ledger 对应、
-oracle、聚合与 report hash；有效的负面或 incomplete 报告仍可完整性有效。封存到本地仓库时还会
-把 report proof 与原始账本逐项对照。`benchmark:gate` 单独解释产品 Gate。
-这不是 provider attestation，也不能证明模型请求确由声明供应商执行。正式 benchmark 需要网络与
-用户凭据，不是默认 CI gate。
+这些 Fixture 验证 Protocol v2、typed events、多时钟、realized controls 和 participant
+checkpoint/restore。表中的干预是 legacy benchmark 的校准事实，不是 vNext Agent 的必选步骤，也不是通用
+Godot 根因 taxonomy。
 
 ## 常用命令
 
-| 命令                              | 作用                                   |
-| --------------------------------- | -------------------------------------- |
-| `corepack pnpm check`             | lint、格式、strict typecheck、离线测试 |
-| `corepack pnpm test:godot`        | 四 Fixture v0.3 + v0.2 兼容集成测试    |
-| `corepack pnpm demo:v04`          | v0.4 opaque-handle 离线完整诊断        |
-| `corepack pnpm diagnose:v04`      | v0.4 单调查真实 provider 诊断          |
-| `corepack pnpm demo:v03`          | v0.3 单 Fixture 离线兼容诊断           |
-| `corepack pnpm diagnose:v03`      | v0.3 单 Fixture provider 兼容诊断      |
-| `corepack pnpm pi`                | 启动仓库所依赖的 Pi CLI                |
-| `corepack pnpm pi:smoke`          | 正式 Fixture 外的真实 Pi 链路 smoke    |
-| `corepack pnpm benchmark`         | deterministic fake-model smoke         |
-| `corepack pnpm benchmark:explore` | 可配置的真实 provider 探索运行         |
-| `corepack pnpm benchmark:canary`  | 运行分阶段 V3 Luna canary              |
-| `corepack pnpm benchmark:spec`    | 生成待提交的 formal V2/V3 机器 spec    |
-| `corepack pnpm benchmark:formal`  | 冻结 spec 的可恢复 36-cell 正式执行    |
-| `corepack pnpm benchmark:status`  | 查询 durable first-execution selection |
-| `corepack pnpm benchmark:publish` | 从 ledger 生成 sanitized evidence 包   |
-| `corepack pnpm benchmark:verify`  | 仅重验 report 完整性与可重算字段       |
-| `corepack pnpm benchmark:gate`    | 单独评估 grounded-success Gate         |
-| `corepack pnpm benchmark:live`    | 已弃用的 `benchmark:explore` 兼容别名  |
-| `corepack pnpm demo`              | v0.1 Mock 兼容路径                     |
-| `corepack pnpm demo:godot`        | v0.2 switch-door 兼容路径              |
-| `corepack pnpm test:live`         | v0.1 真实 provider smoke test          |
+| 命令                                                | 当前作用                                                   |
+| --------------------------------------------------- | ---------------------------------------------------------- |
+| `corepack pnpm check`                               | lint、格式、strict typecheck 和离线测试                    |
+| `corepack pnpm test:godot`                          | 四个 v0.3 Fixture 加 v0.2 兼容集成测试                     |
+| `corepack pnpm demo:v04`                            | v0.4 固定 workflow 的离线完整诊断                          |
+| `corepack pnpm diagnose:v04`                        | v0.4 固定 workflow 的真实 provider 诊断                    |
+| `corepack pnpm demo:v03` / `diagnose:v03`           | v0.3 兼容路径                                              |
+| `corepack pnpm fixtures`                            | 列出当前 Fixture                                           |
+| `corepack pnpm godot:install` / `godot:doctor`      | 安装或检查 Godot                                           |
+| `corepack pnpm pi` / `models`                       | 启动固定版本 Pi CLI 或查询模型目录                         |
+| `corepack pnpm benchmark`                           | deterministic fake-model smoke；不代表产品优势             |
+| `corepack pnpm benchmark:verify` / `benchmark:gate` | 重验历史报告完整性或冻结 Gate                              |
+| `corepack pnpm test:live`                           | v0.1 Mock switch-door 真实 provider smoke；不属于默认 Gate |
 
-## Artifact 与可信边界
+Formal benchmark 的冻结命令、退出码、恢复规则和证据 identity 不再复制到产品入口；见
+[r4 reproduction](docs/benchmarks/v0.3.2-luna-r4/reproduction.md)。
 
-v0.4 单次诊断 artifact 位于 `.chronorift/v0.4/runs/<run-id>/`；v0.3 兼容路径继续写入
-`.chronorift/v0.3/runs/<run-id>/`，两者不会互相迁移或覆盖。v0.4 在稳定的 runtime artifact 之外增加：
+## Artifact、历史与安全边界
+
+当前 v0.4 单次运行写入 `.chronorift/v0.4/runs/<run-id>/`；v0.3 兼容路径写入
+`.chronorift/v0.3/runs/<run-id>/`。`.chronorift/` 是本地运行状态，不得提交 Git。
+
+当前 adapter 对外部和持久化 DTO 使用显式 `schemaVersion` 与 strict validation；执行和事件 seal 后才
+作为证据；run store 拒绝 absolute path、`..`、symlink/canonical-path escape 和不同内容覆盖。requested
+control 只有获得匹配 realized receipt 后才是执行事实。content hash 能发现意外损坏，但不是签名、外部
+attestation 或对同一用户权限攻击者的防篡改保证。
+
+v0.1–v0.4 的 schema、raw artifact、benchmark spec、selection、ledger、report、hash 和冻结 tag 保持原字
+节与原语义。vNext 使用新的 task namespace，不覆盖历史 artifact，也不把旧 Proposal/Verdict 静默迁移成
+新结果。
+
+目标 vNext 将另外持久化 task/session、workspace/patch、runtime/execution、capture window、checkpoint、
+trace、Runtime State Index、comparison、tool/security/resource records。该布局尚未实现，详见架构文档。
+
+## 历史 benchmark 结论
+
+冻结的 `v0.3.2-luna-r4` execution 已完成 36/36 cells，其中 30 个 `scored`、6 个
+`diagnostic_failure`；独立 verifier 返回 `issues=[]`。grounded success 为 generic `6/12`、
+evidence-only `0/12`、chronorift-full `6/12`，所以预注册产品 Gate 失败，full 相对 generic 的增益为
+零。
+
+这里的 `generic` 是同一个 Pi Harness 内的工具可用性消融，不是普通 Codex、Claude Code 或其他产品。
+因此该结果只证明历史 benchmark/report 链路完整，并提供旧 workflow 的负向工程证据；它不支持
+ChronoRift 相对通用 coding agent 的优势结论。完整证据和早期无效/中断 campaign 见
+[r4 evidence workspace](docs/benchmarks/v0.3.2-luna-r4/README.md) 与
+[v0.3.2 portfolio](docs/portfolio-v0.3.2.md)。
+
+未来 Eval 从产品 Harness 外部运行完整 ChronoRift，可以持有 hidden Bug、oracle 和评分规则，但不能把
+固定调查流程反向塞进产品 API。
+
+## 当前仓库结构
+
+依赖方向保持为 `domain ← gamebranch ← adapters ← CLI composition root`；Agent 路径为
+`domain ← agent-protocol ← pi-harness/CLI bridge`。
 
 ```text
-contract-bundles-v3/          execution-fingerprints-v2/
-experiment-reservations-v1/  evidence-access-receipts-v2/
-proposals-v4/                 verdicts-v3/
+apps/cli                         当前 v0.3/v0.4 参数与 composition root
+packages/domain                  engine-neutral ID、DTO、strict Zod schema
+packages/gamebranch              当前 experiment/evidence/compare/verdict 服务与 ports
+packages/agent-protocol          当前 capability、opaque handle、tool/proposal schema
+packages/pi-harness              Pi Session/Loop adapter 与受限诊断/源码工具
+packages/godot-protocol          versioned Godot wire DTO、payload hash、TCP framing
+packages/godot-adapter           Godot lifecycle、Fixture staging、handshake、runtime port
+packages/json-artifacts          v0.1 兼容与 v0.3/v0.4 write-once adapter
+packages/mock-game               deterministic switch-door legacy Fixture
+godot/addons/chronorift          EditorPlugin 与 ChronoProbe Autoload
+fixtures/godot-*                 四个受支持的真实 Godot Fixture
 ```
 
-v0.3 的单次诊断目录结构为：
-
-```text
-contracts/     checkpoints/   traces/       branches/
-executions/    capsules/      comparisons/  proposals/  verdicts/
-pi-sessions/
-```
-
-外部与持久化 DTO 都带显式 `schemaVersion` 并经过 strict runtime validation。Contract 与 trace
-content-addressed；BranchSpec immutable；Execution/event sealed；v0.3 repository write-once，并拒绝
-absolute path、`..`、symlink/canonical path escape 和不同内容覆盖。requested control 只有获得匹配
-realized receipt 后才能用于比较与 Gate。
-
-正式 benchmark 使用独立的 append-only ledger：
-
-```text
-.chronorift/v0.3/benchmarks/definitions/<definition-id>/
-  definition.json
-  selection.json
-  executions/<execution-id>/
-    started.json
-    attempts/<cell-id>/<ordinal>-<attempt-id>/
-      started.json
-      progress/<sequence>.json
-      finished.json
-    cells/<cell-id>.json
-    completed.json
-```
-
-每个文件以 create-only 方式写入；attempt 通过 previous hash 串联。每个 score-eligible finished
-attempt 必须带 strict terminal raw manifest，并与最后一条 terminal progress、terminal cell、冻结
-Fixture material 和 canonical budgets 精确一致；finish 后不能追加 progress。`completed.json` 只存在于
-已封存 execution；首轮可恢复的 incomplete 尚未封存，不能 publish。发布器只导出 allowlisted、脱敏
-字段以及无模型散文的 `scoringProofs`，不导出完整 raw manifest、prompt、源码正文、Pi Session 路径、
-API key 或 credential store。历史 ledger 与
-`.chronorift/` 仍是本地状态，不提交 Git。
-
-正式命令退出码约定：
-
-| 命令               | `0`                             | `1`                                   | `2`                   |
-| ------------------ | ------------------------------- | ------------------------------------- | --------------------- |
-| `benchmark:formal` | 完整执行（无论 Gate 通过与否）  | 已封存 invalid，或命令/preflight 失败 | incomplete            |
-| `benchmark:verify` | 完整性有效，包括负面/incomplete | 篡改、无效或命令失败                  | —                     |
-| `benchmark:gate`   | Gate 通过                       | 篡改、无效或命令失败                  | Gate 未通过或不可评估 |
-
-`benchmark:formal` 的 JSON 中 `recoverable=true` 表示 exit `2` 仍是未封存首轮，必须对同一 ID
-`--resume`；`recoverable=false,status=incomplete` 表示 recovery 已用尽且报告已封存，应原样发布。
+不要根据 Target Architecture 预先创建空的 `world-model`、`game-contracts`、`worktree-manager` 或
+`execution-sandbox` package；只有真实依赖和生命周期边界落地并被测试后才拆包。
 
 ## 当前限制
 
-v0.4 仍建立在四个小型、显式插桩 Fixture 上，不是任意 Godot 项目即插即用的 debugger：
+- v0.4 是四个小型、显式插桩 Fixture 的诊断 workflow，不支持任意外部 Godot 项目。
+- v0.4 覆盖 Pi 默认 prompt，禁用 built-in tools、skills/context，要求固定工具序列；这与 vNext 契约冲突。
+- 当前没有候选代码 workspace、OS sandbox、通用 coding tools、patch handoff 或持续任务生命周期。
+- 当前没有 rolling black box、通用 Runtime State Index 或 vNext descriptive compare。
+- checkpoint 只覆盖注册 participant；physics internals、Timer/Tween/coroutine、线程、未注册 RNG、cache、
+  网络和外部服务仍是 missing/uncontrolled state。
+- Addon 使用 allowlist 和显式注册；它不全局拦截任意 Signal、属性、线程或 engine internals。
+- 当前 replay/fingerprint 只说明声明维度和已观测结果，不是完整 Determinism Certificate。
+- 当前本地 report verifier 不是 provider attestation，也不证明模型报告或 Bug 修复正确。
+- 历史 suite 在同四个校准 Fixture 上运行，不能支持跨项目泛化、统计显著性或产品 head-to-head。
 
-- Addon 使用 allowlist 和注册式 property/entity/lifecycle/spatial probe，不声称全局拦截。
-- checkpoint 只恢复注册 participant；physics internals、Timer/Tween/coroutine、线程、未注册 RNG、
-  caches、网络和外部服务仍标为 missing state。
-- matching replay 是当前 Fixture 的确认条件；`ExecutionFingerprintV2` 证明声明维度相同，不等同于
-  重复 replay 或完整 Determinism Certificate。
-- 没有自动修复、Git worktree、通用 World Graph、Experiment DAG、边界搜索、视觉、多 Agent、容器
-  sandbox、复杂 artifact 服务或 UI。
-- `ClaimEvidencePolicyRegistry` 已解除 Gate 对四个 Fixture ID 的硬编码，但默认 Godot 策略仍只覆盖当前
-  四种校准机制；这不是跨游戏的通用因果证明器。
-- v0.4 暂未完成仓库外真实 Godot 项目接入与成本测量，opaque handle 只提供 Session capability 边界，
-  不是 OS 级进程隔离或完整 egress audit。
-- suite 在同一四个 Fixture 上校准，不能用于统计显著性、跨项目泛化或与 Claude Code 的比较。
-- provider 没有 sampling seed；三次 repetition 不是独立、可复现实验随机样本。
-- report verifier 是本地可重算的完整性检查，不是签名、CI attestation 或 provider attestation。
-- v0.3 与 v0.3.1-r2 两个 formal execution 都完整且通过 report integrity verification，但都未产生
-  grounded success；r2 又被 32 个底层连接错误主导，不能衡量三组 treatment 或模型诊断效果。
-- V3 已保留 typed provider failure、串行化诊断工具、strict terminal manifest、sealed ledger、
-  sanitized scoring proof，并在 verifier 施加冻结 material 与 per-kind budget。r4 已用 36/36
-  terminal cells 验证该完整链路，但这不把四个校准 Fixture 升级成通用 Godot debugger。
-- C0-001/002/003 均为 `not_ready` 且已保留；历史 C0/C1-004 的 readiness 字段为 `ready`，但强化
-  verifier 只将其 V1 linkage 归为 `legacy_only`。005 与 007 C0/C1 的前置资格均为 `hardened`；
-  006 C1 作为 interrupted 负证据保留。r1 只产生 3 cells 且 aggregate 为 `null`，Gate
-  `not_evaluated`。r2 也只封存 5/36 cells（4 scored、1 `harness_failure`），aggregate 为 `null`、Gate
-  `not_evaluated`；这些历史证据均不改写。
-- r3 在 16/36 cells 后封存为 `invalid`，且冻结 publisher fail closed，因此没有公开 aggregate
-  或 Gate 结果。r4 对 proposal scope 和 receipt projection 的修复不会回写 r3 ledger。
-- r4 虽然 `complete` 且 verifier `issues=[]`，但产品 Gate 失败：full 与 generic 均为 6/12
-  grounded successes，delta 为 0；full 还有 3 个 diagnostic failures，mechanism correct 为 9/12。
-  因此当前没有 Luna 下 chronorift-full 相对 generic treatment 的优势结论。
-- `generic` 只是 Pi Harness 内的工具能力消融组；本轮没有运行 Claude Code、Codex 或其他通用
-  coding-agent 产品对照，不得把结果解读为产品 head-to-head。
+## 开发与文档
 
-下一条独立垂直切片是用一个仓库外真实 Godot 项目验证 Adapter API、接入成本和 restore
-缺口。如果继续评测 treatment 优势，必须使用新的预注册 campaign 调查 full 未超过 generic 的原因；
-如果要与通用 coding-agent 比较，则需单独设计真实外部产品对照，不复用本轮 `generic` 标签。
+默认完成门槛：
+
+```bash
+corepack pnpm check
+```
+
+Godot、checkpoint、replay、schema、canonicalization、branching 或 storage 变更还应运行相应成功、失败、
+corruption、reference-integrity 和 determinism/nondeterminism 覆盖；需要本机 Godot 的改动再运行
+`corepack pnpm test:godot`。真实 provider 验证只通过 `corepack pnpm test:live` 显式运行。
+
+- [Target Architecture](docs/architecture.md)：vNext 产品契约、边界和迁移计划；
+- [Godot Protocol v2](docs/godot-protocol-v2.md)：当前 runtime wire contract；
+- [r4 benchmark evidence](docs/benchmarks/v0.3.2-luna-r4/README.md)：冻结历史报告与复现协议；
+- [v0.3.2 portfolio](docs/portfolio-v0.3.2.md)：旧垂直切片的事实摘要。

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "frame-input-window",
+  "engine": "godot",
+  "projectFile": "project.godot",
+  "startupScene": "res://frame_input_window.tscn",
+  "protocolVersion": 2,
+  "runtimeProfile": "chronorift-godot-protocol-v2",
+  "inputActions": ["attempt_jump"],
+  "controls": {
+    "fixedFps": { "default": 120, "allowed": [60, 120] },
+    "physicsTicksPerSecond": { "default": 60, "allowed": [60, 120] },
+    "maxTicks": { "default": 10, "minimum": 1, "maximum": 600 }
+  },
+  "ignoredCachePaths": [".godot"]
+}

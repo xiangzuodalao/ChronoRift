@@ -16,6 +16,8 @@ export type ReportId = Id<"ReportId">;
 export type InvariantId = Id<"InvariantId">;
 export type ContractId = Id<"ContractId">;
 export type ExecutionId = Id<"ExecutionId">;
+export type TaskId = Id<"TaskId">;
+export type PatchId = Id<"PatchId">;
 export type CapsuleId = Id<"CapsuleId">;
 export type ComparisonId = Id<"ComparisonId">;
 export type ProposalId = Id<"ProposalId">;
@@ -47,6 +49,8 @@ export const ReportIdSchema = idSchema<"ReportId">();
 export const InvariantIdSchema = idSchema<"InvariantId">();
 export const ContractIdSchema = idSchema<"ContractId">();
 export const ExecutionIdSchema = idSchema<"ExecutionId">();
+export const TaskIdSchema = idSchema<"TaskId">();
+export const PatchIdSchema = idSchema<"PatchId">();
 export const CapsuleIdSchema = idSchema<"CapsuleId">();
 export const ComparisonIdSchema = idSchema<"ComparisonId">();
 export const ProposalIdSchema = idSchema<"ProposalId">();
@@ -86,6 +90,8 @@ export const asContractId = (value: string): ContractId =>
   ContractIdSchema.parse(value);
 export const asExecutionId = (value: string): ExecutionId =>
   ExecutionIdSchema.parse(value);
+export const asTaskId = (value: string): TaskId => TaskIdSchema.parse(value);
+export const asPatchId = (value: string): PatchId => PatchIdSchema.parse(value);
 export const asCapsuleId = (value: string): CapsuleId =>
   CapsuleIdSchema.parse(value);
 export const asComparisonId = (value: string): ComparisonId =>

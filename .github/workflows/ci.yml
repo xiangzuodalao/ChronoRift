@@ -39,3 +39,26 @@ jobs:
       - run: corepack pnpm godot:install
       - run: corepack pnpm godot:doctor
       - run: corepack pnpm test:godot
+
+  sandbox:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap busybox-static
+      - name: Run required sandbox conformance
+        run: |
+          sudo systemd-run --quiet --wait --pipe --collect \
+            --unit="chronorift-sandbox-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --property=Delegate=yes \
+            --property=User="$(id -un)" \
+            --property=WorkingDirectory="${GITHUB_WORKSPACE}" \
+            --setenv=PATH="${PATH}" \
+            --setenv=HOME="${HOME}" \
+            /bin/bash .github/scripts/run-sandbox-conformance.sh

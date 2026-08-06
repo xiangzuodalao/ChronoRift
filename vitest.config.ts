@@ -6,6 +6,7 @@ export default defineConfig({
     exclude: [
       "**/*.live.{test,spec}.ts",
       "**/*.godot.{test,spec}.ts",
+      "**/*.sandbox.{test,spec}.ts",
       "**/node_modules/**",
       "**/dist/**",
     ],

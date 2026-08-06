@@ -4,10 +4,12 @@ ChronoRift 的目标是成为一个 **Codex 式的 game-native Agent Harness**�
 Godot 运行环境，用 Pi SDK 驱动自主 Agent Loop，并为 Agent 提供普通游戏工具难以可靠实现的运行时
 checkpoint、fork、replay、query 和 compare 原语。
 
-> **产品方向与当前实现必须分开阅读。** [Target Architecture](docs/architecture.md) 描述的是 vNext
-> 北极星，尚未实现。当前可执行版本仍是 **v0.4.0 legacy diagnosis slice**：它只有四个受控 Fixture，
-> 禁用通用 coding tools，要求固定诊断流程，并由 Harness 输出 verdict。README 中标为“目标”的能力不是
-> 当前命令的承诺。
+> **产品方向、内部基础设施与当前公开实现必须分开阅读。**
+> [Target Architecture](docs/architecture.md) 描述的是 vNext 北极星，尚未成为可用产品。当前公开可执行
+> 版本仍是 **v0.4.0 legacy diagnosis slice**：它只有四个受控 Fixture，禁用通用 coding tools，要求
+> 固定诊断流程，并由 Harness 输出 verdict。仓库已经加入 **vNext M1 internal foundation**，但它没有公开
+> Task CLI、Pi Agent Loop 或 Godot runtime 接线，也不是 release。README 中标为“目标”的能力不是当前
+> 命令的承诺。
 
 ## 产品契约（vNext 目标）
 
@@ -82,7 +84,7 @@ checkout。coding tools 和 Godot 进程运行在无特权容器或等价 Linux 
 
 ## 实现状态
 
-下表描述 2026-08-06 的仓库事实。
+下表描述 2026-08-07 的公开 v0.4 行为与最终目标；它不把内部 M1 组件写成公开命令能力。
 
 | 维度       | 当前 v0.4                                              | vNext 目标                                                   |
 | ---------- | ------------------------------------------------------ | ------------------------------------------------------------ |
@@ -103,10 +105,29 @@ checkout。coding tools 和 Godot 进程运行在无特权容器或等价 Linux 
 `DiagnosisProposalV4`、`DiagnosisVerdictV3` 和固定 replay/intervention flow 是 legacy 可执行事实，不是
 vNext 产品 API。
 
-## 首个 vNext 垂直切片（计划）
+### vNext M1 internal foundation（非产品入口）
 
-首个且唯一的迁移 Fixture 是 `fixtures/godot-frame-input-window`。目标不是一次实现全部北极星，而是让
-自由 Pi Agent 在隔离环境中调查并修改一个真实的输入时序 Bug，同时证明下列最小闭环：
+仓库当前已经实现并测试一组尚未接入公开 CLI 的 M1 内部组件与 internal composition：
+
+- 对唯一受支持的 `frame-input-window` Fixture 执行 strict manifest、整仓 clean Git preflight、literal
+  subtree 选择和 selected-tree identity 校验；
+- 从 Git raw objects 创建任务私有 workspace、Agent 可写 Git 与 Host-only baseline Git，不 checkout、
+  不执行项目 filter/hook，也不修改用户 checkout；
+- 通过 bubblewrap、独立 namespace、固定 FD binding、cgroup v2、rlimit、输出上限和结构化 receipt/security
+  event 执行受控命令；
+- 从 Host baseline 提取 binary/full-index patch，重新应用并比对 selected-tree 后才标记
+  `roundTripVerified`；显式 export 使用 create-new/no-overwrite 发布，Task store 支持受身份约束的 discard；
+- 为 workspace/patch/tool/security/resource DTO 提供 strict versioned contracts，并实现独立 vNext Task
+  namespace、append/seal、write-once 与 records-only discard 存储原语。
+
+这些模块目前只能由测试或内部 TypeScript API 组合。仓库没有 `task start/continue/show/export/discard`
+公开命令，没有把 Pi coding tools 接到 broker，没有启动 Godot，也没有发布任何 vNext 版本。M1 证明的是
+workspace/sandbox/patch 边界可以成立，不证明 Agent Loop、游戏调查闭环或 Bug 修复已经成立。
+
+## 首个 vNext 垂直切片（M1 之后）
+
+首个且唯一的迁移 Fixture 是 `fixtures/godot-frame-input-window`。M1 只完成上述内部环境基础；后续目标是
+让自由 Pi Agent 在该环境中调查并修改一个真实的输入时序 Bug，同时证明下列最小闭环：
 
 1. managed workspace、OS sandbox 和安全的 coding/game tools；
 2. rolling black box、pin 和可见的 capture budget/loss；
@@ -214,8 +235,10 @@ v0.1–v0.4 的 schema、raw artifact、benchmark spec、selection、ledger、re
 节与原语义。vNext 使用新的 task namespace，不覆盖历史 artifact，也不把旧 Proposal/Verdict 静默迁移成
 新结果。
 
-目标 vNext 将另外持久化 task/session、workspace/patch、runtime/execution、capture window、checkpoint、
-trace、Runtime State Index、comparison、tool/security/resource records。该布局尚未实现，详见架构文档。
+M1 internal foundation 已实现独立 Task namespace、workspace/patch contracts 和 tool/security/resource receipt
+contracts，以及对应的基础存储原语；它尚未成为公开 Task lifecycle。Pi session、Godot
+runtime/execution、capture window、checkpoint、trace、Runtime State Index 和 comparison 的目标布局仍未
+实现，详见架构文档。
 
 ## 历史 benchmark 结论
 
@@ -240,13 +263,14 @@ ChronoRift 相对通用 coding agent 的优势结论。完整证据和早期无�
 
 ```text
 apps/cli                         当前 v0.3/v0.4 参数与 composition root
+apps/cli/src/vnext               未接入公开 CLI 的 M1 workspace/sandbox/patch 内部组件
 packages/domain                  engine-neutral ID、DTO、strict Zod schema
 packages/gamebranch              当前 experiment/evidence/compare/verdict 服务与 ports
 packages/agent-protocol          当前 capability、opaque handle、tool/proposal schema
 packages/pi-harness              Pi Session/Loop adapter 与受限诊断/源码工具
 packages/godot-protocol          versioned Godot wire DTO、payload hash、TCP framing
 packages/godot-adapter           Godot lifecycle、Fixture staging、handshake、runtime port
-packages/json-artifacts          v0.1 兼容与 v0.3/v0.4 write-once adapter
+packages/json-artifacts          legacy adapter 与内部 vNext Task write-once store
 packages/mock-game               deterministic switch-door legacy Fixture
 godot/addons/chronorift          EditorPlugin 与 ChronoProbe Autoload
 fixtures/godot-*                 四个受支持的真实 Godot Fixture
@@ -259,7 +283,8 @@ fixtures/godot-*                 四个受支持的真实 Godot Fixture
 
 - v0.4 是四个小型、显式插桩 Fixture 的诊断 workflow，不支持任意外部 Godot 项目。
 - v0.4 覆盖 Pi 默认 prompt，禁用 built-in tools、skills/context，要求固定工具序列；这与 vNext 契约冲突。
-- 当前没有候选代码 workspace、OS sandbox、通用 coding tools、patch handoff 或持续任务生命周期。
+- 当前公开命令没有候选 workspace、OS sandbox、通用 coding tools、patch handoff 或持续任务生命周期；M1
+  只提供尚未接入 CLI/Pi/Godot 的内部 workspace、sandbox 和 patch 组件。
 - 当前没有 rolling black box、通用 Runtime State Index 或 vNext descriptive compare。
 - checkpoint 只覆盖注册 participant；physics internals、Timer/Tween/coroutine、线程、未注册 RNG、cache、
   网络和外部服务仍是 missing/uncontrolled state。
@@ -275,6 +300,20 @@ fixtures/godot-*                 四个受支持的真实 Godot Fixture
 ```bash
 corepack pnpm check
 ```
+
+M1 sandbox 还要求独立、不可跳过的真实 Host conformance：
+
+```bash
+# CHRONORIFT_TEST_CGROUP_ROOT 必须指向预先委派、空且可写的 cgroup v2 root，
+# 并已启用 cpu、memory、pids controller。
+CHRONORIFT_TEST_CGROUP_ROOT=/sys/fs/cgroup/<delegated-root> \
+  corepack pnpm test:sandbox
+```
+
+`test:sandbox` 不属于默认离线测试，也不会因 Host 不支持而静默 skip；CI 必须通过独立 job 提供 delegated
+cgroup root 并运行它。Linux 本地开发者需要等价的 cgroup delegation，以及可用的
+`/usr/bin/bwrap`、`/usr/bin/prlimit` 和静态 BusyBox。仓库 CI 使用
+`.github/scripts/run-sandbox-conformance.sh` 创建一次性 delegated test root。
 
 Godot、checkpoint、replay、schema、canonicalization、branching 或 storage 变更还应运行相应成功、失败、
 corruption、reference-integrity 和 determinism/nondeterminism 覆盖；需要本机 Godot 的改动再运行

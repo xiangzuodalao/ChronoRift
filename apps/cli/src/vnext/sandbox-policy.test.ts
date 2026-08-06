@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+
+import { asSha256DigestV1 } from "@chronorift/domain";
+
+import { SandboxPolicyV1Schema } from "./contracts.js";
+import {
+  createSandboxPolicyV1,
+  resolveResourceLimitsV1,
+} from "./sandbox-policy.js";
+
+describe("M1 sandbox policy", () => {
+  it("freezes exact coding limits and clamps no value silently", () => {
+    expect(resolveResourceLimitsV1("coding-default", undefined)).toMatchObject({
+      timeoutMs: 120_000,
+      cpuMax: "200000 100000",
+      memoryMaxBytes: 2_147_483_648,
+      memorySwapMaxBytes: 0,
+      pidsMax: 128,
+      nofile: 1024,
+      fileSizeMaxBytes: 536_870_912,
+      stdoutMaxBytes: 16_777_216,
+      stderrMaxBytes: 16_777_216,
+    });
+    expect(resolveResourceLimitsV1("godot-headless", undefined)).toMatchObject({
+      timeoutMs: 180_000,
+      fileSizeMaxBytes: 1_073_741_824,
+    });
+    expect(() => resolveResourceLimitsV1("coding-default", 0)).toThrow();
+    expect(() => resolveResourceLimitsV1("coding-default", 600_001)).toThrow();
+  });
+
+  it("produces a stable, validated policy identity", () => {
+    const runtimeIdentity = asSha256DigestV1("a".repeat(64));
+    const first = createSandboxPolicyV1(runtimeIdentity);
+    expect(first).toEqual(createSandboxPolicyV1(runtimeIdentity));
+    expect(SandboxPolicyV1Schema.parse(first)).toEqual(first);
+    expect(() =>
+      SandboxPolicyV1Schema.parse({
+        ...first,
+        network: "host",
+      }),
+    ).toThrow();
+    expect(() =>
+      SandboxPolicyV1Schema.parse({
+        ...first,
+        runtimeIdentity: asSha256DigestV1("b".repeat(64)),
+      }),
+    ).toThrow(/policyId/u);
+  });
+
+  it("never makes Host-only task directories mountable", () => {
+    const serialized = JSON.stringify(
+      createSandboxPolicyV1(asSha256DigestV1("a".repeat(64))),
+    );
+    expect(serialized).not.toMatch(
+      /records|host-baseline\.git|host-tmp|sandbox-artifacts/u,
+    );
+  });
+});

@@ -10,6 +10,7 @@
     "@chronorift/godot-adapter": "workspace:*",
     "@chronorift/json-artifacts": "workspace:*",
     "@chronorift/mock-game": "workspace:*",
-    "@chronorift/pi-harness": "workspace:*"
+    "@chronorift/pi-harness": "workspace:*",
+    "zod": "4.4.3"
   }
 }

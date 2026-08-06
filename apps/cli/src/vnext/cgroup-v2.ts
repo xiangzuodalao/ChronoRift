@@ -35,6 +35,7 @@ export interface CgroupFsPort {
   removeDirectory(path: string): Promise<void>;
   pathExists(path: string): Promise<boolean>;
   childDirectories(path: string): Promise<readonly string[]>;
+  processNamespacePids(pid: number): Promise<readonly number[]>;
 }
 
 export interface CgroupEnforcementLimitsV1 {
@@ -203,6 +204,26 @@ export class NodeCgroupFs implements CgroupFsPort {
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   }
+
+  public async processNamespacePids(pid: number): Promise<readonly number[]> {
+    const status = await readFile(`/proc/${pid}/status`, "utf8");
+    const match = /^NSpid:\s+([0-9\t ]+)$/mu.exec(status);
+    if (match?.[1] === undefined) {
+      throw resourceError("process status does not expose NSpid identity");
+    }
+    const pids = match[1]
+      .trim()
+      .split(/\s+/u)
+      .map((value) => Number(value));
+    if (
+      pids.length === 0 ||
+      pids.some((value) => !Number.isInteger(value) || value <= 0) ||
+      !pids.includes(pid)
+    ) {
+      throw resourceError("process status contains an invalid NSpid identity");
+    }
+    return pids;
+  }
 }
 
 class DirectExecutionCgroupScope implements ExecutionCgroupScope {
@@ -225,11 +246,12 @@ class DirectExecutionCgroupScope implements ExecutionCgroupScope {
 
   public async verifyAttached(pid: number): Promise<void> {
     this.assertActive();
+    const namespacePids = await this.fs.processNamespacePids(pid);
     const pids = (await this.fs.readText(join(this.directory, "cgroup.procs")))
       .trim()
       .split(/\s+/u)
       .filter((entry) => entry.length > 0);
-    if (!pids.includes(String(pid))) {
+    if (!pids.some((observed) => namespacePids.includes(Number(observed)))) {
       throw resourceError(
         `bootstrap process ${pid} is not attached to the execution cgroup; observed: ${pids.length === 0 ? "<empty>" : pids.join(",")}`,
       );

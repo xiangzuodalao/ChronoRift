@@ -13,6 +13,7 @@ class FakeCgroupFs implements CgroupFsPort {
   readonly files = new Map<string, string>();
   readonly directories = new Set<string>();
   readonly writes: Array<readonly [string, string]> = [];
+  readonly namespacePids = new Map<number, readonly number[]>();
 
   public constructor(
     readonly root = "/delegated",
@@ -85,6 +86,10 @@ class FakeCgroupFs implements CgroupFsPort {
         .map((directory) => directory.slice(prefix.length))
         .filter((directory) => !directory.includes("/")),
     );
+  }
+
+  public processNamespacePids(pid: number): Promise<readonly number[]> {
+    return Promise.resolve(this.namespacePids.get(pid) ?? [pid]);
   }
 
   private seed(
@@ -167,6 +172,25 @@ describe("CgroupV2Controller", () => {
       memoryPeakBytes: 11,
       pidsPeak: 2,
     });
+  });
+
+  it("accepts the same process through an outer PID namespace identity", async () => {
+    const fs = new FakeCgroupFs();
+    fs.namespacePids.set(1234, [900, 1234]);
+    const controller = await CgroupV2Controller.create(
+      "/delegated",
+      asTaskId("task_pid_namespace"),
+      fs,
+    );
+    const scope = await controller.createExecutionScope("operation_pid", limits);
+    await scope.attach(1234);
+    const executionProcs = fs.writes.findLast(([path]) =>
+      path.endsWith("/cgroup.procs"),
+    )?.[0];
+    if (executionProcs === undefined) throw new Error("missing attach write");
+    fs.files.set(executionProcs, "900\n");
+
+    await expect(scope.verifyAttached(1234)).resolves.toBeUndefined();
   });
 
   it("uses atomic cgroup.kill and refuses removal while populated", async () => {

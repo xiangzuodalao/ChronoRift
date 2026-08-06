@@ -231,7 +231,7 @@ class DirectExecutionCgroupScope implements ExecutionCgroupScope {
       .filter((entry) => entry.length > 0);
     if (!pids.includes(String(pid))) {
       throw resourceError(
-        "bootstrap process is not attached to the execution cgroup",
+        `bootstrap process ${pid} is not attached to the execution cgroup; observed: ${pids.length === 0 ? "<empty>" : pids.join(",")}`,
       );
     }
   }

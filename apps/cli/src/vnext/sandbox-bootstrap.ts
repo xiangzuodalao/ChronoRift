@@ -13,10 +13,27 @@ export interface BootstrapLaunchMessage {
   readonly args: readonly string[];
 }
 
+export interface SandboxProcessIdentity {
+  readonly pid: number;
+  readonly namespacePids: readonly number[];
+  readonly namespaces: Readonly<
+    Record<"mnt" | "pid" | "ipc" | "uts" | "net" | "user" | "cgroup", string>
+  >;
+}
+
+export interface SandboxStatusReceipt {
+  readonly document: Readonly<Record<string, unknown>>;
+  readonly childIdentity: SandboxProcessIdentity;
+}
+
 export type BootstrapToHostMessage =
-  | { readonly kind: "ready"; readonly pid: number }
-  | { readonly kind: "child_started"; readonly pid: number }
-  | { readonly kind: "sandbox_status"; readonly document: unknown }
+  | ({ readonly kind: "ready" } & SandboxProcessIdentity)
+  | ({ readonly kind: "child_started" } & SandboxProcessIdentity)
+  | {
+      readonly kind: "sandbox_status";
+      readonly document: unknown;
+      readonly childIdentity: SandboxProcessIdentity | null;
+    }
   | { readonly kind: "authorized" }
   | {
       readonly kind: "child_exit";
@@ -28,16 +45,64 @@ export type BootstrapToHostMessage =
 const BootstrapToHostMessageSchema: z.ZodType<BootstrapToHostMessage> =
   z.discriminatedUnion("kind", [
     z
-      .object({ kind: z.literal("ready"), pid: z.number().int().positive() })
+      .object({
+        kind: z.literal("ready"),
+        pid: z.number().int().positive(),
+        namespacePids: z.array(z.number().int().positive()).min(1),
+        namespaces: z
+          .object({
+            mnt: z.string().min(1),
+            pid: z.string().min(1),
+            ipc: z.string().min(1),
+            uts: z.string().min(1),
+            net: z.string().min(1),
+            user: z.string().min(1),
+            cgroup: z.string().min(1),
+          })
+          .strict(),
+      })
       .strict(),
     z
       .object({
         kind: z.literal("child_started"),
         pid: z.number().int().positive(),
+        namespacePids: z.array(z.number().int().positive()).min(1),
+        namespaces: z
+          .object({
+            mnt: z.string().min(1),
+            pid: z.string().min(1),
+            ipc: z.string().min(1),
+            uts: z.string().min(1),
+            net: z.string().min(1),
+            user: z.string().min(1),
+            cgroup: z.string().min(1),
+          })
+          .strict(),
       })
       .strict(),
     z
-      .object({ kind: z.literal("sandbox_status"), document: z.unknown() })
+      .object({
+        kind: z.literal("sandbox_status"),
+        document: z.unknown(),
+        childIdentity: z
+          .object({
+            pid: z.number().int().positive(),
+            namespacePids: z.array(z.number().int().positive()).min(1),
+            namespaces: z
+              .object({
+                mnt: z.string().min(1),
+                pid: z.string().min(1),
+                ipc: z.string().min(1),
+                uts: z.string().min(1),
+                net: z.string().min(1),
+                user: z.string().min(1),
+                cgroup: z.string().min(1),
+              })
+              .strict(),
+          })
+          .strict()
+          .nullable(),
+      })
       .strict(),
     z.object({ kind: z.literal("authorized") }).strict(),
     z
@@ -78,6 +143,7 @@ const deferred = <T>(): Deferred<T> => {
 const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
   "use strict";
   const { spawn } = require("node:child_process");
+  const { readFileSync, readlinkSync } = require("node:fs");
 
   const inheritedCount = Number(process.env.CHRONORIFT_BOOTSTRAP_FD_COUNT);
   let child;
@@ -88,6 +154,22 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
 
   const send = (message) => {
     if (process.connected) process.send(message);
+  };
+  const processIdentity = (pid) => {
+    const status = readFileSync("/proc/" + pid + "/status", "utf8");
+    const match = /^NSpid:\s+([0-9\t ]+)$/mu.exec(status);
+    if (!match) throw new Error("process status does not expose NSpid identity");
+    const namespacePids = match[1].trim().split(/\s+/u).map(Number);
+    if (
+      namespacePids.length === 0 ||
+      namespacePids.some((value) => !Number.isInteger(value) || value <= 0) ||
+      !namespacePids.includes(pid)
+    ) throw new Error("process status contains an invalid NSpid identity");
+    const namespaces = {};
+    for (const name of ["mnt", "pid", "ipc", "uts", "net", "user", "cgroup"]) {
+      namespaces[name] = readlinkSync("/proc/" + pid + "/ns/" + name);
+    }
+    return { pid, namespacePids, namespaces };
   };
   const terminate = () => {
     terminating = true;
@@ -140,7 +222,15 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
           if (depth === 0) {
             const documentBytes = buffer.slice(start, index + 1);
             try {
-              send({ kind: "sandbox_status", document: JSON.parse(documentBytes) });
+              const document = JSON.parse(documentBytes);
+              const childPid = document && Number.isInteger(document["child-pid"])
+                ? document["child-pid"]
+                : undefined;
+              send({
+                kind: "sandbox_status",
+                document,
+                childIdentity: childPid === undefined ? null : processIdentity(childPid),
+              });
             } catch (error) {
               fail(error instanceof Error ? error.message : String(error));
               return;
@@ -198,7 +288,7 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
         }
         guard = child.stdio[3];
         emitJsonDocuments(child.stdio[4]);
-        send({ kind: "child_started", pid: child.pid });
+        send({ kind: "child_started", ...processIdentity(child.pid) });
         child.once("exit", (exitCode, signal) => {
           send({ kind: "child_exit", exitCode, signal });
           guard.destroy();
@@ -222,7 +312,7 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
       }
     });
     process.on("disconnect", terminate);
-    send({ kind: "ready", pid: process.pid });
+    send({ kind: "ready", ...processIdentity(process.pid) });
   }
 `;
 
@@ -233,11 +323,12 @@ export interface SandboxBootstrapLaunchPlan {
 
 export interface SandboxBootstrapSession {
   readonly pid: number;
+  readonly identity: SandboxProcessIdentity;
   readonly stdout: NodeJS.ReadableStream;
   readonly stderr: NodeJS.ReadableStream;
   launch(plan: SandboxBootstrapLaunchPlan): Promise<void>;
-  waitForChildStarted(): Promise<number>;
-  waitForSandboxStatus(): Promise<Readonly<Record<string, unknown>>>;
+  waitForChildStarted(): Promise<SandboxProcessIdentity>;
+  waitForSandboxStatus(): Promise<SandboxStatusReceipt>;
   authorize(): Promise<void>;
   terminate(): Promise<void>;
   waitForChildExit(): Promise<ProcessExit>;
@@ -245,8 +336,8 @@ export interface SandboxBootstrapSession {
 }
 
 class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
-  readonly #childStarted = deferred<number>();
-  readonly #status = deferred<Readonly<Record<string, unknown>>>();
+  readonly #childStarted = deferred<SandboxProcessIdentity>();
+  readonly #status = deferred<SandboxStatusReceipt>();
   readonly #authorized = deferred<void>();
   readonly #childExit = deferred<ProcessExit>();
   #fatal: Error | undefined;
@@ -259,7 +350,10 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
   #childExited = false;
   readonly #bootstrapExit: Promise<ProcessExit>;
 
-  public constructor(private readonly bootstrapProcess: SpawnedIpcProcess) {
+  public constructor(
+    private readonly bootstrapProcess: SpawnedIpcProcess,
+    public readonly identity: SandboxProcessIdentity,
+  ) {
     bootstrapProcess.onMessage((rawMessage) => this.handleMessage(rawMessage));
     this.#bootstrapExit = bootstrapProcess.wait();
     void this.#bootstrapExit.then(
@@ -297,13 +391,11 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
     });
   }
 
-  public waitForChildStarted(): Promise<number> {
+  public waitForChildStarted(): Promise<SandboxProcessIdentity> {
     return this.#childStarted.promise;
   }
 
-  public async waitForSandboxStatus(): Promise<
-    Readonly<Record<string, unknown>>
-  > {
+  public async waitForSandboxStatus(): Promise<SandboxStatusReceipt> {
     const status = await this.#status.promise;
     this.#statusObserved = true;
     return status;
@@ -354,13 +446,20 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
       case "ready":
         break;
       case "child_started":
-        this.#childStarted.resolve(message.pid);
+        this.#childStarted.resolve({
+          pid: message.pid,
+          namespacePids: message.namespacePids,
+          namespaces: message.namespaces,
+        });
         break;
       case "sandbox_status": {
         const status = SandboxStatusDocumentSchema.safeParse(message.document);
-        if (status.success) {
+        if (status.success && message.childIdentity !== null) {
           this.#statusReceived = true;
-          this.#status.resolve(status.data);
+          this.#status.resolve({
+            document: status.data,
+            childIdentity: message.childIdentity,
+          });
         }
         break;
       }
@@ -409,7 +508,22 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
 }
 
 const BootstrapReadyMessageSchema = z
-  .object({ kind: z.literal("ready"), pid: z.number().int().positive() })
+  .object({
+    kind: z.literal("ready"),
+    pid: z.number().int().positive(),
+    namespacePids: z.array(z.number().int().positive()).min(1),
+    namespaces: z
+      .object({
+        mnt: z.string().min(1),
+        pid: z.string().min(1),
+        ipc: z.string().min(1),
+        uts: z.string().min(1),
+        net: z.string().min(1),
+        user: z.string().min(1),
+        cgroup: z.string().min(1),
+      })
+      .strict(),
+  })
   .strict();
 
 export async function startSandboxBootstrap(input: {
@@ -428,17 +542,21 @@ export async function startSandboxBootstrap(input: {
     detached: true,
     stdio: ["ignore", "pipe", "pipe", "ipc", ...input.inheritedFds],
   });
-  const ready = deferred<void>();
+  const ready = deferred<z.infer<typeof BootstrapReadyMessageSchema>>();
   const unsubscribe = bootstrapProcess.onMessage((message) => {
     const parsed = BootstrapReadyMessageSchema.safeParse(message);
     if (parsed.success && parsed.data.pid === bootstrapProcess.pid)
-      ready.resolve();
+      ready.resolve(parsed.data);
   });
   void bootstrapProcess.wait().then(
     () => ready.reject(new Error("sandbox bootstrap exited before ready")),
     (error: unknown) => ready.reject(error),
   );
-  await ready.promise;
+  const readyMessage = await ready.promise;
   unsubscribe();
-  return new DirectSandboxBootstrapSession(bootstrapProcess);
+  return new DirectSandboxBootstrapSession(bootstrapProcess, {
+    pid: readyMessage.pid,
+    namespacePids: readyMessage.namespacePids,
+    namespaces: readyMessage.namespaces,
+  });
 }

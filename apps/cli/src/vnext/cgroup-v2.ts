@@ -35,7 +35,6 @@ export interface CgroupFsPort {
   removeDirectory(path: string): Promise<void>;
   pathExists(path: string): Promise<boolean>;
   childDirectories(path: string): Promise<readonly string[]>;
-  processNamespacePids(pid: number): Promise<readonly number[]>;
 }
 
 export interface CgroupEnforcementLimitsV1 {
@@ -50,7 +49,7 @@ export type CgroupUsageV1 = ObservedResourceUsageV1;
 export interface ExecutionCgroupScope {
   readonly scopeIdentity: string;
   attach(pid: number): Promise<void>;
-  verifyAttached(pid: number): Promise<void>;
+  verifyAttached(namespacePids: readonly number[]): Promise<void>;
   usage(): Promise<CgroupUsageV1>;
   kill(): Promise<boolean>;
   populated(): Promise<boolean>;
@@ -204,26 +203,6 @@ export class NodeCgroupFs implements CgroupFsPort {
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   }
-
-  public async processNamespacePids(pid: number): Promise<readonly number[]> {
-    const status = await readFile(`/proc/${pid}/status`, "utf8");
-    const match = /^NSpid:\s+([0-9\t ]+)$/mu.exec(status);
-    if (match?.[1] === undefined) {
-      throw resourceError("process status does not expose NSpid identity");
-    }
-    const pids = match[1]
-      .trim()
-      .split(/\s+/u)
-      .map((value) => Number(value));
-    if (
-      pids.length === 0 ||
-      pids.some((value) => !Number.isInteger(value) || value <= 0) ||
-      !pids.includes(pid)
-    ) {
-      throw resourceError("process status contains an invalid NSpid identity");
-    }
-    return pids;
-  }
 }
 
 class DirectExecutionCgroupScope implements ExecutionCgroupScope {
@@ -244,16 +223,21 @@ class DirectExecutionCgroupScope implements ExecutionCgroupScope {
     await this.fs.writeText(join(this.directory, "cgroup.procs"), `${pid}\n`);
   }
 
-  public async verifyAttached(pid: number): Promise<void> {
+  public async verifyAttached(namespacePids: readonly number[]): Promise<void> {
     this.assertActive();
-    const namespacePids = await this.fs.processNamespacePids(pid);
+    if (
+      namespacePids.length === 0 ||
+      namespacePids.some((pid) => !Number.isInteger(pid) || pid <= 0)
+    ) {
+      throw resourceError("cgroup process identity must contain valid PIDs");
+    }
     const pids = (await this.fs.readText(join(this.directory, "cgroup.procs")))
       .trim()
       .split(/\s+/u)
       .filter((entry) => entry.length > 0);
     if (!pids.some((observed) => namespacePids.includes(Number(observed)))) {
       throw resourceError(
-        `bootstrap process ${pid} is not attached to the execution cgroup; observed: ${pids.length === 0 ? "<empty>" : pids.join(",")}`,
+        `process ${namespacePids.at(-1)} is not attached to the execution cgroup; observed: ${pids.length === 0 ? "<empty>" : pids.join(",")}`,
       );
     }
   }

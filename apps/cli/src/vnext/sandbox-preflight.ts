@@ -8,7 +8,6 @@ import {
   mkdtemp,
   open,
   readFile,
-  readlink,
   realpath,
   rm,
 } from "node:fs/promises";
@@ -351,20 +350,6 @@ const cgroupRootDigest = (identity: CgroupRootIdentity): Sha256DigestV1 =>
     inode: identity.inode.toString(),
   });
 
-const namespaceIdentities = async (
-  pid: number | "self",
-): Promise<Readonly<Record<(typeof REQUIRED_NAMESPACES)[number], string>>> => {
-  const entries = await Promise.all(
-    REQUIRED_NAMESPACES.map(
-      async (namespace) =>
-        [namespace, await readlink(`/proc/${pid}/ns/${namespace}`)] as const,
-    ),
-  );
-  return Object.fromEntries(entries) as Readonly<
-    Record<(typeof REQUIRED_NAMESPACES)[number], string>
-  >;
-};
-
 const markerExists = async (path: string): Promise<boolean> => {
   try {
     await access(path);
@@ -476,7 +461,7 @@ const runActiveSandboxProbe = async (input: {
     session.stdout.on("data", () => undefined);
     session.stderr.on("data", () => undefined);
     await scope.attach(session.pid);
-    await scope.verifyAttached(session.pid);
+    await scope.verifyAttached(session.identity.namespacePids);
 
     const plan = buildSandboxProcessPlan({
       request: {
@@ -502,7 +487,7 @@ const runActiveSandboxProbe = async (input: {
       unshareCgroupNamespace: true,
     });
     await session.launch(plan);
-    const [launcherPid, status] = await within(
+    const [launcherIdentity, statusReceipt] = await within(
       Promise.all([
         session.waitForChildStarted(),
         session.waitForSandboxStatus(),
@@ -510,6 +495,8 @@ const runActiveSandboxProbe = async (input: {
       10_000,
       "bubblewrap status",
     );
+    const status = statusReceipt.document;
+    const sandboxIdentity = statusReceipt.childIdentity;
     const sandboxPid = status["child-pid"];
     if (typeof sandboxPid !== "number" || !Number.isInteger(sandboxPid)) {
       throw new M1Error(
@@ -517,14 +504,18 @@ const runActiveSandboxProbe = async (input: {
         "bubblewrap status did not provide a valid child pid",
       );
     }
+    if (sandboxPid !== sandboxIdentity.pid) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "bubblewrap status child-pid does not match its process identity",
+      );
+    }
     await Promise.all([
-      scope.verifyAttached(launcherPid),
-      scope.verifyAttached(sandboxPid),
+      scope.verifyAttached(launcherIdentity.namespacePids),
+      scope.verifyAttached(sandboxIdentity.namespacePids),
     ]);
-    const [hostNamespaces, sandboxNamespaces] = await Promise.all([
-      namespaceIdentities("self"),
-      namespaceIdentities(sandboxPid),
-    ]);
+    const hostNamespaces = session.identity.namespaces;
+    const sandboxNamespaces = sandboxIdentity.namespaces;
     for (const namespace of REQUIRED_NAMESPACES) {
       if (hostNamespaces[namespace] === sandboxNamespaces[namespace]) {
         throw new M1Error(

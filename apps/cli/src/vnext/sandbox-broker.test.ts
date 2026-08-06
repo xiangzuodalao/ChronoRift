@@ -119,10 +119,10 @@ class FakeScope implements ExecutionCgroupScope {
     this.populatedValue = true;
   }
 
-  public async verifyAttached(pid: number): Promise<void> {
-    this.log.push(`verify:${pid}`);
-    if (pid === 200 && this.rejectChildVerification) {
-      throw new Error("child is outside execution cgroup");
+  public async verifyAttached(reportedCgroupPath: string): Promise<void> {
+    this.log.push(`verify:${reportedCgroupPath}`);
+    if (this.rejectChildVerification) {
+      throw new Error("bootstrap is outside execution cgroup");
     }
   }
 
@@ -204,6 +204,11 @@ class FakeBootstrapSession implements SandboxBootstrapSession {
     private readonly scope: FakeScope,
     private readonly options: HarnessOptions,
   ) {}
+
+  public inspectCgroupMembership(): Promise<string> {
+    this.log.push("inspect_cgroup");
+    return Promise.resolve("/task-fixture/scope-fixture");
+  }
 
   public async launch(_plan: SandboxBootstrapLaunchPlan): Promise<void> {
     void _plan;
@@ -403,11 +408,11 @@ describe("Task-bound sandbox broker", () => {
     const positions = [
       "scope:operation_fixture",
       "attach:100",
-      "verify:100",
+      "inspect_cgroup",
+      "verify:/task-fixture/scope-fixture",
       "launch",
       "child_started",
       "status",
-      "verify:200",
       "authorize",
     ].map((entry) => harness.log.indexOf(entry));
     expect(positions.every((position) => position >= 0)).toBe(true);
@@ -418,23 +423,18 @@ describe("Task-bound sandbox broker", () => {
     await broker.cleanup();
   });
 
-  it("never authorizes a mismatched status child or a child outside the execution cgroup", async () => {
-    for (const options of [
-      { statusChildPid: 201 },
-      { rejectChildVerification: true },
-    ]) {
-      const harness = createFakeBrokerHarness(options);
-      const broker = await harness.brokerPromise;
-      const result = await broker.execute(validRequest);
-      expect(result).toMatchObject({
-        kind: "executed",
-        receipt: { status: "launch_failed" },
-      });
-      expect(harness.session.authorized).toBe(false);
-      expect(harness.log).toContain("ipc:terminate");
-      expect(harness.log).toContain("cgroup.kill");
-      await broker.cleanup();
-    }
+  it("never authorizes a bootstrap outside the execution cgroup", async () => {
+    const harness = createFakeBrokerHarness({ rejectChildVerification: true });
+    const broker = await harness.brokerPromise;
+    const result = await broker.execute(validRequest);
+    expect(result).toMatchObject({
+      kind: "executed",
+      receipt: { status: "launch_failed" },
+    });
+    expect(harness.session.authorized).toBe(false);
+    expect(harness.log).toContain("ipc:terminate");
+    expect(harness.log).toContain("cgroup.kill");
+    await broker.cleanup();
   });
 
   it("selects timeout once, requests TERM only through bootstrap IPC, then uses cgroup.kill", async () => {

@@ -44,6 +44,7 @@ describe("sandbox bootstrap", () => {
       cwd: directory,
       inheritedFds: [],
     });
+    await expect(session.inspectCgroupMembership()).resolves.toMatch(/^\//u);
 
     await session.launch({
       executable: process.execPath,
@@ -73,6 +74,7 @@ describe("sandbox bootstrap", () => {
       cwd: directory,
       inheritedFds: [],
     });
+    await session.inspectCgroupMembership();
 
     await session.launch({
       executable: process.execPath,
@@ -96,6 +98,7 @@ describe("sandbox bootstrap", () => {
       cwd: directory,
       inheritedFds: [],
     });
+    await session.inspectCgroupMembership();
 
     await session.launch({
       executable: process.execPath,
@@ -122,6 +125,7 @@ describe("sandbox bootstrap", () => {
       cwd: directory,
       inheritedFds: [],
     });
+    await session.inspectCgroupMembership();
     const launch = {
       executable: process.execPath,
       args: ["-e", "setTimeout(() => {}, 1000)"],

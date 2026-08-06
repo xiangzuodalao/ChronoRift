@@ -430,6 +430,7 @@ const runActiveSandboxProbe = async (input: {
   const temporary = join(probeRoot, "tmp");
   const artifacts = join(probeRoot, "artifacts");
   const marker = join(workspace, "authorized-marker");
+  const namespaceReceipt = join(workspace, "namespace-receipt");
   await Promise.all([
     mkdir(workspace, { mode: 0o700 }),
     mkdir(temporary, { mode: 0o700 }),
@@ -476,7 +477,7 @@ const runActiveSandboxProbe = async (input: {
     session.stdout.on("data", () => undefined);
     session.stderr.on("data", () => undefined);
     await scope.attach(session.pid);
-    await scope.verifyAttached(session.pid);
+    await scope.verifyAttached(await session.inspectCgroupMembership());
 
     const plan = buildSandboxProcessPlan({
       request: {
@@ -487,7 +488,7 @@ const runActiveSandboxProbe = async (input: {
           "/bin/busybox",
           "sh",
           "-c",
-          "printf authorized > /workspace/authorized-marker",
+          'set -eu; for namespace in mnt pid ipc uts net user cgroup; do printf \'%s=\' "$namespace"; readlink "/proc/self/ns/$namespace"; done > /workspace/namespace-receipt; printf authorized > /workspace/authorized-marker',
         ],
         cwd: "/workspace",
         environment: {},
@@ -502,7 +503,7 @@ const runActiveSandboxProbe = async (input: {
       unshareCgroupNamespace: true,
     });
     await session.launch(plan);
-    const [launcherPid, status] = await within(
+    const [, status] = await within(
       Promise.all([
         session.waitForChildStarted(),
         session.waitForSandboxStatus(),
@@ -516,22 +517,6 @@ const runActiveSandboxProbe = async (input: {
         "sandbox_preflight_failed",
         "bubblewrap status did not provide a valid child pid",
       );
-    }
-    await Promise.all([
-      scope.verifyAttached(launcherPid),
-      scope.verifyAttached(sandboxPid),
-    ]);
-    const [hostNamespaces, sandboxNamespaces] = await Promise.all([
-      namespaceIdentities("self"),
-      namespaceIdentities(sandboxPid),
-    ]);
-    for (const namespace of REQUIRED_NAMESPACES) {
-      if (hostNamespaces[namespace] === sandboxNamespaces[namespace]) {
-        throw new M1Error(
-          "sandbox_preflight_failed",
-          `${namespace} namespace was not isolated`,
-        );
-      }
     }
     if (await markerExists(marker)) {
       throw new M1Error(
@@ -557,6 +542,46 @@ const runActiveSandboxProbe = async (input: {
         "sandbox_preflight_failed",
         "active sandbox target marker did not match",
       );
+    }
+    const namespaceLines = (await readFile(namespaceReceipt, "utf8"))
+      .trim()
+      .split("\n");
+    const namespaceEntries = namespaceLines.map((line) => {
+      const separator = line.indexOf("=");
+      if (separator <= 0 || separator === line.length - 1) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          "sandbox namespace receipt is malformed",
+        );
+      }
+      return [line.slice(0, separator), line.slice(separator + 1)];
+    }) as readonly (readonly [string, string])[];
+    const namespaceNames = namespaceEntries.map(([name]) => name);
+    if (
+      namespaceEntries.length !== REQUIRED_NAMESPACES.length ||
+      new Set(namespaceNames).size !== REQUIRED_NAMESPACES.length ||
+      [...namespaceNames].sort().join(",") !==
+        [...REQUIRED_NAMESPACES].sort().join(",")
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "sandbox namespace receipt has unexpected fields",
+      );
+    }
+    const sandboxNamespaces = Object.fromEntries(namespaceEntries) as Readonly<
+      Record<string, string>
+    >;
+    const hostNamespaces = await namespaceIdentities("self");
+    for (const namespace of REQUIRED_NAMESPACES) {
+      if (
+        sandboxNamespaces[namespace] === undefined ||
+        hostNamespaces[namespace] === sandboxNamespaces[namespace]
+      ) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          `${namespace} namespace was not isolated`,
+        );
+      }
     }
     const usage = await scope.usage();
     await waitForCgroupEmpty(scope);

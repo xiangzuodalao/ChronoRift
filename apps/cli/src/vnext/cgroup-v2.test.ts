@@ -13,7 +13,6 @@ class FakeCgroupFs implements CgroupFsPort {
   readonly files = new Map<string, string>();
   readonly directories = new Set<string>();
   readonly writes: Array<readonly [string, string]> = [];
-  readonly namespacePids = new Map<number, readonly number[]>();
 
   public constructor(
     readonly root = "/delegated",
@@ -88,10 +87,6 @@ class FakeCgroupFs implements CgroupFsPort {
     );
   }
 
-  public processNamespacePids(pid: number): Promise<readonly number[]> {
-    return Promise.resolve(this.namespacePids.get(pid) ?? [pid]);
-  }
-
   private seed(
     path: string,
     options: {
@@ -149,7 +144,14 @@ describe("CgroupV2Controller", () => {
     );
     const scope = await controller.createExecutionScope("operation_1", limits);
     await scope.attach(1234);
-    await scope.verifyAttached(1234);
+    const taskSegment = [...fs.directories]
+      .find((path) => path.includes("/task-"))
+      ?.split("/")
+      .at(-1);
+    if (taskSegment === undefined) throw new Error("missing task cgroup");
+    await scope.verifyAttached(
+      `/host/system.slice/unit/${taskSegment}/${scope.scopeIdentity}`,
+    );
 
     const attachIndex = fs.writes.findIndex(([path]) =>
       path.endsWith("/cgroup.procs"),
@@ -174,23 +176,21 @@ describe("CgroupV2Controller", () => {
     });
   });
 
-  it("accepts the same process through an outer PID namespace identity", async () => {
+  it("rejects a self-reported path outside the execution cgroup", async () => {
     const fs = new FakeCgroupFs();
-    fs.namespacePids.set(1234, [900, 1234]);
     const controller = await CgroupV2Controller.create(
       "/delegated",
       asTaskId("task_pid_namespace"),
       fs,
     );
-    const scope = await controller.createExecutionScope("operation_pid", limits);
+    const scope = await controller.createExecutionScope(
+      "operation_pid",
+      limits,
+    );
     await scope.attach(1234);
-    const executionProcs = fs.writes.findLast(([path]) =>
-      path.endsWith("/cgroup.procs"),
-    )?.[0];
-    if (executionProcs === undefined) throw new Error("missing attach write");
-    fs.files.set(executionProcs, "900\n");
-
-    await expect(scope.verifyAttached(1234)).resolves.toBeUndefined();
+    await expect(
+      scope.verifyAttached(`/wrong/${scope.scopeIdentity}`),
+    ).rejects.toMatchObject({ code: "resource_limit_unavailable" });
   });
 
   it("uses atomic cgroup.kill and refuses removal while populated", async () => {

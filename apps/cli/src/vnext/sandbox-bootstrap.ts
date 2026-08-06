@@ -15,6 +15,7 @@ export interface BootstrapLaunchMessage {
 
 export type BootstrapToHostMessage =
   | { readonly kind: "ready"; readonly pid: number }
+  | { readonly kind: "cgroup_membership"; readonly path: string }
   | { readonly kind: "child_started"; readonly pid: number }
   | { readonly kind: "sandbox_status"; readonly document: unknown }
   | { readonly kind: "authorized" }
@@ -29,6 +30,12 @@ const BootstrapToHostMessageSchema: z.ZodType<BootstrapToHostMessage> =
   z.discriminatedUnion("kind", [
     z
       .object({ kind: z.literal("ready"), pid: z.number().int().positive() })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("cgroup_membership"),
+        path: z.string().min(1),
+      })
       .strict(),
     z
       .object({
@@ -78,11 +85,13 @@ const deferred = <T>(): Deferred<T> => {
 const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
   "use strict";
   const { spawn } = require("node:child_process");
+  const { readFileSync } = require("node:fs");
 
   const inheritedCount = Number(process.env.CHRONORIFT_BOOTSTRAP_FD_COUNT);
   let child;
   let guard;
   let launched = false;
+  let cgroupInspected = false;
   let authorized = false;
   let terminating = false;
 
@@ -166,9 +175,27 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
         return;
       }
       const keys = Object.keys(message).sort().join(",");
-      if (message.kind === "launch") {
-        if (launched) {
-          fail("bootstrap target already launched");
+      if (message.kind === "inspect_cgroup") {
+        if (keys !== "kind" || launched || cgroupInspected || terminating) {
+          fail("invalid or duplicate cgroup inspection");
+          return;
+        }
+        cgroupInspected = true;
+        const line = readFileSync("/proc/self/cgroup", "utf8")
+          .split("\n")
+          .find((entry) => entry.startsWith("0::"));
+        if (!line || line.length <= 3) {
+          fail("process cgroup membership is unavailable");
+          return;
+        }
+        send({ kind: "cgroup_membership", path: line.slice(3) });
+      } else if (message.kind === "launch") {
+        if (launched || !cgroupInspected) {
+          fail(
+            launched
+              ? "bootstrap target already launched"
+              : "bootstrap target launched before cgroup inspection",
+          );
           return;
         }
         if (
@@ -235,6 +262,7 @@ export interface SandboxBootstrapSession {
   readonly pid: number;
   readonly stdout: NodeJS.ReadableStream;
   readonly stderr: NodeJS.ReadableStream;
+  inspectCgroupMembership(): Promise<string>;
   launch(plan: SandboxBootstrapLaunchPlan): Promise<void>;
   waitForChildStarted(): Promise<number>;
   waitForSandboxStatus(): Promise<Readonly<Record<string, unknown>>>;
@@ -245,12 +273,15 @@ export interface SandboxBootstrapSession {
 }
 
 class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
+  readonly #cgroupMembership = deferred<string>();
   readonly #childStarted = deferred<number>();
   readonly #status = deferred<Readonly<Record<string, unknown>>>();
   readonly #authorized = deferred<void>();
   readonly #childExit = deferred<ProcessExit>();
   #fatal: Error | undefined;
   #launched = false;
+  #cgroupInspectionSent = false;
+  #cgroupInspectionObserved = false;
   #statusObserved = false;
   #statusReceived = false;
   #authorizationSent = false;
@@ -286,9 +317,24 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
     return this.bootstrapProcess.stderr;
   }
 
+  public async inspectCgroupMembership(): Promise<string> {
+    this.throwIfFatal();
+    if (this.#launched || this.#cgroupInspectionSent) {
+      throw new Error("bootstrap cgroup inspection is no longer available");
+    }
+    this.#cgroupInspectionSent = true;
+    await this.bootstrapProcess.send({ kind: "inspect_cgroup" });
+    const path = await this.#cgroupMembership.promise;
+    this.#cgroupInspectionObserved = true;
+    return path;
+  }
+
   public async launch(plan: SandboxBootstrapLaunchPlan): Promise<void> {
     this.throwIfFatal();
     if (this.#launched) throw new Error("bootstrap target is already launched");
+    if (!this.#cgroupInspectionObserved) {
+      throw new Error("bootstrap cgroup must be verified before launch");
+    }
     this.#launched = true;
     await this.bootstrapProcess.send({
       kind: "launch",
@@ -353,6 +399,9 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
     switch (message.kind) {
       case "ready":
         break;
+      case "cgroup_membership":
+        this.#cgroupMembership.resolve(message.path);
+        break;
       case "child_started":
         this.#childStarted.resolve(message.pid);
         break;
@@ -398,6 +447,7 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
     if (this.#fatal !== undefined) return;
     this.#fatal = error instanceof Error ? error : new Error(String(error));
     this.#childStarted.reject(this.#fatal);
+    this.#cgroupMembership.reject(this.#fatal);
     this.#status.reject(this.#fatal);
     this.#authorized.reject(this.#fatal);
     this.#childExit.reject(this.#fatal);

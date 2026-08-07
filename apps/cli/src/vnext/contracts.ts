@@ -70,6 +70,96 @@ const isNormalizedRelativePosixPath = (value: string): boolean =>
     .split("/")
     .every((segment) => segment !== "" && segment !== "." && segment !== "..");
 
+const isNormalizedAbsolutePosixPath = (value: string): boolean =>
+  value.startsWith("/") &&
+  !value.includes("\\") &&
+  !value.includes("\0") &&
+  value
+    .slice(1)
+    .split("/")
+    .every((segment) => segment !== "" && segment !== "." && segment !== "..");
+
+export const SandboxToolchainTargetV1Schema = z
+  .string()
+  .min(2)
+  .max(4096)
+  .refine(
+    isNormalizedAbsolutePosixPath,
+    "toolchain target must be a normalized absolute POSIX path",
+  )
+  .refine(
+    (value) =>
+      !["/workspace", "/tmp", "/artifacts"].some(
+        (root) => value === root || value.startsWith(`${root}/`),
+      ),
+    "toolchain target must not overlap a writable sandbox path",
+  );
+
+export interface SandboxToolchainFileV1 {
+  readonly target: string;
+  readonly sha256: Sha256DigestV1;
+  readonly command: boolean;
+}
+
+export interface SandboxToolchainCapabilityV1 {
+  readonly schemaVersion: 1;
+  readonly toolchainId: string;
+  readonly files: readonly SandboxToolchainFileV1[];
+}
+
+export const SandboxToolchainFileV1Schema: z.ZodType<SandboxToolchainFileV1> = z
+  .object({
+    target: SandboxToolchainTargetV1Schema,
+    sha256: Sha256DigestV1Schema,
+    command: z.boolean(),
+  })
+  .strict();
+
+export const SandboxToolchainCapabilityV1Schema: z.ZodType<SandboxToolchainCapabilityV1> =
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      toolchainId: z.string().regex(/^sandbox-toolchain:v1:[a-f0-9]{64}$/u),
+      files: z.array(SandboxToolchainFileV1Schema).min(1).max(256),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      const targets = value.files.map((file) => file.target);
+      if (
+        new Set(targets).size !== targets.length ||
+        targets.some(
+          (target, index) => index > 0 && target <= targets[index - 1]!,
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["files"],
+          message: "toolchain files must have unique targets in lexical order",
+        });
+      }
+      if (!value.files.some((file) => file.command)) {
+        context.addIssue({
+          code: "custom",
+          path: ["files"],
+          message: "toolchain must expose at least one command",
+        });
+      }
+      const content = {
+        schemaVersion: value.schemaVersion,
+        files: value.files,
+      };
+      if (
+        value.toolchainId !==
+        `sandbox-toolchain:v1:${contentHash(content as unknown as JsonValue)}`
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["toolchainId"],
+          message: "toolchainId must match the canonical toolchain content",
+        });
+      }
+    });
+
 export const RelativeExportPathV1Schema = z
   .string()
   .min(1)
@@ -458,8 +548,9 @@ export interface SandboxPolicyV1 {
   readonly schemaVersion: 1;
   readonly policyId: string;
   readonly runtimeIdentity: Sha256DigestV1;
+  readonly toolchainId: string | null;
   readonly writableTargets: readonly ["/workspace", "/tmp", "/artifacts"];
-  readonly readonlyTargets: readonly ["/bin/busybox"];
+  readonly readonlyTargets: readonly string[];
   readonly namespaces: readonly [
     "mount",
     "user",
@@ -476,6 +567,20 @@ export interface SandboxPolicyV1 {
 }
 
 export type SandboxPolicyContentV1 = Omit<SandboxPolicyV1, "policyId">;
+
+const SandboxReadonlyTargetsV1Schema = z
+  .array(SandboxToolchainTargetV1Schema)
+  .min(1)
+  .max(257)
+  .refine(
+    (targets) =>
+      targets.includes("/bin/busybox") &&
+      new Set(targets).size === targets.length &&
+      targets.every(
+        (target, index) => index === 0 || target > targets[index - 1]!,
+      ),
+    "readonly targets must include busybox and be unique in lexical order",
+  );
 
 export const SandboxPolicyProfilesV1Schema = z
   .object({
@@ -510,12 +615,16 @@ export const SandboxPolicyContentV1Schema: z.ZodType<SandboxPolicyContentV1> = z
   .object({
     schemaVersion: z.literal(1),
     runtimeIdentity: Sha256DigestV1Schema,
+    toolchainId: z
+      .string()
+      .regex(/^sandbox-toolchain:v1:[a-f0-9]{64}$/u)
+      .nullable(),
     writableTargets: z.tuple([
       z.literal("/workspace"),
       z.literal("/tmp"),
       z.literal("/artifacts"),
     ]),
-    readonlyTargets: z.tuple([z.literal("/bin/busybox")]),
+    readonlyTargets: SandboxReadonlyTargetsV1Schema,
     namespaces: z.tuple([
       z.literal("mount"),
       z.literal("user"),
@@ -535,12 +644,16 @@ export const SandboxPolicyV1Schema: z.ZodType<SandboxPolicyV1> = z
     schemaVersion: z.literal(1),
     policyId: z.string().regex(/^sandbox-policy:v1:[a-f0-9]{64}$/u),
     runtimeIdentity: Sha256DigestV1Schema,
+    toolchainId: z
+      .string()
+      .regex(/^sandbox-toolchain:v1:[a-f0-9]{64}$/u)
+      .nullable(),
     writableTargets: z.tuple([
       z.literal("/workspace"),
       z.literal("/tmp"),
       z.literal("/artifacts"),
     ]),
-    readonlyTargets: z.tuple([z.literal("/bin/busybox")]),
+    readonlyTargets: SandboxReadonlyTargetsV1Schema,
     namespaces: z.tuple([
       z.literal("mount"),
       z.literal("user"),

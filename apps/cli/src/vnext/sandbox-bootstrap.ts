@@ -396,7 +396,8 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
       );
     }
     return new Promise<void>((resolveWrite, rejectWrite) => {
-      const onError = (error: unknown): void => rejectWrite(error);
+      const onError = (error: unknown): void =>
+        rejectWrite(error instanceof Error ? error : new Error(String(error)));
       stdin.once("error", onError);
       stdin.end(Buffer.from(bytes), () => {
         stdin.removeListener("error", onError);

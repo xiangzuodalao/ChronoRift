@@ -31,6 +31,7 @@ import {
   SandboxExecutionRequestV1Schema,
   SandboxHostCapabilityV1Schema,
   SandboxPolicyV1Schema,
+  SandboxToolchainCapabilityV1Schema,
   SandboxOperationIdV1Schema,
   SecurityEventV1Schema,
   type ObservedResourceUsageV1,
@@ -39,6 +40,7 @@ import {
   type SandboxExecutionRequestV1,
   type SandboxHostCapabilityV1,
   type SandboxPolicyV1,
+  type SandboxToolchainCapabilityV1,
   type SecurityEventV1,
 } from "./contracts.js";
 import {
@@ -58,6 +60,7 @@ import {
 } from "./sandbox-preflight.js";
 import { resolveResourceLimitsV1 } from "./sandbox-policy.js";
 import type { TaskDirectoryLayout } from "./task-paths.js";
+import type { SandboxToolchainBindingV1 } from "./sandbox-toolchain.js";
 
 export interface MonotonicClockV1 {
   now(): number;
@@ -94,6 +97,10 @@ export interface SandboxBrokerBoundResources {
   readonly temporaryFd: number;
   readonly artifactsFd: number;
   readonly runtimeFd: number;
+  readonly toolchainFiles: readonly {
+    readonly fd: number;
+    readonly target: string;
+  }[];
   close(): Promise<void>;
 }
 
@@ -111,6 +118,12 @@ export interface SandboxBrokerDependencies {
     readonly capability: SandboxHostCapabilityV1;
     readonly hostBinding: SandboxHostBinding;
     readonly layout: TaskDirectoryLayout;
+    readonly toolchain?:
+      | {
+          readonly capability: SandboxToolchainCapabilityV1;
+          readonly binding: SandboxToolchainBindingV1;
+        }
+      | undefined;
   }): Promise<SandboxBrokerBoundResources>;
   createCgroupController(input: {
     readonly delegatedCgroupRoot: string;
@@ -259,12 +272,45 @@ function assertHostBinding(binding: SandboxHostBinding): void {
   }
 }
 
+function assertToolchainBinding(
+  capability: SandboxToolchainCapabilityV1,
+  binding: SandboxToolchainBindingV1,
+): void {
+  if (
+    !isObject(binding) ||
+    !hasExactKeys(binding, ["toolchainId", "files"]) ||
+    binding.toolchainId !== capability.toolchainId ||
+    !Array.isArray(binding.files) ||
+    binding.files.length !== capability.files.length
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "invalid physical toolchain binding",
+    );
+  }
+  for (const [index, file] of binding.files.entries()) {
+    if (
+      !isObject(file) ||
+      !hasExactKeys(file, ["target", "hostPath"]) ||
+      file.target !== capability.files[index]?.target ||
+      typeof file.hostPath !== "string" ||
+      !isAbsolute(file.hostPath) ||
+      resolve(file.hostPath) !== file.hostPath
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "invalid physical toolchain file binding",
+      );
+    }
+  }
+}
+
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
 async function openPinned(
   path: string,
-  kind: "directory" | "executable",
+  kind: "directory" | "executable" | "runtime-file",
 ): Promise<FileHandle> {
   if (
     !isAbsolute(path) ||
@@ -361,6 +407,12 @@ async function bindDefaultResources(input: {
   readonly capability: SandboxHostCapabilityV1;
   readonly hostBinding: SandboxHostBinding;
   readonly layout: TaskDirectoryLayout;
+  readonly toolchain?:
+    | {
+        readonly capability: SandboxToolchainCapabilityV1;
+        readonly binding: SandboxToolchainBindingV1;
+      }
+    | undefined;
 }): Promise<SandboxBrokerBoundResources> {
   const handles: FileHandle[] = [];
   try {
@@ -384,6 +436,42 @@ async function bindDefaultResources(input: {
       "executable",
     );
     handles.push(runtime);
+    const toolchainFiles: { readonly fd: number; readonly target: string }[] =
+      [];
+    if (input.toolchain !== undefined) {
+      if (
+        input.toolchain.capability.toolchainId !==
+          input.toolchain.binding.toolchainId ||
+        input.toolchain.capability.files.length !==
+          input.toolchain.binding.files.length
+      ) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          "toolchain capability does not match its physical binding",
+        );
+      }
+      for (const [
+        index,
+        capabilityFile,
+      ] of input.toolchain.capability.files.entries()) {
+        const bindingFile = input.toolchain.binding.files[index];
+        if (bindingFile?.target !== capabilityFile.target) {
+          throw new M1Error(
+            "sandbox_preflight_failed",
+            "toolchain binding targets do not match the frozen capability",
+          );
+        }
+        const handle = await openPinned(bindingFile.hostPath, "runtime-file");
+        handles.push(handle);
+        if (sha256(await handle.readFile()) !== capabilityFile.sha256) {
+          throw new M1Error(
+            "sandbox_preflight_failed",
+            "toolchain file no longer matches its frozen identity",
+          );
+        }
+        toolchainFiles.push({ fd: handle.fd, target: capabilityFile.target });
+      }
+    }
 
     const [bwrapIdentity, prlimitIdentity, runtimeBytes, cgroupIdentity] =
       await Promise.all([
@@ -416,6 +504,7 @@ async function bindDefaultResources(input: {
       temporaryFd: temporary.fd,
       artifactsFd: artifacts.fd,
       runtimeFd: runtime.fd,
+      toolchainFiles: Object.freeze(toolchainFiles),
       close,
     };
   } catch (error) {
@@ -447,6 +536,7 @@ function assertBoundDescriptors(resources: SandboxBrokerBoundResources): void {
     resources.temporaryFd,
     resources.artifactsFd,
     resources.runtimeFd,
+    ...resources.toolchainFiles.map((file) => file.fd),
   ];
   if (
     !descriptors.every((fd) => Number.isInteger(fd) && fd >= 0) ||
@@ -516,11 +606,13 @@ const pathAtOrBelow = (parent: string, candidate: string): boolean => {
 function assertHostExecutablesOutsideWritableLayout(
   binding: SandboxHostBinding,
   layout: TaskDirectoryLayout,
+  toolchain: SandboxToolchainBindingV1 | undefined,
 ): void {
   const executables = [
     binding.bwrapPath,
     binding.prlimitPath,
     binding.busyboxPath,
+    ...(toolchain?.files.map((file) => file.hostPath) ?? []),
   ];
   const writableRoots = [
     layout.workspaceDirectory,
@@ -547,6 +639,8 @@ function assertProcessPlan(
   request: SandboxExecutionRequestV1,
   binding: SandboxHostBinding,
   layout: TaskDirectoryLayout,
+  runtimeTargets: readonly { readonly fd: number; readonly target: string }[],
+  toolchainBinding: SandboxToolchainBindingV1 | undefined,
 ): void {
   const expectedFds = [
     SANDBOX_FDS.block,
@@ -554,7 +648,7 @@ function assertProcessPlan(
     SANDBOX_FDS.workspace,
     SANDBOX_FDS.temporary,
     SANDBOX_FDS.artifacts,
-    SANDBOX_FDS.runtimeStart,
+    ...runtimeTargets.map((target) => target.fd),
   ];
   const lastSeparator = plan.args.lastIndexOf("--");
   if (
@@ -576,6 +670,7 @@ function assertProcessPlan(
     layout.hostBaselineGitDirectory,
     layout.hostOperationTemporaryDirectory,
     binding.busyboxPath,
+    ...(toolchainBinding?.files.map((file) => file.hostPath) ?? []),
   ]) {
     if (serialized.includes(forbidden)) {
       throw new M1Error(
@@ -599,6 +694,12 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
     private readonly capabilitySha256: ReturnType<typeof asSha256DigestV1>,
     private readonly hostBinding: SandboxHostBinding,
     private readonly policy: SandboxPolicyV1,
+    private readonly toolchain:
+      | {
+          readonly capability: SandboxToolchainCapabilityV1;
+          readonly binding: SandboxToolchainBindingV1;
+        }
+      | undefined,
     private readonly layout: TaskDirectoryLayout,
     private readonly resources: SandboxBrokerBoundResources,
     private readonly securityEvents: (event: SecurityEventV1) => Promise<void>,
@@ -697,11 +798,17 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         "stdin bytes do not match the declared bounded descriptor",
       );
     }
-    if (request.argv[0] !== "/bin/busybox") {
+    const permittedCommands = new Set([
+      "/bin/busybox",
+      ...(this.toolchain?.capability.files
+        .filter((file) => file.command)
+        .map((file) => file.target) ?? []),
+    ]);
+    if (!permittedCommands.has(request.argv[0])) {
       return this.deny(
         request,
         "capability_denied",
-        "M1 permits only /bin/busybox",
+        "sandbox command is not present in the frozen toolchain",
       );
     }
     const unknownEnvironment = Object.keys(request.environment).find(
@@ -779,6 +886,13 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
     options: SandboxExecutionOptionsV1,
   ): ActiveExecution {
     const limits = resolveResourceLimitsV1(request.profile, request.timeoutMs);
+    const runtimeTargets = [
+      { fd: SANDBOX_FDS.runtimeStart, target: "/bin/busybox" },
+      ...this.resources.toolchainFiles.map((file, index) => ({
+        fd: SANDBOX_FDS.runtimeStart + 1 + index,
+        target: file.target,
+      })),
+    ];
     const plan = this.dependencies.buildProcessPlan({
       request,
       limits,
@@ -786,12 +900,17 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         prlimit: this.hostBinding.prlimitPath,
         bwrap: this.hostBinding.bwrapPath,
       },
-      runtimeTargets: [
-        { fd: SANDBOX_FDS.runtimeStart, target: "/bin/busybox" },
-      ],
+      runtimeTargets,
       unshareCgroupNamespace: this.capability.cgroupNamespaceUnshared,
     });
-    assertProcessPlan(plan, request, this.hostBinding, this.layout);
+    assertProcessPlan(
+      plan,
+      request,
+      this.hostBinding,
+      this.layout,
+      runtimeTargets,
+      this.toolchain?.binding,
+    );
 
     const startedAtMonotonicMs = this.clock.now();
     const stdoutCapture = new BoundedOutputCapture(limits.stdoutMaxBytes);
@@ -835,6 +954,7 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
             this.resources.temporaryFd,
             this.resources.artifactsFd,
             this.resources.runtimeFd,
+            ...this.resources.toolchainFiles.map((file) => file.fd),
           ],
         });
         runtime.stdoutDrain = captureStream(
@@ -1074,6 +1194,12 @@ export async function createBwrapCgroupTaskSandbox(
     readonly capability: SandboxHostCapabilityV1;
     readonly hostBinding: SandboxHostBinding;
     readonly policy: SandboxPolicyV1;
+    readonly toolchain?:
+      | {
+          readonly capability: SandboxToolchainCapabilityV1;
+          readonly binding: SandboxToolchainBindingV1;
+        }
+      | undefined;
     readonly layout: TaskDirectoryLayout;
     readonly securityEvents: (event: SecurityEventV1) => Promise<void>;
     readonly clock?: MonotonicClockV1 | undefined;
@@ -1082,14 +1208,44 @@ export async function createBwrapCgroupTaskSandbox(
 ): Promise<TaskSandboxBrokerV1> {
   const capability = SandboxHostCapabilityV1Schema.parse(options.capability);
   const policy = SandboxPolicyV1Schema.parse(options.policy);
+  const toolchain =
+    options.toolchain === undefined
+      ? undefined
+      : {
+          capability: SandboxToolchainCapabilityV1Schema.parse(
+            options.toolchain.capability,
+          ),
+          binding: options.toolchain.binding,
+        };
+  if (toolchain !== undefined) {
+    assertToolchainBinding(toolchain.capability, toolchain.binding);
+  }
   assertHostBinding(options.hostBinding);
   assertLayout(options.taskId, options.layout);
   const hostBinding = Object.freeze({ ...options.hostBinding });
-  assertHostExecutablesOutsideWritableLayout(hostBinding, options.layout);
+  assertHostExecutablesOutsideWritableLayout(
+    hostBinding,
+    options.layout,
+    toolchain?.binding,
+  );
   if (policy.runtimeIdentity !== capability.runtimeIdentity) {
     throw new M1Error(
       "sandbox_preflight_failed",
       "sandbox policy runtime does not match the Host capability",
+    );
+  }
+  const expectedReadonlyTargets = [
+    "/bin/busybox",
+    ...(toolchain?.capability.files.map((file) => file.target) ?? []),
+  ].sort();
+  if (
+    policy.toolchainId !== (toolchain?.capability.toolchainId ?? null) ||
+    JSON.stringify(policy.readonlyTargets) !==
+      JSON.stringify(expectedReadonlyTargets)
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "sandbox policy does not match the frozen toolchain capability",
     );
   }
   await Promise.all([
@@ -1101,6 +1257,7 @@ export async function createBwrapCgroupTaskSandbox(
     capability,
     hostBinding,
     layout: options.layout,
+    ...(toolchain === undefined ? {} : { toolchain }),
   });
   try {
     assertBoundDescriptors(resources);
@@ -1113,6 +1270,7 @@ export async function createBwrapCgroupTaskSandbox(
       capabilitySha256,
       hostBinding,
       policy,
+      toolchain,
       options.layout,
       resources,
       options.securityEvents,

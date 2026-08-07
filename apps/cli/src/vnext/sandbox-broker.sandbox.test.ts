@@ -1,14 +1,16 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { asTaskId } from "@chronorift/domain";
+import { asSha256DigestV1, asTaskId } from "@chronorift/domain";
 import { describe, expect, it } from "vitest";
 
 import { createBwrapCgroupTaskSandbox } from "./sandbox-broker.js";
 import { preflightSandboxHost } from "./sandbox-preflight.js";
 import { createSandboxPolicyV1 } from "./sandbox-policy.js";
 import { createTaskDirectoryLayout } from "./task-paths.js";
+import { inspectSandboxToolchain } from "./sandbox-toolchain.js";
 
 describe("real Task-bound sandbox broker", () => {
   it("keeps Host paths isolated, drains bounded output, and clears timeout descendants", async () => {
@@ -27,6 +29,15 @@ describe("real Task-bound sandbox broker", () => {
     if (preflight.kind !== "supported") {
       throw new Error(JSON.stringify(preflight.receipt.blockers));
     }
+    const toolchain = await inspectSandboxToolchain({
+      lddPath: "/usr/bin/ldd",
+      commands: [
+        { target: "/bin/bash", hostPath: "/usr/bin/bash" },
+        { target: "/usr/bin/find", hostPath: "/usr/bin/find" },
+        { target: "/usr/bin/ls", hostPath: "/usr/bin/ls" },
+        { target: "/usr/bin/rg", hostPath: "/usr/bin/rg" },
+      ],
+    });
 
     const runtimeRoot = await mkdtemp(
       join(tmpdir(), "chronorift-broker-runtime-"),
@@ -46,7 +57,11 @@ describe("real Task-bound sandbox broker", () => {
       taskId,
       capability: preflight.capability,
       hostBinding: preflight.binding,
-      policy: createSandboxPolicyV1(preflight.capability.runtimeIdentity),
+      policy: createSandboxPolicyV1(preflight.capability.runtimeIdentity, {
+        toolchainId: toolchain.capability.toolchainId,
+        targets: toolchain.capability.files.map((file) => file.target),
+      }),
+      toolchain,
       layout,
       securityEvents: async () => undefined,
     });
@@ -106,6 +121,35 @@ describe("real Task-bound sandbox broker", () => {
           },
         },
       });
+
+      const stdin = Buffer.from("needle\n");
+      const gnuTools = await broker.execute(
+        {
+          schemaVersion: 1,
+          operationId: "gnu-toolchain",
+          profile: "coding-default",
+          argv: [
+            "/bin/bash",
+            "-c",
+            "read -r value; printf '%s\\n' \"$value\" >input.txt; /usr/bin/rg --fixed-strings needle input.txt; /usr/bin/find . -maxdepth 1 -name input.txt; /usr/bin/ls input.txt",
+          ],
+          cwd: "/workspace",
+          environment: {},
+          stdin: {
+            byteLength: stdin.byteLength,
+            sha256: asSha256DigestV1(
+              createHash("sha256").update(stdin).digest("hex"),
+            ),
+          },
+        },
+        { stdin },
+      );
+      expect(gnuTools).toMatchObject({
+        kind: "executed",
+        receipt: { status: "succeeded" },
+      });
+      if (gnuTools.kind !== "executed") throw new Error("GNU tools denied");
+      expect(Buffer.from(gnuTools.stdout).toString("utf8")).toContain("needle");
 
       const timeout = await broker.execute({
         schemaVersion: 1,

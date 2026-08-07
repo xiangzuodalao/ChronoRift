@@ -5,7 +5,9 @@ import {
   asSha256DigestV1,
   asTaskId,
   taskNamespaceDigestV1,
+  type JsonValue,
 } from "@chronorift/domain";
+import { contentHash } from "@chronorift/json-artifacts";
 import { describe, expect, it } from "vitest";
 
 import { buildSandboxProcessPlan } from "./bubblewrap-command.js";
@@ -19,6 +21,7 @@ import type {
   ExecutionCgroupScope,
 } from "./cgroup-v2.js";
 import { createSandboxPolicyV1 } from "./sandbox-policy.js";
+import type { SandboxToolchainBindingV1 } from "./sandbox-toolchain.js";
 import type {
   SandboxBootstrapLaunchPlan,
   SandboxBootstrapSession,
@@ -82,6 +85,25 @@ const layout = {
   hostOperationTemporaryDirectory: `${taskRoot}/host-tmp`,
 } as const;
 const policy = createSandboxPolicyV1(digest);
+const toolchainFiles = [
+  { target: "/bin/bash", sha256: digest, command: true },
+  { target: "/lib/libc.so.6", sha256: digest, command: false },
+] as const;
+const toolchainCapability = {
+  schemaVersion: 1 as const,
+  toolchainId: `sandbox-toolchain:v1:${contentHash({
+    schemaVersion: 1,
+    files: toolchainFiles,
+  } as unknown as JsonValue)}`,
+  files: toolchainFiles,
+};
+const toolchainBinding: SandboxToolchainBindingV1 = {
+  toolchainId: toolchainCapability.toolchainId,
+  files: [
+    { target: "/bin/bash", hostPath: "/usr/bin/bash" },
+    { target: "/lib/libc.so.6", hostPath: "/usr/lib/libc.so.6" },
+  ],
+};
 const validRequest: SandboxExecutionRequestV1 = {
   schemaVersion: 1,
   operationId: "operation_fixture",
@@ -102,6 +124,7 @@ interface HarnessOptions {
   readonly controllerCleanupFails?: boolean;
   readonly diagnosticRejects?: boolean;
   readonly trustFails?: boolean;
+  readonly toolchain?: boolean;
 }
 
 class FakeScope implements ExecutionCgroupScope {
@@ -297,6 +320,13 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
     temporaryFd: 41,
     artifactsFd: 42,
     runtimeFd: 43,
+    toolchainFiles:
+      options.toolchain === true
+        ? [
+            { fd: 44, target: "/bin/bash" },
+            { fd: 45, target: "/lib/libc.so.6" },
+          ]
+        : [],
     close: async () => {
       log.push("bindings.close");
       bindingCloses += 1;
@@ -347,7 +377,21 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
       taskId,
       capability,
       hostBinding,
-      policy,
+      policy:
+        options.toolchain === true
+          ? createSandboxPolicyV1(digest, {
+              toolchainId: toolchainCapability.toolchainId,
+              targets: toolchainCapability.files.map((file) => file.target),
+            })
+          : policy,
+      ...(options.toolchain === true
+        ? {
+            toolchain: {
+              capability: toolchainCapability,
+              binding: toolchainBinding,
+            },
+          }
+        : {}),
       layout,
       securityEvents: async (event) => {
         securityEvents.push(event);
@@ -462,6 +506,29 @@ describe("Task-bound sandbox broker", () => {
     });
     expect(deniedHarness.processStarts).toBe(0);
     await deniedBroker.cleanup();
+  });
+
+  it("authorizes only commands declared by the frozen toolchain", async () => {
+    const harness = createFakeBrokerHarness({ toolchain: true });
+    const broker = await harness.brokerPromise;
+    await expect(
+      broker.execute({
+        ...validRequest,
+        argv: ["/bin/bash", "-lc", "true"],
+      }),
+    ).resolves.toMatchObject({
+      kind: "executed",
+      receipt: { status: "succeeded" },
+    });
+    expect(harness.log).toContain("stdin:0");
+
+    await expect(
+      broker.execute({ ...validRequest, argv: ["/lib/libc.so.6"] }),
+    ).resolves.toMatchObject({
+      kind: "denied",
+      securityEvent: { sideEffectStarted: false },
+    });
+    await broker.cleanup();
   });
 
   it("never authorizes a bootstrap outside the execution cgroup", async () => {
@@ -619,6 +686,7 @@ describe("Task-bound sandbox broker", () => {
               temporaryFd: 51,
               artifactsFd: 52,
               runtimeFd: 53,
+              toolchainFiles: [],
               close: async () => undefined,
             };
           },

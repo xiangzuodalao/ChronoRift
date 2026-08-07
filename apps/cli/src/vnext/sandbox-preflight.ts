@@ -160,10 +160,12 @@ const nodeHostPathTrustPort: SandboxHostPathTrustPort = {
   },
 };
 
-export async function assertTrustedHostExecutablePath(
+async function assertTrustedHostRegularFilePath(
   path: string,
-  trust: SandboxHostPathTrustPort = nodeHostPathTrustPort,
+  requireExecutable: boolean,
+  trust: SandboxHostPathTrustPort,
 ): Promise<string> {
+  const label = requireExecutable ? "executable" : "runtime file";
   const uid = trust.currentUid();
   if (uid === undefined || uid === 0) {
     throw new M1Error(
@@ -174,14 +176,14 @@ export async function assertTrustedHostExecutablePath(
   if (!isAbsolute(path) || resolve(path) !== path) {
     throw new M1Error(
       "sandbox_preflight_failed",
-      "sandbox executable path must be absolute and normalized",
+      `sandbox ${label} path must be absolute and normalized`,
     );
   }
   const canonicalPath = await trust.canonicalize(path);
   if (canonicalPath !== path) {
     throw new M1Error(
       "sandbox_preflight_failed",
-      "sandbox executable path must already be canonical",
+      `sandbox ${label} path must already be canonical`,
     );
   }
 
@@ -196,34 +198,34 @@ export async function assertTrustedHostExecutablePath(
     if (entry.kind === "symbolic-link") {
       throw new M1Error(
         "sandbox_preflight_failed",
-        "sandbox executable path must not contain a symbolic link",
+        `sandbox ${label} path must not contain a symbolic link`,
       );
     }
     if (entry.kind !== expectedKind) {
       throw new M1Error(
         "sandbox_preflight_failed",
-        `sandbox executable ${index === 0 ? "must be a regular file" : "ancestor must be a directory"}`,
+        `sandbox ${label} ${index === 0 ? "must be a regular file" : "ancestor must be a directory"}`,
       );
     }
     if (entry.uid !== 0) {
       throw new M1Error(
         "sandbox_preflight_failed",
-        "sandbox executable and every ancestor must be root-owned",
+        `sandbox ${label} and every ancestor must be root-owned`,
       );
     }
     if ((entry.mode & 0o022) !== 0) {
       throw new M1Error(
         "sandbox_preflight_failed",
-        "sandbox executable and every ancestor must not be group or world writable",
+        `sandbox ${label} and every ancestor must not be group or world writable`,
       );
     }
     if (await trust.canWrite(component)) {
       throw new M1Error(
         "sandbox_preflight_failed",
-        "sandbox Host process must not have write access to the executable path",
+        `sandbox Host process must not have write access to the ${label} path`,
       );
     }
-    if (index === 0 && (entry.mode & 0o111) === 0) {
+    if (requireExecutable && index === 0 && (entry.mode & 0o111) === 0) {
       throw new M1Error(
         "sandbox_preflight_failed",
         "sandbox executable must have an executable mode bit",
@@ -232,6 +234,16 @@ export async function assertTrustedHostExecutablePath(
   }
   return canonicalPath;
 }
+
+export const assertTrustedHostExecutablePath = (
+  path: string,
+  trust: SandboxHostPathTrustPort = nodeHostPathTrustPort,
+): Promise<string> => assertTrustedHostRegularFilePath(path, true, trust);
+
+export const assertTrustedHostRuntimeFilePath = (
+  path: string,
+  trust: SandboxHostPathTrustPort = nodeHostPathTrustPort,
+): Promise<string> => assertTrustedHostRegularFilePath(path, false, trust);
 
 const sha256Bytes = (bytes: Uint8Array): Sha256DigestV1 =>
   asSha256DigestV1(createHash("sha256").update(bytes).digest("hex"));

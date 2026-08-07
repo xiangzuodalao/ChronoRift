@@ -53,6 +53,7 @@ export const sandboxPolicyV1Content = (
   SandboxPolicyContentV1Schema.parse({
     schemaVersion: policy.schemaVersion,
     runtimeIdentity: policy.runtimeIdentity,
+    toolchainId: policy.toolchainId,
     writableTargets: policy.writableTargets,
     readonlyTargets: policy.readonlyTargets,
     namespaces: policy.namespaces,
@@ -63,12 +64,21 @@ export const sandboxPolicyV1Content = (
 
 export const createSandboxPolicyV1 = (
   runtimeIdentity: Sha256DigestV1,
+  toolchain?: {
+    readonly toolchainId: string;
+    readonly targets: readonly string[];
+  },
 ): SandboxPolicyV1 => {
+  const readonlyTargets = [
+    "/bin/busybox",
+    ...(toolchain?.targets ?? []),
+  ].sort();
   const content = SandboxPolicyContentV1Schema.parse({
     schemaVersion: 1,
     runtimeIdentity: asSha256DigestV1(runtimeIdentity),
+    toolchainId: toolchain?.toolchainId ?? null,
     writableTargets: ["/workspace", "/tmp", "/artifacts"],
-    readonlyTargets: ["/bin/busybox"],
+    readonlyTargets,
     namespaces: ["mount", "user", "pid", "ipc", "uts", "network"],
     network: "isolated",
     copiedEnvironmentKeys: ["CI", "NO_COLOR"],

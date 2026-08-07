@@ -1,3 +1,5 @@
+import { dirname } from "node:path/posix";
+
 import type {
   RealizedResourceLimitsV1,
   SandboxExecutionRequestV1,
@@ -95,7 +97,7 @@ export const buildSandboxProcessPlan = (
     "/tmp",
     "--setenv",
     "PATH",
-    "/bin",
+    "/usr/bin:/bin",
     "--setenv",
     "LANG",
     "C.UTF-8",
@@ -130,6 +132,30 @@ export const buildSandboxProcessPlan = (
     String(SANDBOX_FDS.artifacts),
     "/artifacts",
   );
+  const existingDirectories = new Set([
+    "/",
+    "/bin",
+    "/workspace",
+    "/tmp",
+    "/artifacts",
+  ]);
+  const runtimeDirectories = new Set<string>();
+  for (const { target } of input.runtimeTargets) {
+    for (
+      let parent = dirname(target);
+      !existingDirectories.has(parent);
+      parent = dirname(parent)
+    ) {
+      runtimeDirectories.add(parent);
+    }
+  }
+  for (const directory of [...runtimeDirectories].sort(
+    (left, right) =>
+      left.split("/").length - right.split("/").length ||
+      left.localeCompare(right),
+  )) {
+    bwrapArgs.push("--dir", directory);
+  }
   for (const target of input.runtimeTargets) {
     bwrapArgs.push("--ro-bind-fd", String(target.fd), target.target);
   }

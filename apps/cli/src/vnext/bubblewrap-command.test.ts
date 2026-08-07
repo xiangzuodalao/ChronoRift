@@ -120,4 +120,24 @@ describe("buildSandboxProcessPlan", () => {
       }),
     ).toThrow();
   });
+
+  it("creates only the parent directories required by exact runtime files", () => {
+    const plan = buildSandboxProcessPlan({
+      request,
+      limits: codingLimits,
+      binaries: { prlimit: "/prlimit", bwrap: "/bwrap" },
+      runtimeTargets: [
+        { fd: 8, target: "/bin/busybox" },
+        { fd: 9, target: "/usr/bin/rg" },
+        { fd: 10, target: "/lib/x86_64-linux-gnu/libc.so.6" },
+      ],
+      unshareCgroupNamespace: true,
+    });
+    const joined = plan.args.join("\0");
+    expect(joined).toContain("--dir\0/usr");
+    expect(joined).toContain("--dir\0/lib");
+    expect(joined).toContain("--dir\0/usr/bin");
+    expect(joined).toContain("--dir\0/lib/x86_64-linux-gnu");
+    expect(joined).not.toContain("--ro-bind\0/usr\0/usr");
+  });
 });

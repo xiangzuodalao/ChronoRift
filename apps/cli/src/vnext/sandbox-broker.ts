@@ -670,7 +670,9 @@ function assertProcessPlan(
     layout.hostBaselineGitDirectory,
     layout.hostOperationTemporaryDirectory,
     binding.busyboxPath,
-    ...(toolchainBinding?.files.map((file) => file.hostPath) ?? []),
+    ...(toolchainBinding?.files
+      .filter((file) => file.hostPath !== file.target)
+      .map((file) => file.hostPath) ?? []),
   ]) {
     if (serialized.includes(forbidden)) {
       throw new M1Error(

@@ -80,6 +80,11 @@ const deferred = <T>(): Deferred<T> => {
   return { promise, resolve: resolvePromise, reject: rejectPromise };
 };
 
+const childExitedBeforeAuthorizationError = (exit: ProcessExit): Error =>
+  new Error(
+    `sandbox launcher exited before authorization acknowledgement (exitCode=${String(exit.exitCode)}, signal=${String(exit.signal)})`,
+  );
+
 // Self-contained bootstrap source works both under Vitest and from built JS.
 // The bootstrap, not the Host caller, owns the block pipe's writer.
 const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
@@ -298,6 +303,7 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
   #authorizationAcknowledged = false;
   #terminationSent = false;
   #childExited = false;
+  #lastChildExit: ProcessExit | undefined;
   readonly #bootstrapExit: Promise<ProcessExit>;
 
   public constructor(private readonly bootstrapProcess: SpawnedIpcProcess) {
@@ -373,6 +379,9 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
     if (this.#authorizationSent) {
       throw new Error("bootstrap authorization was already sent");
     }
+    if (this.#lastChildExit !== undefined) {
+      throw childExitedBeforeAuthorizationError(this.#lastChildExit);
+    }
     this.#authorizationSent = true;
     await this.bootstrapProcess.send({ kind: "authorize" });
     await this.#authorized.promise;
@@ -429,6 +438,11 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
         break;
       case "child_exit": {
         this.#childExited = true;
+        const childExit = {
+          exitCode: message.exitCode,
+          signal: message.signal as NodeJS.Signals | null,
+        };
+        this.#lastChildExit = childExit;
         if (!this.#statusReceived) {
           this.#status.reject(
             new Error("sandbox child exited before bubblewrap status"),
@@ -436,15 +450,10 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
         }
         if (this.#authorizationSent && !this.#authorizationAcknowledged) {
           this.#authorized.reject(
-            new Error(
-              "sandbox child exited before authorization was acknowledged",
-            ),
+            childExitedBeforeAuthorizationError(childExit),
           );
         }
-        this.#childExit.resolve({
-          exitCode: message.exitCode,
-          signal: message.signal as NodeJS.Signals | null,
-        });
+        this.#childExit.resolve(childExit);
         break;
       }
       case "bootstrap_error":

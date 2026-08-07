@@ -35,6 +35,12 @@ const fragmentedStatusChildSource = String.raw`
   writeNext();
 `;
 
+const exitedAfterStatusChildSource = String.raw`
+  const fs = require("node:fs");
+  fs.writeSync(4, JSON.stringify({"child-pid": process.pid}));
+  process.exit(23);
+`;
+
 describe("sandbox bootstrap", () => {
   it("does not execute the target before status validation and authorization", async () => {
     const directory = await mkdtemp(join(tmpdir(), "chronorift-bootstrap-"));
@@ -114,6 +120,29 @@ describe("sandbox bootstrap", () => {
       exitCode: 0,
     });
     await expect(readFile(marker, "utf8")).resolves.toBe("executed\n");
+  });
+
+  it("reports the launcher exit when it dies before authorization", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "chronorift-bootstrap-early-exit-"),
+    );
+    const session = await startSandboxBootstrap({
+      processDriver: new NodeProcessDriver(),
+      cwd: directory,
+      inheritedFds: [],
+    });
+    await session.inspectCgroupMembership();
+
+    await session.launch({
+      executable: process.execPath,
+      args: ["-e", exitedAfterStatusChildSource],
+    });
+    await session.waitForSandboxStatus();
+    await session.waitForChildExit();
+
+    await expect(session.authorize()).rejects.toThrow(
+      /exitCode=23, signal=null/u,
+    );
   });
 
   it("rejects a second launch", async () => {

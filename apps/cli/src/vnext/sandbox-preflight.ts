@@ -24,6 +24,7 @@ import {
 import { contentHash } from "@chronorift/json-artifacts";
 
 import { buildSandboxProcessPlan } from "./bubblewrap-command.js";
+import { BoundedOutputCapture } from "./bounded-output.js";
 import {
   CgroupV2Controller,
   type ExecutionCgroupScope,
@@ -440,6 +441,7 @@ const runActiveSandboxProbe = async (input: {
   let controller: CgroupV2Controller | undefined;
   let scope: ExecutionCgroupScope | undefined;
   let session: SandboxBootstrapSession | undefined;
+  const stderrCapture = new BoundedOutputCapture(16 * 1024);
   const handles = [] as Awaited<ReturnType<typeof open>>[];
   try {
     controller = await CgroupV2Controller.create(
@@ -475,7 +477,11 @@ const runActiveSandboxProbe = async (input: {
       "bootstrap readiness",
     );
     session.stdout.on("data", () => undefined);
-    session.stderr.on("data", () => undefined);
+    session.stderr.on("data", (chunk: Buffer | string) => {
+      stderrCapture.add(
+        typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk,
+      );
+    });
     await scope.attach(session.pid);
     await scope.verifyAttached(await session.inspectCgroupMembership());
 
@@ -606,6 +612,16 @@ const runActiveSandboxProbe = async (input: {
     return jsonHash(activeProbeRecord);
   } catch (error) {
     await cleanupActiveProbe({ session, scope, controller });
+    const stderr = sanitizeM1Diagnostic(
+      Buffer.from(stderrCapture.bytes()).toString("utf8").trim(),
+      [probeRoot, workspace, temporary, artifacts],
+    );
+    if (stderr.length > 0) {
+      const code =
+        error instanceof M1Error ? error.code : "sandbox_preflight_failed";
+      const message = error instanceof Error ? error.message : String(error);
+      throw new M1Error(code, `${message}; launcher stderr: ${stderr}`, error);
+    }
     throw error;
   } finally {
     await Promise.all(

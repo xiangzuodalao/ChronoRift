@@ -216,6 +216,7 @@ function assertLayout(taskId: TaskId, layout: TaskDirectoryLayout): void {
       "workspaceDirectory",
       "sandboxTemporaryDirectory",
       "sandboxArtifactScratchDirectory",
+      "piSessionDirectory",
       "hostBaselineGitDirectory",
       "hostOperationTemporaryDirectory",
     ])
@@ -239,6 +240,7 @@ function assertLayout(taskId: TaskId, layout: TaskDirectoryLayout): void {
     workspaceDirectory: join(root, "workspace"),
     sandboxTemporaryDirectory: join(root, "tmp"),
     sandboxArtifactScratchDirectory: join(root, "sandbox-artifacts"),
+    piSessionDirectory: join(root, "pi-sessions"),
     hostBaselineGitDirectory: join(root, "host-baseline.git"),
     hostOperationTemporaryDirectory: join(root, "host-tmp"),
   } as const;

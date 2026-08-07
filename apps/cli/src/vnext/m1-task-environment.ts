@@ -86,6 +86,7 @@ import {
 } from "./source-preflight.js";
 import {
   createTaskDirectoryLayout,
+  openTaskDirectoryLayout,
   type TaskDirectoryLayout,
 } from "./task-paths.js";
 import {
@@ -143,6 +144,13 @@ export interface PrepareM1TaskEnvironmentRequest {
     | undefined;
 }
 
+export interface ResumeM1TaskEnvironmentRequest {
+  readonly taskId: TaskId;
+  readonly runtimeRoot: string;
+  readonly sandboxHost: SandboxHostPreflightRequest;
+  readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
+}
+
 interface M1TaskEnvironmentDependencies {
   readonly now: () => string;
   readonly preflightSandbox: (
@@ -152,6 +160,7 @@ interface M1TaskEnvironmentDependencies {
     request: CleanGitSubtreePreflightRequest,
   ) => Promise<VerifiedGitSubtree>;
   readonly createLayout: typeof createTaskDirectoryLayout;
+  readonly openLayout: typeof openTaskDirectoryLayout;
   readonly createStore: (runtimeRoot: string) => M1TaskRecordStore;
   readonly materializeWorkspace: typeof materializePrivateTaskWorkspace;
   readonly assertSandboxBinding: typeof assertSandboxHostBindingMatches;
@@ -167,7 +176,6 @@ interface M1TaskEnvironmentDependencies {
 
 interface M1TaskEnvironmentState {
   readonly layout: TaskDirectoryLayout;
-  readonly source: VerifiedGitSubtree;
   readonly materialized: MaterializedPrivateTaskWorkspace;
   readonly binding: SandboxHostBinding;
   readonly broker: TaskSandboxBrokerV1;
@@ -177,6 +185,8 @@ interface M1TaskEnvironmentState {
   readonly sensitiveValues: readonly string[];
   readonly securityEvents: TaskSecurityEventRecorder;
   recordsDiscarded: boolean;
+  cleanupPromise: Promise<SandboxCleanupReceiptV1> | undefined;
+  suspendPromise: Promise<SandboxCleanupReceiptV1> | undefined;
   discardPromise: Promise<SandboxCleanupReceiptV1> | undefined;
 }
 
@@ -189,6 +199,7 @@ const MUTABLE_TASK_CHILDREN = [
   "workspace",
   "tmp",
   "sandbox-artifacts",
+  "pi-sessions",
   "host-baseline.git",
   "host-tmp",
 ] as const;
@@ -376,6 +387,7 @@ const DEFAULT_DEPENDENCIES: M1TaskEnvironmentDependencies = {
   preflightSandbox: (request) => preflightSandboxHost(request),
   preflightSource: (request) => preflightCleanGitSubtree(request),
   createLayout: createTaskDirectoryLayout,
+  openLayout: openTaskDirectoryLayout,
   createStore: (runtimeRoot) => new VNextTaskStore(runtimeRoot),
   materializeWorkspace: (request) => materializePrivateTaskWorkspace(request),
   assertSandboxBinding: assertSandboxHostBindingMatches,
@@ -757,30 +769,36 @@ const bindMaterializedWorkspace = (input: {
   };
 };
 
-export async function prepareM1TaskEnvironment(
-  request: PrepareM1TaskEnvironmentRequest,
-  overrides: Partial<M1TaskEnvironmentDependencies> = {},
-): Promise<M1TaskEnvironment> {
-  const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
-  const earlySensitiveValues = [
-    request.projectPath,
-    request.trustedFixtureRoot,
-    request.runtimeRoot,
-    request.sandboxHost.delegatedCgroupRoot,
-    request.sandboxHost.bwrapPath,
-    request.sandboxHost.prlimitPath,
-    request.sandboxHost.busyboxPath,
-    ...(request.sandboxToolchain === undefined
-      ? []
-      : [
-          request.sandboxToolchain.lddPath,
-          ...request.sandboxToolchain.commands.flatMap((command) => [
-            command.target,
-            command.hostPath,
-          ]),
+const runtimeSensitiveValues = (request: {
+  readonly runtimeRoot: string;
+  readonly sandboxHost: SandboxHostPreflightRequest;
+  readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
+}): string[] => [
+  request.runtimeRoot,
+  request.sandboxHost.delegatedCgroupRoot,
+  request.sandboxHost.bwrapPath,
+  request.sandboxHost.prlimitPath,
+  request.sandboxHost.busyboxPath,
+  ...(request.sandboxToolchain === undefined
+    ? []
+    : [
+        request.sandboxToolchain.lddPath,
+        ...request.sandboxToolchain.commands.flatMap((command) => [
+          command.target,
+          command.hostPath,
         ]),
-  ];
+      ]),
+];
 
+const inspectM1Runtime = async (
+  request: {
+    readonly runtimeRoot: string;
+    readonly sandboxHost: SandboxHostPreflightRequest;
+    readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
+  },
+  dependencies: M1TaskEnvironmentDependencies,
+  sensitiveValues: readonly string[],
+) => {
   let sandboxResult: SandboxHostPreflightResult;
   let sandboxReceipt: ReturnType<typeof SandboxPreflightReceiptV1Schema.parse>;
   try {
@@ -789,11 +807,7 @@ export async function prepareM1TaskEnvironment(
       sandboxResult.receipt,
     );
   } catch (error) {
-    throw normalizeError(
-      error,
-      "sandbox_preflight_failed",
-      earlySensitiveValues,
-    );
+    throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
   }
   if (sandboxResult.kind === "unsupported") {
     if (sandboxReceipt.status !== "unsupported") {
@@ -807,7 +821,7 @@ export async function prepareM1TaskEnvironment(
       blockers: sandboxReceipt.blockers.map((blocker) => ({
         ...blocker,
         message:
-          sanitizeM1Diagnostic(blocker.message, earlySensitiveValues) ||
+          sanitizeM1Diagnostic(blocker.message, sensitiveValues) ||
           "sandbox preflight blocker",
       })),
     });
@@ -817,12 +831,10 @@ export async function prepareM1TaskEnvironment(
         "sandbox preflight receipt changed status while being sanitized",
       );
     }
-    const message = sanitizedReceipt.blockers
-      .map((blocker) => blocker.message)
-      .join("; ");
     throw new M1Error(
       "sandbox_preflight_failed",
-      message || "sandbox preflight is unsupported",
+      sanitizedReceipt.blockers.map((blocker) => blocker.message).join("; ") ||
+        "sandbox preflight is unsupported",
       sanitizedReceipt,
     );
   }
@@ -835,21 +847,15 @@ export async function prepareM1TaskEnvironment(
   const sandboxCapability = SandboxHostCapabilityV1Schema.parse(
     sandboxResult.capability,
   );
-  const computedCapabilitySha256 = asSha256DigestV1(
-    contentHash(sandboxCapability as unknown as JsonValue),
-  );
-  if (sandboxReceipt.capabilitySha256 !== computedCapabilitySha256) {
+  if (
+    sandboxReceipt.capabilitySha256 !==
+    asSha256DigestV1(contentHash(sandboxCapability as unknown as JsonValue))
+  ) {
     throw new M1Error(
       "sandbox_preflight_failed",
       "sandbox preflight capability does not match its receipt",
     );
   }
-  const sandbox = {
-    ...sandboxResult,
-    capability: sandboxCapability,
-    receipt: sandboxReceipt,
-  };
-
   let toolchain:
     | {
         readonly capability: SandboxToolchainCapabilityV1;
@@ -860,13 +866,34 @@ export async function prepareM1TaskEnvironment(
     try {
       toolchain = await dependencies.inspectToolchain(request.sandboxToolchain);
     } catch (error) {
-      throw normalizeError(
-        error,
-        "sandbox_preflight_failed",
-        earlySensitiveValues,
-      );
+      throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
     }
   }
+  return {
+    sandbox: {
+      ...sandboxResult,
+      capability: sandboxCapability,
+      receipt: sandboxReceipt,
+    },
+    toolchain,
+  };
+};
+
+export async function prepareM1TaskEnvironment(
+  request: PrepareM1TaskEnvironmentRequest,
+  overrides: Partial<M1TaskEnvironmentDependencies> = {},
+): Promise<M1TaskEnvironment> {
+  const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
+  const earlySensitiveValues = [
+    request.projectPath,
+    request.trustedFixtureRoot,
+    ...runtimeSensitiveValues(request),
+  ];
+  const { sandbox, toolchain } = await inspectM1Runtime(
+    request,
+    dependencies,
+    earlySensitiveValues,
+  );
 
   let source: VerifiedGitSubtree;
   try {
@@ -953,6 +980,12 @@ export async function prepareM1TaskEnvironment(
       materialized.receipt,
       (value) => WorkspaceMaterializationReceiptV1Schema.parse(value),
     );
+    await store.putJsonOnce(
+      request.taskId,
+      "fixture-capability.json",
+      materialized.fixtureCapability,
+      (value) => TaskFixtureCapabilityV1Schema.parse(value),
+    );
     const policy = createSandboxPolicyV1(
       sandbox.capability.runtimeIdentity,
       toolchain === undefined
@@ -1015,7 +1048,6 @@ export async function prepareM1TaskEnvironment(
     });
     ENVIRONMENT_STATES.set(environment, {
       layout,
-      source,
       materialized,
       binding: sandbox.binding,
       broker,
@@ -1025,6 +1057,8 @@ export async function prepareM1TaskEnvironment(
       sensitiveValues,
       securityEvents,
       recordsDiscarded: false,
+      cleanupPromise: undefined,
+      suspendPromise: undefined,
       discardPromise: undefined,
     });
     return environment;
@@ -1055,6 +1089,216 @@ export async function prepareM1TaskEnvironment(
           now: dependencies.now,
           error: normalized,
         });
+      } catch (recordError) {
+        throw normalizeError(
+          recordError,
+          "artifact_write_failed",
+          sensitiveValues,
+        );
+      }
+    }
+    throw normalized;
+  }
+}
+
+export async function resumeM1TaskEnvironment(
+  request: ResumeM1TaskEnvironmentRequest,
+  overrides: Partial<M1TaskEnvironmentDependencies> = {},
+): Promise<M1TaskEnvironment> {
+  const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
+  const sensitiveValues = runtimeSensitiveValues(request);
+  const { sandbox, toolchain } = await inspectM1Runtime(
+    request,
+    dependencies,
+    sensitiveValues,
+  );
+  let store: M1TaskRecordStore | undefined;
+  let broker: TaskSandboxBrokerV1 | undefined;
+  try {
+    const layout = await dependencies.openLayout({
+      runtimeRoot: request.runtimeRoot,
+      taskId: request.taskId,
+    });
+    sensitiveValues.push(layout.taskRootDirectory);
+    store = dependencies.createStore(request.runtimeRoot);
+    await store.create(request.taskId);
+    await store.append(
+      request.taskId,
+      "sandbox-preflight.jsonl",
+      sandbox.receipt,
+      (value) => SandboxPreflightReceiptV1Schema.parse(value),
+    );
+    const [task, workspace, fixtureCapability, storedSandbox, policy] =
+      await Promise.all([
+        store.readJson(request.taskId, "task.json", (value) =>
+          TaskIdentityV1Schema.parse(value),
+        ),
+        store.readJson(request.taskId, "workspace.json", (value) =>
+          WorkspaceMaterializationReceiptV1Schema.parse(value),
+        ),
+        store.readJson(request.taskId, "fixture-capability.json", (value) =>
+          TaskFixtureCapabilityV1Schema.parse(value),
+        ),
+        store.readJson(request.taskId, "sandbox-capability.json", (value) =>
+          SandboxHostCapabilityV1Schema.parse(value),
+        ),
+        store.readJson(request.taskId, "sandbox-policy.json", (value) =>
+          SandboxPolicyV1Schema.parse(value),
+        ),
+      ]);
+    if (
+      task.taskId !== request.taskId ||
+      workspace.taskId !== request.taskId ||
+      workspace.fixtureCapabilitySha256 !==
+        fixtureCapability.capabilitySha256 ||
+      !sameJson(
+        workspace.excludedCachePaths,
+        fixtureCapability.ignoredCachePaths,
+      ) ||
+      !sameJson(storedSandbox, sandbox.capability) ||
+      policy.runtimeIdentity !== storedSandbox.runtimeIdentity
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "current runtime does not match the frozen Task identity and capability",
+      );
+    }
+    let storedToolchain: SandboxToolchainCapabilityV1 | undefined;
+    if (policy.toolchainId === null) {
+      if (toolchain !== undefined) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          "Task was created without the requested toolchain",
+        );
+      }
+    } else {
+      if (toolchain === undefined) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          "Task continuation requires its frozen toolchain",
+        );
+      }
+      storedToolchain = await store.readJson(
+        request.taskId,
+        "sandbox-toolchain.json",
+        (value) => SandboxToolchainCapabilityV1Schema.parse(value),
+      );
+      if (
+        policy.toolchainId !== storedToolchain.toolchainId ||
+        !sameJson(storedToolchain, toolchain.capability) ||
+        !sameJson(
+          policy.readonlyTargets,
+          [
+            "/bin/busybox",
+            ...storedToolchain.files.map((file) => file.target),
+          ].sort(),
+        )
+      ) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          "current toolchain does not match the frozen Task capability",
+        );
+      }
+    }
+    await dependencies.assertSandboxBinding(
+      sandbox.capability,
+      sandbox.binding,
+    );
+    const taskStore = store;
+    const securityEvents = new TaskSecurityEventRecorder(
+      request.taskId,
+      taskStore,
+      sensitiveValues,
+    );
+    broker = await dependencies.createBroker({
+      taskId: request.taskId,
+      capability: sandbox.capability,
+      hostBinding: sandbox.binding,
+      policy,
+      ...(toolchain === undefined ? {} : { toolchain }),
+      layout,
+      securityEvents: (event) => {
+        securityEvents.stage(event);
+        return Promise.resolve();
+      },
+    });
+    await store.append(
+      request.taskId,
+      "task-events.jsonl",
+      {
+        schemaVersion: 1,
+        taskId: request.taskId,
+        kind: "resumed",
+        occurredAt: dependencies.now(),
+        policyId: policy.policyId,
+      },
+      (value) => M1TaskEventV1Schema.parse(value),
+    );
+    const materialized: MaterializedPrivateTaskWorkspace = {
+      workspaceDirectory: layout.workspaceDirectory,
+      hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
+      agentBaselineCommit: workspace.agentBaselineCommit,
+      hostBaselineCommit: workspace.hostBaselineCommit,
+      receipt: workspace,
+      fixtureCapability,
+    };
+    const environment = Object.freeze({
+      task: cloneAndFreeze(task),
+      workspace: cloneAndFreeze(workspace),
+      sandboxCapability: cloneAndFreeze(storedSandbox),
+      ...(storedToolchain === undefined
+        ? {}
+        : { toolchainCapability: cloneAndFreeze(storedToolchain) }),
+      policy: cloneAndFreeze(policy),
+    });
+    ENVIRONMENT_STATES.set(environment, {
+      layout,
+      materialized,
+      binding: sandbox.binding,
+      broker,
+      store,
+      gate: new TaskOperationGate(),
+      dependencies,
+      sensitiveValues,
+      securityEvents,
+      recordsDiscarded: false,
+      cleanupPromise: undefined,
+      suspendPromise: undefined,
+      discardPromise: undefined,
+    });
+    return environment;
+  } catch (error) {
+    let normalized = normalizeError(
+      error,
+      "artifact_write_failed",
+      sensitiveValues,
+    );
+    if (broker !== undefined) {
+      try {
+        await cleanupBrokerAfterSetupFailure(broker);
+      } catch (cleanupError) {
+        normalized = normalizeError(
+          cleanupError,
+          "artifact_write_failed",
+          sensitiveValues,
+        );
+      }
+    }
+    if (store !== undefined) {
+      try {
+        await store.append(
+          request.taskId,
+          "task-events.jsonl",
+          {
+            schemaVersion: 1,
+            taskId: request.taskId,
+            kind: "resume_failed",
+            occurredAt: dependencies.now(),
+            code: normalized.code,
+            message: normalized.message,
+          },
+          (value) => M1TaskEventV1Schema.parse(value),
+        );
       } catch (recordError) {
         throw normalizeError(
           recordError,
@@ -1395,6 +1639,86 @@ export function exportM1Patch(
   });
 }
 
+export interface M1TaskHostContext {
+  readonly workspaceDirectory: string;
+  readonly piSessionDirectory: string;
+}
+
+export function getM1TaskHostContext(
+  environment: M1TaskEnvironment,
+): M1TaskHostContext {
+  const state = requireEnvironmentState(environment);
+  return Object.freeze({
+    workspaceDirectory: state.layout.workspaceDirectory,
+    piSessionDirectory: state.layout.piSessionDirectory,
+  });
+}
+
+const cleanupM1TaskSandbox = (
+  state: M1TaskEnvironmentState,
+): Promise<SandboxCleanupReceiptV1> => {
+  if (state.cleanupPromise !== undefined) return state.cleanupPromise;
+  const attempt = (async () => {
+    let cleanup: SandboxCleanupReceiptV1;
+    try {
+      cleanup = SandboxCleanupReceiptV1Schema.parse(
+        await state.broker.cleanup(),
+      );
+    } finally {
+      await state.gate.drain();
+    }
+    if (!cleanupWasProven(cleanup)) {
+      throw new M1Error(
+        "artifact_write_failed",
+        "Task sandbox cleanup could not be proven; Task records were retained",
+      );
+    }
+    return cleanup;
+  })();
+  state.cleanupPromise = attempt;
+  void attempt.catch(() => {
+    if (state.cleanupPromise === attempt) state.cleanupPromise = undefined;
+  });
+  return attempt;
+};
+
+export function suspendM1Task(
+  environment: M1TaskEnvironment,
+): Promise<SandboxCleanupReceiptV1> {
+  const state = requireEnvironmentState(environment);
+  if (state.suspendPromise !== undefined) return state.suspendPromise;
+  state.gate.close();
+  const attempt = (async () => {
+    try {
+      const cleanup = await cleanupM1TaskSandbox(state);
+      await state.store.append(
+        environment.task.taskId,
+        "task-events.jsonl",
+        {
+          schemaVersion: 1,
+          taskId: environment.task.taskId,
+          kind: "suspended",
+          occurredAt: state.dependencies.now(),
+          policyId: environment.policy.policyId,
+        },
+        (value) => M1TaskEventV1Schema.parse(value),
+      );
+      return cleanup;
+    } catch (error) {
+      throw normalizeError(
+        error,
+        "artifact_write_failed",
+        state.sensitiveValues,
+      );
+    }
+  })();
+  state.suspendPromise = attempt;
+  void attempt.catch(() => {
+    if (state.suspendPromise === attempt) state.suspendPromise = undefined;
+  });
+  return attempt;
+}
+
 export function discardM1Task(
   environment: M1TaskEnvironment,
 ): Promise<SandboxCleanupReceiptV1> {
@@ -1403,20 +1727,7 @@ export function discardM1Task(
   state.gate.close();
   const attempt = (async () => {
     try {
-      let cleanup: SandboxCleanupReceiptV1;
-      try {
-        cleanup = SandboxCleanupReceiptV1Schema.parse(
-          await state.broker.cleanup(),
-        );
-      } finally {
-        await state.gate.drain();
-      }
-      if (!cleanupWasProven(cleanup)) {
-        throw new M1Error(
-          "artifact_write_failed",
-          "Task sandbox cleanup could not be proven; Task records were retained",
-        );
-      }
+      const cleanup = await cleanupM1TaskSandbox(state);
       if (!state.recordsDiscarded) {
         await assertCompleteTaskRootIsOwned(
           environment.task.taskId,

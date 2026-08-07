@@ -1,4 +1,11 @@
-import { chmod, lstat, mkdir, realpath, rmdir } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  realpath,
+  rmdir,
+} from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 
@@ -12,9 +19,31 @@ export interface TaskDirectoryLayout {
   readonly workspaceDirectory: string;
   readonly sandboxTemporaryDirectory: string;
   readonly sandboxArtifactScratchDirectory: string;
+  readonly piSessionDirectory: string;
   readonly hostBaselineGitDirectory: string;
   readonly hostOperationTemporaryDirectory: string;
 }
+
+const TASK_CHILDREN = [
+  "records",
+  "workspace",
+  "tmp",
+  "sandbox-artifacts",
+  "pi-sessions",
+  "host-baseline.git",
+  "host-tmp",
+] as const;
+
+const layoutForRoot = (taskRootDirectory: string): TaskDirectoryLayout => ({
+  taskRootDirectory,
+  taskRecordDirectory: join(taskRootDirectory, "records"),
+  workspaceDirectory: join(taskRootDirectory, "workspace"),
+  sandboxTemporaryDirectory: join(taskRootDirectory, "tmp"),
+  sandboxArtifactScratchDirectory: join(taskRootDirectory, "sandbox-artifacts"),
+  piSessionDirectory: join(taskRootDirectory, "pi-sessions"),
+  hostBaselineGitDirectory: join(taskRootDirectory, "host-baseline.git"),
+  hostOperationTemporaryDirectory: join(taskRootDirectory, "host-tmp"),
+});
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
   error instanceof Error && "code" in error;
@@ -163,18 +192,10 @@ export async function createTaskDirectoryLayout(input: {
       error,
     );
   }
-  const children = [
-    "records",
-    "workspace",
-    "tmp",
-    "sandbox-artifacts",
-    "host-baseline.git",
-    "host-tmp",
-  ] as const;
   const createdChildren: string[] = [];
   try {
     await chmod(taskRootDirectory, 0o700);
-    for (const child of children) {
+    for (const child of TASK_CHILDREN) {
       const childPath = join(taskRootDirectory, child);
       await mkdir(childPath, { mode: 0o700 });
       createdChildren.push(childPath);
@@ -189,16 +210,39 @@ export async function createTaskDirectoryLayout(input: {
     );
   }
 
-  return {
-    taskRootDirectory,
-    taskRecordDirectory: join(taskRootDirectory, "records"),
-    workspaceDirectory: join(taskRootDirectory, "workspace"),
-    sandboxTemporaryDirectory: join(taskRootDirectory, "tmp"),
-    sandboxArtifactScratchDirectory: join(
-      taskRootDirectory,
-      "sandbox-artifacts",
-    ),
-    hostBaselineGitDirectory: join(taskRootDirectory, "host-baseline.git"),
-    hostOperationTemporaryDirectory: join(taskRootDirectory, "host-tmp"),
-  };
+  return layoutForRoot(taskRootDirectory);
+}
+
+export async function openTaskDirectoryLayout(input: {
+  readonly runtimeRoot: string;
+  readonly taskId: TaskId;
+}): Promise<TaskDirectoryLayout> {
+  const runtimeRoot = await canonicalizeExistingDirectoryWithoutSymlinks(
+    input.runtimeRoot,
+  );
+  const tasksDirectory = await canonicalizeExistingDirectoryWithoutSymlinks(
+    join(runtimeRoot, "tasks"),
+  );
+  const taskRootDirectory = await canonicalizeExistingDirectoryWithoutSymlinks(
+    join(tasksDirectory, taskNamespaceDigestV1(input.taskId)),
+  );
+  const entries = (await readdir(taskRootDirectory)).sort();
+  if (JSON.stringify(entries) !== JSON.stringify([...TASK_CHILDREN].sort())) {
+    throw new M1Error(
+      "path_denied",
+      "Task root does not contain the exact owned lifecycle directories",
+    );
+  }
+  for (const child of TASK_CHILDREN) {
+    const path = join(taskRootDirectory, child);
+    const canonical = await canonicalizeExistingDirectoryWithoutSymlinks(path);
+    const statistics = await lstat(canonical);
+    if ((statistics.mode & 0o777) !== 0o700) {
+      throw new M1Error(
+        "path_denied",
+        "Task lifecycle directory permissions changed",
+      );
+    }
+  }
+  return layoutForRoot(taskRootDirectory);
 }

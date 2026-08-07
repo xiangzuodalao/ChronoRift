@@ -32,6 +32,7 @@ import {
 export type VNextTaskJsonSlot =
   | "task.json"
   | "workspace.json"
+  | "fixture-capability.json"
   | "sandbox-capability.json"
   | "sandbox-toolchain.json"
   | "sandbox-policy.json"
@@ -106,6 +107,7 @@ const STORE_MARKER = ".chronorift-vnext-task-store-v1.json";
 const JSON_SLOTS: readonly VNextTaskJsonSlot[] = [
   "task.json",
   "workspace.json",
+  "fixture-capability.json",
   "sandbox-capability.json",
   "sandbox-toolchain.json",
   "sandbox-policy.json",

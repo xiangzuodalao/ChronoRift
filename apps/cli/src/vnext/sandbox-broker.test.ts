@@ -81,6 +81,7 @@ const layout = {
   workspaceDirectory: `${taskRoot}/workspace`,
   sandboxTemporaryDirectory: `${taskRoot}/tmp`,
   sandboxArtifactScratchDirectory: `${taskRoot}/sandbox-artifacts`,
+  piSessionDirectory: `${taskRoot}/pi-sessions`,
   hostBaselineGitDirectory: `${taskRoot}/host-baseline.git`,
   hostOperationTemporaryDirectory: `${taskRoot}/host-tmp`,
 } as const;

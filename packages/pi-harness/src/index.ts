@@ -71,3 +71,10 @@ export {
   type BrokerToolResult,
   type VNextCodingToolPort,
 } from "./vnext-coding-tools.js";
+export {
+  runVNextPiTurn,
+  VNEXT_ENVIRONMENT_APPENDIX,
+  VNEXT_PI_WORKSPACE_CWD,
+  type RunVNextPiTurnOptions,
+  type VNextPiTurnResult,
+} from "./vnext-session.js";

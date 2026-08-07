@@ -1021,10 +1021,17 @@ export type M1TaskEventV1 =
   | {
       readonly schemaVersion: 1;
       readonly taskId: TaskId;
-      readonly kind: "setup_failed";
+      readonly kind: "setup_failed" | "resume_failed";
       readonly occurredAt: string;
       readonly code: M1ErrorCode;
       readonly message: string;
+    }
+  | {
+      readonly schemaVersion: 1;
+      readonly taskId: TaskId;
+      readonly kind: "suspended" | "resumed";
+      readonly occurredAt: string;
+      readonly policyId: string;
     };
 
 const CreatingM1TaskEventV1Schema = z
@@ -1051,10 +1058,20 @@ const SetupFailedM1TaskEventV1Schema = z
   .object({
     schemaVersion: z.literal(1),
     taskId: TaskIdSchema,
-    kind: z.literal("setup_failed"),
+    kind: z.enum(["setup_failed", "resume_failed"]),
     occurredAt: IsoTimestampV1Schema,
     code: z.enum(M1_ERROR_CODES),
     message: SanitizedM1DiagnosticV1Schema,
+  })
+  .strict();
+
+const LifecycleM1TaskEventV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    taskId: TaskIdSchema,
+    kind: z.enum(["suspended", "resumed"]),
+    occurredAt: IsoTimestampV1Schema,
+    policyId: z.string().regex(/^sandbox-policy:v1:[a-f0-9]{64}$/u),
   })
   .strict();
 
@@ -1063,6 +1080,7 @@ export const M1TaskEventV1Schema: z.ZodType<M1TaskEventV1> =
     CreatingM1TaskEventV1Schema,
     ReadyM1TaskEventV1Schema,
     SetupFailedM1TaskEventV1Schema,
+    LifecycleM1TaskEventV1Schema,
   ]);
 
 export interface SandboxOperationRecordV1 {

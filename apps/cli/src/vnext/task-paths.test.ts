@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { asTaskId, taskNamespaceDigestV1 } from "@chronorift/domain";
 
-import { createTaskDirectoryLayout } from "./task-paths.js";
+import {
+  createTaskDirectoryLayout,
+  openTaskDirectoryLayout,
+} from "./task-paths.js";
 
 const roots: string[] = [];
 
@@ -46,6 +49,7 @@ describe("vNext task paths", () => {
       layout.workspaceDirectory,
       layout.sandboxTemporaryDirectory,
       layout.sandboxArtifactScratchDirectory,
+      layout.piSessionDirectory,
       layout.hostBaselineGitDirectory,
       layout.hostOperationTemporaryDirectory,
     ];
@@ -56,6 +60,7 @@ describe("vNext task paths", () => {
         join(layout.taskRootDirectory, "workspace"),
         join(layout.taskRootDirectory, "tmp"),
         join(layout.taskRootDirectory, "sandbox-artifacts"),
+        join(layout.taskRootDirectory, "pi-sessions"),
         join(layout.taskRootDirectory, "host-baseline.git"),
         join(layout.taskRootDirectory, "host-tmp"),
       ].sort(),
@@ -134,5 +139,26 @@ describe("vNext task paths", () => {
       taskId: asTaskId("task_modes"),
     });
     expect((await lstat(layout.workspaceDirectory)).mode & 0o777).toBe(0o700);
+  });
+
+  it("reopens only the exact private Task layout", async () => {
+    const base = await createRoot("chronorift-task-reopen-");
+    const runtime = join(base, "runtime");
+    const source = join(base, "source");
+    await Promise.all([mkdir(runtime), mkdir(source)]);
+    const taskId = asTaskId("task_reopen");
+    const created = await createTaskDirectoryLayout({
+      runtimeRoot: runtime,
+      sourceRepositoryRoot: source,
+      taskId,
+    });
+
+    await expect(
+      openTaskDirectoryLayout({ runtimeRoot: runtime, taskId }),
+    ).resolves.toEqual(created);
+    await chmod(created.piSessionDirectory, 0o755);
+    await expect(
+      openTaskDirectoryLayout({ runtimeRoot: runtime, taskId }),
+    ).rejects.toThrow(/permissions changed/u);
   });
 });

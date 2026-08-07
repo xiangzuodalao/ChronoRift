@@ -43,7 +43,10 @@ import {
   executeAndRecordM1Command,
   exportM1Patch,
   extractAndPersistM1Patch,
+  getM1TaskHostContext,
   prepareM1TaskEnvironment,
+  resumeM1TaskEnvironment,
+  suspendM1Task,
 } from "./m1-task-environment.js";
 import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
 import type {
@@ -531,6 +534,91 @@ describe("internal M1 Task environment", () => {
     await expect(
       access(join(exportRoot, "candidate.patch")),
     ).resolves.toBeUndefined();
+  });
+
+  it("suspends and resumes the same workspace with a newly verified sandbox binding", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_suspend_resume");
+    const { environment, runtimeRoot, taskRoot } =
+      await prepareReadyEnvironment({
+        root,
+        taskId,
+      });
+    const context = getM1TaskHostContext(environment);
+    expect(context).toEqual({
+      workspaceDirectory: join(taskRoot, "workspace"),
+      piSessionDirectory: join(taskRoot, "pi-sessions"),
+    });
+    await writeFile(
+      join(context.workspaceDirectory, "resume-marker.txt"),
+      "kept\n",
+    );
+
+    await suspendM1Task(environment);
+    await expect(access(taskRoot)).resolves.toBeUndefined();
+    await expect(
+      executeAndRecordM1Command(environment, {
+        schemaVersion: 1,
+        operationId: "after_suspend",
+        profile: "coding-default",
+        argv: ["/bin/busybox", "true"],
+        cwd: "/workspace",
+        environment: {},
+      }),
+    ).rejects.toMatchObject({ code: "command_cancelled" });
+
+    const resumed = await resumeM1TaskEnvironment(
+      {
+        taskId,
+        runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+        },
+      },
+      {
+        now: () => now,
+        preflightSandbox: supportedPreflight,
+        assertSandboxBinding: async () => undefined,
+        createBroker: async (options) =>
+          createFakeBroker({
+            taskId: options.taskId,
+            policyId: options.policy.policyId,
+          }),
+      },
+    );
+    expect(
+      await readFile(
+        join(
+          getM1TaskHostContext(resumed).workspaceDirectory,
+          "resume-marker.txt",
+        ),
+        "utf8",
+      ),
+    ).toBe("kept\n");
+    await executeAndRecordM1Command(resumed, {
+      schemaVersion: 1,
+      operationId: "after_resume",
+      profile: "coding-default",
+      argv: ["/bin/busybox", "true"],
+      cwd: "/workspace",
+      environment: {},
+    });
+    const store = new VNextTaskStore(runtimeRoot);
+    const events = await store.readLedger(
+      taskId,
+      "task-events.jsonl",
+      (value) => M1TaskEventV1Schema.parse(value),
+    );
+    expect(events.map((event) => event.kind)).toEqual([
+      "creating",
+      "ready",
+      "suspended",
+      "resumed",
+    ]);
+    await discardM1Task(resumed);
   });
 
   it("retains write-once records and removes mutable state after setup failure", async () => {

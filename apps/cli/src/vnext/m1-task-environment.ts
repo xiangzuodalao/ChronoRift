@@ -41,6 +41,7 @@ import {
   SandboxOperationRecordV1Schema,
   SandboxPolicyV1Schema,
   SandboxPreflightReceiptV1Schema,
+  SandboxToolchainCapabilityV1Schema,
   SecurityEventV1Schema,
   WorkspaceMaterializationReceiptV1Schema,
   type PatchExportReceiptV1,
@@ -48,6 +49,7 @@ import {
   type SandboxExecutionRequestV1,
   type SandboxHostCapabilityV1,
   type SandboxPolicyV1,
+  type SandboxToolchainCapabilityV1,
   type SecurityEventV1,
   type WorkspaceMaterializationReceiptV1,
 } from "./contracts.js";
@@ -72,6 +74,11 @@ import {
   type SandboxHostPreflightResult,
 } from "./sandbox-preflight.js";
 import { createSandboxPolicyV1 } from "./sandbox-policy.js";
+import {
+  inspectSandboxToolchain,
+  type SandboxToolchainBindingV1,
+  type SandboxToolchainCommandBindingV1,
+} from "./sandbox-toolchain.js";
 import {
   preflightCleanGitSubtree,
   type CleanGitSubtreePreflightRequest,
@@ -118,6 +125,7 @@ export interface M1TaskEnvironment {
   readonly task: TaskIdentityV1;
   readonly workspace: WorkspaceMaterializationReceiptV1;
   readonly sandboxCapability: SandboxHostCapabilityV1;
+  readonly toolchainCapability?: SandboxToolchainCapabilityV1 | undefined;
   readonly policy: SandboxPolicyV1;
 }
 
@@ -127,6 +135,12 @@ export interface PrepareM1TaskEnvironmentRequest {
   readonly trustedFixtureRoot: string;
   readonly runtimeRoot: string;
   readonly sandboxHost: SandboxHostPreflightRequest;
+  readonly sandboxToolchain?:
+    | {
+        readonly lddPath: string;
+        readonly commands: readonly SandboxToolchainCommandBindingV1[];
+      }
+    | undefined;
 }
 
 interface M1TaskEnvironmentDependencies {
@@ -141,6 +155,7 @@ interface M1TaskEnvironmentDependencies {
   readonly createStore: (runtimeRoot: string) => M1TaskRecordStore;
   readonly materializeWorkspace: typeof materializePrivateTaskWorkspace;
   readonly assertSandboxBinding: typeof assertSandboxHostBindingMatches;
+  readonly inspectToolchain: typeof inspectSandboxToolchain;
   readonly createBroker: typeof createBwrapCgroupTaskSandbox;
   readonly extractPatch: typeof extractTaskPatch;
   readonly exportPatch: typeof exportTaskPatch;
@@ -364,6 +379,7 @@ const DEFAULT_DEPENDENCIES: M1TaskEnvironmentDependencies = {
   createStore: (runtimeRoot) => new VNextTaskStore(runtimeRoot),
   materializeWorkspace: (request) => materializePrivateTaskWorkspace(request),
   assertSandboxBinding: assertSandboxHostBindingMatches,
+  inspectToolchain: (request) => inspectSandboxToolchain(request),
   createBroker: (request) => createBwrapCgroupTaskSandbox(request),
   extractPatch: (request) => extractTaskPatch(request),
   exportPatch: (request) => exportTaskPatch(request),
@@ -754,6 +770,15 @@ export async function prepareM1TaskEnvironment(
     request.sandboxHost.bwrapPath,
     request.sandboxHost.prlimitPath,
     request.sandboxHost.busyboxPath,
+    ...(request.sandboxToolchain === undefined
+      ? []
+      : [
+          request.sandboxToolchain.lddPath,
+          ...request.sandboxToolchain.commands.flatMap((command) => [
+            command.target,
+            command.hostPath,
+          ]),
+        ]),
   ];
 
   let sandboxResult: SandboxHostPreflightResult;
@@ -825,6 +850,24 @@ export async function prepareM1TaskEnvironment(
     receipt: sandboxReceipt,
   };
 
+  let toolchain:
+    | {
+        readonly capability: SandboxToolchainCapabilityV1;
+        readonly binding: SandboxToolchainBindingV1;
+      }
+    | undefined;
+  if (request.sandboxToolchain !== undefined) {
+    try {
+      toolchain = await dependencies.inspectToolchain(request.sandboxToolchain);
+    } catch (error) {
+      throw normalizeError(
+        error,
+        "sandbox_preflight_failed",
+        earlySensitiveValues,
+      );
+    }
+  }
+
   let source: VerifiedGitSubtree;
   try {
     source = await dependencies.preflightSource({
@@ -885,6 +928,14 @@ export async function prepareM1TaskEnvironment(
       sandbox.capability,
       (value) => SandboxHostCapabilityV1Schema.parse(value),
     );
+    if (toolchain !== undefined) {
+      await store.putJsonOnce(
+        request.taskId,
+        "sandbox-toolchain.json",
+        toolchain.capability,
+        (value) => SandboxToolchainCapabilityV1Schema.parse(value),
+      );
+    }
 
     const materialized = bindMaterializedWorkspace({
       taskId: request.taskId,
@@ -902,7 +953,15 @@ export async function prepareM1TaskEnvironment(
       materialized.receipt,
       (value) => WorkspaceMaterializationReceiptV1Schema.parse(value),
     );
-    const policy = createSandboxPolicyV1(sandbox.capability.runtimeIdentity);
+    const policy = createSandboxPolicyV1(
+      sandbox.capability.runtimeIdentity,
+      toolchain === undefined
+        ? undefined
+        : {
+            toolchainId: toolchain.capability.toolchainId,
+            targets: toolchain.capability.files.map((file) => file.target),
+          },
+    );
     await store.putJsonOnce(
       request.taskId,
       "sandbox-policy.json",
@@ -924,6 +983,7 @@ export async function prepareM1TaskEnvironment(
       capability: sandbox.capability,
       hostBinding: sandbox.binding,
       policy,
+      ...(toolchain === undefined ? {} : { toolchain }),
       layout,
       securityEvents: (event) => {
         securityEvents.stage(event);
@@ -948,6 +1008,9 @@ export async function prepareM1TaskEnvironment(
       task: cloneAndFreeze(task),
       workspace: cloneAndFreeze(materialized.receipt),
       sandboxCapability: cloneAndFreeze(sandbox.capability),
+      ...(toolchain === undefined
+        ? {}
+        : { toolchainCapability: cloneAndFreeze(toolchain.capability) }),
       policy: cloneAndFreeze(policy),
     });
     ENVIRONMENT_STATES.set(environment, {

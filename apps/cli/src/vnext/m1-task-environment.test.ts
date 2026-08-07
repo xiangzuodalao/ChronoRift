@@ -30,6 +30,7 @@ import {
   SandboxExecutionReceiptV1Schema,
   SandboxHostCapabilityV1Schema,
   SandboxOperationRecordV1Schema,
+  SandboxToolchainCapabilityV1Schema,
   SecurityEventV1Schema,
   SupportedSandboxPreflightReceiptV1Schema,
   UnsupportedSandboxPreflightReceiptV1Schema,
@@ -80,6 +81,14 @@ const capability: SandboxHostCapabilityV1 = SandboxHostCapabilityV1Schema.parse(
 const capabilitySha256 = asSha256DigestV1(
   contentHash(capability as unknown as JsonValue),
 );
+const toolchainContent = {
+  schemaVersion: 1 as const,
+  files: [{ target: "/bin/bash", sha256: digest, command: true }],
+};
+const toolchainCapability = SandboxToolchainCapabilityV1Schema.parse({
+  ...toolchainContent,
+  toolchainId: `sandbox-toolchain:v1:${contentHash(toolchainContent)}`,
+});
 
 afterEach(async () => {
   for (const root of roots.splice(0)) {
@@ -294,6 +303,68 @@ const prepareReadyEnvironment = async (input: {
 };
 
 describe("internal M1 Task environment", () => {
+  it("freezes an inspected toolchain into Task records, policy, and broker composition", async () => {
+    const root = await createHarnessRoot();
+    const project = await createCleanFixtureRepository(root);
+    const runtimeRoot = join(root, "runtime");
+    await mkdir(runtimeRoot);
+    const taskId = asTaskId("task_with_toolchain");
+    let brokerReceivedToolchain = false;
+    const environment = await prepareM1TaskEnvironment(
+      {
+        taskId,
+        projectPath: project,
+        trustedFixtureRoot,
+        runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+        },
+        sandboxToolchain: {
+          lddPath: "/usr/bin/ldd",
+          commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+        },
+      },
+      {
+        now: () => now,
+        preflightSandbox: supportedPreflight,
+        inspectToolchain: async () => ({
+          capability: toolchainCapability,
+          binding: {
+            toolchainId: toolchainCapability.toolchainId,
+            files: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+          },
+        }),
+        assertSandboxBinding: async () => undefined,
+        createBroker: async (options) => {
+          brokerReceivedToolchain =
+            options.toolchain?.capability.toolchainId ===
+            toolchainCapability.toolchainId;
+          return createFakeBroker({
+            taskId: options.taskId,
+            policyId: options.policy.policyId,
+          });
+        },
+      },
+    );
+
+    expect(brokerReceivedToolchain).toBe(true);
+    expect(environment.toolchainCapability).toEqual(toolchainCapability);
+    expect(environment.policy).toMatchObject({
+      toolchainId: toolchainCapability.toolchainId,
+      readonlyTargets: ["/bin/bash", "/bin/busybox"],
+    });
+    const store = new VNextTaskStore(runtimeRoot);
+    await expect(
+      store.readJson(taskId, "sandbox-toolchain.json", (value) =>
+        SandboxToolchainCapabilityV1Schema.parse(value),
+      ),
+    ).resolves.toEqual(toolchainCapability);
+    await discardM1Task(environment);
+  });
+
   it("fails sandbox preflight before source inspection or Task creation", async () => {
     const root = await createHarnessRoot();
     const runtimeRoot = join(root, "runtime");

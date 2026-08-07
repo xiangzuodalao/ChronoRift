@@ -33,6 +33,7 @@ export type VNextTaskJsonSlot =
   | "task.json"
   | "workspace.json"
   | "sandbox-capability.json"
+  | "sandbox-toolchain.json"
   | "sandbox-policy.json"
   | "patch.json";
 
@@ -106,6 +107,7 @@ const JSON_SLOTS: readonly VNextTaskJsonSlot[] = [
   "task.json",
   "workspace.json",
   "sandbox-capability.json",
+  "sandbox-toolchain.json",
   "sandbox-policy.json",
   "patch.json",
 ];

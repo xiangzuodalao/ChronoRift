@@ -222,19 +222,20 @@ Godot 根因 taxonomy。
 
 ## 常用命令
 
-| 命令                                                | 当前作用                                                   |
-| --------------------------------------------------- | ---------------------------------------------------------- |
-| `corepack pnpm check`                               | lint、格式、strict typecheck 和离线测试                    |
-| `corepack pnpm test:godot`                          | 四个 v0.3 Fixture 加 v0.2 兼容集成测试                     |
-| `corepack pnpm demo:v04`                            | v0.4 固定 workflow 的离线完整诊断                          |
-| `corepack pnpm diagnose:v04`                        | v0.4 固定 workflow 的真实 provider 诊断                    |
-| `corepack pnpm demo:v03` / `diagnose:v03`           | v0.3 兼容路径                                              |
-| `corepack pnpm fixtures`                            | 列出当前 Fixture                                           |
-| `corepack pnpm godot:install` / `godot:doctor`      | 安装或检查 Godot                                           |
-| `corepack pnpm pi` / `models`                       | 启动固定版本 Pi CLI 或查询模型目录                         |
-| `corepack pnpm benchmark`                           | deterministic fake-model smoke；不代表产品优势             |
-| `corepack pnpm benchmark:verify` / `benchmark:gate` | 重验历史报告完整性或冻结 Gate                              |
-| `corepack pnpm test:live`                           | v0.1 Mock switch-door 真实 provider smoke；不属于默认 Gate |
+| 命令                                                | 当前作用                                                      |
+| --------------------------------------------------- | ------------------------------------------------------------- |
+| `corepack pnpm check`                               | lint、格式、strict typecheck 和离线测试                       |
+| `corepack pnpm test:godot`                          | 四个 v0.3 Fixture 加 v0.2 兼容集成测试                        |
+| `corepack pnpm test:vnext:pi-live`                  | 真实 Luna/max 的 vNext Pi Session/tool smoke；非 release Gate |
+| `corepack pnpm demo:v04`                            | v0.4 固定 workflow 的离线完整诊断                             |
+| `corepack pnpm diagnose:v04`                        | v0.4 固定 workflow 的真实 provider 诊断                       |
+| `corepack pnpm demo:v03` / `diagnose:v03`           | v0.3 兼容路径                                                 |
+| `corepack pnpm fixtures`                            | 列出当前 Fixture                                              |
+| `corepack pnpm godot:install` / `godot:doctor`      | 安装或检查 Godot                                              |
+| `corepack pnpm pi` / `models`                       | 启动固定版本 Pi CLI 或查询模型目录                            |
+| `corepack pnpm benchmark`                           | deterministic fake-model smoke；不代表产品优势                |
+| `corepack pnpm benchmark:verify` / `benchmark:gate` | 重验历史报告完整性或冻结 Gate                                 |
+| `corepack pnpm test:live`                           | v0.1 Mock switch-door 真实 provider smoke；不属于默认 Gate    |
 
 Formal benchmark 的冻结命令、退出码、恢复规则和证据 identity 不再复制到产品入口；见
 [r4 reproduction](docs/benchmarks/v0.3.2-luna-r4/reproduction.md)。

@@ -12,6 +12,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run --config vitest.config.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
+    "test:vnext:pi-live": "vitest run --config vitest.live.config.ts apps/cli/src/vnext/pi-session.live.test.ts",
     "test:godot": "vitest run --config vitest.godot.config.ts",
     "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
     "lint": "eslint .",

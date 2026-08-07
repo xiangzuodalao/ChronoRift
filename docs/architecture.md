@@ -729,7 +729,9 @@ Pi、Godot `Node`/`Variant`、JSON 文件布局、Git/container 实现不得泄�
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、
 `pids` controller 的 delegated cgroup v2 root，并通过 `CHRONORIFT_TEST_CGROUP_ROOT` 传入。仓库 CI 的
 `.github/scripts/run-sandbox-conformance.sh` 负责建立一次性 delegation。没有该 Host 条件，只能说明默认
-离线测试通过，不能声称真实 bwrap+cgroup boundary 已验证。
+离线 Gate 通过，不能声称 sandbox conformance 通过。`corepack pnpm test:vnext:pi-live` 使用真实
+`openai-codex/gpt-5.6-luna` 与 `max` 验证 Pi Session/tool 接线；它不启动 Godot，不是 M3 release
+acceptance，也不证明候选修改正确。
 
 当前 v0.4 仍实现并测试 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
 `DiagnosisProposalV4`、`DiagnosisVerdictV3`、固定 replay/intervention flow 和 write-once verdict artifact。

@@ -237,7 +237,8 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
           return;
         }
         authorized = true;
-        guard.end(Buffer.from([1]), () => send({ kind: "authorized" }));
+        send({ kind: "authorized" });
+        guard.end(Buffer.from([1]));
       } else if (message.kind === "terminate") {
         if (keys !== "kind") {
           fail("invalid terminate message");

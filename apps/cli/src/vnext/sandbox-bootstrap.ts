@@ -95,8 +95,12 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
   let authorized = false;
   let terminating = false;
 
-  const send = (message) => {
-    if (process.connected) process.send(message);
+  const send = (message, callback) => {
+    if (process.connected) {
+      process.send(message, callback);
+    } else if (callback) {
+      callback(new Error("bootstrap IPC channel is disconnected"));
+    }
   };
   const terminate = () => {
     terminating = true;
@@ -237,8 +241,13 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
           return;
         }
         authorized = true;
-        send({ kind: "authorized" });
-        guard.end(Buffer.from([1]));
+        send({ kind: "authorized" }, (error) => {
+          if (error) {
+            fail(error.message);
+            return;
+          }
+          guard.end(Buffer.from([1]));
+        });
       } else if (message.kind === "terminate") {
         if (keys !== "kind") {
           fail("invalid terminate message");

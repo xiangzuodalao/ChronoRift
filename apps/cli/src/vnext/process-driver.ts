@@ -22,6 +22,7 @@ export interface ProcessExit {
 
 export interface SpawnedProcess {
   readonly pid: number;
+  readonly stdin: NodeJS.WritableStream | null;
   readonly stdout: NodeJS.ReadableStream;
   readonly stderr: NodeJS.ReadableStream;
   wait(): Promise<ProcessExit>;
@@ -69,6 +70,7 @@ const wrapProcess = (child: ChildProcess): WrappedProcess => {
   return {
     child,
     pid: child.pid,
+    stdin: child.stdin,
     stdout,
     stderr,
     wait: () => exit,

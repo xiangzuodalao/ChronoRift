@@ -101,6 +101,31 @@ describe("M1 contracts", () => {
         schemaVersion: 1,
         operationId: "operation_1",
         profile: "coding-default",
+        argv: ["/bin/busybox", "true"],
+        cwd: "/workspace",
+        environment: {},
+        stdin: {
+          byteLength: 16 * 1024 * 1024 + 1,
+          sha256: digest,
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      SandboxExecutionRequestV1Schema.parse({
+        schemaVersion: 1,
+        operationId: "operation_1",
+        profile: "coding-default",
+        argv: ["/bin/busybox", "true"],
+        cwd: "/workspace",
+        environment: {},
+        stdin: undefined,
+      }),
+    ).toThrow(/omitted/u);
+    expect(() =>
+      SandboxExecutionRequestV1Schema.parse({
+        schemaVersion: 1,
+        operationId: "operation_1",
+        profile: "coding-default",
         argv: ["/bin/busybox", "bad\0argument"],
         cwd: "/workspace",
         environment: {},

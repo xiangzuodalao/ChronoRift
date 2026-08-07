@@ -41,6 +41,15 @@ const exitedAfterStatusChildSource = String.raw`
   process.exit(23);
 `;
 
+const stdinChildSource = String.raw`
+  const fs = require("node:fs");
+  const marker = process.argv[1];
+  fs.writeSync(4, JSON.stringify({"child-pid": process.pid}));
+  const byte = Buffer.alloc(1);
+  fs.readSync(3, byte, 0, 1, null);
+  fs.writeFileSync(marker, fs.readFileSync(0));
+`;
+
 describe("sandbox bootstrap", () => {
   it("does not execute the target before status validation and authorization", async () => {
     const directory = await mkdtemp(join(tmpdir(), "chronorift-bootstrap-"));
@@ -142,6 +151,34 @@ describe("sandbox bootstrap", () => {
 
     await expect(session.authorize()).rejects.toThrow(
       /exitCode=23, signal=null/u,
+    );
+  });
+
+  it("delivers opaque stdin bytes without releasing the target early", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "chronorift-bootstrap-stdin-"),
+    );
+    const marker = join(directory, "stdin-marker");
+    const session = await startSandboxBootstrap({
+      processDriver: new NodeProcessDriver(),
+      cwd: directory,
+      inheritedFds: [],
+    });
+    await session.inspectCgroupMembership();
+    await session.launch({
+      executable: process.execPath,
+      args: ["-e", stdinChildSource, marker],
+    });
+    await session.waitForSandboxStatus();
+
+    const delivery = session.provideStdin(Buffer.from([0, 1, 2, 255]));
+    await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    await session.authorize();
+    await delivery;
+    await session.waitForChildExit();
+
+    await expect(readFile(marker)).resolves.toEqual(
+      Buffer.from([0, 1, 2, 255]),
     );
   });
 

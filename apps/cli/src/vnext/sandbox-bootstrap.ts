@@ -218,7 +218,7 @@ const SANDBOX_BOOTSTRAP_SOURCE = String.raw`
           return;
         }
         launched = true;
-        const stdio = ["ignore", "inherit", "inherit", "pipe", "pipe"];
+        const stdio = ["inherit", "inherit", "inherit", "pipe", "pipe"];
         for (let index = 0; index < inheritedCount; index += 1) stdio.push(4 + index);
         child = spawn(message.executable, [...message.args], {
           cwd: process.cwd(),
@@ -281,6 +281,7 @@ export interface SandboxBootstrapSession {
   launch(plan: SandboxBootstrapLaunchPlan): Promise<void>;
   waitForChildStarted(): Promise<number>;
   waitForSandboxStatus(): Promise<Readonly<Record<string, unknown>>>;
+  provideStdin(bytes: Uint8Array): Promise<void>;
   authorize(): Promise<void>;
   terminate(): Promise<void>;
   waitForChildExit(): Promise<ProcessExit>;
@@ -385,6 +386,23 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
     this.#authorizationSent = true;
     await this.bootstrapProcess.send({ kind: "authorize" });
     await this.#authorized.promise;
+  }
+
+  public provideStdin(bytes: Uint8Array): Promise<void> {
+    const stdin = this.bootstrapProcess.stdin;
+    if (stdin === null) {
+      return Promise.reject(
+        new Error("sandbox bootstrap stdin is unavailable"),
+      );
+    }
+    return new Promise<void>((resolveWrite, rejectWrite) => {
+      const onError = (error: unknown): void => rejectWrite(error);
+      stdin.once("error", onError);
+      stdin.end(Buffer.from(bytes), () => {
+        stdin.removeListener("error", onError);
+        resolveWrite();
+      });
+    });
   }
 
   public async terminate(): Promise<void> {
@@ -495,7 +513,7 @@ export async function startSandboxBootstrap(input: {
       CHRONORIFT_BOOTSTRAP_FD_COUNT: String(input.inheritedFds.length),
     },
     detached: true,
-    stdio: ["ignore", "pipe", "pipe", "ipc", ...input.inheritedFds],
+    stdio: ["pipe", "pipe", "pipe", "ipc", ...input.inheritedFds],
   });
   const ready = deferred<void>();
   const unsubscribe = bootstrapProcess.onMessage((message) => {

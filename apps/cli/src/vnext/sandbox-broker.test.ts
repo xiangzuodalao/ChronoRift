@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { PassThrough } from "node:stream";
 
 import {
@@ -190,6 +191,7 @@ class FakeBootstrapSession implements SandboxBootstrapSession {
   public readonly stderr = new PassThrough();
   public authorized = false;
   public terminateCount = 0;
+  public stdin = new Uint8Array();
   readonly #childExit = deferred<{
     exitCode: number | null;
     signal: NodeJS.Signals | null;
@@ -243,6 +245,11 @@ class FakeBootstrapSession implements SandboxBootstrapSession {
     } as const;
     this.#childExit.resolve(exit);
     this.#bootstrapExit.resolve(exit);
+  }
+
+  public async provideStdin(bytes: Uint8Array): Promise<void> {
+    this.log.push(`stdin:${String(bytes.byteLength)}`);
+    this.stdin = Uint8Array.from(bytes);
   }
 
   public async terminate(): Promise<void> {
@@ -421,6 +428,40 @@ describe("Task-bound sandbox broker", () => {
     );
     expect(harness.session.authorized).toBe(true);
     await broker.cleanup();
+  });
+
+  it("binds opaque stdin bytes to the persisted request descriptor", async () => {
+    const bytes = Buffer.from([0, 1, 2, 255]);
+    const request = {
+      ...validRequest,
+      stdin: {
+        byteLength: bytes.byteLength,
+        sha256: asSha256DigestV1(
+          createHash("sha256").update(bytes).digest("hex"),
+        ),
+      },
+    };
+    const acceptedHarness = createFakeBrokerHarness();
+    const acceptedBroker = await acceptedHarness.brokerPromise;
+    await expect(
+      acceptedBroker.execute(request, { stdin: bytes }),
+    ).resolves.toMatchObject({
+      kind: "executed",
+      receipt: { requested: { stdin: request.stdin } },
+    });
+    expect(Buffer.from(acceptedHarness.session.stdin)).toEqual(bytes);
+    await acceptedBroker.cleanup();
+
+    const deniedHarness = createFakeBrokerHarness();
+    const deniedBroker = await deniedHarness.brokerPromise;
+    await expect(
+      deniedBroker.execute(request, { stdin: Buffer.from("different") }),
+    ).resolves.toMatchObject({
+      kind: "denied",
+      securityEvent: { sideEffectStarted: false },
+    });
+    expect(deniedHarness.processStarts).toBe(0);
+    await deniedBroker.cleanup();
   });
 
   it("never authorizes a bootstrap outside the execution cgroup", async () => {

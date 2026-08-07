@@ -65,6 +65,7 @@ export interface MonotonicClockV1 {
 
 export interface SandboxExecutionOptionsV1 {
   readonly signal?: AbortSignal | undefined;
+  readonly stdin?: Uint8Array | undefined;
   readonly onStdoutChunk?:
     ((chunk: Uint8Array) => void | Promise<void>) | undefined;
   readonly onStderrChunk?:
@@ -615,7 +616,9 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         "Task sandbox broker is already cleaned",
       );
     }
-    const authorized = await this.authorizeRequest(request);
+    const ownedStdin =
+      options.stdin === undefined ? undefined : Uint8Array.from(options.stdin);
+    const authorized = await this.authorizeRequest(request, ownedStdin);
     if (authorized.kind === "denied") return authorized;
     if (this.#closed) {
       throw new M1Error(
@@ -624,7 +627,10 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
       );
     }
 
-    const active = this.startExecution(authorized.request, options);
+    const active = this.startExecution(authorized.request, {
+      ...options,
+      ...(ownedStdin === undefined ? {} : { stdin: ownedStdin }),
+    });
     this.#active.add(active);
     try {
       const result = await active.result;
@@ -661,6 +667,7 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
 
   private async authorizeRequest(
     rawRequest: SandboxExecutionRequestV1,
+    stdin: Uint8Array | undefined,
   ): Promise<
     | {
         readonly kind: "authorized";
@@ -677,6 +684,19 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
       );
     }
     const request = parsed.data;
+    if (
+      (request.stdin === undefined) !== (stdin === undefined) ||
+      (request.stdin !== undefined &&
+        stdin !== undefined &&
+        (request.stdin.byteLength !== stdin.byteLength ||
+          request.stdin.sha256 !== sha256(stdin)))
+    ) {
+      return this.deny(
+        request,
+        "capability_denied",
+        "stdin bytes do not match the declared bounded descriptor",
+      );
+    }
     if (request.argv[0] !== "/bin/busybox") {
       return this.deny(
         request,
@@ -853,7 +873,12 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
           runtime.session.waitForSandboxStatus(),
         ]);
         if (terminalReason !== undefined) return;
+        const stdinDelivery = runtime.session.provideStdin(
+          options.stdin ?? new Uint8Array(),
+        );
+        void stdinDelivery.catch(() => undefined);
         await runtime.session.authorize();
+        await stdinDelivery;
       } catch (error) {
         selectTerminal({ kind: "launch_failed", error });
       } finally {

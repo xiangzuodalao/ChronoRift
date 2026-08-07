@@ -99,8 +99,25 @@ export interface SandboxExecutionRequestV1 {
   readonly argv: readonly [string, ...string[]];
   readonly cwd: "/workspace" | "/tmp" | "/artifacts";
   readonly environment: Readonly<Record<string, string>>;
+  readonly stdin?:
+    | {
+        readonly byteLength: number;
+        readonly sha256: Sha256DigestV1;
+      }
+    | undefined;
   readonly timeoutMs?: number | undefined;
 }
+
+export const SandboxStdinDescriptorV1Schema = z
+  .object({
+    byteLength: z
+      .number()
+      .int()
+      .min(0)
+      .max(16 * 1024 * 1024),
+    sha256: Sha256DigestV1Schema,
+  })
+  .strict();
 
 export const SandboxExecutionRequestV1Schema: z.ZodType<SandboxExecutionRequestV1> =
   z
@@ -114,19 +131,22 @@ export const SandboxExecutionRequestV1Schema: z.ZodType<SandboxExecutionRequestV
         SandboxEnvironmentKeyV1Schema,
         SandboxEnvironmentValueV1Schema,
       ),
+      stdin: SandboxStdinDescriptorV1Schema.optional(),
       timeoutMs: z.number().int().min(1).max(600_000).optional(),
     })
     .strict()
     .superRefine((value, context) => {
-      if (
-        Object.prototype.hasOwnProperty.call(value, "timeoutMs") &&
-        value.timeoutMs === undefined
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["timeoutMs"],
-          message: "timeoutMs must be omitted rather than set to undefined",
-        });
+      for (const key of ["stdin", "timeoutMs"] as const) {
+        if (
+          Object.prototype.hasOwnProperty.call(value, key) &&
+          value[key] === undefined
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: [key],
+            message: `${key} must be omitted rather than set to undefined`,
+          });
+        }
       }
       const argumentBytes = value.argv.reduce(
         (total, argument) => total + Buffer.byteLength(argument, "utf8"),

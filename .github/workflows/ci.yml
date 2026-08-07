@@ -53,6 +53,10 @@ jobs:
       - run: corepack enable
       - run: corepack pnpm install --frozen-lockfile
       - run: sudo apt-get update && sudo apt-get install -y bubblewrap busybox-static
+      - name: Configure ephemeral runner user namespaces
+        run: |
+          sudo sysctl --write kernel.unprivileged_userns_clone=1
+          sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run required sandbox conformance
         run: |
           sudo systemd-run --quiet --wait --pipe --collect \

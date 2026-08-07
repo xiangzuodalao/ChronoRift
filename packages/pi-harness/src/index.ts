@@ -65,3 +65,9 @@ export type {
 export { V03_AGENT_BUDGETS } from "./v03-types.js";
 export type * from "./v03-types.js";
 export type * from "./v04-types.js";
+export {
+  createVNextCodingToolDefinitions,
+  type BrokerToolDetails,
+  type BrokerToolResult,
+  type VNextCodingToolPort,
+} from "./vnext-coding-tools.js";

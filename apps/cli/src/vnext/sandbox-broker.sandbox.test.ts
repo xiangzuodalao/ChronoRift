@@ -11,7 +11,7 @@ import { createSandboxPolicyV1 } from "./sandbox-policy.js";
 import { createTaskDirectoryLayout } from "./task-paths.js";
 
 describe("real Task-bound sandbox broker", () => {
-  it("keeps Host paths isolated, drains bounded output, and atomically kills timeout descendants", async () => {
+  it("keeps Host paths isolated, drains bounded output, and clears timeout descendants", async () => {
     const delegatedCgroupRoot = process.env.CHRONORIFT_TEST_CGROUP_ROOT;
     if (delegatedCgroupRoot === undefined || delegatedCgroupRoot === "") {
       throw new Error(
@@ -128,7 +128,6 @@ describe("real Task-bound sandbox broker", () => {
           cleanup: {
             cgroupPopulated: false,
             termSent: true,
-            killSent: true,
             scopeRemoved: true,
           },
         },

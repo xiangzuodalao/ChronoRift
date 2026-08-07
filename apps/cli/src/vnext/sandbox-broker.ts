@@ -652,13 +652,15 @@ function assertProcessPlan(
     SANDBOX_FDS.artifacts,
     ...runtimeTargets.map((target) => target.fd),
   ];
-  const lastSeparator = plan.args.lastIndexOf("--");
+  const commandSeparator = plan.args.length - request.argv.length - 1;
   if (
     plan.executable !== binding.prlimitPath ||
+    plan.args[3] !== "--" ||
     plan.args[4] !== binding.bwrapPath ||
     JSON.stringify(plan.inheritedFds) !== JSON.stringify(expectedFds) ||
-    lastSeparator < 0 ||
-    JSON.stringify(plan.args.slice(lastSeparator + 1)) !==
+    commandSeparator <= 4 ||
+    plan.args[commandSeparator] !== "--" ||
+    JSON.stringify(plan.args.slice(commandSeparator + 1)) !==
       JSON.stringify(request.argv)
   ) {
     throw new M1Error(

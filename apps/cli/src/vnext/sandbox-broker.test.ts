@@ -475,6 +475,20 @@ describe("Task-bound sandbox broker", () => {
     await broker.cleanup();
   });
 
+  it("preserves command arguments containing an option separator", async () => {
+    const harness = createFakeBrokerHarness();
+    const broker = await harness.brokerPromise;
+    const result = await broker.execute({
+      ...validRequest,
+      argv: ["/bin/busybox", "cat", "--", "/workspace/input.txt"],
+    });
+    expect(result).toMatchObject({
+      kind: "executed",
+      receipt: { status: "succeeded", exitCode: 0 },
+    });
+    await broker.cleanup();
+  });
+
   it("binds opaque stdin bytes to the persisted request descriptor", async () => {
     const bytes = Buffer.from([0, 1, 2, 255]);
     const request = {

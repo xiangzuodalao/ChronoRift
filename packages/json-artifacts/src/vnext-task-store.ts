@@ -36,6 +36,7 @@ export type VNextTaskJsonSlot =
   | "sandbox-capability.json"
   | "sandbox-toolchain.json"
   | "sandbox-policy.json"
+  | "agent-task.json"
   | "patch.json";
 
 export type VNextTaskBytesSlot = "patch.diff";
@@ -44,6 +45,7 @@ export type VNextTaskLedgerSlot =
   | "task-events.jsonl"
   | "sandbox-preflight.jsonl"
   | "sandbox-operations.jsonl"
+  | "agent-turns.jsonl"
   | "security.jsonl"
   | "exports.jsonl";
 
@@ -111,6 +113,7 @@ const JSON_SLOTS: readonly VNextTaskJsonSlot[] = [
   "sandbox-capability.json",
   "sandbox-toolchain.json",
   "sandbox-policy.json",
+  "agent-task.json",
   "patch.json",
 ];
 const BYTES_SLOTS: readonly VNextTaskBytesSlot[] = ["patch.diff"];
@@ -118,6 +121,7 @@ const LEDGER_SLOTS: readonly VNextTaskLedgerSlot[] = [
   "task-events.jsonl",
   "sandbox-preflight.jsonl",
   "sandbox-operations.jsonl",
+  "agent-turns.jsonl",
   "security.jsonl",
   "exports.jsonl",
 ];

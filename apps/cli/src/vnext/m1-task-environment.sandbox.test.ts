@@ -14,6 +14,7 @@ import { promisify } from "node:util";
 
 import { asTaskId, taskNamespaceDigestV1 } from "@chronorift/domain";
 import { VNextTaskStore } from "@chronorift/json-artifacts";
+import { createVNextCodingToolDefinitions } from "@chronorift/pi-harness";
 import { describe, expect, it } from "vitest";
 
 import { SandboxOperationRecordV1Schema } from "./contracts.js";
@@ -25,6 +26,7 @@ import {
   prepareM1TaskEnvironment,
   type M1TaskEnvironment,
 } from "./m1-task-environment.js";
+import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -97,7 +99,56 @@ describe("real internal M1 walking skeleton", () => {
           prlimitPath: "/usr/bin/prlimit",
           busyboxPath: "/usr/bin/busybox",
         },
+        sandboxToolchain: {
+          lddPath: "/usr/bin/ldd",
+          commands: [
+            { target: "/bin/bash", hostPath: "/usr/bin/bash" },
+            { target: "/usr/bin/find", hostPath: "/usr/bin/find" },
+            { target: "/usr/bin/ls", hostPath: "/usr/bin/ls" },
+            { target: "/usr/bin/rg", hostPath: "/usr/bin/rg" },
+          ],
+        },
       });
+      const tools = createVNextCodingToolDefinitions(
+        new SandboxPiCodingToolPort({
+          execute: (request, options) =>
+            executeAndRecordM1Command(environment!, request, options),
+          cleanup: () => discardM1Task(environment!),
+        }),
+      );
+      const call = async (
+        name: string,
+        parameters: Record<string, unknown>,
+      ) => {
+        const tool = tools.find((candidate) => candidate.name === name);
+        if (tool === undefined) throw new Error(`missing Pi tool ${name}`);
+        return tool.execute(
+          "sandbox-conformance",
+          parameters,
+          undefined,
+          undefined,
+          {} as never,
+        );
+      };
+      await call("write", {
+        path: "agent-note.txt",
+        content: "before\nneedle\n",
+      });
+      await call("edit", {
+        path: "agent-note.txt",
+        edits: [{ oldText: "before", newText: "after" }],
+      });
+      await expect(
+        call("read", { path: "agent-note.txt" }),
+      ).resolves.toMatchObject({
+        content: [{ type: "text", text: "after\nneedle\n" }],
+      });
+      await call("bash", {
+        command: "/usr/bin/rg --fixed-strings needle agent-note.txt",
+      });
+      await call("grep", { pattern: "needle", path: "." });
+      await call("find", { pattern: "*.txt", path: "." });
+      await call("ls", { path: "." });
       const execution = await executeAndRecordM1Command(environment, {
         schemaVersion: 1,
         operationId: "write-candidate",
@@ -140,7 +191,7 @@ describe("real internal M1 walking skeleton", () => {
         "sandbox-operations.jsonl",
         (value) => SandboxOperationRecordV1Schema.parse(value),
       );
-      expect(operationRecords).toHaveLength(1);
+      expect(operationRecords).toHaveLength(9);
       const recordNames = await readdir(join(taskRoot, "records"));
       for (const recordName of recordNames) {
         const path = join(taskRoot, "records", recordName);

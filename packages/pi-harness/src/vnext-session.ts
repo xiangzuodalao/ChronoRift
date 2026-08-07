@@ -41,6 +41,14 @@ export interface RunVNextPiTurnOptions {
   readonly onEvent?: ((event: AgentSessionEvent) => void) | undefined;
 }
 
+export type RunVNextPiSdkTurnOptions = Omit<
+  RunVNextPiTurnOptions,
+  "modelRuntime" | "model"
+> & {
+  readonly provider: string;
+  readonly model: string;
+};
+
 export interface VNextPiTurnResult {
   readonly schemaVersion: 1;
   readonly status: "completed" | "provider_failed" | "aborted" | "timed_out";
@@ -303,4 +311,54 @@ export async function runVNextPiTurn(
   } finally {
     session.dispose();
   }
+}
+
+export async function runVNextPiTurnWithSdk(
+  options: RunVNextPiSdkTurnOptions,
+): Promise<VNextPiTurnResult> {
+  if (
+    options.provider.trim().length === 0 ||
+    options.model.trim().length === 0
+  ) {
+    throw new Error("provider and model must not be empty");
+  }
+  const modelRuntime = await (
+    await import("@earendil-works/pi-coding-agent")
+  ).ModelRuntime.create({ allowModelNetwork: false });
+  const model = modelRuntime.getModel(options.provider, options.model);
+  if (model === undefined) {
+    throw new Error(
+      `Pi model ${options.provider}/${options.model} is not registered`,
+    );
+  }
+  const available = await modelRuntime.getAvailable(options.provider);
+  if (!available.some((candidate) => candidate.id === options.model)) {
+    throw new Error(
+      `Pi model ${options.provider}/${options.model} has no usable Host authentication`,
+    );
+  }
+  return runVNextPiTurn({
+    resourceWorkspaceDirectory: options.resourceWorkspaceDirectory,
+    sessionDirectory: options.sessionDirectory,
+    ...(options.resumeSessionFile === undefined
+      ? {}
+      : { resumeSessionFile: options.resumeSessionFile }),
+    ...(options.agentDir === undefined ? {} : { agentDir: options.agentDir }),
+    modelRuntime,
+    model,
+    thinkingLevel: options.thinkingLevel,
+    prompt: options.prompt,
+    tools: options.tools,
+    ...(options.timeoutMs === undefined
+      ? {}
+      : { timeoutMs: options.timeoutMs }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.additionalEnvironmentInstructions === undefined
+      ? {}
+      : {
+          additionalEnvironmentInstructions:
+            options.additionalEnvironmentInstructions,
+        }),
+    ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
+  });
 }

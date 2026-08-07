@@ -2,6 +2,8 @@ import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   defineTool,
+  generateDiffString,
+  generateUnifiedPatch,
   truncateHead,
   truncateTail,
   type ToolDefinition,
@@ -183,6 +185,7 @@ function applyExactEdits(
 ): {
   readonly content: string;
   readonly patch: string;
+  readonly diff: string;
   readonly firstChangedLine: number;
 } {
   if (edits.length === 0)
@@ -209,20 +212,16 @@ function applyExactEdits(
     content =
       content.slice(0, edit.start) + edit.newText + content.slice(edit.end);
   }
-  const firstChangedLine = source
-    .slice(0, ordered[0]!.start)
-    .split("\n").length;
-  const sourceLines = source.split("\n");
-  const contentLines = content.split("\n");
-  const patch = [
-    `--- a/${path}`,
-    `+++ b/${path}`,
-    `@@ -1,${sourceLines.length} +1,${contentLines.length} @@`,
-    ...sourceLines.map((line) => `-${line}`),
-    ...contentLines.map((line) => `+${line}`),
-    "",
-  ].join("\n");
-  return { content, patch, firstChangedLine };
+  const display = generateDiffString(source, content);
+  if (display.firstChangedLine === undefined) {
+    throw new Error("edits did not change the file");
+  }
+  return {
+    content,
+    patch: generateUnifiedPatch(path, source, content),
+    diff: display.diff,
+    firstChangedLine: display.firstChangedLine,
+  };
 }
 
 export function createVNextCodingToolDefinitions(
@@ -355,7 +354,7 @@ export function createVNextCodingToolDefinitions(
           ),
           details: {
             receipt: after.receipt,
-            diff: applied.patch,
+            diff: applied.diff,
             patch: applied.patch,
             firstChangedLine: applied.firstChangedLine,
           },

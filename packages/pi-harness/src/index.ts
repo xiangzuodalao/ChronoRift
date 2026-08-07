@@ -73,8 +73,10 @@ export {
 } from "./vnext-coding-tools.js";
 export {
   runVNextPiTurn,
+  runVNextPiTurnWithSdk,
   VNEXT_ENVIRONMENT_APPENDIX,
   VNEXT_PI_WORKSPACE_CWD,
   type RunVNextPiTurnOptions,
+  type RunVNextPiSdkTurnOptions,
   type VNextPiTurnResult,
 } from "./vnext-session.js";

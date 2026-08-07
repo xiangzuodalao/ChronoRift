@@ -4,12 +4,11 @@ ChronoRift 的目标是成为一个 **Codex 式的 game-native Agent Harness**�
 Godot 运行环境，用 Pi SDK 驱动自主 Agent Loop，并为 Agent 提供普通游戏工具难以可靠实现的运行时
 checkpoint、fork、replay、query 和 compare 原语。
 
-> **产品方向、内部基础设施与当前公开实现必须分开阅读。**
-> [Target Architecture](docs/architecture.md) 描述的是 vNext 北极星，尚未成为可用产品。当前公开可执行
-> 版本仍是 **v0.4.0 legacy diagnosis slice**：它只有四个受控 Fixture，禁用通用 coding tools，要求
-> 固定诊断流程，并由 Harness 输出 verdict。仓库已经加入 **vNext M1 internal foundation**，但它没有公开
-> Task CLI、Pi Agent Loop 或 Godot runtime 接线，也不是 release。README 中标为“目标”的能力不是当前
-> 命令的承诺。
+> **产品方向、实验性 vNext 路径与 legacy release 必须分开阅读。**
+> 当前 release 仍是 **v0.4.0 legacy diagnosis slice**。仓库现已提供实验性的 vNext coding-loop 路径：
+> `task start/continue/show/export/discard`、真实 Pi `AgentSession`、隔离 workspace、broker-backed coding
+> tools 和 patch handoff 已接通；Godot game tools、capture、checkpoint、fork/replay/query/compare 尚未接入。
+> 因而它证明的是安全 coding Loop 边界，不是完整 game-native Harness，也不是 Bug 修复证明。
 
 ## 产品契约（vNext 目标）
 
@@ -84,45 +83,64 @@ checkout。coding tools 和 Godot 进程运行在无特权容器或等价 Linux 
 
 ## 实现状态
 
-下表描述 2026-08-07 的公开 v0.4 行为与最终目标；它不把内部 M1 组件写成公开命令能力。
-
-| 维度       | 当前 v0.4                                              | vNext 目标                                                   |
-| ---------- | ------------------------------------------------------ | ------------------------------------------------------------ |
-| Pi         | 已使用真实 `createAgentSession` 和 Session persistence | 保留 Pi 默认 coding-agent 资源，收缩为薄 Loop host           |
-| Agent 工具 | 受限诊断工具、固定 prompt/顺序、一次 Proposal          | 自主 `read/bash/edit/write/grep/find/ls` 与可组合 game tools |
-| Workspace  | Fixture staging；不产生候选修复 worktree               | 隔离 `/workspace`、patch handoff 和可恢复任务                |
-| OS sandbox | 尚未实现；opaque handle 不是进程隔离                   | 无特权 sandbox、默认禁网/凭据、资源限制和安全事件            |
-| Godot      | Addon/Autoload、Protocol v2、四个显式插桩 Fixture      | 任意项目可注册 snapshot adapter/probe                        |
-| Capture    | 有执行期 typed telemetry                               | 10 秒或 600 tick rolling buffer、pin/trigger 和预算退化      |
-| Checkpoint | 只恢复 Fixture 注册的 participant                      | manifest-driven coverage、fidelity、restore receipt          |
-| Replay     | 有 Fixture 输入/FPS/TPS control 与 realized receipt    | phase-aware trace、自由 fork 和 first divergence             |
-| 世界查询   | typed event 与 legacy Capsule                          | 不含因果解释的 Runtime State Index                           |
-| Compare    | baseline/candidate compare 服务于 verdict Gate         | 独立 descriptive compare、alignment ambiguity 和 confounders |
-| 代码修改   | 不支持                                                 | sandbox 内修改、实际验证、reviewable patch                   |
-| 结果       | Proposal → Harness Verdict                             | 普通 Agent 结果 + diff + 原始执行记录                        |
+| 维度       | v0.4 legacy                           | 实验性 vNext coding slice                                       | vNext 目标                                    |
+| ---------- | ------------------------------------- | --------------------------------------------------------------- | --------------------------------------------- |
+| Pi         | 真实 Session，但服务固定诊断 workflow | 官方 SDK、默认 Loop/compaction/skills/AGENTS、持久化 Session    | 加入 game-native tools                        |
+| Agent 工具 | 受限诊断工具与一次 Proposal           | 自主 `read/bash/edit/write/grep/find/ls`，全部经 sandbox broker | coding 与 game tools 自由组合                 |
+| Workspace  | Fixture staging，不产生候选修改       | 私有 `/workspace`、suspend/resume、显式 patch export/discard    | 扩展到授权项目与长期保留策略                  |
+| OS sandbox | opaque handle，不是进程隔离           | bwrap namespace、cgroup v2、rlimit、默认禁网/Host/credential    | 图形、GPU 等能力按任务授权                    |
+| Godot      | 四个显式插桩 Fixture                  | 尚未接入                                                        | snapshot adapter/probe 与真实 runtime 原语    |
+| Capture    | 执行期 typed telemetry                | 尚未接入                                                        | rolling buffer、pin/trigger 与预算退化        |
+| Checkpoint | Fixture participant snapshot          | 尚未接入                                                        | manifest、coverage、fidelity、restore receipt |
+| Replay     | Fixture 控制与 legacy replay          | 尚未接入                                                        | phase-aware trace、fork 和 first divergence   |
+| Query      | typed event 与 legacy Capsule         | 尚未接入                                                        | 无因果解释的 Runtime State Index              |
+| Compare    | 服务于 verdict Gate                   | 尚未接入                                                        | descriptive differences 与 confounders        |
+| 结果       | Proposal → Harness Verdict            | assistant result + Agent turn/command/security records + patch  | 加入 Execution lineage 与 runtime records     |
 
 当前 v0.4 中的 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
 `DiagnosisProposalV4`、`DiagnosisVerdictV3` 和固定 replay/intervention flow 是 legacy 可执行事实，不是
 vNext 产品 API。
 
-### vNext M1 internal foundation（非产品入口）
+### 实验性 vNext coding-loop 入口
 
-仓库当前已经实现并测试一组尚未接入公开 CLI 的 M1 内部组件与 internal composition：
+仓库当前已经实现并测试以下窄切片：
 
 - 对唯一受支持的 `frame-input-window` Fixture 执行 strict manifest、整仓 clean Git preflight、literal
   subtree 选择和 selected-tree identity 校验；
 - 从 Git raw objects 创建任务私有 workspace、Agent 可写 Git 与 Host-only baseline Git，不 checkout、
   不执行项目 filter/hook，也不修改用户 checkout；
-- 通过 bubblewrap、独立 namespace、固定 FD binding、cgroup v2、rlimit、输出上限和结构化 receipt/security
-  event 执行受控命令；
+- 通过 bubblewrap、独立 namespace、固定 FD binding、哈希冻结的精确 GNU toolchain、cgroup v2、rlimit、
+  bounded stdin/output 和结构化 receipt/security event 执行受控命令；
+- 通过 Pi 官方 SDK 建立 `/workspace` Session，保留默认 Loop、compaction、skills 和 `AGENTS.md`，禁用项目
+  executable extensions，并用七个自定义 tool definition 覆盖会落到 Host 的内置实现；
+- `task start/continue/show/export/discard` 保存 Task config、Agent turn、Session basename、真实 Loop 状态和
+  execution records；`suspend` 清理 sandbox 进程而保留 workspace，`continue` 重新验证冻结 capability；
 - 从 Host baseline 提取 binary/full-index patch，重新应用并比对 selected-tree 后才标记
   `roundTripVerified`；显式 export 使用 create-new/no-overwrite 发布，Task store 支持受身份约束的 discard；
 - 为 workspace/patch/tool/security/resource DTO 提供 strict versioned contracts，并实现独立 vNext Task
   namespace、append/seal、write-once 与 records-only discard 存储原语。
 
-这些模块目前只能由测试或内部 TypeScript API 组合。仓库没有 `task start/continue/show/export/discard`
-公开命令，没有把 Pi coding tools 接到 broker，没有启动 Godot，也没有发布任何 vNext 版本。M1 证明的是
-workspace/sandbox/patch 边界可以成立，不证明 Agent Loop、游戏调查闭环或 Bug 修复已经成立。
+这仍是实验性入口，没有启动 Godot，也没有发布 vNext 版本。它不应被描述成游戏调查闭环或 Bug 修复证明。
+
+Linux Host 必须先提供受委派的 cgroup v2 root，并安装 `bubblewrap`、`busybox-static`、`bash`、`ripgrep`、
+GNU `find`/`ls`。默认网络关闭；Pi credential 仅由 Host 模型路径读取。
+
+```bash
+# CHRONORIFT_CGROUP_ROOT 必须指向当前用户可写、带 cpu/memory/pids controller 的空 delegation。
+export CHRONORIFT_CGROUP_ROOT=/path/to/delegated-cgroup
+
+corepack pnpm task -- start \
+  --project /path/to/clean/frame-input-window-project \
+  --goal "Investigate and fix the intermittent jump input"
+
+corepack pnpm task -- show --task-id TASK_ID
+corepack pnpm task -- continue --task-id TASK_ID --prompt "Review the diff and run another check"
+corepack pnpm task -- export --task-id TASK_ID --output candidate.patch
+corepack pnpm task -- discard --task-id TASK_ID
+```
+
+除 `show` 外，继续、导出和清理都会重新验证 sandbox 与 toolchain，所以同样需要 cgroup delegation。
+当前 source preflight 只接受 clean Git 中与冻结 `frame-input-window` manifest/tree 一致的项目。
 
 ## 首个 vNext 垂直切片（M1 之后）
 

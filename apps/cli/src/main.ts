@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
   asExecutionId,
+  asTaskId,
   type DiagnosisProposal,
   type DiagnosisProposalV3,
   type DiagnosisVerdictV2,
@@ -87,6 +90,13 @@ import {
   LiveLunaCanaryRunner,
   createCanaryImplementationReceipt,
 } from "./v03-canary-live.js";
+import {
+  continueVNextAgentTask,
+  discardVNextAgentTask,
+  exportVNextAgentTaskPatch,
+  showVNextAgentTask,
+  startVNextAgentTask,
+} from "./vnext/task-agent.js";
 
 interface Arguments {
   readonly command: string;
@@ -96,7 +106,13 @@ interface Arguments {
 const booleanFlags = new Set(["json"]);
 
 function parseArguments(argv: readonly string[]): Arguments {
-  const [command = "help", ...rest] = argv;
+  const [rootCommand = "help", ...rootRest] = argv;
+  const taskSubcommand = rootCommand === "task" ? rootRest[0] : undefined;
+  const command =
+    rootCommand === "task" && taskSubcommand !== undefined
+      ? `task-${taskSubcommand}`
+      : rootCommand;
+  const rest = rootCommand === "task" ? rootRest.slice(1) : rootRest;
   const flags = new Map<string, string | true>();
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
@@ -1050,8 +1066,197 @@ async function persistVolcengineAuthCommand(): Promise<void> {
   );
 }
 
+const taskSandboxFlagNames = [
+  "runtime-root",
+  "cgroup-root",
+  "bwrap-bin",
+  "prlimit-bin",
+  "busybox-bin",
+  "ldd-bin",
+  "bash-bin",
+  "rg-bin",
+  "find-bin",
+  "ls-bin",
+] as const;
+
+async function existingCanonicalPath(path: string): Promise<string> {
+  return realpath(resolve(path));
+}
+
+async function taskRuntimeRoot(
+  args: Arguments,
+  create: boolean,
+): Promise<string> {
+  const configured =
+    flag(args, "runtime-root", "CHRONORIFT_RUNTIME_ROOT") ??
+    join(
+      process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"),
+      "chronorift",
+    );
+  if (create) await mkdir(configured, { recursive: true, mode: 0o700 });
+  return existingCanonicalPath(configured);
+}
+
+async function taskSandboxRequest(
+  args: Arguments,
+  taskId: ReturnType<typeof asTaskId>,
+  createRuntimeRoot: boolean,
+) {
+  const runtimeRoot = await taskRuntimeRoot(args, createRuntimeRoot);
+  const delegatedCgroupRoot = requiredFlag(
+    args,
+    "cgroup-root",
+    "CHRONORIFT_CGROUP_ROOT",
+  );
+  const [
+    bwrapPath,
+    prlimitPath,
+    busyboxPath,
+    lddPath,
+    bashPath,
+    rgPath,
+    findPath,
+    lsPath,
+  ] = await Promise.all([
+    existingCanonicalPath(flag(args, "bwrap-bin") ?? "/usr/bin/bwrap"),
+    existingCanonicalPath(flag(args, "prlimit-bin") ?? "/usr/bin/prlimit"),
+    existingCanonicalPath(flag(args, "busybox-bin") ?? "/usr/bin/busybox"),
+    existingCanonicalPath(flag(args, "ldd-bin") ?? "/usr/bin/ldd"),
+    existingCanonicalPath(flag(args, "bash-bin") ?? "/usr/bin/bash"),
+    existingCanonicalPath(flag(args, "rg-bin") ?? "/usr/bin/rg"),
+    existingCanonicalPath(flag(args, "find-bin") ?? "/usr/bin/find"),
+    existingCanonicalPath(flag(args, "ls-bin") ?? "/usr/bin/ls"),
+  ]);
+  return {
+    taskId,
+    runtimeRoot,
+    sandboxHost: {
+      delegatedCgroupRoot: await existingCanonicalPath(delegatedCgroupRoot),
+      bwrapPath,
+      prlimitPath,
+      busyboxPath,
+    },
+    sandboxToolchain: {
+      lddPath,
+      commands: [
+        { target: "/bin/bash", hostPath: bashPath },
+        { target: "/usr/bin/rg", hostPath: rgPath },
+        { target: "/usr/bin/find", hostPath: findPath },
+        { target: "/usr/bin/ls", hostPath: lsPath },
+      ],
+    },
+  } as const;
+}
+
+async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
+  assertOnlyFlags(args, [
+    "project",
+    "goal",
+    "task-id",
+    "trusted-fixture",
+    "provider",
+    "model",
+    "thinking",
+    "timeout-ms",
+    "agent-dir",
+    "json",
+    ...taskSandboxFlagNames,
+  ]);
+  const taskId = asTaskId(flag(args, "task-id") ?? `task:${randomUUID()}`);
+  const runtime = await taskSandboxRequest(args, taskId, true);
+  const timeoutMs =
+    flag(args, "timeout-ms") === undefined
+      ? undefined
+      : positiveIntegerFlag(args, "timeout-ms", 600_000);
+  printJson(
+    await startVNextAgentTask({
+      ...runtime,
+      projectPath: resolve(flag(args, "project") ?? cwd),
+      trustedFixtureRoot: resolve(
+        flag(args, "trusted-fixture") ??
+          join(cwd, "fixtures", "godot-frame-input-window"),
+      ),
+      goal: requiredFlag(args, "goal"),
+      provider:
+        flag(args, "provider", "CHRONORIFT_PI_PROVIDER") ?? DEFAULT_PI_PROVIDER,
+      model: flag(args, "model", "CHRONORIFT_PI_MODEL") ?? DEFAULT_PI_MODEL,
+      thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      ...(flag(args, "agent-dir") === undefined
+        ? {}
+        : { agentDir: resolve(flag(args, "agent-dir")!) }),
+    }),
+  );
+}
+
+async function taskContinueCommand(args: Arguments): Promise<void> {
+  assertOnlyFlags(args, [
+    "task-id",
+    "prompt",
+    "timeout-ms",
+    "agent-dir",
+    "json",
+    ...taskSandboxFlagNames,
+  ]);
+  const taskId = asTaskId(requiredFlag(args, "task-id"));
+  const runtime = await taskSandboxRequest(args, taskId, false);
+  const timeoutMs =
+    flag(args, "timeout-ms") === undefined
+      ? undefined
+      : positiveIntegerFlag(args, "timeout-ms", 600_000);
+  printJson(
+    await continueVNextAgentTask({
+      ...runtime,
+      prompt: requiredFlag(args, "prompt"),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      ...(flag(args, "agent-dir") === undefined
+        ? {}
+        : { agentDir: resolve(flag(args, "agent-dir")!) }),
+    }),
+  );
+}
+
+async function taskShowCommand(args: Arguments): Promise<void> {
+  assertOnlyFlags(args, ["task-id", "runtime-root", "json"]);
+  printJson(
+    await showVNextAgentTask({
+      taskId: asTaskId(requiredFlag(args, "task-id")),
+      runtimeRoot: await taskRuntimeRoot(args, false),
+    }),
+  );
+}
+
+async function taskExportCommand(args: Arguments, cwd: string): Promise<void> {
+  assertOnlyFlags(args, ["task-id", "output", "json", ...taskSandboxFlagNames]);
+  const taskId = asTaskId(requiredFlag(args, "task-id"));
+  printJson(
+    await exportVNextAgentTaskPatch({
+      ...(await taskSandboxRequest(args, taskId, false)),
+      hostCwd: cwd,
+      outputPath: requiredFlag(args, "output"),
+    }),
+  );
+}
+
+async function taskDiscardCommand(args: Arguments): Promise<void> {
+  assertOnlyFlags(args, ["task-id", "json", ...taskSandboxFlagNames]);
+  const taskId = asTaskId(requiredFlag(args, "task-id"));
+  printJson(
+    await discardVNextAgentTask(await taskSandboxRequest(args, taskId, false)),
+  );
+}
+
 function printHelp(): void {
   process.stdout.write(`ChronoRift v0.4.0\n\n`);
+  process.stdout.write(
+    `  pnpm task start --goal TEXT [--project PATH --provider PROVIDER --model MODEL --thinking LEVEL]\n`,
+  );
+  process.stdout.write(
+    `  pnpm task continue --task-id ID --prompt TEXT\n  pnpm task show --task-id ID\n  pnpm task export --task-id ID --output FILE\n  pnpm task discard --task-id ID\n`,
+  );
+  process.stdout.write(
+    `  Task execution requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT); --runtime-root defaults to the user state directory.\n\n`,
+  );
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
   );
@@ -1115,6 +1320,21 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArguments(argv);
   const cwd = process.cwd();
   switch (args.command) {
+    case "task-start":
+      await taskStartCommand(args, cwd);
+      return;
+    case "task-continue":
+      await taskContinueCommand(args);
+      return;
+    case "task-show":
+      await taskShowCommand(args);
+      return;
+    case "task-export":
+      await taskExportCommand(args, cwd);
+      return;
+    case "task-discard":
+      await taskDiscardCommand(args);
+      return;
     case "demo":
       await runDemo(args, cwd);
       return;

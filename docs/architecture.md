@@ -705,27 +705,27 @@ Pi、Godot `Node`/`Variant`、JSON 文件布局、Git/container 实现不得泄�
 
 ## 21. 当前实现映射
 
-本节把当前仓库映射到目标架构；它区分 2026-08-07 仍公开可执行的 v0.4、已经落地但未接线的
-**vNext M1 internal foundation**，以及尚未实现的产品闭环。M1 没有公开 Task CLI、Pi 或 Godot 集成，不是
-release，也不能被描述成 ChronoRift vNext 已经可用。
+本节把当前仓库映射到目标架构；它区分 2026-08-07 的 v0.4 legacy、实验性
+**vNext coding-loop slice** 与尚未实现的 game-native 闭环。coding slice 已有公开 Task CLI 和 Pi 接线，
+但没有 Godot runtime/game tools，仍不是 vNext release。
 
-| 能力           | 当前公开 v0.4                                            | vNext M1 internal foundation                                          | 仍需实现                                                      |
-| -------------- | -------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Pi SDK         | 真实 `createAgentSession`，但服务于 legacy 固定 workflow | 未接入 Pi                                                             | 薄 Loop host、默认 resources、broker-backed coding tools      |
-| Agent 自由度   | 受限诊断 tools、固定 prompt/顺序、一次 Proposal          | 只有可承载命令的内部环境 API                                          | 自主 coding/game tools 与普通 assistant result                |
-| Source/Fixture | 四个 legacy Fixture                                      | 只信任 clean Git 中 strict `frame-input-window` manifest 与冻结 tree  | 外部项目授权、更多 Fixture 与能力协商                         |
-| Workspace      | Fixture staging，无候选修复 worktree                     | raw Git object 物化的私有 workspace、Agent Git、Host baseline         | 公开 Task lifecycle、continue/show 与保留策略                 |
-| OS sandbox     | opaque handle，不是进程隔离                              | bwrap namespace、默认隔离网络/Host、cgroup v2、rlimit、receipt/broker | 接入 Pi/Godot；部署 Host 必须提供经过 preflight 的 delegation |
-| Task artifacts | legacy run/proposal/verdict stores                       | 独立 namespace、strict schema、append/seal、write-once store/discard  | resume/retention、展示层和公开命令                            |
-| Patch          | 无候选代码修改或 handoff                                 | candidate 安全遍历、binary patch、round-trip 校验、create-new export  | Agent 实际验证记录、公开 export/discard 与用户 acceptance     |
-| Godot runtime  | 四个显式插桩 Fixture、Protocol v2、Godot 4.7.1           | 未接入 Godot                                                          | 先迁移 frame-input-window 到自由 game tools                   |
-| Checkpoint     | Fixture participant snapshot                             | 无新增实现                                                            | 通用 manifest/receipt/fidelity 与 adapter 接入契约            |
-| Replay/Capture | legacy input/control/telemetry，无目标 rolling buffer    | 无新增实现                                                            | phase-aware trace、rolling pin/trigger、first divergence      |
-| Query/Compare  | typed event/capsule；compare 被 verdict Gate 使用        | 无新增实现                                                            | Runtime State Index 与独立 descriptive compare                |
-| Product result | Proposal → Harness Verdict                               | 无 Agent Loop 或产品结果                                              | assistant result + diff + execution records                   |
-| Release/Eval   | v0.4 与冻结的 legacy benchmark                           | 无 vNext release；M1 不是产品 benchmark 结论                          | 可用垂直切片与独立、后置、优先开源的 Eval Suite               |
+| 能力           | 当前公开 v0.4                                            | 实验性 vNext coding-loop slice                                          | 仍需实现                                                   |
+| -------------- | -------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Pi SDK         | 真实 `createAgentSession`，但服务于 legacy 固定 workflow | 官方 SDK、默认 Loop/compaction/resources、持久化 Session                | 接入 game tools 与完整 runtime records                     |
+| Agent 自由度   | 受限诊断 tools、固定 prompt/顺序、一次 Proposal          | 自主七个 coding tools、普通 assistant result，无 Harness tool order     | coding/game tools 自由组合                                 |
+| Source/Fixture | 四个 legacy Fixture                                      | 只信任 clean Git 中 strict `frame-input-window` manifest 与冻结 tree    | 外部项目授权、更多 Fixture 与能力协商                      |
+| Workspace      | Fixture staging，无候选修复 worktree                     | 私有 workspace、Host baseline、suspend/resume/show/export/discard       | 外部项目授权与长期保留策略                                 |
+| OS sandbox     | opaque handle，不是进程隔离                              | Pi coding tools 已接 bwrap/cgroup/rlimit broker；默认隔离网络/Host      | 接入 Godot；部署 Host 仍须提供经过 preflight 的 delegation |
+| Task artifacts | legacy run/proposal/verdict stores                       | Task config、Agent turns、Pi Session、operation/security/export ledgers | runtime records、展示增强与保留策略                        |
+| Patch          | 无候选代码修改或 handoff                                 | binary patch、round-trip 校验、create-new public export                 | 用户 acceptance/apply UX                                   |
+| Godot runtime  | 四个显式插桩 Fixture、Protocol v2、Godot 4.7.1           | 未接入 Godot                                                            | 先迁移 frame-input-window 到自由 game tools                |
+| Checkpoint     | Fixture participant snapshot                             | 无新增实现                                                              | 通用 manifest/receipt/fidelity 与 adapter 接入契约         |
+| Replay/Capture | legacy input/control/telemetry，无目标 rolling buffer    | 无新增实现                                                              | phase-aware trace、rolling pin/trigger、first divergence   |
+| Query/Compare  | typed event/capsule；compare 被 verdict Gate 使用        | 无新增实现                                                              | Runtime State Index 与独立 descriptive compare             |
+| Product result | Proposal → Harness Verdict                               | assistant result 与真实 turn/tool/patch records 分离                    | 加入 Execution lineage 与 runtime records                  |
+| Release/Eval   | v0.4 与冻结的 legacy benchmark                           | 无 vNext release；M1 不是产品 benchmark 结论                            | 可用垂直切片与独立、后置、优先开源的 Eval Suite            |
 
-M1 默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 sandbox boundary 必须另外运行
+默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 sandbox boundary 与七个 broker-backed Pi tools 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、
 `pids` controller 的 delegated cgroup v2 root，并通过 `CHRONORIFT_TEST_CGROUP_ROOT` 传入。仓库 CI 的
 `.github/scripts/run-sandbox-conformance.sh` 负责建立一次性 delegation。没有该 Host 条件，只能说明默认

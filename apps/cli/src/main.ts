@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -15,8 +15,10 @@ import {
   type V03ExecutionLog,
 } from "@chronorift/domain";
 import {
+  DEFAULT_RUNTIME_SIDECAR_TARGETS,
   V03_FIXTURE_IDS,
   asV03FixtureName,
+  createRuntimeSidecarSource,
   doctorGodot,
   installGodot,
   prepareGodotSwitchDoorFixture,
@@ -25,6 +27,7 @@ import {
   V01JsonArtifactRepository,
   V03BenchmarkJsonArtifactRepository,
   V03BenchmarkJsonArtifactRepositoryV3,
+  VNextTaskStore,
 } from "@chronorift/json-artifacts";
 import {
   listAvailablePiModels,
@@ -97,6 +100,8 @@ import {
   showVNextAgentTask,
   startVNextAgentTask,
 } from "./vnext/task-agent.js";
+import { SandboxPolicySchema } from "./vnext/contracts.js";
+import { createSandboxTaskRuntimeRoot } from "./vnext/sandbox-preflight.js";
 
 interface Arguments {
   readonly command: string;
@@ -1068,6 +1073,7 @@ async function persistVolcengineAuthCommand(): Promise<void> {
 
 const taskSandboxFlagNames = [
   "runtime-root",
+  "task-storage-root",
   "cgroup-root",
   "bwrap-bin",
   "prlimit-bin",
@@ -1077,6 +1083,9 @@ const taskSandboxFlagNames = [
   "rg-bin",
   "find-bin",
   "ls-bin",
+  "node-bin",
+  "godot-bin",
+  "addon-root",
 ] as const;
 
 async function existingCanonicalPath(path: string): Promise<string> {
@@ -1086,23 +1095,79 @@ async function existingCanonicalPath(path: string): Promise<string> {
 async function taskRuntimeRoot(
   args: Arguments,
   create: boolean,
+  taskStorageRoot?: string,
 ): Promise<string> {
   const configured =
     flag(args, "runtime-root", "CHRONORIFT_RUNTIME_ROOT") ??
-    join(
-      process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"),
-      "chronorift",
-    );
-  if (create) await mkdir(configured, { recursive: true, mode: 0o700 });
+    (taskStorageRoot === undefined
+      ? join(
+          process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"),
+          "chronorift",
+        )
+      : join(taskStorageRoot, "runtime"));
+  if (create) {
+    if (taskStorageRoot === undefined) {
+      throw new Error("M3 runtime root creation requires bounded Task storage");
+    }
+    return createSandboxTaskRuntimeRoot(taskStorageRoot, configured);
+  }
   return existingCanonicalPath(configured);
 }
+
+const assertRuntimeRootWithinTaskStorage = (
+  runtimeRoot: string,
+  taskStorageRoot: string,
+): void => {
+  const difference = relative(taskStorageRoot, runtimeRoot);
+  if (
+    difference === "" ||
+    difference === ".." ||
+    difference.startsWith("../") ||
+    isAbsolute(difference)
+  ) {
+    throw new Error(
+      "--runtime-root must be a strict child of --task-storage-root for M3 Tasks",
+    );
+  }
+};
 
 async function taskSandboxRequest(
   args: Arguments,
   taskId: ReturnType<typeof asTaskId>,
   createRuntimeRoot: boolean,
 ) {
-  const runtimeRoot = await taskRuntimeRoot(args, createRuntimeRoot);
+  const configuredTaskStorageRoot = flag(
+    args,
+    "task-storage-root",
+    "CHRONORIFT_TASK_STORAGE_ROOT",
+  );
+  const taskStorageRoot =
+    configuredTaskStorageRoot === undefined
+      ? undefined
+      : resolve(configuredTaskStorageRoot);
+  if (createRuntimeRoot && taskStorageRoot === undefined) {
+    requiredFlag(args, "task-storage-root", "CHRONORIFT_TASK_STORAGE_ROOT");
+  }
+  const runtimeRoot = await taskRuntimeRoot(
+    args,
+    createRuntimeRoot,
+    taskStorageRoot,
+  );
+  const managedGodotEnabled =
+    createRuntimeRoot ||
+    (
+      await new VNextTaskStore(runtimeRoot).readJson(
+        taskId,
+        "sandbox-policy.json",
+        (value) => SandboxPolicySchema.parse(value),
+      )
+    ).schemaVersion === 2;
+  if (managedGodotEnabled && taskStorageRoot === undefined) {
+    requiredFlag(args, "task-storage-root", "CHRONORIFT_TASK_STORAGE_ROOT");
+  }
+  if (managedGodotEnabled && taskStorageRoot !== undefined) {
+    assertRuntimeRootWithinTaskStorage(runtimeRoot, taskStorageRoot);
+  }
   const delegatedCgroupRoot = requiredFlag(
     args,
     "cgroup-root",
@@ -1127,6 +1192,31 @@ async function taskSandboxRequest(
     existingCanonicalPath(flag(args, "find-bin") ?? "/usr/bin/find"),
     existingCanonicalPath(flag(args, "ls-bin") ?? "/usr/bin/ls"),
   ]);
+  const managedGodotRuntime = managedGodotEnabled
+    ? await (async () => {
+        const [nodePath, godotPath, addonRoot] = await Promise.all([
+          existingCanonicalPath(
+            requiredFlag(args, "node-bin", "CHRONORIFT_NODE_BIN"),
+          ),
+          existingCanonicalPath(requiredFlag(args, "godot-bin", "GODOT_BIN")),
+          existingCanonicalPath(
+            requiredFlag(args, "addon-root", "CHRONORIFT_GODOT_ADDON_ROOT"),
+          ),
+        ]);
+        return {
+          nodePath,
+          godotPath,
+          shellPath: busyboxPath,
+          lddPath,
+          addonRoot,
+          sidecarSource: createRuntimeSidecarSource({
+            godotExecutable: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.runtimeRoot,
+          }),
+        } as const;
+      })()
+    : undefined;
   return {
     taskId,
     runtimeRoot,
@@ -1135,6 +1225,9 @@ async function taskSandboxRequest(
       bwrapPath,
       prlimitPath,
       busyboxPath,
+      ...(managedGodotEnabled && taskStorageRoot !== undefined
+        ? { taskStorageRoot }
+        : {}),
     },
     sandboxToolchain: {
       lddPath,
@@ -1145,6 +1238,7 @@ async function taskSandboxRequest(
         { target: "/usr/bin/ls", hostPath: lsPath },
       ],
     },
+    ...(managedGodotRuntime === undefined ? {} : { managedGodotRuntime }),
   } as const;
 }
 
@@ -1181,6 +1275,7 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
         flag(args, "provider", "CHRONORIFT_PI_PROVIDER") ?? DEFAULT_PI_PROVIDER,
       model: flag(args, "model", "CHRONORIFT_PI_MODEL") ?? DEFAULT_PI_MODEL,
       thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
+      enableGameTools: true,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       ...(flag(args, "agent-dir") === undefined
         ? {}
@@ -1255,7 +1350,7 @@ function printHelp(): void {
     `  pnpm task continue --task-id ID --prompt TEXT\n  pnpm task show --task-id ID\n  pnpm task export --task-id ID --output FILE\n  pnpm task discard --task-id ID\n`,
   );
   process.stdout.write(
-    `  Task execution requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT); --runtime-root defaults to the user state directory.\n\n`,
+    `  New game Tasks require --task-storage-root PATH, --node-bin PATH, --godot-bin PATH, and --addon-root PATH; M3 continuations, exports, and discards revalidate them each time.\n  For M3, --runtime-root must be a strict child of the bounded Task storage root (default: TASK_STORAGE_ROOT/runtime). Task execution also requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT).\n\n`,
   );
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,

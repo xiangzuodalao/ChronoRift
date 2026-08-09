@@ -16,13 +16,17 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiThinkingLevel } from "./types.js";
+import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
 
 export const VNEXT_PI_WORKSPACE_CWD = "/workspace";
 
 export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
 - Your file and command tools execute inside the task sandbox at /workspace. Their outputs and receipts are the execution record.
 - Network, Host files, credentials, ports, and devices are unavailable unless the task policy explicitly grants them.
-- Investigate, edit, and validate autonomously. Choose the tools and order that fit the task.
+- Game tools operate on task-owned resource IDs; resource IDs are not filesystem paths.
+- Requested controls are requests. Runtime receipts report realized values and known side effects.
+- Runtime records carry observation coverage, checkpoint fidelity, clock uncertainty, and capture loss.
+- Unsupported capabilities, unavailable history, restore gaps, conflicts, exhausted budgets, and runtime failures are structured recoverable tool results when recovery is available.
 - Report only checks you actually ran and their observed results. Finishing the Agent Loop does not prove a bug is fixed.`;
 
 export interface RunVNextPiTurnOptions {
@@ -322,6 +326,7 @@ export async function runVNextPiTurnWithSdk(
   ) {
     throw new Error("provider and model must not be empty");
   }
+  configureVNextPiHostHttpTransport();
   const modelRuntime = await (
     await import("@earendil-works/pi-coding-agent")
   ).ModelRuntime.create({ allowModelNetwork: false });

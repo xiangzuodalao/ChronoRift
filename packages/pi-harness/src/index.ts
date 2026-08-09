@@ -72,6 +72,27 @@ export {
   type VNextCodingToolPort,
 } from "./vnext-coding-tools.js";
 export {
+  createVNextGameToolDefinitions,
+  VNextGameToolErrorEnvelopeV1Schema,
+  VNextGameToolErrorV1Schema,
+  VNextGameToolResponseV1Schema,
+  VNextGameToolSuccessEnvelopeV1Schema,
+  VNEXT_GAME_TOOL_ERROR_CODES_V1,
+  type VNextGameToolErrorCodeV1,
+  type VNextGameToolErrorEnvelopeV1,
+  type VNextGameToolErrorV1,
+  type VNextGameToolPort,
+  type VNextGameToolPortRequestV1,
+  type VNextGameToolResponseV1,
+  type VNextGameToolSuccessEnvelopeV1,
+} from "./vnext-game-tools.js";
+export {
+  configureVNextPiHostHttpTransport,
+  createVNextPiHostHttpTransportConfigurer,
+  hasVNextPiHostHttpProxy,
+  type VNextPiHostHttpTransportDependencies,
+} from "./vnext-host-http.js";
+export {
   runVNextPiTurn,
   runVNextPiTurnWithSdk,
   VNEXT_ENVIRONMENT_APPENDIX,

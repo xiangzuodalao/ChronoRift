@@ -1,9 +1,9 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { asTaskId, TaskIdentityV1Schema } from "@chronorift/domain";
-import { VNextTaskStore } from "@chronorift/json-artifacts";
+import { VNextRuntimeStore, VNextTaskStore } from "@chronorift/json-artifacts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { main } from "../main.js";
@@ -22,6 +22,104 @@ afterEach(async () => {
 });
 
 describe("vNext task CLI", () => {
+  it("requires bounded Task storage before starting an M3 Task", async () => {
+    const prior = process.env.CHRONORIFT_TASK_STORAGE_ROOT;
+    delete process.env.CHRONORIFT_TASK_STORAGE_ROOT;
+    try {
+      await expect(
+        main(["task", "start", "--goal", "inspect"]),
+      ).rejects.toThrow(
+        "Missing --task-storage-root or CHRONORIFT_TASK_STORAGE_ROOT",
+      );
+    } finally {
+      if (prior === undefined) delete process.env.CHRONORIFT_TASK_STORAGE_ROOT;
+      else process.env.CHRONORIFT_TASK_STORAGE_ROOT = prior;
+    }
+  });
+
+  it("rejects an M3 runtime root outside its bounded storage root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chronorift-task-cli-"));
+    roots.push(root);
+    const taskStorageRoot = join(root, "bounded");
+    const runtimeRoot = join(root, "outside-runtime");
+    await Promise.all([mkdir(taskStorageRoot), mkdir(runtimeRoot)]);
+
+    await expect(
+      main([
+        "task",
+        "start",
+        "--goal",
+        "inspect",
+        "--task-storage-root",
+        taskStorageRoot,
+        "--runtime-root",
+        runtimeRoot,
+      ]),
+    ).rejects.toThrow(/strict child of --task-storage-root/iu);
+  });
+
+  it("does not create a runtime root through a task-storage symlink before admission", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chronorift-task-cli-"));
+    roots.push(root);
+    const taskStorageRoot = join(root, "storage");
+    const outside = join(root, "outside");
+    const escapedRuntimeRoot = join(taskStorageRoot, "link", "new");
+    await Promise.all([mkdir(taskStorageRoot), mkdir(outside)]);
+    await symlink(outside, join(taskStorageRoot, "link"));
+
+    await expect(
+      main([
+        "task",
+        "start",
+        "--goal",
+        "inspect",
+        "--task-storage-root",
+        taskStorageRoot,
+        "--runtime-root",
+        escapedRuntimeRoot,
+      ]),
+    ).rejects.toThrow();
+
+    await expect(lstat(join(outside, "new"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("does not create the derived runtime root before environment-provided storage is admitted", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chronorift-task-cli-"));
+    roots.push(root);
+    const priorStorage = process.env.CHRONORIFT_TASK_STORAGE_ROOT;
+    const priorCgroup = process.env.CHRONORIFT_CGROUP_ROOT;
+    process.env.CHRONORIFT_TASK_STORAGE_ROOT = root;
+    delete process.env.CHRONORIFT_CGROUP_ROOT;
+    try {
+      await expect(
+        main(["task", "start", "--goal", "inspect"]),
+      ).rejects.toThrow(/task storage/iu);
+      await expect(lstat(join(root, "runtime"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      if (priorStorage === undefined)
+        delete process.env.CHRONORIFT_TASK_STORAGE_ROOT;
+      else process.env.CHRONORIFT_TASK_STORAGE_ROOT = priorStorage;
+      if (priorCgroup === undefined) delete process.env.CHRONORIFT_CGROUP_ROOT;
+      else process.env.CHRONORIFT_CGROUP_ROOT = priorCgroup;
+    }
+  });
+
+  it("documents the M3 Task storage boundary", async () => {
+    const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    try {
+      await main(["help"]);
+      const output = write.mock.calls.map(([chunk]) => String(chunk)).join("");
+      expect(output).toContain("--task-storage-root PATH");
+      expect(output).toContain("TASK_STORAGE_ROOT/runtime");
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it("parses the two-part task show command and returns persisted facts", async () => {
     const root = await mkdtemp(join(tmpdir(), "chronorift-task-cli-"));
     roots.push(root);
@@ -34,6 +132,25 @@ describe("vNext task CLI", () => {
       sourceRepositoryRoot: sourceRoot,
       taskId,
     });
+    const runtimeStore = new VNextRuntimeStore(runtimeRoot);
+    await runtimeStore.create(taskId);
+    for (const [kind, resourceId] of [
+      ["build", "build:cli"],
+      ["execution", "execution:cli"],
+    ] as const) {
+      await runtimeStore.putResourceOnce(
+        taskId,
+        kind,
+        resourceId,
+        {
+          schemaVersion: 1,
+          taskId,
+          createdAt: "2026-08-07T00:00:00.000Z",
+        },
+        (value) => TaskIdentityV1Schema.parse(value),
+      );
+    }
+    await runtimeStore.sealExecution(taskId, "execution:cli");
     const store = new VNextTaskStore(runtimeRoot);
     await store.create(taskId);
     await store.putJsonOnce(
@@ -111,11 +228,34 @@ describe("vNext task CLI", () => {
       ) as {
         task: { taskId: string };
         turns: Array<{ assistantText: string }>;
+        runtimeResources: {
+          kinds: Array<{
+            resourceKind: string;
+            count: number;
+            resourceIds: string[];
+          }>;
+          executions: Array<{ executionId: string; sealed: boolean }>;
+        };
       };
       expect(output.task.taskId).toBe(taskId);
       expect(output.turns).toEqual([
         expect.objectContaining({ assistantText: "Candidate ready" }),
       ]);
+      expect(
+        output.runtimeResources.kinds.find(
+          (entry) => entry.resourceKind === "build",
+        ),
+      ).toEqual({
+        resourceKind: "build",
+        count: 1,
+        resourceIds: ["build:cli"],
+      });
+      expect(output.runtimeResources.executions).toEqual([
+        { executionId: "execution:cli", sealed: true },
+      ]);
+      expect(JSON.stringify(output.runtimeResources)).not.toMatch(
+        /oracle|verdict|evaluator/iu,
+      );
     } finally {
       write.mockRestore();
     }

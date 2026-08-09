@@ -11,6 +11,7 @@ export const SANDBOX_FDS = {
   workspace: 5,
   temporary: 6,
   artifacts: 7,
+  runtimeScratch: 8,
   runtimeStart: 8,
 } as const;
 
@@ -32,20 +33,30 @@ export interface BuildSandboxProcessPlanInput {
     readonly prlimit: string;
     readonly bwrap: string;
   };
+  readonly runtimeScratch?: SandboxRuntimeTarget | undefined;
   readonly runtimeTargets: readonly SandboxRuntimeTarget[];
   readonly unshareCgroupNamespace: boolean;
 }
 
 const assertRuntimeTargets = (
+  runtimeScratch: SandboxRuntimeTarget | undefined,
   targets: readonly SandboxRuntimeTarget[],
 ): void => {
+  if (
+    runtimeScratch !== undefined &&
+    (runtimeScratch.fd !== SANDBOX_FDS.runtimeScratch ||
+      runtimeScratch.target !== "/run/chronorift")
+  ) {
+    throw new TypeError(
+      "runtime scratch must use the fixed descriptor and target",
+    );
+  }
+  const runtimeStart =
+    SANDBOX_FDS.runtimeStart + (runtimeScratch === undefined ? 0 : 1);
   const seenFds = new Set<number>();
   const seenTargets = new Set<string>();
   for (const [index, target] of targets.entries()) {
-    if (
-      !Number.isInteger(target.fd) ||
-      target.fd !== SANDBOX_FDS.runtimeStart + index
-    ) {
+    if (!Number.isInteger(target.fd) || target.fd !== runtimeStart + index) {
       throw new TypeError("runtime descriptors must be contiguous from fd 8");
     }
     if (
@@ -66,7 +77,7 @@ const assertRuntimeTargets = (
 export const buildSandboxProcessPlan = (
   input: BuildSandboxProcessPlanInput,
 ): SandboxProcessPlan => {
-  assertRuntimeTargets(input.runtimeTargets);
+  assertRuntimeTargets(input.runtimeScratch, input.runtimeTargets);
 
   const bwrapArgs: string[] = [
     input.binaries.bwrap,
@@ -114,6 +125,8 @@ export const buildSandboxProcessPlan = (
     "/proc",
     "--dev",
     "/dev",
+    "--remount-ro",
+    "/dev",
     "--dir",
     "/bin",
     "--dir",
@@ -122,7 +135,7 @@ export const buildSandboxProcessPlan = (
     "/tmp",
     "--dir",
     "/artifacts",
-    "--bind-fd",
+    input.request.profile === "godot-headless" ? "--ro-bind-fd" : "--bind-fd",
     String(SANDBOX_FDS.workspace),
     "/workspace",
     "--bind-fd",
@@ -132,12 +145,29 @@ export const buildSandboxProcessPlan = (
     String(SANDBOX_FDS.artifacts),
     "/artifacts",
   );
+  if (input.request.profile === "godot-headless") {
+    if (input.runtimeScratch === undefined) {
+      throw new TypeError("Godot executions require a bounded runtime scratch");
+    }
+    bwrapArgs.push(
+      "--dir",
+      "/run",
+      "--bind-fd",
+      String(input.runtimeScratch.fd),
+      input.runtimeScratch.target,
+    );
+  } else if (input.runtimeScratch !== undefined) {
+    throw new TypeError("coding executions must not receive a runtime scratch");
+  }
   const existingDirectories = new Set([
     "/",
     "/bin",
     "/workspace",
     "/tmp",
     "/artifacts",
+    ...(input.request.profile === "godot-headless"
+      ? ["/run", "/run/chronorift"]
+      : []),
   ]);
   const runtimeDirectories = new Set<string>();
   for (const { target } of input.runtimeTargets) {
@@ -162,6 +192,8 @@ export const buildSandboxProcessPlan = (
   bwrapArgs.push(
     "--dir",
     "/tmp/home",
+    "--remount-ro",
+    "/",
     "--chdir",
     input.request.cwd,
     "--block-fd",
@@ -187,6 +219,7 @@ export const buildSandboxProcessPlan = (
       SANDBOX_FDS.workspace,
       SANDBOX_FDS.temporary,
       SANDBOX_FDS.artifacts,
+      ...(input.runtimeScratch === undefined ? [] : [input.runtimeScratch.fd]),
       ...input.runtimeTargets.map(({ fd }) => fd),
     ],
   };

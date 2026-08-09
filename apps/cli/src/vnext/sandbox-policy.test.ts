@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { asSha256DigestV1 } from "@chronorift/domain";
 
-import { SandboxPolicyV1Schema } from "./contracts.js";
+import {
+  SandboxPolicySchema,
+  SandboxPolicyV1Schema,
+  SandboxPolicyV2Schema,
+} from "./contracts.js";
 import {
   createSandboxPolicyV1,
+  createSandboxPolicyV2,
   resolveResourceLimitsV1,
 } from "./sandbox-policy.js";
 
@@ -55,5 +60,63 @@ describe("M1 sandbox policy", () => {
     expect(serialized).not.toMatch(
       /records|host-baseline\.git|host-tmp|sandbox-artifacts/u,
     );
+  });
+
+  it("binds coding and managed Godot mounts to separate V2 profiles", () => {
+    const runtimeIdentity = asSha256DigestV1("a".repeat(64));
+    const codingToolchainId = `sandbox-toolchain:v1:${"b".repeat(64)}`;
+    const managedToolchainId = `sandbox-toolchain:v1:${"c".repeat(64)}`;
+    const managedRuntimeId = `managed-godot-runtime:v1:${"d".repeat(64)}`;
+    const policy = createSandboxPolicyV2(runtimeIdentity, {
+      coding: {
+        toolchainId: codingToolchainId,
+        targets: ["/bin/bash", "/usr/bin/rg"],
+      },
+      godot: {
+        toolchainId: managedToolchainId,
+        managedRuntimeId,
+        targets: [
+          "/opt/chronorift/bin/godot",
+          "/opt/chronorift/bin/node",
+          "/lib/libc.so.6",
+          "/run/chronorift/project/addons",
+          "/run/chronorift/project/addons/chronorift",
+        ],
+      },
+    });
+
+    expect(SandboxPolicyV2Schema.parse(policy)).toEqual(policy);
+    expect(SandboxPolicySchema.parse(policy)).toEqual(policy);
+    expect(policy.profileBindings["coding-default"]).toEqual({
+      toolchainId: codingToolchainId,
+      managedRuntimeId: null,
+      workspaceAccess: "read-write",
+      readonlyTargets: ["/bin/bash", "/bin/busybox", "/usr/bin/rg"],
+    });
+    expect(policy.profileBindings["godot-headless"]).toEqual({
+      toolchainId: managedToolchainId,
+      managedRuntimeId,
+      workspaceAccess: "read-only",
+      readonlyTargets: [
+        "/bin/busybox",
+        "/lib/libc.so.6",
+        "/opt/chronorift/bin/godot",
+        "/opt/chronorift/bin/node",
+        "/run/chronorift/project/addons",
+        "/run/chronorift/project/addons/chronorift",
+      ],
+    });
+    expect(() =>
+      SandboxPolicyV2Schema.parse({
+        ...policy,
+        profileBindings: {
+          ...policy.profileBindings,
+          "godot-headless": {
+            ...policy.profileBindings["godot-headless"],
+            managedRuntimeId: `managed-godot-runtime:v1:${"e".repeat(64)}`,
+          },
+        },
+      }),
+    ).toThrow(/policyId/u);
   });
 });

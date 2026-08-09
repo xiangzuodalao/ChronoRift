@@ -44,6 +44,9 @@ importers:
       '@chronorift/godot-adapter':
         specifier: workspace:*
         version: link:../../packages/godot-adapter
+      '@chronorift/godot-protocol':
+        specifier: workspace:*
+        version: link:../../packages/godot-protocol
       '@chronorift/json-artifacts':
         specifier: workspace:*
         version: link:../../packages/json-artifacts
@@ -53,6 +56,9 @@ importers:
       '@chronorift/pi-harness':
         specifier: workspace:*
         version: link:../../packages/pi-harness
+      typebox:
+        specifier: 1.3.7
+        version: 1.3.7
       zod:
         specifier: 4.4.3
         version: 4.4.3

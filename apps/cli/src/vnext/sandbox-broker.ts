@@ -1,6 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, realpath, type FileHandle } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  realpath,
+  rm,
+  writeFile,
+  type FileHandle,
+} from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -17,6 +28,7 @@ import {
   type TaskId,
 } from "@chronorift/domain";
 import { contentHash } from "@chronorift/json-artifacts";
+import { DEFAULT_RUNTIME_SIDECAR_TARGETS } from "@chronorift/godot-adapter";
 
 import { BoundedOutputCapture } from "./bounded-output.js";
 import {
@@ -30,16 +42,17 @@ import {
   SandboxExecutionReceiptV1Schema,
   SandboxExecutionRequestV1Schema,
   SandboxHostCapabilityV1Schema,
-  SandboxPolicyV1Schema,
+  SandboxPolicySchema,
   SandboxToolchainCapabilityV1Schema,
   SandboxOperationIdV1Schema,
   SecurityEventV1Schema,
   type ObservedResourceUsageV1,
+  type AggregateStorageUsageV1,
   type SandboxCleanupReceiptV1,
   type SandboxExecutionReceiptV1,
   type SandboxExecutionRequestV1,
   type SandboxHostCapabilityV1,
-  type SandboxPolicyV1,
+  type SandboxPolicy,
   type SandboxToolchainCapabilityV1,
   type SecurityEventV1,
 } from "./contracts.js";
@@ -51,16 +64,24 @@ import {
 } from "./cgroup-v2.js";
 import { M1Error, sanitizeM1Diagnostic } from "./errors.js";
 import {
+  SandboxBootstrapReadinessCleanupError,
   startSandboxBootstrap,
   type SandboxBootstrapSession,
 } from "./sandbox-bootstrap.js";
 import {
+  assertSandboxTaskStorageLayoutMatches,
   assertTrustedHostExecutablePath,
   type SandboxHostBinding,
 } from "./sandbox-preflight.js";
 import { resolveResourceLimitsV1 } from "./sandbox-policy.js";
 import type { TaskDirectoryLayout } from "./task-paths.js";
 import type { SandboxToolchainBindingV1 } from "./sandbox-toolchain.js";
+import {
+  ManagedGodotRuntimeCapabilityV1Schema,
+  assertManagedGodotRuntimeBinding,
+  type ManagedGodotRuntimeBindingV1,
+  type ManagedGodotRuntimeCapabilityV1,
+} from "./managed-godot-runtime.js";
 
 export interface MonotonicClockV1 {
   now(): number;
@@ -69,6 +90,14 @@ export interface MonotonicClockV1 {
 export interface SandboxExecutionOptionsV1 {
   readonly signal?: AbortSignal | undefined;
   readonly stdin?: Uint8Array | undefined;
+  readonly onStdoutChunk?:
+    ((chunk: Uint8Array) => void | Promise<void>) | undefined;
+  readonly onStderrChunk?:
+    ((chunk: Uint8Array) => void | Promise<void>) | undefined;
+}
+
+export interface SandboxDuplexExecutionOptionsV1 {
+  readonly signal?: AbortSignal | undefined;
   readonly onStdoutChunk?:
     ((chunk: Uint8Array) => void | Promise<void>) | undefined;
   readonly onStderrChunk?:
@@ -84,12 +113,30 @@ export type SandboxExecutionResultV1 =
     }
   | { readonly kind: "denied"; readonly securityEvent: SecurityEventV1 };
 
+export interface SandboxDuplexHandleV1 {
+  write(bytes: Uint8Array): Promise<void>;
+  endInput(): Promise<void>;
+  terminate(): Promise<void>;
+  readonly completion: Promise<SandboxExecutionResultV1>;
+}
+
+export type SandboxDuplexOpenResultV1 =
+  | { readonly kind: "opened"; readonly handle: SandboxDuplexHandleV1 }
+  | SandboxExecutionResultV1;
+
 export interface TaskSandboxBrokerV1 {
   execute(
     request: SandboxExecutionRequestV1,
     options?: SandboxExecutionOptionsV1,
   ): Promise<SandboxExecutionResultV1>;
   cleanup(): Promise<SandboxCleanupReceiptV1>;
+}
+
+export interface DuplexTaskSandboxBrokerV1 extends TaskSandboxBrokerV1 {
+  openDuplex(
+    request: SandboxExecutionRequestV1,
+    options?: SandboxDuplexExecutionOptionsV1,
+  ): Promise<SandboxDuplexOpenResultV1>;
 }
 
 export interface SandboxBrokerBoundResources {
@@ -101,6 +148,26 @@ export interface SandboxBrokerBoundResources {
     readonly fd: number;
     readonly target: string;
   }[];
+  readonly managedRuntimeFiles?:
+    | readonly {
+        readonly fd: number;
+        readonly target: string;
+      }[]
+    | undefined;
+  readonly managedFontconfig?:
+    | {
+        readonly fd: number;
+        readonly target: string;
+      }
+    | undefined;
+  readonly managedAddon?:
+    | {
+        readonly parentFd: number;
+        readonly parentTarget: string;
+        readonly fd: number;
+        readonly target: string;
+      }
+    | undefined;
   close(): Promise<void>;
 }
 
@@ -112,8 +179,33 @@ export interface SandboxBrokerCgroupController {
   cleanup(): Promise<void>;
 }
 
+export interface SandboxBrokerScratchCleanup {
+  readonly path: string;
+  close(): Promise<void>;
+}
+
+export interface SandboxBrokerExecutionScratch extends SandboxBrokerScratchCleanup {
+  readonly fd: number;
+}
+
+export class SandboxExecutionScratchCreationError extends Error {
+  public constructor(
+    message: string,
+    public readonly scratch: SandboxBrokerScratchCleanup,
+    cause: unknown,
+  ) {
+    super(message, { cause });
+    this.name = "SandboxExecutionScratchCreationError";
+  }
+}
+
 export interface SandboxBrokerDependencies {
   verifyExecutableTrust(path: string): Promise<void>;
+  inspectTaskStorage(input: {
+    readonly capability: NonNullable<SandboxHostCapabilityV1["taskStorage"]>;
+    readonly taskStorageRoot: string;
+    readonly layoutPaths: readonly string[];
+  }): Promise<AggregateStorageUsageV1>;
   bindResources(input: {
     readonly capability: SandboxHostCapabilityV1;
     readonly hostBinding: SandboxHostBinding;
@@ -124,7 +216,17 @@ export interface SandboxBrokerDependencies {
           readonly binding: SandboxToolchainBindingV1;
         }
       | undefined;
+    readonly managedRuntime?:
+      | {
+          readonly capability: ManagedGodotRuntimeCapabilityV1;
+          readonly binding: ManagedGodotRuntimeBindingV1;
+        }
+      | undefined;
   }): Promise<SandboxBrokerBoundResources>;
+  createExecutionScratch(input: {
+    readonly layout: TaskDirectoryLayout;
+    readonly operationId: string;
+  }): Promise<SandboxBrokerExecutionScratch>;
   createCgroupController(input: {
     readonly delegatedCgroupRoot: string;
     readonly taskId: TaskId;
@@ -161,24 +263,43 @@ type TerminalReason =
 interface ExecutionRuntime {
   scope: ExecutionCgroupScope | undefined;
   session: SandboxBootstrapSession | undefined;
+  bootstrapCleanup: SandboxBootstrapReadinessCleanupError | undefined;
+  scratch: SandboxBrokerExecutionScratch | undefined;
+  scratchCleanup: SandboxBrokerScratchCleanup | undefined;
+  scratchCreationFailed: boolean;
   stdoutDrain: StreamDrain | undefined;
   stderrDrain: StreamDrain | undefined;
 }
 
 interface ActiveExecution {
   readonly cancel: () => void;
+  readonly ready: Promise<boolean>;
+  readonly write: (bytes: Uint8Array) => Promise<void>;
+  readonly endInput: () => Promise<void>;
+  readonly terminate: () => Promise<void>;
   readonly result: Promise<SandboxExecutionResultV1>;
 }
 
-const REALIZED_MECHANISMS = {
+const BASE_REALIZED_MECHANISMS = {
   cpu: "cgroup-v2",
   memory: "cgroup-v2",
   processCount: "cgroup-v2",
   openFiles: "rlimit-nofile",
   fileSize: "rlimit-fsize",
   wallTimeout: "host-monotonic-timer",
-  unavailable: [],
 } as const;
+
+const realizedMechanismsFor = (
+  capability: SandboxHostCapabilityV1,
+  aggregateStorageObserved: boolean,
+): SandboxExecutionReceiptV1["realizedMechanisms"] =>
+  capability.taskStorage === undefined || !aggregateStorageObserved
+    ? { ...BASE_REALIZED_MECHANISMS, unavailable: ["aggregate-storage"] }
+    : {
+        ...BASE_REALIZED_MECHANISMS,
+        aggregateStorage: capability.taskStorage.kind,
+        unavailable: [],
+      };
 
 const EMPTY_USAGE: ObservedResourceUsageV1 = {
   cpuUsageUsec: 0,
@@ -213,6 +334,7 @@ function assertLayout(taskId: TaskId, layout: TaskDirectoryLayout): void {
     !hasExactKeys(layout, [
       "taskRootDirectory",
       "taskRecordDirectory",
+      "runtimeRecordDirectory",
       "workspaceDirectory",
       "sandboxTemporaryDirectory",
       "sandboxArtifactScratchDirectory",
@@ -237,6 +359,7 @@ function assertLayout(taskId: TaskId, layout: TaskDirectoryLayout): void {
   }
   const expected = {
     taskRecordDirectory: join(root, "records"),
+    runtimeRecordDirectory: join(root, "runtime-records"),
     workspaceDirectory: join(root, "workspace"),
     sandboxTemporaryDirectory: join(root, "tmp"),
     sandboxArtifactScratchDirectory: join(root, "sandbox-artifacts"),
@@ -254,15 +377,20 @@ function assertLayout(taskId: TaskId, layout: TaskDirectoryLayout): void {
   }
 }
 
-function assertHostBinding(binding: SandboxHostBinding): void {
+function assertHostBinding(
+  capability: SandboxHostCapabilityV1,
+  binding: SandboxHostBinding,
+): void {
+  const expectedKeys = [
+    "delegatedCgroupRoot",
+    "bwrapPath",
+    "prlimitPath",
+    "busyboxPath",
+    ...(capability.taskStorage === undefined ? [] : ["taskStorageRoot"]),
+  ];
   if (
     !isObject(binding) ||
-    !hasExactKeys(binding, [
-      "delegatedCgroupRoot",
-      "bwrapPath",
-      "prlimitPath",
-      "busyboxPath",
-    ]) ||
+    !hasExactKeys(binding, expectedKeys) ||
     !Object.values(binding).every(
       (value) => typeof value === "string" && value.length > 0,
     )
@@ -405,6 +533,210 @@ export function createRetryableResourceCloser(
   };
 }
 
+export class SandboxBrokerSetupCleanupError extends AggregateError {
+  public constructor(
+    public readonly primaryError: unknown,
+    cleanupError: unknown,
+    private readonly retry: () => Promise<void>,
+  ) {
+    super(
+      [primaryError, cleanupError],
+      "sandbox setup failed without proven resource cleanup",
+    );
+    this.name = "SandboxBrokerSetupCleanupError";
+  }
+
+  public retryCleanup(): Promise<void> {
+    return this.retry();
+  }
+}
+
+export const rethrowAfterBoundedSetupCleanup = async (
+  primaryError: unknown,
+  cleanup: () => Promise<void>,
+): Promise<never> => {
+  let lastCleanupError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await cleanup();
+    } catch (error) {
+      lastCleanupError = error;
+      continue;
+    }
+    throw primaryError;
+  }
+  throw new SandboxBrokerSetupCleanupError(
+    primaryError,
+    lastCleanupError,
+    cleanup,
+  );
+};
+
+const restoreScratchDirectoryModes = async (
+  directoryPath: Buffer,
+  expectedDevice: number,
+): Promise<void> => {
+  const statistics = await lstat(directoryPath);
+  if (
+    statistics.isSymbolicLink() ||
+    !statistics.isDirectory() ||
+    statistics.dev !== expectedDevice
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "operation scratch cleanup encountered a non-directory or nested filesystem",
+    );
+  }
+  await chmod(directoryPath, 0o700);
+  const entries = await readdir(directoryPath, {
+    encoding: "buffer",
+    withFileTypes: true,
+  });
+  for (const entry of entries) {
+    const childPath = Buffer.concat([
+      directoryPath,
+      Buffer.from("/"),
+      entry.name,
+    ]);
+    const child = await lstat(childPath);
+    if (child.isSymbolicLink() || !child.isDirectory()) continue;
+    await restoreScratchDirectoryModes(childPath, expectedDevice);
+  }
+};
+
+export async function createBoundedExecutionScratch(input: {
+  readonly temporaryDirectory: string;
+}): Promise<SandboxBrokerExecutionScratch> {
+  const parentPath = input.temporaryDirectory;
+  let directoryPath: string | undefined;
+  let handle: FileHandle | undefined;
+  let parentDevice: number | undefined;
+  try {
+    if (
+      !isAbsolute(parentPath) ||
+      resolve(parentPath) !== parentPath ||
+      (await realpath(parentPath)) !== parentPath
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "operation scratch parent must be absolute, canonical, and symlink-free",
+      );
+    }
+    const parent = await lstat(parentPath);
+    parentDevice = parent.dev;
+    if (parent.isSymbolicLink() || !parent.isDirectory()) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "operation scratch parent must be a real directory",
+      );
+    }
+    directoryPath = await mkdtemp(join(parentPath, "runtime-"));
+    const created = await lstat(directoryPath);
+    const currentUid = process.geteuid?.();
+    if (
+      (await realpath(directoryPath)) !== directoryPath ||
+      created.isSymbolicLink() ||
+      !created.isDirectory() ||
+      created.dev !== parent.dev ||
+      currentUid === undefined ||
+      currentUid <= 0 ||
+      created.uid !== currentUid ||
+      (created.mode & 0o7777) !== 0o700
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "operation scratch did not remain a private directory on Task storage",
+      );
+    }
+    handle = await openPinned(directoryPath, "directory");
+  } catch (error) {
+    if (directoryPath !== undefined && parentDevice !== undefined) {
+      const scratch = createOwnedScratchCleanup(
+        directoryPath,
+        parentDevice,
+        handle,
+      );
+      try {
+        await scratch.close();
+      } catch (cleanupError) {
+        throw new SandboxExecutionScratchCreationError(
+          "operation scratch creation failed without proven cleanup",
+          scratch,
+          new AggregateError(
+            [error, cleanupError],
+            "operation scratch creation and cleanup failed",
+          ),
+        );
+      }
+    } else if (handle !== undefined) {
+      await handle.close();
+    }
+    throw error;
+  }
+
+  const pinnedHandle = handle;
+  const pinnedPath = directoryPath;
+  const scratch = createOwnedScratchCleanup(
+    pinnedPath,
+    parentDevice,
+    pinnedHandle,
+  );
+  return Object.freeze({ fd: pinnedHandle.fd, ...scratch });
+}
+
+const createOwnedScratchCleanup = (
+  pinnedPath: string,
+  expectedDevice: number,
+  pinnedHandle: FileHandle | undefined,
+): SandboxBrokerScratchCleanup => {
+  let handleClosed = false;
+  let directoryRemoved = false;
+  let activeClose: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    if (activeClose !== undefined) return activeClose;
+    if (handleClosed && directoryRemoved) return Promise.resolve();
+    const attempt = (async () => {
+      if (!directoryRemoved) {
+        const visible = await lstat(pinnedPath);
+        const pinned = await pinnedHandle?.stat();
+        if (
+          !visible.isDirectory() ||
+          visible.isSymbolicLink() ||
+          visible.dev !== expectedDevice ||
+          (pinned !== undefined &&
+            (!pinned.isDirectory() ||
+              pinned.dev !== visible.dev ||
+              pinned.ino !== visible.ino))
+        ) {
+          throw new M1Error(
+            "sandbox_preflight_failed",
+            "operation scratch identity changed before cleanup",
+          );
+        }
+        await pinnedHandle?.chmod(0o700);
+        await restoreScratchDirectoryModes(
+          Buffer.from(pinnedPath),
+          expectedDevice,
+        );
+        await rm(pinnedPath, { recursive: true, force: true });
+        directoryRemoved = true;
+      }
+      if (!handleClosed && pinnedHandle !== undefined) {
+        await pinnedHandle.close();
+        handleClosed = true;
+      } else if (pinnedHandle === undefined) {
+        handleClosed = true;
+      }
+    })();
+    const tracked = attempt.finally(() => {
+      if (activeClose === tracked) activeClose = undefined;
+    });
+    activeClose = tracked;
+    return tracked;
+  };
+  return Object.freeze({ path: pinnedPath, close });
+};
+
 async function bindDefaultResources(input: {
   readonly capability: SandboxHostCapabilityV1;
   readonly hostBinding: SandboxHostBinding;
@@ -415,37 +747,47 @@ async function bindDefaultResources(input: {
         readonly binding: SandboxToolchainBindingV1;
       }
     | undefined;
+  readonly managedRuntime?:
+    | {
+        readonly capability: ManagedGodotRuntimeCapabilityV1;
+        readonly binding: ManagedGodotRuntimeBindingV1;
+      }
+    | undefined;
 }): Promise<SandboxBrokerBoundResources> {
-  const handles: FileHandle[] = [];
+  const resources: { close(): Promise<void> }[] = [];
+  const keepHandle = (handle: FileHandle): FileHandle => {
+    resources.push(handle);
+    return handle;
+  };
   try {
-    const workspace = await openPinned(
-      input.layout.workspaceDirectory,
-      "directory",
+    const workspace = keepHandle(
+      await openPinned(input.layout.workspaceDirectory, "directory"),
     );
-    handles.push(workspace);
-    const temporary = await openPinned(
-      input.layout.sandboxTemporaryDirectory,
-      "directory",
+    const temporary = keepHandle(
+      await openPinned(input.layout.sandboxTemporaryDirectory, "directory"),
     );
-    handles.push(temporary);
-    const artifacts = await openPinned(
-      input.layout.sandboxArtifactScratchDirectory,
-      "directory",
+    const artifacts = keepHandle(
+      await openPinned(
+        input.layout.sandboxArtifactScratchDirectory,
+        "directory",
+      ),
     );
-    handles.push(artifacts);
-    const runtime = await openPinned(
-      input.hostBinding.busyboxPath,
-      "executable",
+    const runtime = keepHandle(
+      await openPinned(input.hostBinding.busyboxPath, "executable"),
     );
-    handles.push(runtime);
-    const toolchainFiles: { readonly fd: number; readonly target: string }[] =
-      [];
-    if (input.toolchain !== undefined) {
+    const bindToolchain = async (
+      toolchain:
+        | {
+            readonly capability: SandboxToolchainCapabilityV1;
+            readonly binding: SandboxToolchainBindingV1;
+          }
+        | undefined,
+    ): Promise<{ readonly fd: number; readonly target: string }[]> => {
+      const bound: { readonly fd: number; readonly target: string }[] = [];
+      if (toolchain === undefined) return bound;
       if (
-        input.toolchain.capability.toolchainId !==
-          input.toolchain.binding.toolchainId ||
-        input.toolchain.capability.files.length !==
-          input.toolchain.binding.files.length
+        toolchain.capability.toolchainId !== toolchain.binding.toolchainId ||
+        toolchain.capability.files.length !== toolchain.binding.files.length
       ) {
         throw new M1Error(
           "sandbox_preflight_failed",
@@ -455,24 +797,96 @@ async function bindDefaultResources(input: {
       for (const [
         index,
         capabilityFile,
-      ] of input.toolchain.capability.files.entries()) {
-        const bindingFile = input.toolchain.binding.files[index];
+      ] of toolchain.capability.files.entries()) {
+        const bindingFile = toolchain.binding.files[index];
         if (bindingFile?.target !== capabilityFile.target) {
           throw new M1Error(
             "sandbox_preflight_failed",
             "toolchain binding targets do not match the frozen capability",
           );
         }
-        const handle = await openPinned(bindingFile.hostPath, "runtime-file");
-        handles.push(handle);
+        const handle = keepHandle(
+          await openPinned(bindingFile.hostPath, "runtime-file"),
+        );
         if (sha256(await handle.readFile()) !== capabilityFile.sha256) {
           throw new M1Error(
             "sandbox_preflight_failed",
             "toolchain file no longer matches its frozen identity",
           );
         }
-        toolchainFiles.push({ fd: handle.fd, target: capabilityFile.target });
+        bound.push({ fd: handle.fd, target: capabilityFile.target });
       }
+      return bound;
+    };
+    const toolchainFiles = await bindToolchain(input.toolchain);
+    const managedRuntimeFiles = await bindToolchain(
+      input.managedRuntime === undefined
+        ? undefined
+        : {
+            capability: input.managedRuntime.capability.toolchain,
+            binding: input.managedRuntime.binding.toolchain,
+          },
+    );
+    let managedFontconfig:
+      { readonly fd: number; readonly target: string } | undefined;
+    let managedAddon:
+      | {
+          readonly parentFd: number;
+          readonly parentTarget: string;
+          readonly fd: number;
+          readonly target: string;
+        }
+      | undefined;
+    if (input.managedRuntime !== undefined) {
+      assertManagedGodotRuntimeBinding(
+        input.managedRuntime.capability,
+        input.managedRuntime.binding,
+      );
+      const fontconfigDirectory = await mkdtemp(
+        join(input.layout.hostOperationTemporaryDirectory, "fontconfig-"),
+      );
+      resources.push({
+        close: () => rm(fontconfigDirectory, { recursive: true, force: true }),
+      });
+      const fontconfigPath = join(fontconfigDirectory, "fonts.conf");
+      await writeFile(
+        fontconfigPath,
+        input.managedRuntime.binding.fontconfigBytes,
+        { flag: "wx", mode: 0o400 },
+      );
+      const fontconfigHandle = keepHandle(
+        await openPinned(fontconfigPath, "runtime-file"),
+      );
+      managedFontconfig = {
+        fd: fontconfigHandle.fd,
+        target: input.managedRuntime.capability.fontconfigTarget,
+      };
+      const addonParentDirectory = await mkdtemp(
+        join(input.layout.hostOperationTemporaryDirectory, "managed-addon-"),
+      );
+      const addonDirectory = join(addonParentDirectory, "chronorift");
+      await mkdir(addonDirectory, { mode: 0o700 });
+      resources.push({
+        close: () => rm(addonParentDirectory, { recursive: true, force: true }),
+      });
+      for (const file of input.managedRuntime.binding.addonFiles) {
+        const target = join(addonDirectory, ...file.relativePath.split("/"));
+        const parent = dirname(target);
+        await mkdir(parent, { recursive: true, mode: 0o700 });
+        await writeFile(target, file.bytes, { flag: "wx", mode: 0o400 });
+      }
+      const addonParentHandle = keepHandle(
+        await openPinned(addonParentDirectory, "directory"),
+      );
+      const addonHandle = keepHandle(
+        await openPinned(addonDirectory, "directory"),
+      );
+      managedAddon = {
+        parentFd: addonParentHandle.fd,
+        parentTarget: input.managedRuntime.capability.addonParentTarget,
+        fd: addonHandle.fd,
+        target: input.managedRuntime.capability.addonTarget,
+      };
     }
 
     const [bwrapIdentity, prlimitIdentity, runtimeBytes, cgroupIdentity] =
@@ -500,20 +914,23 @@ async function bindDefaultResources(input: {
       );
     }
 
-    const close = createRetryableResourceCloser(handles);
+    const close = createRetryableResourceCloser(resources);
     return {
       workspaceFd: workspace.fd,
       temporaryFd: temporary.fd,
       artifactsFd: artifacts.fd,
       runtimeFd: runtime.fd,
       toolchainFiles: Object.freeze(toolchainFiles),
+      managedRuntimeFiles: Object.freeze(managedRuntimeFiles),
+      ...(managedFontconfig === undefined ? {} : { managedFontconfig }),
+      ...(managedAddon === undefined ? {} : { managedAddon }),
       close,
     };
   } catch (error) {
-    await Promise.allSettled(
-      [...handles].reverse().map((handle) => handle.close()),
+    return rethrowAfterBoundedSetupCleanup(
+      error,
+      createRetryableResourceCloser(resources),
     );
-    throw error;
   }
 }
 
@@ -521,7 +938,17 @@ const defaultDependencies: SandboxBrokerDependencies = {
   verifyExecutableTrust: async (path) => {
     await assertTrustedHostExecutablePath(path);
   },
+  inspectTaskStorage: ({ capability, taskStorageRoot, layoutPaths }) =>
+    assertSandboxTaskStorageLayoutMatches(
+      capability,
+      taskStorageRoot,
+      layoutPaths,
+    ),
   bindResources: bindDefaultResources,
+  createExecutionScratch: ({ layout }) =>
+    createBoundedExecutionScratch({
+      temporaryDirectory: layout.hostOperationTemporaryDirectory,
+    }),
   createCgroupController: ({ delegatedCgroupRoot, taskId }) =>
     CgroupV2Controller.create(delegatedCgroupRoot, taskId),
   startBootstrap: (input) => startSandboxBootstrap(input),
@@ -539,6 +966,13 @@ function assertBoundDescriptors(resources: SandboxBrokerBoundResources): void {
     resources.artifactsFd,
     resources.runtimeFd,
     ...resources.toolchainFiles.map((file) => file.fd),
+    ...(resources.managedRuntimeFiles?.map((file) => file.fd) ?? []),
+    ...(resources.managedFontconfig === undefined
+      ? []
+      : [resources.managedFontconfig.fd]),
+    ...(resources.managedAddon === undefined
+      ? []
+      : [resources.managedAddon.parentFd, resources.managedAddon.fd]),
   ];
   if (
     !descriptors.every((fd) => Number.isInteger(fd) && fd >= 0) ||
@@ -605,16 +1039,76 @@ const pathAtOrBelow = (parent: string, candidate: string): boolean => {
   );
 };
 
+const taskLayoutPaths = (layout: TaskDirectoryLayout): readonly string[] => [
+  layout.taskRootDirectory,
+  layout.taskRecordDirectory,
+  layout.runtimeRecordDirectory,
+  layout.workspaceDirectory,
+  layout.sandboxTemporaryDirectory,
+  layout.sandboxArtifactScratchDirectory,
+  layout.piSessionDirectory,
+  layout.hostBaselineGitDirectory,
+  layout.hostOperationTemporaryDirectory,
+];
+
+function assertLayoutWithinTaskStorage(
+  capability: SandboxHostCapabilityV1,
+  binding: SandboxHostBinding,
+  layout: TaskDirectoryLayout,
+  managedRuntime: ManagedGodotRuntimeCapabilityV1 | undefined,
+): void {
+  if (
+    managedRuntime !== undefined &&
+    (capability.taskStorage === undefined ||
+      binding.taskStorageRoot === undefined)
+  ) {
+    throw new M1Error(
+      "resource_limit_unavailable",
+      "managed runtime tasks require bounded aggregate Task storage",
+    );
+  }
+  if (
+    (capability.taskStorage === undefined) !==
+    (binding.taskStorageRoot === undefined)
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "task storage capability and Host binding disagree",
+    );
+  }
+  const taskStorageRoot = binding.taskStorageRoot;
+  if (taskStorageRoot === undefined) return;
+  if (
+    !isAbsolute(taskStorageRoot) ||
+    resolve(taskStorageRoot) !== taskStorageRoot
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "task storage root must be an absolute normalized path",
+    );
+  }
+  for (const taskPath of taskLayoutPaths(layout)) {
+    if (!pathAtOrBelow(taskStorageRoot, taskPath)) {
+      throw new M1Error(
+        "path_denied",
+        "Task layout must remain within bounded aggregate Task storage",
+      );
+    }
+  }
+}
+
 function assertHostExecutablesOutsideWritableLayout(
   binding: SandboxHostBinding,
   layout: TaskDirectoryLayout,
   toolchain: SandboxToolchainBindingV1 | undefined,
+  managedRuntime: ManagedGodotRuntimeBindingV1 | undefined,
 ): void {
   const executables = [
     binding.bwrapPath,
     binding.prlimitPath,
     binding.busyboxPath,
     ...(toolchain?.files.map((file) => file.hostPath) ?? []),
+    ...(managedRuntime?.toolchain.files.map((file) => file.hostPath) ?? []),
   ];
   const writableRoots = [
     layout.workspaceDirectory,
@@ -641,6 +1135,7 @@ function assertProcessPlan(
   request: SandboxExecutionRequestV1,
   binding: SandboxHostBinding,
   layout: TaskDirectoryLayout,
+  runtimeScratch: { readonly fd: number; readonly target: string } | undefined,
   runtimeTargets: readonly { readonly fd: number; readonly target: string }[],
   toolchainBinding: SandboxToolchainBindingV1 | undefined,
 ): void {
@@ -650,6 +1145,7 @@ function assertProcessPlan(
     SANDBOX_FDS.workspace,
     SANDBOX_FDS.temporary,
     SANDBOX_FDS.artifacts,
+    ...(runtimeScratch === undefined ? [] : [runtimeScratch.fd]),
     ...runtimeTargets.map((target) => target.fd),
   ];
   const commandSeparator = plan.args.length - request.argv.length - 1;
@@ -658,6 +1154,9 @@ function assertProcessPlan(
     plan.args[3] !== "--" ||
     plan.args[4] !== binding.bwrapPath ||
     JSON.stringify(plan.inheritedFds) !== JSON.stringify(expectedFds) ||
+    (request.profile === "godot-headless") !==
+      (runtimeScratch?.fd === SANDBOX_FDS.runtimeScratch &&
+        runtimeScratch.target === "/run/chronorift") ||
     commandSeparator <= 4 ||
     plan.args[commandSeparator] !== "--" ||
     JSON.stringify(plan.args.slice(commandSeparator + 1)) !==
@@ -669,6 +1168,25 @@ function assertProcessPlan(
     );
   }
   const serialized = [plan.executable, ...plan.args].join("\0");
+  const workspaceMount = [
+    request.profile === "godot-headless" ? "--ro-bind-fd" : "--bind-fd",
+    String(SANDBOX_FDS.workspace),
+    "/workspace",
+  ].join("\0");
+  const forbiddenWorkspaceMount = [
+    request.profile === "godot-headless" ? "--bind-fd" : "--ro-bind-fd",
+    String(SANDBOX_FDS.workspace),
+    "/workspace",
+  ].join("\0");
+  if (
+    !serialized.includes(workspaceMount) ||
+    serialized.includes(forbiddenWorkspaceMount)
+  ) {
+    throw new M1Error(
+      "sandbox_launch_failed",
+      "sandbox process plan changed the frozen profile workspace access",
+    );
+  }
   for (const forbidden of [
     layout.taskRecordDirectory,
     layout.hostBaselineGitDirectory,
@@ -687,9 +1205,12 @@ function assertProcessPlan(
   }
 }
 
-class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
+class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
   readonly #active = new Set<ActiveExecution>();
   readonly #executionCleanupReceipts: SandboxCleanupReceiptV1[] = [];
+  readonly #executionScratches = new Set<SandboxBrokerScratchCleanup>();
+  readonly #bootstrapCleanups =
+    new Set<SandboxBootstrapReadinessCleanupError>();
   #controllerPromise: Promise<SandboxBrokerCgroupController> | undefined;
   #closed = false;
   #cleanupPromise: Promise<SandboxCleanupReceiptV1> | undefined;
@@ -699,11 +1220,17 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
     private readonly capability: SandboxHostCapabilityV1,
     private readonly capabilitySha256: ReturnType<typeof asSha256DigestV1>,
     private readonly hostBinding: SandboxHostBinding,
-    private readonly policy: SandboxPolicyV1,
+    private readonly policy: SandboxPolicy,
     private readonly toolchain:
       | {
           readonly capability: SandboxToolchainCapabilityV1;
           readonly binding: SandboxToolchainBindingV1;
+        }
+      | undefined,
+    private readonly managedRuntime:
+      | {
+          readonly capability: ManagedGodotRuntimeCapabilityV1;
+          readonly binding: ManagedGodotRuntimeBindingV1;
         }
       | undefined,
     private readonly layout: TaskDirectoryLayout,
@@ -734,20 +1261,49 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
       );
     }
 
-    const active = this.startExecution(authorized.request, {
-      ...options,
-      ...(ownedStdin === undefined ? {} : { stdin: ownedStdin }),
-    });
-    this.#active.add(active);
-    try {
-      const result = await active.result;
-      if (result.kind === "executed") {
-        this.#executionCleanupReceipts.push(result.receipt.cleanup);
-      }
-      return result;
-    } finally {
-      this.#active.delete(active);
+    const active = this.trackExecution(
+      this.startExecution(
+        authorized.request,
+        {
+          ...options,
+          ...(ownedStdin === undefined ? {} : { stdin: ownedStdin }),
+        },
+        false,
+      ),
+    );
+    return active.result;
+  }
+
+  public async openDuplex(
+    request: SandboxExecutionRequestV1,
+    options: SandboxDuplexExecutionOptionsV1 = {},
+  ): Promise<SandboxDuplexOpenResultV1> {
+    if (this.#closed) {
+      throw new M1Error(
+        "command_cancelled",
+        "Task sandbox broker is already cleaned",
+      );
     }
+    const authorized = await this.authorizeRequest(request, undefined);
+    if (authorized.kind === "denied") return authorized;
+    if (this.#closed) {
+      throw new M1Error(
+        "command_cancelled",
+        "Task sandbox cleanup won the authorization race",
+      );
+    }
+
+    const active = this.trackExecution(
+      this.startExecution(authorized.request, options, true),
+    );
+    if (!(await active.ready)) return active.result;
+    const handle: SandboxDuplexHandleV1 = Object.freeze({
+      write: (bytes: Uint8Array) => active.write(bytes),
+      endInput: () => active.endInput(),
+      terminate: () => active.terminate(),
+      completion: active.result,
+    });
+    return { kind: "opened", handle };
   }
 
   public cleanup(): Promise<SandboxCleanupReceiptV1> {
@@ -770,6 +1326,24 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
       },
     );
     return attempt;
+  }
+
+  private trackExecution(execution: ActiveExecution): ActiveExecution {
+    const tracked: ActiveExecution = {
+      ...execution,
+      result: execution.result.then((result) => {
+        if (result.kind === "executed") {
+          this.#executionCleanupReceipts.push(result.receipt.cleanup);
+        }
+        return result;
+      }),
+    };
+    this.#active.add(tracked);
+    void tracked.result.then(
+      () => this.#active.delete(tracked),
+      () => this.#active.delete(tracked),
+    );
+    return tracked;
   }
 
   private async authorizeRequest(
@@ -804,9 +1378,13 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         "stdin bytes do not match the declared bounded descriptor",
       );
     }
+    const profileToolchainCapability =
+      request.profile === "godot-headless"
+        ? this.managedRuntime?.capability.toolchain
+        : this.toolchain?.capability;
     const permittedCommands = new Set([
       "/bin/busybox",
-      ...(this.toolchain?.capability.files
+      ...(profileToolchainCapability?.files
         .filter((file) => file.command)
         .map((file) => file.target) ?? []),
     ]);
@@ -829,6 +1407,7 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
     }
     const forbiddenPaths = [
       this.layout.taskRecordDirectory,
+      this.layout.runtimeRecordDirectory,
       this.layout.hostBaselineGitDirectory,
       this.layout.hostOperationTemporaryDirectory,
     ];
@@ -890,33 +1469,17 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
   private startExecution(
     request: SandboxExecutionRequestV1,
     options: SandboxExecutionOptionsV1,
+    duplex: boolean,
   ): ActiveExecution {
     const limits = resolveResourceLimitsV1(request.profile, request.timeoutMs);
-    const runtimeTargets = [
-      { fd: SANDBOX_FDS.runtimeStart, target: "/bin/busybox" },
-      ...this.resources.toolchainFiles.map((file, index) => ({
-        fd: SANDBOX_FDS.runtimeStart + 1 + index,
-        target: file.target,
-      })),
-    ];
-    const plan = this.dependencies.buildProcessPlan({
-      request,
-      limits,
-      binaries: {
-        prlimit: this.hostBinding.prlimitPath,
-        bwrap: this.hostBinding.bwrapPath,
-      },
-      runtimeTargets,
-      unshareCgroupNamespace: this.capability.cgroupNamespaceUnshared,
-    });
-    assertProcessPlan(
-      plan,
-      request,
-      this.hostBinding,
-      this.layout,
-      runtimeTargets,
-      this.toolchain?.binding,
-    );
+    const profileFiles =
+      request.profile === "godot-headless"
+        ? (this.resources.managedRuntimeFiles ?? [])
+        : this.resources.toolchainFiles;
+    const profileBinding =
+      request.profile === "godot-headless"
+        ? this.managedRuntime?.binding.toolchain
+        : this.toolchain?.binding;
 
     const startedAtMonotonicMs = this.clock.now();
     const stdoutCapture = new BoundedOutputCapture(limits.stdoutMaxBytes);
@@ -924,16 +1487,95 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
     const runtime: ExecutionRuntime = {
       scope: undefined,
       session: undefined,
+      bootstrapCleanup: undefined,
+      scratch: undefined,
+      scratchCleanup: undefined,
+      scratchCreationFailed: false,
       stdoutDrain: undefined,
       stderrDrain: undefined,
     };
     const setupDone = deferred<void>();
+    const ready = deferred<boolean>();
     const terminal = deferred<TerminalReason>();
+    let readyPublished = false;
+    const publishReady = (value: boolean): void => {
+      if (readyPublished) return;
+      readyPublished = true;
+      ready.resolve(value);
+    };
     let terminalReason: TerminalReason | undefined;
+    let inputClosed = false;
+    let inputTail: Promise<void> = Promise.resolve();
+    let endInputPromise: Promise<void> | undefined;
     const selectTerminal = (reason: TerminalReason): void => {
       if (terminalReason !== undefined) return;
       terminalReason = reason;
+      inputClosed = true;
       terminal.resolve(reason);
+    };
+    const inputUnavailable = (): M1Error =>
+      new M1Error(
+        "command_cancelled",
+        "Sandbox duplex stdin is ended or the execution has terminated",
+      );
+    const write = (bytes: Uint8Array): Promise<void> => {
+      if (!duplex) {
+        return Promise.reject(
+          new M1Error(
+            "capability_denied",
+            "One-shot sandbox executions do not expose duplex stdin",
+          ),
+        );
+      }
+      if (!(bytes instanceof Uint8Array)) {
+        return Promise.reject(
+          new TypeError("Sandbox duplex input must be a Uint8Array"),
+        );
+      }
+      if (inputClosed) return Promise.reject(inputUnavailable());
+      const owned = Uint8Array.from(bytes);
+      const pending = inputTail.then(async () => {
+        if (terminalReason !== undefined || runtime.session === undefined) {
+          throw inputUnavailable();
+        }
+        await runtime.session.writeStdin(owned);
+      });
+      const guarded = pending.catch((error: unknown) => {
+        inputClosed = true;
+        selectTerminal({ kind: "launch_failed", error });
+        throw error;
+      });
+      inputTail = guarded.then(
+        () => undefined,
+        () => undefined,
+      );
+      return guarded;
+    };
+    const endInput = (): Promise<void> => {
+      if (!duplex) {
+        return Promise.reject(
+          new M1Error(
+            "capability_denied",
+            "One-shot sandbox executions do not expose duplex stdin",
+          ),
+        );
+      }
+      if (endInputPromise !== undefined) return endInputPromise;
+      if (inputClosed) return Promise.reject(inputUnavailable());
+      inputClosed = true;
+      const pending = inputTail.then(async () => {
+        if (runtime.session === undefined) throw inputUnavailable();
+        await runtime.session.endStdin();
+      });
+      endInputPromise = pending.catch((error: unknown) => {
+        selectTerminal({ kind: "launch_failed", error });
+        throw error;
+      });
+      inputTail = endInputPromise.then(
+        () => undefined,
+        () => undefined,
+      );
+      return endInputPromise;
     };
     const timer = setTimeout(
       () => selectTerminal({ kind: "timeout" }),
@@ -946,6 +1588,120 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
     void (async () => {
       try {
         if (terminalReason !== undefined) return;
+        let runtimeScratchTarget:
+          { readonly fd: number; readonly target: string } | undefined;
+        if (request.profile === "godot-headless") {
+          let scratch: SandboxBrokerExecutionScratch;
+          try {
+            scratch = await this.dependencies.createExecutionScratch({
+              layout: this.layout,
+              operationId: request.operationId,
+            });
+          } catch (error) {
+            if (error instanceof SandboxExecutionScratchCreationError) {
+              runtime.scratchCleanup = error.scratch;
+              runtime.scratchCreationFailed = true;
+              this.#executionScratches.add(error.scratch);
+            }
+            throw error;
+          }
+          runtime.scratch = scratch;
+          runtime.scratchCleanup = scratch;
+          this.#executionScratches.add(scratch);
+          const existingDescriptors = [
+            this.resources.workspaceFd,
+            this.resources.temporaryFd,
+            this.resources.artifactsFd,
+            this.resources.runtimeFd,
+            ...profileFiles.map((file) => file.fd),
+            ...(this.resources.managedFontconfig === undefined
+              ? []
+              : [this.resources.managedFontconfig.fd]),
+            ...(this.resources.managedAddon === undefined
+              ? []
+              : [
+                  this.resources.managedAddon.parentFd,
+                  this.resources.managedAddon.fd,
+                ]),
+          ];
+          if (
+            !Number.isInteger(scratch.fd) ||
+            scratch.fd < 0 ||
+            existingDescriptors.includes(scratch.fd) ||
+            !isAbsolute(scratch.path) ||
+            resolve(scratch.path) !== scratch.path ||
+            scratch.path === this.layout.hostOperationTemporaryDirectory ||
+            !pathAtOrBelow(
+              this.layout.hostOperationTemporaryDirectory,
+              scratch.path,
+            )
+          ) {
+            throw new M1Error(
+              "sandbox_preflight_failed",
+              "operation scratch crossed its fixed Task storage boundary",
+            );
+          }
+          if (
+            this.capability.taskStorage === undefined ||
+            this.hostBinding.taskStorageRoot === undefined
+          ) {
+            throw new M1Error(
+              "resource_limit_unavailable",
+              "Godot operation scratch requires bounded aggregate Task storage",
+            );
+          }
+          await this.dependencies.inspectTaskStorage({
+            capability: this.capability.taskStorage,
+            taskStorageRoot: this.hostBinding.taskStorageRoot,
+            layoutPaths: [...taskLayoutPaths(this.layout), scratch.path],
+          });
+          runtimeScratchTarget = {
+            fd: SANDBOX_FDS.runtimeScratch,
+            target: "/run/chronorift",
+          };
+        }
+        if (terminalReason !== undefined) return;
+        const runtimeStart =
+          SANDBOX_FDS.runtimeStart +
+          (runtimeScratchTarget === undefined ? 0 : 1);
+        const runtimeTargets = [
+          "/bin/busybox",
+          ...profileFiles.map((file) => file.target),
+          ...(request.profile === "godot-headless" &&
+          this.resources.managedFontconfig !== undefined
+            ? [this.resources.managedFontconfig.target]
+            : []),
+          ...(request.profile === "godot-headless" &&
+          this.resources.managedAddon !== undefined
+            ? [
+                this.resources.managedAddon.parentTarget,
+                this.resources.managedAddon.target,
+              ]
+            : []),
+        ].map((target, index) => ({ fd: runtimeStart + index, target }));
+        const plan = this.dependencies.buildProcessPlan({
+          request,
+          limits,
+          binaries: {
+            prlimit: this.hostBinding.prlimitPath,
+            bwrap: this.hostBinding.bwrapPath,
+          },
+          ...(runtimeScratchTarget === undefined
+            ? {}
+            : { runtimeScratch: runtimeScratchTarget }),
+          runtimeTargets,
+          unshareCgroupNamespace: this.capability.cgroupNamespaceUnshared,
+        });
+        assertProcessPlan(
+          plan,
+          request,
+          this.hostBinding,
+          this.layout,
+          runtimeScratchTarget,
+          runtimeTargets,
+          profileBinding,
+        );
+        if (terminalReason !== undefined) return;
         const controller = await this.controller();
         if (terminalReason !== undefined) return;
         runtime.scope = await controller.createExecutionScope(
@@ -953,16 +1709,36 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
           limits,
         );
         if (terminalReason !== undefined) return;
-        runtime.session = await this.dependencies.startBootstrap({
-          cwd: this.layout.taskRootDirectory,
-          inheritedFds: [
-            this.resources.workspaceFd,
-            this.resources.temporaryFd,
-            this.resources.artifactsFd,
-            this.resources.runtimeFd,
-            ...this.resources.toolchainFiles.map((file) => file.fd),
-          ],
-        });
+        try {
+          runtime.session = await this.dependencies.startBootstrap({
+            cwd: this.layout.taskRootDirectory,
+            inheritedFds: [
+              this.resources.workspaceFd,
+              this.resources.temporaryFd,
+              this.resources.artifactsFd,
+              ...(runtime.scratch === undefined ? [] : [runtime.scratch.fd]),
+              this.resources.runtimeFd,
+              ...profileFiles.map((file) => file.fd),
+              ...(request.profile === "godot-headless" &&
+              this.resources.managedFontconfig !== undefined
+                ? [this.resources.managedFontconfig.fd]
+                : []),
+              ...(request.profile === "godot-headless" &&
+              this.resources.managedAddon !== undefined
+                ? [
+                    this.resources.managedAddon.parentFd,
+                    this.resources.managedAddon.fd,
+                  ]
+                : []),
+            ],
+          });
+        } catch (error) {
+          if (error instanceof SandboxBootstrapReadinessCleanupError) {
+            runtime.bootstrapCleanup = error;
+            this.#bootstrapCleanups.add(error);
+          }
+          throw error;
+        }
         runtime.stdoutDrain = captureStream(
           runtime.session.stdout,
           stdoutCapture,
@@ -999,15 +1775,22 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
           runtime.session.waitForSandboxStatus(),
         ]);
         if (terminalReason !== undefined) return;
-        const stdinDelivery = runtime.session.provideStdin(
-          options.stdin ?? new Uint8Array(),
-        );
-        void stdinDelivery.catch(() => undefined);
-        await runtime.session.authorize();
-        await stdinDelivery;
+        if (duplex) {
+          await runtime.session.authorize();
+          if (terminalReason !== undefined) return;
+          publishReady(true);
+        } else {
+          const stdinDelivery = runtime.session.provideStdin(
+            options.stdin ?? new Uint8Array(),
+          );
+          void stdinDelivery.catch(() => undefined);
+          await runtime.session.authorize();
+          await stdinDelivery;
+        }
       } catch (error) {
         selectTerminal({ kind: "launch_failed", error });
       } finally {
+        publishReady(false);
         setupDone.resolve();
       }
     })();
@@ -1040,6 +1823,7 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
           await this.reportDiagnostic(error);
         }
       }
+
       if (cgroupPopulated && runtime.session !== undefined) {
         await requestTermination();
         if (termSent) await this.dependencies.sleep(250);
@@ -1077,9 +1861,36 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
           }
         }
       }
+      let aggregateStorageObserved = false;
+      if (
+        this.capability.taskStorage !== undefined &&
+        this.hostBinding.taskStorageRoot !== undefined
+      ) {
+        try {
+          const aggregateStorage = await this.dependencies.inspectTaskStorage({
+            capability: this.capability.taskStorage,
+            taskStorageRoot: this.hostBinding.taskStorageRoot,
+            layoutPaths: [
+              ...taskLayoutPaths(this.layout),
+              ...(runtime.scratchCleanup === undefined
+                ? []
+                : [runtime.scratchCleanup.path]),
+            ],
+          });
+          resourceUsage = {
+            ...resourceUsage,
+            aggregateStorage,
+          };
+          aggregateStorageObserved = true;
+        } catch (error) {
+          await this.reportDiagnostic(error);
+        }
+      }
 
+      let bootstrapExited =
+        runtime.session === undefined && runtime.bootstrapCleanup === undefined;
       if (runtime.session !== undefined) {
-        await Promise.race([
+        bootstrapExited = await Promise.race([
           runtime.session.waitForBootstrapExit().then(
             () => true,
             () => true,
@@ -1092,12 +1903,40 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         runtime.stderrDrain?.settled ?? Promise.resolve(),
       ]);
 
+      let scratchRemoved = runtime.scratchCleanup === undefined;
+      if (runtime.scratchCleanup !== undefined) {
+        if (
+          !runtime.scratchCreationFailed &&
+          bootstrapExited &&
+          !cgroupPopulated &&
+          scopeRemoved
+        ) {
+          try {
+            await runtime.scratchCleanup.close();
+            this.#executionScratches.delete(runtime.scratchCleanup);
+            scratchRemoved = true;
+          } catch (error) {
+            await this.reportDiagnostic(error);
+          }
+        } else {
+          await this.reportDiagnostic(
+            new M1Error(
+              "sandbox_launch_failed",
+              "operation scratch retained until process and cgroup cleanup are proven",
+            ),
+          );
+        }
+      }
+      const processGroupTerminated =
+        bootstrapExited && scopeRemoved && !cgroupPopulated;
+      const allResourcesRemoved = processGroupTerminated && scratchRemoved;
+
       const cleanup = SandboxCleanupReceiptV1Schema.parse({
-        processGroupTerminated: scopeRemoved && !cgroupPopulated,
+        processGroupTerminated,
         cgroupPopulated,
         termSent,
         killSent,
-        scopeRemoved,
+        scopeRemoved: allResourcesRemoved,
       });
       const status: SandboxExecutionReceiptV1["status"] =
         reason.kind === "exit"
@@ -1122,7 +1961,10 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         status,
         requested: request,
         realizedResources: limits,
-        realizedMechanisms: REALIZED_MECHANISMS,
+        realizedMechanisms: realizedMechanismsFor(
+          this.capability,
+          aggregateStorageObserved,
+        ),
         resourceUsage,
         stdout: stdoutCapture.receipt(),
         stderr: stderrCapture.receipt(),
@@ -1139,7 +1981,17 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         stderr: stderrCapture.bytes(),
       };
     })();
-    return { cancel: () => selectTerminal({ kind: "cancelled" }), result };
+    return {
+      cancel: () => selectTerminal({ kind: "cancelled" }),
+      ready: ready.promise,
+      write,
+      endInput,
+      terminate: () => {
+        selectTerminal({ kind: "cancelled" });
+        return Promise.resolve();
+      },
+      result,
+    };
   }
 
   private controller(): Promise<SandboxBrokerCgroupController> {
@@ -1163,6 +2015,21 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
     for (const execution of this.#active) execution.cancel();
     await Promise.allSettled([...this.#active].map(({ result }) => result));
 
+    const bootstrapCleanups = [...this.#bootstrapCleanups];
+    const bootstrapCleanupResults = await Promise.allSettled(
+      bootstrapCleanups.map((owner) => owner.retryCleanup()),
+    );
+    for (const [index, result] of bootstrapCleanupResults.entries()) {
+      const owner = bootstrapCleanups[index];
+      if (owner === undefined) continue;
+      if (result.status === "fulfilled") {
+        this.#bootstrapCleanups.delete(owner);
+      } else {
+        await this.reportDiagnostic(result.reason);
+      }
+    }
+    const bootstrapProcessesCleaned = this.#bootstrapCleanups.size === 0;
+
     let controllerCleaned = this.#controllerPromise === undefined;
     if (this.#controllerPromise !== undefined) {
       try {
@@ -1172,6 +2039,22 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
         await this.reportDiagnostic(error);
       }
     }
+    if (controllerCleaned && bootstrapProcessesCleaned) {
+      const scratches = [...this.#executionScratches];
+      const scratchResults = await Promise.allSettled(
+        scratches.map((scratch) => scratch.close()),
+      );
+      for (const [index, result] of scratchResults.entries()) {
+        const scratch = scratches[index];
+        if (scratch === undefined) continue;
+        if (result.status === "fulfilled") {
+          this.#executionScratches.delete(scratch);
+        } else {
+          await this.reportDiagnostic(result.reason);
+        }
+      }
+    }
+    const scratchesClosed = this.#executionScratches.size === 0;
     let resourcesClosed = false;
     try {
       await this.resources.close();
@@ -1180,8 +2063,12 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
       await this.reportDiagnostic(error);
     }
 
+    const processGroupsTerminated =
+      controllerCleaned && bootstrapProcessesCleaned;
+    const allResourcesRemoved =
+      processGroupsTerminated && scratchesClosed && resourcesClosed;
     return SandboxCleanupReceiptV1Schema.parse({
-      processGroupTerminated: controllerCleaned && resourcesClosed,
+      processGroupTerminated: processGroupsTerminated,
       cgroupPopulated: !controllerCleaned,
       termSent: this.#executionCleanupReceipts.some(
         (receipt) => receipt.termSent,
@@ -1189,31 +2076,48 @@ class BwrapCgroupTaskSandbox implements TaskSandboxBrokerV1 {
       killSent: this.#executionCleanupReceipts.some(
         (receipt) => receipt.killSent,
       ),
-      scopeRemoved: controllerCleaned && resourcesClosed,
+      scopeRemoved: allResourcesRemoved,
     });
   }
 }
 
-export async function createBwrapCgroupTaskSandbox(
-  options: {
-    readonly taskId: TaskId;
-    readonly capability: SandboxHostCapabilityV1;
-    readonly hostBinding: SandboxHostBinding;
-    readonly policy: SandboxPolicyV1;
-    readonly toolchain?:
-      | {
-          readonly capability: SandboxToolchainCapabilityV1;
-          readonly binding: SandboxToolchainBindingV1;
-        }
-      | undefined;
-    readonly layout: TaskDirectoryLayout;
-    readonly securityEvents: (event: SecurityEventV1) => Promise<void>;
-    readonly clock?: MonotonicClockV1 | undefined;
-  },
+export interface CreateBwrapCgroupTaskSandboxOptionsV1 {
+  readonly taskId: TaskId;
+  readonly capability: SandboxHostCapabilityV1;
+  readonly hostBinding: SandboxHostBinding;
+  readonly policy: SandboxPolicy;
+  readonly toolchain?:
+    | {
+        readonly capability: SandboxToolchainCapabilityV1;
+        readonly binding: SandboxToolchainBindingV1;
+      }
+    | undefined;
+  readonly managedRuntime?:
+    | {
+        readonly capability: ManagedGodotRuntimeCapabilityV1;
+        readonly binding: ManagedGodotRuntimeBindingV1;
+      }
+    | undefined;
+  readonly layout: TaskDirectoryLayout;
+  readonly securityEvents: (event: SecurityEventV1) => Promise<void>;
+  readonly clock?: MonotonicClockV1 | undefined;
+}
+
+export async function createDuplexBwrapCgroupTaskSandbox(
+  options: CreateBwrapCgroupTaskSandboxOptionsV1,
   dependencies: SandboxBrokerDependencies = defaultDependencies,
-): Promise<TaskSandboxBrokerV1> {
+): Promise<DuplexTaskSandboxBrokerV1> {
   const capability = SandboxHostCapabilityV1Schema.parse(options.capability);
-  const policy = SandboxPolicyV1Schema.parse(options.policy);
+  const policy = SandboxPolicySchema.parse(options.policy);
+  if (
+    policy.schemaVersion === 2 &&
+    capability.bwrap.features.at(-1) !== "remount-ro"
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "Sandbox Policy V2 requires frozen bubblewrap remount-ro support",
+    );
+  }
   const toolchain =
     options.toolchain === undefined
       ? undefined
@@ -1223,16 +2127,53 @@ export async function createBwrapCgroupTaskSandbox(
           ),
           binding: options.toolchain.binding,
         };
+  const managedRuntime =
+    options.managedRuntime === undefined
+      ? undefined
+      : {
+          capability: ManagedGodotRuntimeCapabilityV1Schema.parse(
+            options.managedRuntime.capability,
+          ),
+          binding: options.managedRuntime.binding,
+        };
+  assertHostBinding(capability, options.hostBinding);
+  const hostBinding = Object.freeze({ ...options.hostBinding });
   if (toolchain !== undefined) {
     assertToolchainBinding(toolchain.capability, toolchain.binding);
   }
-  assertHostBinding(options.hostBinding);
+  if (managedRuntime !== undefined) {
+    assertManagedGodotRuntimeBinding(
+      managedRuntime.capability,
+      managedRuntime.binding,
+    );
+    const shellIndex = managedRuntime.capability.toolchain.files.findIndex(
+      (file) => file.target === DEFAULT_RUNTIME_SIDECAR_TARGETS.shellExecutable,
+    );
+    if (
+      shellIndex < 0 ||
+      managedRuntime.capability.toolchain.files[shellIndex]?.sha256 !==
+        capability.runtimeIdentity ||
+      managedRuntime.binding.toolchain.files[shellIndex]?.hostPath !==
+        hostBinding.busyboxPath
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "managed /bin/sh must reuse the frozen sandbox busybox identity",
+      );
+    }
+  }
   assertLayout(options.taskId, options.layout);
-  const hostBinding = Object.freeze({ ...options.hostBinding });
+  assertLayoutWithinTaskStorage(
+    capability,
+    hostBinding,
+    options.layout,
+    managedRuntime?.capability,
+  );
   assertHostExecutablesOutsideWritableLayout(
     hostBinding,
     options.layout,
     toolchain?.binding,
+    managedRuntime?.binding,
   );
   if (policy.runtimeIdentity !== capability.runtimeIdentity) {
     throw new M1Error(
@@ -1240,19 +2181,73 @@ export async function createBwrapCgroupTaskSandbox(
       "sandbox policy runtime does not match the Host capability",
     );
   }
-  const expectedReadonlyTargets = [
-    "/bin/busybox",
-    ...(toolchain?.capability.files.map((file) => file.target) ?? []),
-  ].sort();
-  if (
-    policy.toolchainId !== (toolchain?.capability.toolchainId ?? null) ||
-    JSON.stringify(policy.readonlyTargets) !==
-      JSON.stringify(expectedReadonlyTargets)
+  const targetsFor = (
+    frozen: { readonly capability: SandboxToolchainCapabilityV1 } | undefined,
+  ): readonly string[] =>
+    [
+      "/bin/busybox",
+      ...(frozen?.capability.files.map((file) => file.target) ?? []),
+    ].sort();
+  const managedTargets = (): readonly string[] =>
+    managedRuntime === undefined
+      ? ["/bin/busybox"]
+      : [
+          "/bin/busybox",
+          ...managedRuntime.capability.toolchain.files.map(
+            (file) => file.target,
+          ),
+          managedRuntime.capability.fontconfigTarget,
+          managedRuntime.capability.addonParentTarget,
+          managedRuntime.capability.addonTarget,
+        ].sort();
+  if (policy.schemaVersion === 1) {
+    if (managedRuntime !== undefined) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "Sandbox Policy V1 policy cannot authorize a managed runtime",
+      );
+    }
+    if (
+      policy.toolchainId !== (toolchain?.capability.toolchainId ?? null) ||
+      JSON.stringify(policy.readonlyTargets) !==
+        JSON.stringify(targetsFor(toolchain))
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "sandbox policy does not match the frozen toolchain capability",
+      );
+    }
+  } else if (
+    toolchain === undefined ||
+    managedRuntime === undefined ||
+    policy.profileBindings["coding-default"].toolchainId !==
+      toolchain.capability.toolchainId ||
+    policy.profileBindings["coding-default"].managedRuntimeId !== null ||
+    policy.profileBindings["coding-default"].workspaceAccess !== "read-write" ||
+    JSON.stringify(policy.profileBindings["coding-default"].readonlyTargets) !==
+      JSON.stringify(targetsFor(toolchain)) ||
+    policy.profileBindings["godot-headless"].toolchainId !==
+      managedRuntime.capability.toolchain.toolchainId ||
+    policy.profileBindings["godot-headless"].managedRuntimeId !==
+      managedRuntime.capability.managedRuntimeId ||
+    policy.profileBindings["godot-headless"].workspaceAccess !== "read-only" ||
+    JSON.stringify(policy.profileBindings["godot-headless"].readonlyTargets) !==
+      JSON.stringify(managedTargets())
   ) {
     throw new M1Error(
       "sandbox_preflight_failed",
-      "sandbox policy does not match the frozen toolchain capability",
+      "sandbox Policy V2 profile bindings do not match the frozen toolchains",
     );
+  }
+  if (
+    capability.taskStorage !== undefined &&
+    hostBinding.taskStorageRoot !== undefined
+  ) {
+    await dependencies.inspectTaskStorage({
+      capability: capability.taskStorage,
+      taskStorageRoot: hostBinding.taskStorageRoot,
+      layoutPaths: taskLayoutPaths(options.layout),
+    });
   }
   await Promise.all([
     dependencies.verifyExecutableTrust(hostBinding.bwrapPath),
@@ -1264,9 +2259,28 @@ export async function createBwrapCgroupTaskSandbox(
     hostBinding,
     layout: options.layout,
     ...(toolchain === undefined ? {} : { toolchain }),
+    ...(managedRuntime === undefined ? {} : { managedRuntime }),
   });
   try {
     assertBoundDescriptors(resources);
+    if (
+      (managedRuntime === undefined) !==
+        (resources.managedAddon === undefined) ||
+      (managedRuntime === undefined) !==
+        (resources.managedFontconfig === undefined) ||
+      (managedRuntime !== undefined &&
+        (resources.managedAddon?.target !==
+          managedRuntime.capability.addonTarget ||
+          resources.managedAddon.parentTarget !==
+            managedRuntime.capability.addonParentTarget ||
+          resources.managedFontconfig?.target !==
+            managedRuntime.capability.fontconfigTarget))
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "pinned managed addon does not match the frozen runtime target",
+      );
+    }
     const capabilitySha256 = asSha256DigestV1(
       contentHash(capability as unknown as JsonValue),
     );
@@ -1277,6 +2291,7 @@ export async function createBwrapCgroupTaskSandbox(
       hostBinding,
       policy,
       toolchain,
+      managedRuntime,
       options.layout,
       resources,
       options.securityEvents,
@@ -1284,7 +2299,13 @@ export async function createBwrapCgroupTaskSandbox(
       dependencies,
     );
   } catch (error) {
-    await resources.close().catch(() => undefined);
-    throw error;
+    return rethrowAfterBoundedSetupCleanup(error, () => resources.close());
   }
+}
+
+export async function createBwrapCgroupTaskSandbox(
+  options: CreateBwrapCgroupTaskSandboxOptionsV1,
+  dependencies: SandboxBrokerDependencies = defaultDependencies,
+): Promise<TaskSandboxBrokerV1> {
+  return createDuplexBwrapCgroupTaskSandbox(options, dependencies);
 }

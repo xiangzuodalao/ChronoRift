@@ -23,6 +23,11 @@ const inspection = (conflicting = false): SandboxToolchainInspectionPort => ({
       },
     ],
   }),
+  inspectExecutableFile: async (file) => ({
+    target: file.target,
+    canonicalHostPath: file.hostPath,
+    bytes: Buffer.from(`file:${file.target}`),
+  }),
 });
 
 describe("sandbox toolchain manifest", () => {
@@ -49,6 +54,46 @@ describe("sandbox toolchain manifest", () => {
     expect(result.binding.files).toContainEqual({
       target: "/bin/bash",
       hostPath: "/host/bin/bash",
+    });
+  });
+
+  it("freezes dependency closures and raw runtime executables without authorizing their anchors", async () => {
+    const result = await inspectSandboxToolchain({
+      lddPath: "/unused/ldd",
+      commands: [{ target: "/opt/runtime/node", hostPath: "/host/bin/node" }],
+      dependencyAnchors: [
+        { target: "/opt/runtime/fc-match", hostPath: "/host/bin/fc-match" },
+      ],
+      runtimeExecutableFiles: [
+        { target: "/bin/sh", hostPath: "/host/bin/busybox" },
+        {
+          target: "/opt/runtime/xdg-user-dir",
+          hostPath: "/host/bin/xdg-user-dir",
+        },
+      ],
+      inspection: inspection(),
+    });
+
+    expect(
+      result.capability.files
+        .filter((file) => file.command)
+        .map(({ target }) => target),
+    ).toEqual(["/opt/runtime/node"]);
+    expect(result.capability.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ target: "/bin/sh", command: false }),
+        expect.objectContaining({
+          target: "/opt/runtime/xdg-user-dir",
+          command: false,
+        }),
+      ]),
+    );
+    expect(result.capability.files.map((file) => file.target)).not.toContain(
+      "/opt/runtime/fc-match",
+    );
+    expect(result.binding.files).toContainEqual({
+      target: "/opt/runtime/xdg-user-dir",
+      hostPath: "/host/bin/xdg-user-dir",
     });
   });
 

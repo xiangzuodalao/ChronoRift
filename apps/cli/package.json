@@ -8,9 +8,11 @@
     "@chronorift/domain": "workspace:*",
     "@chronorift/gamebranch": "workspace:*",
     "@chronorift/godot-adapter": "workspace:*",
+    "@chronorift/godot-protocol": "workspace:*",
     "@chronorift/json-artifacts": "workspace:*",
     "@chronorift/mock-game": "workspace:*",
     "@chronorift/pi-harness": "workspace:*",
+    "typebox": "1.3.7",
     "zod": "4.4.3"
   }
 }

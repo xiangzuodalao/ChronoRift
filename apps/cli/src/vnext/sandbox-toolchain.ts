@@ -45,6 +45,9 @@ export interface SandboxToolchainInspectionPort {
   inspectCommand(
     command: SandboxToolchainCommandBindingV1,
   ): Promise<InspectedToolchainCommand>;
+  inspectExecutableFile(
+    file: SandboxToolchainCommandBindingV1,
+  ): Promise<InspectedToolchainFile>;
 }
 
 const sha256 = (bytes: Uint8Array) =>
@@ -132,20 +135,49 @@ class RealSandboxToolchainInspection implements SandboxToolchainInspectionPort {
       dependencies,
     };
   }
+
+  public async inspectExecutableFile(
+    file: SandboxToolchainCommandBindingV1,
+  ): Promise<InspectedToolchainFile> {
+    const target = SandboxToolchainTargetV1Schema.parse(file.target);
+    const canonicalHostPath = await assertTrustedHostExecutablePath(
+      file.hostPath,
+    );
+    return {
+      target,
+      canonicalHostPath,
+      bytes: await readFile(canonicalHostPath),
+    };
+  }
 }
 
 export async function inspectSandboxToolchain(input: {
   readonly lddPath: string;
   readonly commands: readonly SandboxToolchainCommandBindingV1[];
+  readonly dependencyAnchors?:
+    readonly SandboxToolchainCommandBindingV1[] | undefined;
+  readonly runtimeExecutableFiles?:
+    readonly SandboxToolchainCommandBindingV1[] | undefined;
   readonly inspection?: SandboxToolchainInspectionPort | undefined;
 }): Promise<{
   readonly capability: SandboxToolchainCapabilityV1;
   readonly binding: SandboxToolchainBindingV1;
 }> {
-  if (input.commands.length === 0 || input.commands.length > 32) {
+  const dependencyAnchors = input.dependencyAnchors ?? [];
+  const runtimeExecutableFiles = input.runtimeExecutableFiles ?? [];
+  if (
+    input.commands.length === 0 ||
+    input.commands.length > 32 ||
+    dependencyAnchors.length > 32 ||
+    runtimeExecutableFiles.length > 32 ||
+    input.commands.length +
+      dependencyAnchors.length +
+      runtimeExecutableFiles.length >
+      64
+  ) {
     throw new M1Error(
       "sandbox_preflight_failed",
-      "toolchain must declare between 1 and 32 commands",
+      "toolchain executable declaration exceeds its frozen bounds",
     );
   }
   if (input.inspection === undefined) {
@@ -153,8 +185,16 @@ export async function inspectSandboxToolchain(input: {
   }
   const inspection =
     input.inspection ?? new RealSandboxToolchainInspection(input.lddPath);
-  const inspected = await Promise.all(
+  const inspectedCommands = await Promise.all(
     input.commands.map((command) => inspection.inspectCommand(command)),
+  );
+  const inspectedDependencyAnchors = await Promise.all(
+    dependencyAnchors.map((command) => inspection.inspectCommand(command)),
+  );
+  const inspectedRuntimeFiles = await Promise.all(
+    runtimeExecutableFiles.map((file) =>
+      inspection.inspectExecutableFile(file),
+    ),
   );
   const files = new Map<
     string,
@@ -183,10 +223,14 @@ export async function inspectSandboxToolchain(input: {
       command: command || existing?.command === true,
     });
   };
-  for (const command of inspected) {
+  for (const command of inspectedCommands) {
     addFile(command, true);
     for (const dependency of command.dependencies) addFile(dependency, false);
   }
+  for (const command of inspectedDependencyAnchors) {
+    for (const dependency of command.dependencies) addFile(dependency, false);
+  }
+  for (const file of inspectedRuntimeFiles) addFile(file, false);
   const ordered = [...files.entries()].sort(([left], [right]) =>
     left.localeCompare(right),
   );

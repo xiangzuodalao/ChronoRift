@@ -59,6 +59,18 @@ describe("M1 contracts", () => {
     expect(SandboxBwrapCapabilityV1Schema.parse(capability).version).toBe(
       "bubblewrap 1.0",
     );
+    expect(
+      SandboxBwrapCapabilityV1Schema.parse({
+        ...capability,
+        features: [...capability.features, "remount-ro"],
+      }).features,
+    ).toEqual([...capability.features, "remount-ro"]);
+    expect(() =>
+      SandboxBwrapCapabilityV1Schema.parse({
+        ...capability,
+        features: ["block-fd", "json-status-fd", "bind-fd"],
+      }),
+    ).toThrow();
     expect(() =>
       SandboxBwrapCapabilityV1Schema.parse({
         ...capability,
@@ -325,7 +337,46 @@ describe("M1 contracts", () => {
         scopeRemoved: true,
       },
     } as const;
-    expect(SandboxExecutionReceiptV1Schema.parse(receipt).exitCode).toBe(0);
+    const historical = SandboxExecutionReceiptV1Schema.parse(receipt);
+    expect(historical.exitCode).toBe(0);
+    expect(historical.realizedMechanisms.aggregateStorage).toBeUndefined();
+    expect(historical.realizedMechanisms.unavailable).toEqual([]);
+
+    const unavailableAggregateStorage = SandboxExecutionReceiptV1Schema.parse({
+      ...receipt,
+      realizedMechanisms: {
+        ...receipt.realizedMechanisms,
+        unavailable: ["aggregate-storage"],
+      },
+    });
+    expect(unavailableAggregateStorage.realizedMechanisms.unavailable).toEqual([
+      "aggregate-storage",
+    ]);
+
+    const boundedAggregateStorage = SandboxExecutionReceiptV1Schema.parse({
+      ...receipt,
+      realizedMechanisms: {
+        ...receipt.realizedMechanisms,
+        aggregateStorage: "dedicated-capacity-bounded-filesystem-v1",
+      },
+      resourceUsage: {
+        ...receipt.resourceUsage,
+        aggregateStorage: { usedBytes: 4_096, usedInodes: 12 },
+      },
+    });
+    expect(boundedAggregateStorage.resourceUsage.aggregateStorage).toEqual({
+      usedBytes: 4_096,
+      usedInodes: 12,
+    });
+    expect(() =>
+      SandboxExecutionReceiptV1Schema.parse({
+        ...receipt,
+        realizedMechanisms: {
+          ...receipt.realizedMechanisms,
+          aggregateStorage: "dedicated-capacity-bounded-filesystem-v1",
+        },
+      }),
+    ).toThrow(/aggregate storage usage/iu);
     expect(() =>
       SandboxExecutionReceiptV1Schema.parse({
         ...receipt,

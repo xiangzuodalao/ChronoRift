@@ -167,6 +167,7 @@ const blueprints: Readonly<Record<V03FixtureName, FixtureBlueprint>> = {
     participantState: {
       started: false,
       jumping: false,
+      windowOpen: false,
       leftFrame: -1,
       processCallbacks: 0,
     },

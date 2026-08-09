@@ -11,3 +11,8 @@ export * from "./services/v04-gamebranch-service.js";
 export * from "./services/v03-benchmark-service.js";
 export * from "./services/v03-benchmark-v2-service.js";
 export * from "./services/v03-benchmark-v3-service.js";
+export * from "./services/vnext-checkpoint-restore.js";
+export * from "./services/vnext-descriptive-comparison.js";
+export * from "./services/vnext-rolling-capture.js";
+export * from "./services/vnext-runtime-state-index.js";
+export * from "./services/vnext-trace-replay.js";

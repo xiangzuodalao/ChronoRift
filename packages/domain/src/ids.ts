@@ -34,9 +34,29 @@ export type EvidenceAccessReceiptId = Id<"EvidenceAccessReceiptId">;
 export type InvestigationId = Id<"InvestigationId">;
 export type ClaimPolicyId = Id<"ClaimPolicyId">;
 export type ExperimentReservationId = Id<"ExperimentReservationId">;
+/** vNext task-scoped runtime resource identities. They are opaque IDs, not paths. */
+export type WorkspaceId = Id<"WorkspaceId">;
+export type SourceId = Id<"SourceId">;
+export type BuildId = Id<"BuildId">;
+export type RuntimeId = Id<"RuntimeId">;
+export type AdapterId = Id<"AdapterId">;
+export type ProbeId = Id<"ProbeId">;
+export type CaptureWindowId = Id<"CaptureWindowId">;
+export type TraceId = Id<"TraceId">;
+export type RuntimeStateIndexId = Id<"RuntimeStateIndexId">;
+export type RestoreReceiptId = Id<"RestoreReceiptId">;
 
 const idSchema = <T extends string>(): z.ZodType<Id<T>> =>
   z.string().min(1) as unknown as z.ZodType<Id<T>>;
+
+const opaqueResourceIdSchema = <T extends string>(): z.ZodType<Id<T>> =>
+  z
+    .string()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u)
+    .refine((value) => !value.includes(".."), {
+      message:
+        "Resource IDs are opaque identities and cannot contain path traversal",
+    }) as unknown as z.ZodType<Id<T>>;
 
 export const RunIdSchema = idSchema<"RunId">();
 export const BranchIdSchema = idSchema<"BranchId">();
@@ -69,6 +89,19 @@ export const InvestigationIdSchema = idSchema<"InvestigationId">();
 export const ClaimPolicyIdSchema = idSchema<"ClaimPolicyId">();
 export const ExperimentReservationIdSchema =
   idSchema<"ExperimentReservationId">();
+export const WorkspaceIdSchema = opaqueResourceIdSchema<"WorkspaceId">();
+export const SourceIdSchema = opaqueResourceIdSchema<"SourceId">();
+export const BuildIdSchema = opaqueResourceIdSchema<"BuildId">();
+export const RuntimeIdSchema = opaqueResourceIdSchema<"RuntimeId">();
+export const AdapterIdSchema = opaqueResourceIdSchema<"AdapterId">();
+export const ProbeIdSchema = opaqueResourceIdSchema<"ProbeId">();
+export const CaptureWindowIdSchema =
+  opaqueResourceIdSchema<"CaptureWindowId">();
+export const TraceIdSchema = opaqueResourceIdSchema<"TraceId">();
+export const RuntimeStateIndexIdSchema =
+  opaqueResourceIdSchema<"RuntimeStateIndexId">();
+export const RestoreReceiptIdSchema =
+  opaqueResourceIdSchema<"RestoreReceiptId">();
 
 export const asRunId = (value: string): RunId => RunIdSchema.parse(value);
 export const asBranchId = (value: string): BranchId =>
@@ -126,3 +159,20 @@ export const asClaimPolicyId = (value: string): ClaimPolicyId =>
 export const asExperimentReservationId = (
   value: string,
 ): ExperimentReservationId => ExperimentReservationIdSchema.parse(value);
+export const asWorkspaceId = (value: string): WorkspaceId =>
+  WorkspaceIdSchema.parse(value);
+export const asSourceId = (value: string): SourceId =>
+  SourceIdSchema.parse(value);
+export const asBuildId = (value: string): BuildId => BuildIdSchema.parse(value);
+export const asRuntimeId = (value: string): RuntimeId =>
+  RuntimeIdSchema.parse(value);
+export const asAdapterId = (value: string): AdapterId =>
+  AdapterIdSchema.parse(value);
+export const asProbeId = (value: string): ProbeId => ProbeIdSchema.parse(value);
+export const asCaptureWindowId = (value: string): CaptureWindowId =>
+  CaptureWindowIdSchema.parse(value);
+export const asTraceId = (value: string): TraceId => TraceIdSchema.parse(value);
+export const asRuntimeStateIndexId = (value: string): RuntimeStateIndexId =>
+  RuntimeStateIndexIdSchema.parse(value);
+export const asRestoreReceiptId = (value: string): RestoreReceiptId =>
+  RestoreReceiptIdSchema.parse(value);

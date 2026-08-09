@@ -140,7 +140,7 @@ const messageSchemas = [
           tick: TickSchema,
           simTimeUs: MicrosecondsSchema,
           deltaUs: MicrosecondsSchema,
-          inputs: z.array(RuntimeInputWireSchema),
+          inputs: z.array(RuntimeInputWireSchema).max(600),
         })
         .strict(),
     })
@@ -152,7 +152,7 @@ const messageSchemas = [
       requestId: z.string().min(1),
       payload: z
         .object({
-          events: z.array(V01EnvironmentEventDraftSchema),
+          events: z.array(V01EnvironmentEventDraftSchema).max(4_096),
           state: StateSnapshotSchema,
           receipt: z
             .object({
@@ -160,7 +160,9 @@ const messageSchemas = [
               realizedTick: TickSchema,
               requestedDeltaUs: MicrosecondsSchema,
               realizedDeltaUs: MicrosecondsSchema,
-              appliedInputOrders: z.array(z.number().int().nonnegative()),
+              appliedInputOrders: z
+                .array(z.number().int().nonnegative())
+                .max(600),
               runtime: RuntimeStepReceiptV1Schema,
             })
             .strict(),

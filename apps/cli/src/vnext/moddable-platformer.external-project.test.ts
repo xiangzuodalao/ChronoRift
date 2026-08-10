@@ -990,7 +990,7 @@ describe("frozen moddable-platformer M4 external-project conformance", () => {
         baselineSelectedTreeSha256: inputs.spec.source.selectedTreeSha256,
       });
       expect(managedCapability).toMatchObject({
-        runtimeProfile: "chronorift-godot-lifecycle-v1",
+        runtimeProfile: "chronorift-managed-godot-lifecycle-v1",
         doctorVersion: "4.7.1.stable.official.a13da4feb",
         engineVersion: "4.7.1-stable (official)",
       });

@@ -8,11 +8,15 @@ import { contentHash } from "@chronorift/json-artifacts";
 import {
   RealizedResourceLimitsV1Schema,
   SandboxPolicyContentV1Schema,
+  SandboxPolicyContentV2Schema,
   SandboxPolicyV1Schema,
+  SandboxPolicyV2Schema,
   SandboxResourceProfileNameV1Schema,
   type RealizedResourceLimitsV1,
   type SandboxPolicyContentV1,
+  type SandboxPolicyContentV2,
   type SandboxPolicyV1,
+  type SandboxPolicyV2,
   type SandboxResourceProfileNameV1,
 } from "./contracts.js";
 import { M1Error } from "./errors.js";
@@ -98,6 +102,80 @@ export const createSandboxPolicyV1 = (
   Object.freeze(policy.profiles);
   Object.freeze(policy.writableTargets);
   Object.freeze(policy.readonlyTargets);
+  Object.freeze(policy.namespaces);
+  Object.freeze(policy.copiedEnvironmentKeys);
+  return Object.freeze(policy);
+};
+
+export const sandboxPolicyV2Content = (
+  policy: SandboxPolicyV2,
+): SandboxPolicyContentV2 =>
+  SandboxPolicyContentV2Schema.parse({
+    schemaVersion: policy.schemaVersion,
+    runtimeIdentity: policy.runtimeIdentity,
+    writableTargets: policy.writableTargets,
+    namespaces: policy.namespaces,
+    network: policy.network,
+    copiedEnvironmentKeys: policy.copiedEnvironmentKeys,
+    profiles: policy.profiles,
+    profileBindings: policy.profileBindings,
+  });
+
+export const createSandboxPolicyV2 = (
+  runtimeIdentity: Sha256DigestV1,
+  bindings: {
+    readonly coding: {
+      readonly toolchainId: string;
+      readonly targets: readonly string[];
+    };
+    readonly godot: {
+      readonly toolchainId: string;
+      readonly managedRuntimeId: string;
+      readonly targets: readonly string[];
+    };
+  },
+): SandboxPolicyV2 => {
+  const content = SandboxPolicyContentV2Schema.parse({
+    schemaVersion: 2,
+    runtimeIdentity: asSha256DigestV1(runtimeIdentity),
+    writableTargets: ["/workspace", "/tmp", "/artifacts"],
+    namespaces: ["mount", "user", "pid", "ipc", "uts", "network"],
+    network: "isolated",
+    copiedEnvironmentKeys: ["CI", "NO_COLOR"],
+    profiles: {
+      "coding-default": resolveResourceLimitsV1("coding-default", undefined),
+      "godot-headless": resolveResourceLimitsV1("godot-headless", undefined),
+    },
+    profileBindings: {
+      "coding-default": {
+        toolchainId: bindings.coding.toolchainId,
+        managedRuntimeId: null,
+        workspaceAccess: "read-write",
+        readonlyTargets: ["/bin/busybox", ...bindings.coding.targets].sort(),
+      },
+      "godot-headless": {
+        toolchainId: bindings.godot.toolchainId,
+        managedRuntimeId: bindings.godot.managedRuntimeId,
+        workspaceAccess: "read-only",
+        readonlyTargets: ["/bin/busybox", ...bindings.godot.targets].sort(),
+      },
+    },
+  });
+  const policy = SandboxPolicyV2Schema.parse({
+    ...content,
+    policyId: `sandbox-policy:v2:${asSha256DigestV1(
+      contentHash(content as unknown as JsonValue),
+    )}`,
+  });
+  Object.freeze(policy.profiles["coding-default"]);
+  Object.freeze(policy.profiles["godot-headless"]);
+  Object.freeze(policy.profiles);
+  Object.freeze(policy.profileBindings["coding-default"].readonlyTargets);
+  Object.freeze(policy.profileBindings["coding-default"]);
+  Object.freeze(policy.profileBindings["godot-headless"].readonlyTargets);
+  Object.freeze(policy.profileBindings["godot-headless"]);
+  Object.freeze(policy.profileBindings);
+  Object.freeze(policy.writableTargets);
   Object.freeze(policy.namespaces);
   Object.freeze(policy.copiedEnvironmentKeys);
   return Object.freeze(policy);

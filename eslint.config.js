@@ -21,6 +21,8 @@ export default tseslint.config(
             "vitest.live.config.ts",
             "vitest.godot.config.ts",
             "vitest.sandbox.config.ts",
+            "vitest.godot-sandbox.config.ts",
+            "vitest.vnext-live.config.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

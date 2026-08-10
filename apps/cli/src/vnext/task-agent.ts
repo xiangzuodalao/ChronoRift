@@ -1,12 +1,25 @@
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 
-import { TaskIdentityV1Schema, type TaskId } from "@chronorift/domain";
-import { VNextTaskStore } from "@chronorift/json-artifacts";
+import { validateGameTaskIdV1 } from "@chronorift/agent-protocol";
+import {
+  TaskIdentityV1Schema,
+  TaskPatchIdentityV1Schema,
+  type TaskId,
+} from "@chronorift/domain";
+import {
+  ArtifactNotFoundError,
+  VNEXT_RUNTIME_RESOURCE_DIRECTORIES,
+  VNextRuntimeStore,
+  VNextTaskStore,
+  type VNextRuntimeResourceSummaryV1,
+} from "@chronorift/json-artifacts";
 import {
   createVNextCodingToolDefinitions,
+  createVNextGameToolDefinitions,
   runVNextPiTurnWithSdk,
   type PiThinkingLevel,
+  type VNextGameToolPort,
   type VNextPiTurnResult,
 } from "@chronorift/pi-harness";
 
@@ -15,6 +28,7 @@ import {
   executeAndRecordM1Command,
   exportM1Patch,
   extractAndPersistM1Patch,
+  getM1TaskGameRuntimeContext,
   getM1TaskHostContext,
   prepareM1TaskEnvironment,
   resumeM1TaskEnvironment,
@@ -29,10 +43,16 @@ import type {
   TaskSandboxBrokerV1,
 } from "./sandbox-broker.js";
 import type { PatchExportReceiptV1 } from "./contracts.js";
+import { createVNextGodotRuntimeCoordinator } from "./vnext-godot-runtime-coordinator.js";
 import {
+  createVNextAgentGameCapabilityV1,
+  VNextAgentTaskSchema,
   VNextAgentTaskV1Schema,
+  VNextAgentTaskV2Schema,
   VNextAgentTurnV1Schema,
-  type VNextAgentTaskV1,
+  type VNextAgentGameCapabilityV1,
+  type VNextAgentTask,
+  type VNextAgentTaskV2,
   type VNextAgentTurnV1,
 } from "./task-agent-contracts.js";
 
@@ -43,6 +63,7 @@ export interface StartVNextAgentTaskRequest extends PrepareM1TaskEnvironmentRequ
   readonly thinkingLevel: PiThinkingLevel;
   readonly timeoutMs?: number | undefined;
   readonly agentDir?: string | undefined;
+  readonly enableGameTools?: true | undefined;
 }
 
 export interface ContinueVNextAgentTaskRequest extends ResumeM1TaskEnvironmentRequest {
@@ -72,7 +93,7 @@ interface AgentTaskStore {
   ): Promise<void>;
   readJson<T>(
     taskId: TaskId,
-    slot: "task.json" | "agent-task.json",
+    slot: "task.json" | "agent-task.json" | "patch.json",
     parse: (input: unknown) => T,
   ): Promise<T>;
   append<T>(
@@ -88,6 +109,40 @@ interface AgentTaskStore {
   ): Promise<readonly T[]>;
 }
 
+export interface VNextAgentGameToolTurnContextV1 {
+  readonly schemaVersion: 1;
+  readonly taskId: TaskId;
+  readonly turn: number;
+  readonly kind: "start" | "continue";
+  readonly prompt: string;
+  readonly gameCapability: VNextAgentGameCapabilityV1;
+}
+
+export interface VNextAgentGameToolPort extends VNextGameToolPort {
+  cleanup(): Promise<void>;
+}
+
+const cleanupGameToolPort = async (
+  port: VNextAgentGameToolPort | undefined,
+): Promise<void> => {
+  if (port === undefined) return;
+  let firstFailure: unknown;
+  try {
+    await port.cleanup();
+    return;
+  } catch (error) {
+    firstFailure = error;
+  }
+  try {
+    await port.cleanup();
+  } catch (error) {
+    throw new AggregateError(
+      [firstFailure, error],
+      "M3 game runtime cleanup failed after an in-place retry",
+    );
+  }
+};
+
 interface VNextAgentTaskDependencies {
   readonly now: () => string;
   readonly createStore: (runtimeRoot: string) => AgentTaskStore;
@@ -99,6 +154,10 @@ interface VNextAgentTaskDependencies {
   readonly exportPatch: typeof exportM1Patch;
   readonly hostContext: typeof getM1TaskHostContext;
   readonly execute: typeof executeAndRecordM1Command;
+  readonly createGameToolPort: (
+    environment: M1TaskEnvironment,
+    context: VNextAgentGameToolTurnContextV1,
+  ) => Promise<VNextAgentGameToolPort>;
   readonly runTurn: typeof runVNextPiTurnWithSdk;
 }
 
@@ -115,6 +174,28 @@ const DEFAULT_DEPENDENCIES: VNextAgentTaskDependencies = {
   hostContext: (environment) => getM1TaskHostContext(environment),
   execute: (environment, request, options) =>
     executeAndRecordM1Command(environment, request, options),
+  createGameToolPort: (environment) => {
+    const runtime = getM1TaskGameRuntimeContext(environment);
+    const coordinator = createVNextGodotRuntimeCoordinator({
+      taskId: runtime.taskId,
+      workspaceId: runtime.workspaceId,
+      workspaceDirectory: runtime.workspaceDirectory,
+      baselineSourceHash: runtime.baselineSourceHash,
+      fixtureCapability: runtime.fixtureCapability,
+      managedRuntime: runtime.managedRuntime,
+      sidecarPort: runtime.sidecarPort,
+      runtimeStore: runtime.runtimeStore,
+    });
+    return Promise.resolve(
+      Object.freeze({
+        invoke: (
+          request: Parameters<VNextGameToolPort["invoke"]>[0],
+          signal?: AbortSignal,
+        ) => coordinator.invoke(request, signal),
+        cleanup: () => coordinator.close(),
+      }),
+    );
+  },
   runTurn: (request) => runVNextPiTurnWithSdk(request),
 };
 
@@ -122,6 +203,39 @@ const validatedText = (value: string, name: string): string => {
   const trimmed = value.trim();
   if (trimmed.length === 0) throw new Error(`${name} must not be empty`);
   return value;
+};
+
+const requireOpenPatchHandoff = async (
+  store: AgentTaskStore,
+  taskId: TaskId,
+): Promise<void> => {
+  try {
+    const patch = await store.readJson(taskId, "patch.json", (value) =>
+      TaskPatchIdentityV1Schema.parse(value),
+    );
+    if (patch.taskId !== taskId) {
+      throw new Error("Persisted patch handoff belongs to a different Task");
+    }
+  } catch (error) {
+    if (error instanceof ArtifactNotFoundError) return;
+    throw error;
+  }
+  throw new Error(
+    "Task patch handoff is already sealed; continue before exporting the final candidate",
+  );
+};
+
+const gameCapabilityFromEnvironment = (
+  environment: M1TaskEnvironment,
+): VNextAgentGameCapabilityV1 => {
+  const capability = environment.managedRuntimeCapability;
+  if (capability === undefined) {
+    throw new Error(
+      "M3 game tools require a prepared managed Godot runtime capability",
+    );
+  }
+  // M1's strict TaskFixtureCapabilityV1 has one accepted fixture identity.
+  return createVNextAgentGameCapabilityV1(capability.managedRuntimeId);
 };
 
 const executionBroker = (
@@ -132,6 +246,59 @@ const executionBroker = (
     dependencies.execute(environment, request, options),
   cleanup: () => dependencies.suspend(environment),
 });
+
+const gameEnvironmentInstructions = (task: VNextAgentTaskV2): string =>
+  `ChronoRift game tools:\n- Exact taskId: ${task.taskId}\n- Exact fixtureId: ${task.gameCapability.fixtureId}\n- The game_* tools declared for this Task are available.\n- Game resource IDs are identifiers, not filesystem paths.`;
+
+const composeTurnTools = async (input: {
+  readonly task: VNextAgentTask;
+  readonly environment: M1TaskEnvironment;
+  readonly turn: number;
+  readonly kind: "start" | "continue";
+  readonly prompt: string;
+  readonly dependencies: VNextAgentTaskDependencies;
+}): Promise<{
+  readonly tools: ReturnType<typeof createVNextCodingToolDefinitions>;
+  readonly gamePort: VNextAgentGameToolPort | undefined;
+}> => {
+  const codingPort = new SandboxPiCodingToolPort(
+    executionBroker(input.environment, input.dependencies),
+  );
+  const codingTools = createVNextCodingToolDefinitions(codingPort);
+  if (input.task.schemaVersion === 1) {
+    return { tools: codingTools, gamePort: undefined };
+  }
+  const environmentGameCapability = gameCapabilityFromEnvironment(
+    input.environment,
+  );
+  if (
+    environmentGameCapability.managedRuntimeId !==
+    input.task.gameCapability.managedRuntimeId
+  ) {
+    throw new Error(
+      "Prepared managed Godot runtime does not match the persisted M3 Task capability",
+    );
+  }
+  const context: VNextAgentGameToolTurnContextV1 = Object.freeze({
+    schemaVersion: 1,
+    taskId: input.task.taskId,
+    turn: input.turn,
+    kind: input.kind,
+    prompt: input.prompt,
+    gameCapability: input.task.gameCapability,
+  });
+  const gamePort = await input.dependencies.createGameToolPort(
+    input.environment,
+    context,
+  );
+  return {
+    tools: Object.freeze([
+      ...codingTools,
+      ...createVNextGameToolDefinitions(gamePort),
+    ]),
+    gamePort,
+  };
+};
 
 const requireSessionBasename = async (
   sessionFile: string,
@@ -156,7 +323,7 @@ const requireSessionBasename = async (
 };
 
 const validateTurnHistory = (
-  task: VNextAgentTaskV1,
+  task: VNextAgentTask,
   turns: readonly VNextAgentTurnV1[],
 ): void => {
   for (const [index, turn] of turns.entries()) {
@@ -241,27 +408,63 @@ export async function startVNextAgentTask(
   const goal = validatedText(request.goal, "goal");
   validatedText(request.provider, "provider");
   validatedText(request.model, "model");
+  if (
+    request.enableGameTools !== undefined &&
+    request.enableGameTools !== true
+  ) {
+    throw new Error("enableGameTools must be true when provided");
+  }
+  if (
+    request.enableGameTools === true &&
+    !validateGameTaskIdV1(request.taskId)
+  ) {
+    throw new Error(
+      "M3 taskId must be a safe opaque resource identity, not a path",
+    );
+  }
   const environment = await dependencies.prepare(request);
-  let suspended = false;
+  let gamePort: VNextAgentGameToolPort | undefined;
   try {
     const context = dependencies.hostContext(environment);
     const store = dependencies.createStore(request.runtimeRoot);
     await store.create(request.taskId);
-    const task = VNextAgentTaskV1Schema.parse({
-      schemaVersion: 1,
-      taskId: request.taskId,
-      goal,
-      provider: request.provider,
-      model: request.model,
-      thinkingLevel: request.thinkingLevel,
-      createdAt: dependencies.now(),
-    });
+    const gameCapability =
+      request.enableGameTools === true
+        ? gameCapabilityFromEnvironment(environment)
+        : undefined;
+    const task: VNextAgentTask =
+      gameCapability === undefined
+        ? VNextAgentTaskV1Schema.parse({
+            schemaVersion: 1,
+            taskId: request.taskId,
+            goal,
+            provider: request.provider,
+            model: request.model,
+            thinkingLevel: request.thinkingLevel,
+            createdAt: dependencies.now(),
+          })
+        : VNextAgentTaskV2Schema.parse({
+            schemaVersion: 2,
+            taskId: request.taskId,
+            goal,
+            provider: request.provider,
+            model: request.model,
+            thinkingLevel: request.thinkingLevel,
+            createdAt: dependencies.now(),
+            gameCapability,
+          });
     await store.putJsonOnce(request.taskId, "agent-task.json", task, (value) =>
-      VNextAgentTaskV1Schema.parse(value),
+      VNextAgentTaskSchema.parse(value),
     );
-    const port = new SandboxPiCodingToolPort(
-      executionBroker(environment, dependencies),
-    );
+    const composition = await composeTurnTools({
+      task,
+      environment,
+      turn: 1,
+      kind: "start",
+      prompt: goal,
+      dependencies,
+    });
+    gamePort = composition.gamePort;
     const result = await dependencies.runTurn({
       resourceWorkspaceDirectory: context.workspaceDirectory,
       sessionDirectory: context.piSessionDirectory,
@@ -270,7 +473,13 @@ export async function startVNextAgentTask(
       model: request.model,
       thinkingLevel: request.thinkingLevel,
       prompt: goal,
-      tools: createVNextCodingToolDefinitions(port),
+      tools: composition.tools,
+      ...(task.schemaVersion === 1
+        ? {}
+        : {
+            additionalEnvironmentInstructions:
+              gameEnvironmentInstructions(task),
+          }),
       ...(request.timeoutMs === undefined
         ? {}
         : { timeoutMs: request.timeoutMs }),
@@ -285,11 +494,13 @@ export async function startVNextAgentTask(
       result,
       completedAt: dependencies.now(),
     });
-    await dependencies.suspend(environment);
-    suspended = true;
     return publicResult(turn);
   } finally {
-    if (!suspended) await dependencies.suspend(environment);
+    try {
+      await cleanupGameToolPort(gamePort);
+    } finally {
+      await dependencies.suspend(environment);
+    }
   }
 }
 
@@ -304,7 +515,7 @@ export async function continueVNextAgentTask(
   const task = await store.readJson(
     request.taskId,
     "agent-task.json",
-    (value) => VNextAgentTaskV1Schema.parse(value),
+    (value) => VNextAgentTaskSchema.parse(value),
   );
   const turns = await store.readLedger(
     request.taskId,
@@ -312,10 +523,11 @@ export async function continueVNextAgentTask(
     (value) => VNextAgentTurnV1Schema.parse(value),
   );
   validateTurnHistory(task, turns);
+  await requireOpenPatchHandoff(store, request.taskId);
   const previous = turns.at(-1);
   if (previous === undefined) throw new Error("Task has no persisted Pi turn");
   const environment = await dependencies.resume(request);
-  let suspended = false;
+  let gamePort: VNextAgentGameToolPort | undefined;
   try {
     const context = dependencies.hostContext(environment);
     const resumeSessionFile = join(
@@ -323,9 +535,15 @@ export async function continueVNextAgentTask(
       previous.sessionFile,
     );
     await requireSessionBasename(resumeSessionFile, context.piSessionDirectory);
-    const port = new SandboxPiCodingToolPort(
-      executionBroker(environment, dependencies),
-    );
+    const composition = await composeTurnTools({
+      task,
+      environment,
+      turn: turns.length + 1,
+      kind: "continue",
+      prompt,
+      dependencies,
+    });
+    gamePort = composition.gamePort;
     const result = await dependencies.runTurn({
       resourceWorkspaceDirectory: context.workspaceDirectory,
       sessionDirectory: context.piSessionDirectory,
@@ -335,7 +553,13 @@ export async function continueVNextAgentTask(
       model: task.model,
       thinkingLevel: task.thinkingLevel,
       prompt,
-      tools: createVNextCodingToolDefinitions(port),
+      tools: composition.tools,
+      ...(task.schemaVersion === 1
+        ? {}
+        : {
+            additionalEnvironmentInstructions:
+              gameEnvironmentInstructions(task),
+          }),
       ...(request.timeoutMs === undefined
         ? {}
         : { timeoutMs: request.timeoutMs }),
@@ -350,11 +574,13 @@ export async function continueVNextAgentTask(
       result,
       completedAt: dependencies.now(),
     });
-    await dependencies.suspend(environment);
-    suspended = true;
     return publicResult(turn);
   } finally {
-    if (!suspended) await dependencies.suspend(environment);
+    try {
+      await cleanupGameToolPort(gamePort);
+    } finally {
+      await dependencies.suspend(environment);
+    }
   }
 }
 
@@ -363,8 +589,9 @@ export async function showVNextAgentTask(input: {
   readonly runtimeRoot: string;
 }): Promise<{
   readonly schemaVersion: 1;
-  readonly task: VNextAgentTaskV1;
+  readonly task: VNextAgentTask;
   readonly turns: readonly VNextAgentTurnV1[];
+  readonly runtimeResources: VNextRuntimeResourceSummaryV1;
 }> {
   const store = new VNextTaskStore(input.runtimeRoot);
   await store.create(input.taskId);
@@ -375,7 +602,7 @@ export async function showVNextAgentTask(input: {
     throw new Error("Task identity does not match the requested Task");
   }
   const task = await store.readJson(input.taskId, "agent-task.json", (value) =>
-    VNextAgentTaskV1Schema.parse(value),
+    VNextAgentTaskSchema.parse(value),
   );
   if (task.taskId !== input.taskId) {
     throw new Error(
@@ -388,7 +615,31 @@ export async function showVNextAgentTask(input: {
     (value) => VNextAgentTurnV1Schema.parse(value),
   );
   validateTurnHistory(task, turns);
-  return { schemaVersion: 1, task, turns };
+  const runtimeStore = new VNextRuntimeStore(input.runtimeRoot);
+  let runtimeResources: VNextRuntimeResourceSummaryV1;
+  try {
+    runtimeResources = await runtimeStore.summarize(input.taskId);
+  } catch (error) {
+    if (!(error instanceof ArtifactNotFoundError) || task.schemaVersion !== 1) {
+      throw error;
+    }
+    runtimeResources = Object.freeze({
+      schemaVersion: 1,
+      taskId: input.taskId,
+      kinds: Object.freeze(
+        Object.keys(VNEXT_RUNTIME_RESOURCE_DIRECTORIES).map((resourceKind) =>
+          Object.freeze({
+            resourceKind:
+              resourceKind as keyof typeof VNEXT_RUNTIME_RESOURCE_DIRECTORIES,
+            count: 0,
+            resourceIds: Object.freeze([]),
+          }),
+        ),
+      ),
+      executions: Object.freeze([]),
+    });
+  }
+  return { schemaVersion: 1, task, turns, runtimeResources };
 }
 
 export async function exportVNextAgentTaskPatch(

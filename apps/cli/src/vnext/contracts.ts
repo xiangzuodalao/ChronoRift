@@ -489,6 +489,25 @@ export const WorkspaceMaterializationReceiptV1Schema: z.ZodType<WorkspaceMateria
     })
     .strict();
 
+export interface SandboxTaskStorageCapabilityV1 {
+  readonly kind: "dedicated-capacity-bounded-filesystem-v1";
+  readonly filesystem: "tmpfs" | "ext4" | "xfs";
+  readonly totalBytes: number;
+  readonly totalInodes: number;
+  readonly rootIdentitySha256: Sha256DigestV1;
+}
+
+export const SandboxTaskStorageCapabilityV1Schema: z.ZodType<SandboxTaskStorageCapabilityV1> =
+  z
+    .object({
+      kind: z.literal("dedicated-capacity-bounded-filesystem-v1"),
+      filesystem: z.enum(["tmpfs", "ext4", "xfs"]),
+      totalBytes: z.number().int().positive().max(1_073_741_824),
+      totalInodes: z.number().int().positive().max(131_072),
+      rootIdentitySha256: Sha256DigestV1Schema,
+    })
+    .strict();
+
 export interface SandboxHostCapabilityV1 {
   readonly schemaVersion: 1;
   readonly platform: "linux";
@@ -496,12 +515,15 @@ export interface SandboxHostCapabilityV1 {
   readonly bwrap: {
     readonly identity: Sha256DigestV1;
     readonly version: string;
-    readonly features: readonly [
-      "block-fd",
-      "json-status-fd",
-      "bind-fd",
-      "ro-bind-fd",
-    ];
+    readonly features:
+      | readonly ["block-fd", "json-status-fd", "bind-fd", "ro-bind-fd"]
+      | readonly [
+          "block-fd",
+          "json-status-fd",
+          "bind-fd",
+          "ro-bind-fd",
+          "remount-ro",
+        ];
   };
   readonly prlimitIdentity: Sha256DigestV1;
   readonly runtimeIdentity: Sha256DigestV1;
@@ -509,17 +531,27 @@ export interface SandboxHostCapabilityV1 {
   readonly controllers: readonly ["cpu", "memory", "pids"];
   readonly cgroupNamespaceUnshared: boolean;
   readonly activeProbeSha256: Sha256DigestV1;
+  readonly taskStorage?: SandboxTaskStorageCapabilityV1 | undefined;
 }
 
 export const SandboxBwrapCapabilityV1Schema = z
   .object({
     identity: Sha256DigestV1Schema,
     version: SafeToolVersionV1Schema,
-    features: z.tuple([
-      z.literal("block-fd"),
-      z.literal("json-status-fd"),
-      z.literal("bind-fd"),
-      z.literal("ro-bind-fd"),
+    features: z.union([
+      z.tuple([
+        z.literal("block-fd"),
+        z.literal("json-status-fd"),
+        z.literal("bind-fd"),
+        z.literal("ro-bind-fd"),
+      ]),
+      z.tuple([
+        z.literal("block-fd"),
+        z.literal("json-status-fd"),
+        z.literal("bind-fd"),
+        z.literal("ro-bind-fd"),
+        z.literal("remount-ro"),
+      ]),
     ]),
   })
   .strict();
@@ -541,6 +573,7 @@ export const SandboxHostCapabilityV1Schema: z.ZodType<SandboxHostCapabilityV1> =
       ]),
       cgroupNamespaceUnshared: z.boolean(),
       activeProbeSha256: Sha256DigestV1Schema,
+      taskStorage: SandboxTaskStorageCapabilityV1Schema.optional(),
     })
     .strict();
 
@@ -680,6 +713,145 @@ export const SandboxPolicyV1Schema: z.ZodType<SandboxPolicyV1> = z
       });
     }
   });
+
+export interface SandboxPolicyProfileBindingV2 {
+  readonly toolchainId: string;
+  readonly managedRuntimeId: string | null;
+  readonly workspaceAccess: "read-write" | "read-only";
+  readonly readonlyTargets: readonly string[];
+}
+
+export interface SandboxPolicyV2 {
+  readonly schemaVersion: 2;
+  readonly policyId: string;
+  readonly runtimeIdentity: Sha256DigestV1;
+  readonly writableTargets: readonly ["/workspace", "/tmp", "/artifacts"];
+  readonly namespaces: readonly [
+    "mount",
+    "user",
+    "pid",
+    "ipc",
+    "uts",
+    "network",
+  ];
+  readonly network: "isolated";
+  readonly copiedEnvironmentKeys: readonly ["CI", "NO_COLOR"];
+  readonly profiles: Readonly<
+    Record<SandboxResourceProfileNameV1, RealizedResourceLimitsV1>
+  >;
+  readonly profileBindings: {
+    readonly "coding-default": SandboxPolicyProfileBindingV2 & {
+      readonly managedRuntimeId: null;
+      readonly workspaceAccess: "read-write";
+    };
+    readonly "godot-headless": SandboxPolicyProfileBindingV2 & {
+      readonly managedRuntimeId: string;
+      readonly workspaceAccess: "read-only";
+    };
+  };
+}
+
+export type SandboxPolicyContentV2 = Omit<SandboxPolicyV2, "policyId">;
+export type SandboxPolicy = SandboxPolicyV1 | SandboxPolicyV2;
+
+const SandboxToolchainIdV1Schema = z
+  .string()
+  .regex(/^sandbox-toolchain:v1:[a-f0-9]{64}$/u);
+const ManagedGodotRuntimeIdV1Schema = z
+  .string()
+  .regex(/^managed-godot-runtime:v1:[a-f0-9]{64}$/u);
+export const SandboxPolicyIdSchema = z
+  .string()
+  .regex(/^sandbox-policy:v[12]:[a-f0-9]{64}$/u);
+
+const SandboxPolicyProfileBindingV2Schema = z
+  .object({
+    toolchainId: SandboxToolchainIdV1Schema,
+    managedRuntimeId: ManagedGodotRuntimeIdV1Schema.nullable(),
+    workspaceAccess: z.enum(["read-write", "read-only"]),
+    readonlyTargets: SandboxReadonlyTargetsV1Schema,
+  })
+  .strict();
+
+const SandboxPolicyProfileBindingsV2Schema = z
+  .object({
+    "coding-default": SandboxPolicyProfileBindingV2Schema.extend({
+      managedRuntimeId: z.null(),
+      workspaceAccess: z.literal("read-write"),
+    }).strict(),
+    "godot-headless": SandboxPolicyProfileBindingV2Schema.extend({
+      managedRuntimeId: ManagedGodotRuntimeIdV1Schema,
+      workspaceAccess: z.literal("read-only"),
+    }).strict(),
+  })
+  .strict();
+
+export const SandboxPolicyContentV2Schema: z.ZodType<SandboxPolicyContentV2> = z
+  .object({
+    schemaVersion: z.literal(2),
+    runtimeIdentity: Sha256DigestV1Schema,
+    writableTargets: z.tuple([
+      z.literal("/workspace"),
+      z.literal("/tmp"),
+      z.literal("/artifacts"),
+    ]),
+    namespaces: z.tuple([
+      z.literal("mount"),
+      z.literal("user"),
+      z.literal("pid"),
+      z.literal("ipc"),
+      z.literal("uts"),
+      z.literal("network"),
+    ]),
+    network: z.literal("isolated"),
+    copiedEnvironmentKeys: z.tuple([z.literal("CI"), z.literal("NO_COLOR")]),
+    profiles: SandboxPolicyProfilesV1Schema,
+    profileBindings: SandboxPolicyProfileBindingsV2Schema,
+  })
+  .strict();
+
+export const SandboxPolicyV2Schema: z.ZodType<SandboxPolicyV2> = z
+  .object({
+    schemaVersion: z.literal(2),
+    policyId: z.string().regex(/^sandbox-policy:v2:[a-f0-9]{64}$/u),
+    runtimeIdentity: Sha256DigestV1Schema,
+    writableTargets: z.tuple([
+      z.literal("/workspace"),
+      z.literal("/tmp"),
+      z.literal("/artifacts"),
+    ]),
+    namespaces: z.tuple([
+      z.literal("mount"),
+      z.literal("user"),
+      z.literal("pid"),
+      z.literal("ipc"),
+      z.literal("uts"),
+      z.literal("network"),
+    ]),
+    network: z.literal("isolated"),
+    copiedEnvironmentKeys: z.tuple([z.literal("CI"), z.literal("NO_COLOR")]),
+    profiles: SandboxPolicyProfilesV1Schema,
+    profileBindings: SandboxPolicyProfileBindingsV2Schema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const { policyId, ...content } = value;
+    if (
+      policyId !==
+      `sandbox-policy:v2:${contentHash(content as unknown as JsonValue)}`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["policyId"],
+        message: "policyId must match the canonical sandbox policy content",
+      });
+    }
+  });
+
+export const SandboxPolicySchema: z.ZodType<SandboxPolicy> = z.union([
+  SandboxPolicyV1Schema,
+  SandboxPolicyV2Schema,
+]);
 
 export interface SandboxPreflightBlockerV1 {
   readonly code: M1ErrorCode;
@@ -852,7 +1024,9 @@ export interface RealizedResourceMechanismsV1 {
   readonly openFiles: "rlimit-nofile";
   readonly fileSize: "rlimit-fsize";
   readonly wallTimeout: "host-monotonic-timer";
-  readonly unavailable: readonly [];
+  readonly aggregateStorage?:
+    "dedicated-capacity-bounded-filesystem-v1" | undefined;
+  readonly unavailable: readonly [] | readonly ["aggregate-storage"];
 }
 
 export const RealizedResourceMechanismsV1Schema: z.ZodType<RealizedResourceMechanismsV1> =
@@ -864,7 +1038,38 @@ export const RealizedResourceMechanismsV1Schema: z.ZodType<RealizedResourceMecha
       openFiles: z.literal("rlimit-nofile"),
       fileSize: z.literal("rlimit-fsize"),
       wallTimeout: z.literal("host-monotonic-timer"),
-      unavailable: z.tuple([]),
+      aggregateStorage: z
+        .literal("dedicated-capacity-bounded-filesystem-v1")
+        .optional(),
+      unavailable: z.union([
+        z.tuple([]),
+        z.tuple([z.literal("aggregate-storage")]),
+      ]),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.aggregateStorage !== undefined &&
+        value.unavailable.length > 0
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["unavailable"],
+          message: "aggregate storage cannot be both realized and unavailable",
+        });
+      }
+    });
+
+export interface AggregateStorageUsageV1 {
+  readonly usedBytes: number;
+  readonly usedInodes: number;
+}
+
+export const AggregateStorageUsageV1Schema: z.ZodType<AggregateStorageUsageV1> =
+  z
+    .object({
+      usedBytes: z.number().int().nonnegative().max(1_073_741_824),
+      usedInodes: z.number().int().nonnegative().max(131_072),
     })
     .strict();
 
@@ -872,6 +1077,7 @@ export interface ObservedResourceUsageV1 {
   readonly cpuUsageUsec: number;
   readonly memoryPeakBytes: number | null;
   readonly pidsPeak: number | null;
+  readonly aggregateStorage?: AggregateStorageUsageV1 | undefined;
 }
 
 export const ObservedResourceUsageV1Schema: z.ZodType<ObservedResourceUsageV1> =
@@ -880,6 +1086,7 @@ export const ObservedResourceUsageV1Schema: z.ZodType<ObservedResourceUsageV1> =
       cpuUsageUsec: z.number().int().nonnegative(),
       memoryPeakBytes: z.number().int().nonnegative().nullable(),
       pidsPeak: z.number().int().nonnegative().nullable(),
+      aggregateStorage: AggregateStorageUsageV1Schema.optional(),
     })
     .strict();
 
@@ -950,7 +1157,7 @@ export const SandboxExecutionReceiptV1Schema: z.ZodType<SandboxExecutionReceiptV
       schemaVersion: z.literal(1),
       taskId: TaskIdSchema,
       operationId: SandboxOperationIdV1Schema,
-      policyId: z.string().regex(/^sandbox-policy:v1:[a-f0-9]{64}$/u),
+      policyId: SandboxPolicyIdSchema,
       sandboxCapabilitySha256: Sha256DigestV1Schema,
       sandboxBackend: z.literal("bwrap-direct-cgroup-v2"),
       status: z.enum([
@@ -974,6 +1181,18 @@ export const SandboxExecutionReceiptV1Schema: z.ZodType<SandboxExecutionReceiptV
     })
     .strict()
     .superRefine((value, context) => {
+      const aggregateStorageRealized =
+        value.realizedMechanisms.aggregateStorage !== undefined;
+      const aggregateStorageObserved =
+        value.resourceUsage.aggregateStorage !== undefined;
+      if (aggregateStorageRealized !== aggregateStorageObserved) {
+        context.addIssue({
+          code: "custom",
+          path: ["resourceUsage", "aggregateStorage"],
+          message:
+            "aggregate storage usage must accompany its realized mechanism",
+        });
+      }
       if (value.startedAtMonotonicMs > value.endedAtMonotonicMs) {
         context.addIssue({
           code: "custom",
@@ -1049,7 +1268,7 @@ const ReadyM1TaskEventV1Schema = z
     taskId: TaskIdSchema,
     kind: z.literal("ready"),
     occurredAt: IsoTimestampV1Schema,
-    policyId: z.string().regex(/^sandbox-policy:v1:[a-f0-9]{64}$/u),
+    policyId: SandboxPolicyIdSchema,
     baselineSourceHash: Sha256DigestV1Schema,
   })
   .strict();
@@ -1071,7 +1290,7 @@ const LifecycleM1TaskEventV1Schema = z
     taskId: TaskIdSchema,
     kind: z.enum(["suspended", "resumed"]),
     occurredAt: IsoTimestampV1Schema,
-    policyId: z.string().regex(/^sandbox-policy:v1:[a-f0-9]{64}$/u),
+    policyId: SandboxPolicyIdSchema,
   })
   .strict();
 

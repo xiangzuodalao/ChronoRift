@@ -1,11 +1,13 @@
 # ChronoRift Game-native Agent Harness 目标架构
 
-> 状态：vNext 目标架构；决策日期：2026-08-06；当前可执行版本：ChronoRift v0.4.0。
+> 状态：vNext 目标架构；决策日期：2026-08-06；当前可执行 release：ChronoRift v0.4.0。
 >
-> vNext 尚未实现。当前 v0.4 仍是受控诊断 workflow：它禁用通用 coding tools，要求固定的
-> Capsule/replay/intervention/compare/proposal 流程，并由 Harness 产生 canonical verdict。本文定义的
-> sandbox、自由 Pi Loop、rolling black box、Runtime State Index 和新 game tools 都是下一条垂直切片的
-> 目标，不得描述成当前能力。
+> 当前 v0.4 仍是受控诊断 workflow：它禁用通用 coding tools，要求固定的
+> Capsule/replay/intervention/compare/proposal 流程，并由 Harness 产生 canonical verdict。仓库源码另外包含
+> 只面向 `frame-input-window` 的实验性 M3 vNext vertical slice，包括 sandbox、自由 Pi Loop、16 个 game
+> tools、managed runtime sidecar、rolling capture、checkpoint/restore/fork/replay、Runtime State Index、
+> descriptive compare 与外部 release acceptance 实现。M3 不是新的公开 release，也不能描述成任意 Godot
+> 项目能力或修复正确性证明；本文不声称尚未实际运行的 Gate 或 live acceptance 已通过。
 >
 > v0.1–v0.4 schema、artifact、benchmark spec、ledger、报告与冻结 tag 保持不可变。新路径不会静默迁移、
 > 覆盖或重新解释历史结果。
@@ -236,6 +238,16 @@ Pi Host 可以在 sandbox 外使用用户的 Pi credential store 调用模型；
 这与 Codex 将 sandbox 作为自主行动技术边界的模式一致，参见
 [Codex sandboxing](https://learn.chatgpt.com/docs/sandboxing.md)。
 
+M3 的 managed Godot Task 还要求 Host 预置一个独立、canonical 的 `taskStorageRoot` filesystem mount。只接受
+`tmpfs`、`ext4` 或 `xfs`，整个 filesystem 的总容量不得超过 1 GiB、总 inode 不得超过 131072；
+`runtimeRoot` 必须是该 mount 的 canonical 严格子目录，不能等于 mount、位于 source tree 中或经过 symlink。
+这是 workspace、Task records、runtime records、临时目录和 sandbox artifacts 共享的 aggregate hard cap，
+不是给每个 Task、Runtime 或 Execution 各发一份预算。release-only live 的 Agent 与 evaluator 可以在同一个
+mount 下使用不同 runtime root，因此也共同消耗这一总量。requested mount path 只有通过 filesystem identity、
+容量和 inode preflight，并在 resume/operation 前重新匹配 frozen capability 后，才能作为 realized storage
+边界记录。CLI 分别用 `--task-storage-root` / `CHRONORIFT_TASK_STORAGE_ROOT` 与 `--runtime-root` /
+`CHRONORIFT_RUNTIME_ROOT` 接收这两个边界；不能把 mount 本身直接当成 `runtimeRoot`。
+
 ## 8. Pi SDK 集成
 
 当前仓库固定使用 `@earendil-works/pi-coding-agent@0.83.0` 和
@@ -362,6 +374,11 @@ Trigger 命中不表示 Bug 已确认、可选项目 Contract/测试失败或根
 若失败前历史仍在，但没有可恢复 checkpoint，工具返回 `pre_failure_checkpoint_unavailable`，并附上仍
 保留的 input trace、事件 timeline、首个可见异常和状态覆盖缺口。Agent 可以新增 probe 或 snapshot
 adapter、提高后续采样率，再次运行并等待问题重现；系统不得把普通历史窗口冒充等价分叉起点。
+
+上述自动 freeze/trigger 仍是目标能力，不是 M3 已实现事实。M3 实现有界 rolling capture、coverage/loss
+receipt 和显式 `game_capture_pin`；`game_capture_configure` 对任何非空 trigger 请求返回
+`unsupported_capability`，不会静默声称自动 trigger 已生效。crash/error/cleanup 与 capture loss 仍作为 raw
+runtime records 保存，但当前不会自动替 Agent pin 一个窗口。
 
 ## 11. Checkpoint 与 Restore
 
@@ -527,18 +544,18 @@ Compare 绝不判断：
 
 ## 15. Agent 工具面
 
-目标工具按 capability 分组，确切名称在实现切片中以已安装 Pi types 为准：
+M3 的 V1 catalog 固定为 16 个原子工具；这些名称与 strict input/output schema 一起构成 Agent-facing contract：
 
-| 分组        | 目标动作                                                              |
-| ----------- | --------------------------------------------------------------------- |
-| Discovery   | 查询项目、runtime、adapter、probe、checkpoint 与 capture capabilities |
-| Lifecycle   | launch、status、stop runtime                                          |
-| Capture     | pin history、配置后续 capture/trigger/probe                           |
-| Observation | 查询 raw records 与 Runtime State Index                               |
-| Control     | 注入输入、step、调整受支持 runtime controls                           |
-| State       | create checkpoint、restore、fork                                      |
-| Replay      | 创建/运行 trace replay、查看 first divergence                         |
-| Compare     | 对齐两个 Execution 并读取描述性差异                                   |
+| 分组                | M3 工具                                                          |
+| ------------------- | ---------------------------------------------------------------- |
+| Discovery/Lifecycle | `game_capabilities`、`game_launch`、`game_status`、`game_stop`   |
+| Capture/Observation | `game_capture_configure`、`game_capture_pin`、`game_query`       |
+| Control             | `game_input`、`game_step`、`game_set_controls`                   |
+| State/Lineage       | `game_checkpoint_create`、`game_checkpoint_restore`、`game_fork` |
+| Trace/Compare       | `game_trace_create`、`game_trace_replay`、`game_compare`         |
+
+`game_capture_configure` 的 schema 预留 trigger 表达，但 M3 runtime 对非空 trigger 明确返回 unsupported；当前
+实现的 retention 操作只有手动 `game_capture_pin`。这不改变长期目标中的自动 freeze/trigger 设计。
 
 工具契约必须：
 
@@ -552,11 +569,11 @@ Compare 绝不判断：
 
 ## 16. Artifact 与任务恢复
 
-目标布局是实现指导，不是当前已存在的文件结构：
+下列布局仍是面向用户的目标视图，不应被当成 M3 physical store 的逐文件承诺：
 
 ```text
-.chronorift/
-└── tasks/<task-id>/
+<runtime-root>/
+└── tasks/<task-namespace-digest>/
     ├── task.json
     ├── workspace.json
     ├── security.jsonl
@@ -588,11 +605,54 @@ Compare 绝不判断：
 - hash 可以检测意外损坏，不能抵抗同一用户权限下重写整个任务目录；
 - 需要强防篡改时由外部 CI attestation、签名或只写存储提供，不塞进本地 Harness 默认路径。
 
+M3 的实际 Task namespace 是 `<runtime-root>/tasks/<task-namespace-digest>/`；raw Task ID 不直接成为路径，且
+`runtimeRoot` 是 §7.2 bounded `taskStorageRoot` mount 的 canonical 严格子目录。physical adapter 在 Task root
+下拥有独立 `runtime-records/` 子树，保存 build、runtime、execution、capture window、checkpoint、trace、
+branch、index、comparison 和 tool-call 十类 write-once resource。raw execution event ledger 在运行中
+append；每个 envelope 带 task/execution identity、sequence、previous hash、payload hash 和 record hash。
+只有 runtime 终止且 sidecar/sandbox cleanup receipt 得到证明后才写独立 physical seal；sealed Execution
+resource 必须引用并匹配该 seal 与 raw ledger。Task `show` 只返回 path-free inventory。多个 runtime root 可以
+共享同一 storage mount，但它们共享 mount 的 1 GiB/131072 inode aggregate hard cap，不获得独立配额。这些
+hash 检测意外损坏，不是签名、provider attestation 或对同用户攻击者的安全证明。
+
 ## 17. Godot Runtime 边界
 
 vNext 继续采用 Godot Addon/Autoload，不要求 engine fork。当前 Protocol v2 的握手、strict wire schema、
 payload hash、loopback transport、能力协商、真实 controls、显式实体注册和 participant checkpoint 是可复用
 基础，详见 [Godot Protocol v2](godot-protocol-v2.md)。
+
+M3 为每个 Runtime 启动一份不跨 Runtime 复用的 Node sidecar，并让 sidecar 与唯一 Godot child 处于同一
+bwrap、network/PID namespace、process group、cgroup 和 resource-limit 边界。Godot-side profile 对候选
+`/workspace` 只读；coding profile 才可写。受管 Addon 从 Host 预检、冻结的字节重建，并以独立只读 FD
+mount 放入 `/run/chronorift/project/addons/chronorift`；候选源码的整个 `addons/**` 当前在 build snapshot 前
+拒绝。sidecar 与 Godot 只在隔离 namespace 内通过 loopback TCP 通信，Host 通过 strict、有界、length-framed
+stdio 控制和读取诊断；diagnostic overflow/truncation 必须形成 error/loss record，不能丢掉底层 cleanup
+receipt。没有可验证的 cleanup receipt 就不能 seal Execution。
+
+bwrap 在完成所有子挂载后，会把自动构造的空根文件系统和 `/dev` 非递归重挂为只读；
+`/dev/null` 等既有设备仍可使用，但候选不能在 `/` 或 `/dev` 创建未计量文件。Godot 的
+`/run/chronorift` 不再是匿名 tmpfs；每个 operation 都从 bounded Task filesystem 上的 Host-only
+parent 获得独立 scratch 目录 FD。该目录不会从其他 sandbox 的 `/tmp` 可见，且只有
+Bootstrap 退出、cgroup 为空和 scope 删除三项同时得证后才删除。回收失败会保留 retry owner
+并令 cleanup receipt 不完整，不能被 seal 路径解释为已清理。
+
+Godot 4.7.1 的 headless 启动仍会动态加载 fontconfig，并通过 `xdg-user-dir` 查询系统目录。M3 因此把 Host
+`fc-match` 仅作为 preflight 的动态依赖 inspection anchor，冻结其 loader/fontconfig 闭包而不把该命令本体
+挂入 sandbox；Godot profile 另外只读挂载静态 BusyBox 为 `/bin/sh`、Host `xdg-user-dir` 为
+`/usr/bin/xdg-user-dir`，以及 ChronoRift 生成的最小配置为
+`/opt/chronorift/etc/fontconfig/fonts.conf`。sidecar 为 Godot 固定 `PATH=/usr/bin:/bin` 和指向该配置的
+`FONTCONFIG_FILE`。这些 runtime-only 输入属于 managed runtime capability/binding identity，不进入 coding
+profile；Godot stderr 仍作为原始 runtime error 处理，不按消息文本过滤。
+
+候选 GDScript 与 managed Addon 在同一个 Godot 进程和安全主体内运行。sidecar 与其启动的 Godot child 使用
+一次性 loopback handshake token，只能关联本次启动、拒绝意外连接；候选代码处于同一进程，不能把该 token
+当作对恶意候选的隔离、runtime telemetry 的真实性证明、Addon provenance 或外部 attestation。managed Addon
+的 Host preflight、只读 mount 与 content hash 仍是必要的完整性边界，但也不会把同进程观测变成第三方证明。
+
+普通 stop、timeout、可观测 crash 和 Host 捕获到的错误路径必须排空 process group/cgroup 后再形成 cleanup
+receipt。若 Host Harness 自身被 `SIGKILL`、掉电或遭遇内核级终止，进程没有机会写 receipt 或删除 operation
+cgroup；delegated hierarchy 可能留下 stale cgroup 甚至残留进程。该情形当前需要 Host operator 查杀残留并
+删除旧 hierarchy，不能由缺失的记录推断 cleanup 已发生，也不能 seal 对应 Execution。
 
 目标 Godot 边界必须诚实保留以下限制：
 
@@ -665,73 +725,121 @@ Task workspace 与 execution sandbox 是首个切片的真实生命周期边界�
 Pi、Godot `Node`/`Variant`、JSON 文件布局、Git/container 实现不得泄漏进 domain。各 package 通过公开
 `src/index.ts` 导入，不 deep-import 私有实现。
 
-## 20. 首个 vNext 垂直切片
+## 20. 首个 vNext 垂直切片（实验性 M3）
 
 唯一迁移 Fixture 是现有 `fixtures/godot-frame-input-window`。它模拟角色离开平台后的跳跃输入窗口错误，
-已经包含适合语义 snapshot 的 `jumping`、`leftFrame` 等状态。
+包含适合语义 snapshot 的 `jumping`、`window_open`、`leftFrame` 等状态。M3 源码已经把本节各层接成一个
+完整但很窄的 experimental vertical slice；这句话描述实现范围，不代表相关 Gate 或真实 provider
+acceptance 已经产生通过输出，也不把 v0.4 release 改写成 vNext release。
 
-首个切片的用户目标是：让一个自由 Pi Agent 调查并修改该时序 Bug。ChronoRift 不告诉 Agent 固定步骤，
-也不要求它提交机制 Proposal。
+M3 的用户目标仍是让自由 Pi Agent 调查并修改该时序 Bug。ChronoRift 不告诉 Agent 固定步骤，也不要求
+机制 Proposal。实现边界如下：
 
-完成条件：
-
-1. CLI 为 Fixture 创建隔离任务 workspace 和 sandbox。
-2. Pi 使用官方 SDK 创建 Session，并拥有正常 coding tools 与无阶段 game tools。
-3. Rolling black box 可以 pin 失败窗口，并报告 coverage、降采样和 loss。
-4. Fixture snapshot adapter 可以创建带 manifest/fidelity 的 checkpoint。
-5. Agent 可以从 checkpoint fork，改变输入 tick/phase 后 replay。
-6. Runtime State Index 可以查询实体、时钟、输入、状态和相关 runtime events。
-7. Compare 可以对齐 Execution，并输出描述性差异、ambiguity 与 confounders。
-8. Agent 可以修改代码、运行自主选择的验证，并留下可审阅 patch。
-9. Session、workspace 和 artifacts 可以继续、handoff 或显式清理。
-10. 路径逃逸、宿主凭据、未授权网络和越界进程操作被执行前拒绝并记录。
+1. CLI 在 Host 预置的 bounded `taskStorageRoot` 下创建隔离 task workspace；`runtimeRoot` 是其严格子目录，
+   七个 coding tools 通过 bwrap/cgroup/rlimit broker 执行。
+2. Pi 使用官方 SDK 创建正常 Session；同一 Loop 可自由组合 coding tools 与 §15 的 16 个 game tools。
+3. 有界 rolling capture 保存 requested/realized input、五类时钟、entity lifecycle、runtime error、
+   checkpoint/restore、coverage 与 loss；Agent 可以手动 pin，非空自动 trigger 当前明确拒绝。
+4. Fixture snapshot adapter 在 `process_frame_end` semantic barrier 创建 manifest，记录逐域 hash、coverage、
+   fidelity、missing/uncontrolled state，并可恢复已声明 participant（包括 `window_open`）、logical clock 与
+   Host input schedule。
+5. same-build 且 build/adapter/probe/state schema 相容时可以从 checkpoint restore/fork；trace 保留
+   requested/realized tick/phase 并报告 first divergence。跨 build/code change 使用 fresh runtime + trace
+   replay，不搬运不兼容 checkpoint。
+6. Runtime State Index 从 raw records 重建，可查询 entity、clock、input、state 和 runtime event；它不推断
+   因果。
+7. Compare 只读取 sealed Execution，输出 observed difference、alignment ambiguity、coverage gap 和
+   confounder；不判断实验、假设、原因或修复。
+8. Agent 可以修改候选源码、运行自主选择的验证并留下 round-trip checked patch；Task、Session、workspace
+   和 artifacts 支持 continue/show/export/discard 生命周期。
+9. runtime store 保存 task-owned lineage、raw hash-chained event ledger 与 physical seal；同一 mount 下所有
+   Task/runtime/evaluator 共享 1 GiB/131072 inode aggregate hard cap，仅 cleanup 得到证明的 Execution 可 seal。
+10. Godot workspace 和 managed Addon 只读，候选 `addons/**` 拒绝；路径逃逸、宿主 credential、Host network
+    和越界进程操作在执行前拒绝并记录。
 11. 新路径不存在 Proposal、Claim Policy、Causal Capsule、Conclusion Gate 或 canonical verdict。
-12. 离线测试覆盖成功、restore failure、first-tick divergence、history unavailable、capture budget degradation
-    和 security denial。
-13. `corepack pnpm check` 通过；真实模型 smoke 与开源 benchmark 暂不作为默认 Gate。
+12. 单元/集成测试覆盖 restore failure、first-tick divergence、history unavailable、capture degradation/loss、
+    corrupt/missing seal、resource ownership 和 security denial；是否通过必须看实际测试输出。
 
-按以下依赖顺序推进；每个实现 PR 或里程碑仍只引入一个主要不确定性维度：
+M3 故意不覆盖：其他三个 legacy Fixture、任意外部项目、candidate Addon、视觉/音频/GPU、任意输入动作、
+任意 FPS/TPS 或 engine-internal snapshot。当前只支持 `attempt_jump`、FPS/TPS 60/120、最多 600 ticks；一
+个 coordinator turn 最多同时 admission 两个 Runtime、累计启动八个。Godot 实际 input injection 位于
+`process_frame_start`，必须报告从 requested tick/phase 到 realized 时钟位置的量化。Restore 成功只表示
+声明状态被写回；PhysicsServer、Timer/Tween/coroutine、线程、未注册 RNG、cache 与外部服务仍可
+uncontrolled，没有 divergence 也不证明等价起点或 bit-exact replay。
 
-1. 先建立 task workspace/sandbox，并让 Pi coding tools 安全运行，复用现有 Godot execution；
-2. 再把现有 frame-input runtime 能力暴露成无状态机的 game tools；
-3. 加入 rolling capture、pin、trigger 和预算退化；
-4. 加入 Fixture snapshot adapter、checkpoint manifest 和 restore receipt；
-5. 加入 trace fork/replay 与 first-divergence reporting；
-6. 从 raw records 派生 Runtime State Index；
-7. 在 Index 与 manifest 基础上加入 descriptive compare；
-8. 最后完成 patch/result handoff，并删除新路径对旧 verdict workflow 的依赖。
+完成 M3 release 决策时必须保存这些命令的实际证据，而不能仅引用本文：默认离线
+`corepack pnpm check`，相关 Godot `corepack pnpm test:godot`，真实 coding sandbox
+`corepack pnpm test:sandbox`，Godot/sidecar/sandbox 联合
+`corepack pnpm test:vnext:godot-sandbox`，以及显式 release-only
+`corepack pnpm test:vnext:live`。最后一个命令给 `openai-codex/gpt-5.6-luna/max` 一次 Agent attempt，冻结
+候选 source identity，再由产品外 evaluator 跑 13 个场景：1 个 120 FPS/60 TPS/75 ms 的 frozen baseline
+必须重现 `jumping=false`；candidate 在 `{60,120}×{60,120}` 下分别满足 75 ms 为 `true`、250 ms 为
+`false`、无输入为 `false`。该 evaluator 只接受这个 Fixture release candidate，不写入产品 Task verdict，
+不是默认 CI、公开 benchmark、机制证明或产品优势结论。Provider/Host infrastructure failure 不算 candidate
+rejection；候选自身造成且 cleanup 已证明的 launch/step failure 是 evaluated rejection。同一候选只可因
+infrastructure failure 重试，evaluated rejection 后必须产生新的 source identity。
+
+`test:godot` 的范围是 legacy Godot integration/Fixture suites 加 M3 `frame-input-window` participant
+checkpoint/restore characterization；它不覆盖 bwrap、sidecar 或 cgroup 联合边界。后两项 M3 Gate 必须显式
+提供同一组 Host 测试变量：`CHRONORIFT_TEST_CGROUP_ROOT`、`CHRONORIFT_TEST_TASK_STORAGE_ROOT`、
+`CHRONORIFT_TEST_NODE_BIN`、`CHRONORIFT_TEST_GODOT_BIN`、`CHRONORIFT_TEST_GODOT_ADDON_ROOT`、
+`CHRONORIFT_TEST_BWRAP_BIN`、`CHRONORIFT_TEST_PRLIMIT_BIN`、`CHRONORIFT_TEST_BUSYBOX_BIN`、
+`CHRONORIFT_TEST_LDD_BIN`、`CHRONORIFT_TEST_FONTCONFIG_PROBE_BIN`、
+`CHRONORIFT_TEST_XDG_USER_DIR_BIN`、`CHRONORIFT_TEST_BASH_BIN`、`CHRONORIFT_TEST_RG_BIN`、
+`CHRONORIFT_TEST_FIND_BIN` 与 `CHRONORIFT_TEST_LS_BIN`。Host 必须提供 `fontconfig`/`fc-match` 与
+`xdg-user-dirs`，且这些 executable 和既有 BusyBox 必须通过 root-owned immutable-path preflight。storage root
+必须是开始时为空的独立 bounded mount，并满足 §7.2 的 aggregate hard cap；产品 preflight 对
+mountinfo 的精确 `tmpfs|ext4|xfs` 名称与 statfs magic 做交叉验证，而仓库 conformance wrapper
+为了不混淆 ext2/ext3/ext4 的共用 magic，只接受它自身已配置的精确 `tmpfs`。wrapper 负责验证并在
+cleanup 后再次要求为空，但不能用 lazy unmount 掩盖占用。live 还要求 Host 模型路径有明确
+provider credential 与 network
+授权，sandbox tool/Godot 路径仍不继承 credential。
+
+成功的 `test:vnext:live` 只在一次 Agent turn、13 个场景全部接受且 cleanup 已证明后，向 stdout 写
+sanitized `[chronorift-m3-live]` JSON summary。它记录 release candidate/source identity、固定
+provider/model/thinking、Agent/evaluator attempt 数、场景数、`accepted` 和 `cleanupProven`，不发布 prompt、
+assistant prose、临时路径、原始 provider request 或 credential。该 summary 是要随实际命令输出保存的 Gate
+索引，不是签名、provider attestation 或产品 verdict；失败运行不得产生成功 summary。
 
 其他三个 Godot Fixture 只保持历史兼容，不同时迁移。
 
 ## 21. 当前实现映射
 
-本节把当前仓库映射到目标架构；它区分 2026-08-07 的 v0.4 legacy、实验性
-**vNext coding-loop slice** 与尚未实现的 game-native 闭环。coding slice 已有公开 Task CLI 和 Pi 接线，
-但没有 Godot runtime/game tools，仍不是 vNext release。
+本节把 2026-08-07 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3 是源码中的实验性、单一
+Fixture vNext slice，不因为代码或测试入口存在就自动成为 release。
 
-| 能力           | 当前公开 v0.4                                            | 实验性 vNext coding-loop slice                                          | 仍需实现                                                   |
-| -------------- | -------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Pi SDK         | 真实 `createAgentSession`，但服务于 legacy 固定 workflow | 官方 SDK、默认 Loop/compaction/resources、持久化 Session                | 接入 game tools 与完整 runtime records                     |
-| Agent 自由度   | 受限诊断 tools、固定 prompt/顺序、一次 Proposal          | 自主七个 coding tools、普通 assistant result，无 Harness tool order     | coding/game tools 自由组合                                 |
-| Source/Fixture | 四个 legacy Fixture                                      | 只信任 clean Git 中 strict `frame-input-window` manifest 与冻结 tree    | 外部项目授权、更多 Fixture 与能力协商                      |
-| Workspace      | Fixture staging，无候选修复 worktree                     | 私有 workspace、Host baseline、suspend/resume/show/export/discard       | 外部项目授权与长期保留策略                                 |
-| OS sandbox     | opaque handle，不是进程隔离                              | Pi coding tools 已接 bwrap/cgroup/rlimit broker；默认隔离网络/Host      | 接入 Godot；部署 Host 仍须提供经过 preflight 的 delegation |
-| Task artifacts | legacy run/proposal/verdict stores                       | Task config、Agent turns、Pi Session、operation/security/export ledgers | runtime records、展示增强与保留策略                        |
-| Patch          | 无候选代码修改或 handoff                                 | binary patch、round-trip 校验、create-new public export                 | 用户 acceptance/apply UX                                   |
-| Godot runtime  | 四个显式插桩 Fixture、Protocol v2、Godot 4.7.1           | 未接入 Godot                                                            | 先迁移 frame-input-window 到自由 game tools                |
-| Checkpoint     | Fixture participant snapshot                             | 无新增实现                                                              | 通用 manifest/receipt/fidelity 与 adapter 接入契约         |
-| Replay/Capture | legacy input/control/telemetry，无目标 rolling buffer    | 无新增实现                                                              | phase-aware trace、rolling pin/trigger、first divergence   |
-| Query/Compare  | typed event/capsule；compare 被 verdict Gate 使用        | 无新增实现                                                              | Runtime State Index 与独立 descriptive compare             |
-| Product result | Proposal → Harness Verdict                               | assistant result 与真实 turn/tool/patch records 分离                    | 加入 Execution lineage 与 runtime records                  |
-| Release/Eval   | v0.4 与冻结的 legacy benchmark                           | 无 vNext release；M1 不是产品 benchmark 结论                            | 可用垂直切片与独立、后置、优先开源的 Eval Suite            |
+| 能力            | 当前公开 v0.4                                            | 实验性 M3 vNext slice                                                                      | 未覆盖或后续方向                                |
+| --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| Pi SDK          | 真实 `createAgentSession`，但服务于 legacy 固定 workflow | 官方 SDK、默认 Loop/compaction/resources、持久化 Session                                   | 外部项目与更多 Fixture                          |
+| Agent 自由度    | 受限诊断 tools、固定 prompt/顺序、一次 Proposal          | 七个 coding tools + 16 个 game tools，自由组合，普通 assistant result                      | 按任务授权更广的项目能力                        |
+| Source/Fixture  | 四个 legacy Fixture                                      | clean Git、strict frozen `frame-input-window` 初始 identity；candidate `addons/**` 拒绝    | 任意外部项目、其他 Fixture、candidate Addon     |
+| Workspace       | Fixture staging，无候选修复 worktree                     | 私有 `/workspace`、Host baseline、continue/show/export/discard                             | 长期保留、用户 apply UX                         |
+| OS sandbox      | opaque handle，不是进程隔离                              | bwrap/cgroup/rlimit；bounded aggregate Task storage；Godot workspace/Add-on 只读；默认禁网 | 显式 display/audio/GPU 授权                     |
+| Runtime sidecar | Host 直接管理 legacy Godot                               | 每 Runtime 一份 sidecar + 一个 Godot child；同 sandbox，内部 loopback，Host framed stdio   | 更多平台/runtime capability                     |
+| Task artifacts  | legacy run/proposal/verdict stores                       | Task/turn/security/patch records + 十类 runtime resource、raw chain、physical seal         | 外部签名/attestation                            |
+| Patch           | 无候选代码修改或 handoff                                 | binary/full-index patch、round-trip 校验、create-new export                                | 用户 acceptance/apply UX                        |
+| Capture         | legacy typed telemetry                                   | rolling buffer、手动 pin、coverage/degradation/loss；自动 trigger 明确 unsupported         | 自动 freeze/trigger 与更广 probe                |
+| Checkpoint      | Fixture participant snapshot                             | manifest、逐域 hash、restore validation/fidelity；same-build compatible restore            | engine internals、跨不兼容 build snapshot       |
+| Fork/Replay     | legacy 固定 intervention/replay                          | lineage-aware fork、requested/realized tick/phase、first divergence；跨 build fresh        | 不承诺 bit-exact 或完整起点等价                 |
+| Query/Compare   | typed event/capsule；compare 被 verdict Gate 使用        | rebuildable Index；sealed Execution descriptive compare                                    | 更广 project semantics；仍不做因果 verdict      |
+| Product result  | Proposal → Harness Verdict                               | assistant result、diff、实际 tool/runtime/lineage records 分离                             | acceptance 归用户、CI、review 或独立 Eval       |
+| Release/Eval    | v0.4 与冻结的 legacy benchmark                           | 外部 13 场景 release-only evaluator 已实现；不是 Task verdict 或默认 CI                    | 实际 Gate 证据、后续独立且优先开源的 Eval Suite |
 
-默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 sandbox boundary 与七个 broker-backed Pi tools 必须另外运行
+默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 coding sandbox boundary 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、
-`pids` controller 的 delegated cgroup v2 root，并通过 `CHRONORIFT_TEST_CGROUP_ROOT` 传入。仓库 CI 的
-`.github/scripts/run-sandbox-conformance.sh` 负责建立一次性 delegation。没有该 Host 条件，只能说明默认
-离线 Gate 通过，不能声称 sandbox conformance 通过。`corepack pnpm test:vnext:pi-live` 使用真实
-`openai-codex/gpt-5.6-luna` 与 `max` 验证 Pi Session/tool 接线；它不启动 Godot，不是 M3 release
-acceptance，也不证明候选修改正确。
+`pids` controller 的 delegated cgroup v2 root。仓库脚本 `.github/scripts/run-sandbox-conformance.sh` 建立和
+清理一次性 delegation。M3 的 Godot profile、只读 mounts、sidecar/loopback、bounded diagnostics 与
+cleanup/seal 还必须由 `corepack pnpm test:vnext:godot-sandbox` 及
+`.github/scripts/run-vnext-godot-sandbox-conformance.sh` 验证。没有对应 Host 条件或实际命令输出，不能声称
+sandbox conformance 通过。该 M3 Gate 还要求 `CHRONORIFT_TEST_TASK_STORAGE_ROOT` 指向一个开始时为空的
+独立 `tmpfs`、`ext4` 或 `xfs` mount；总容量不超过 1 GiB、总 inode 不超过 131072，测试 runtime root 必须
+是它的严格子目录。CI 的 Agent/evaluator runtime root 可以共享该 mount，并共同受 aggregate hard cap 约束。
+
+`corepack pnpm test:vnext:pi-live` 只用真实 `openai-codex/gpt-5.6-luna/max` 验证 Pi Session/tool smoke；它
+不启动 Godot，不是 M3 release acceptance。`corepack pnpm test:vnext:live` 才运行 §20 的一次真实 Agent Task
+和外部 13 场景 evaluator；它需要明确的 provider/network/Host runtime 授权，不属于默认 CI，不产生产品
+verdict，也不证明候选机制、根因、跨项目泛化或产品优势。本文只定义这些 Gate，不声称当前 checkout 已经
+运行或通过它们。
 
 当前 v0.4 仍实现并测试 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
 `DiagnosisProposalV4`、`DiagnosisVerdictV3`、固定 replay/intervention flow 和 write-once verdict artifact。

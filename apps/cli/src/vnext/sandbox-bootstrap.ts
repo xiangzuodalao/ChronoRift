@@ -281,6 +281,8 @@ export interface SandboxBootstrapSession {
   launch(plan: SandboxBootstrapLaunchPlan): Promise<void>;
   waitForChildStarted(): Promise<number>;
   waitForSandboxStatus(): Promise<Readonly<Record<string, unknown>>>;
+  writeStdin(bytes: Uint8Array): Promise<void>;
+  endStdin(): Promise<void>;
   provideStdin(bytes: Uint8Array): Promise<void>;
   authorize(): Promise<void>;
   terminate(): Promise<void>;
@@ -303,6 +305,7 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
   #authorizationSent = false;
   #authorizationAcknowledged = false;
   #terminationSent = false;
+  #stdinEnded = false;
   #childExited = false;
   #lastChildExit: ProcessExit | undefined;
   readonly #bootstrapExit: Promise<ProcessExit>;
@@ -388,7 +391,12 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
     await this.#authorized.promise;
   }
 
-  public provideStdin(bytes: Uint8Array): Promise<void> {
+  public writeStdin(bytes: Uint8Array): Promise<void> {
+    if (this.#stdinEnded) {
+      return Promise.reject(
+        new Error("sandbox bootstrap stdin is already ended"),
+      );
+    }
     const stdin = this.bootstrapProcess.stdin;
     if (stdin === null) {
       return Promise.reject(
@@ -399,11 +407,36 @@ class DirectSandboxBootstrapSession implements SandboxBootstrapSession {
       const onError = (error: unknown): void =>
         rejectWrite(error instanceof Error ? error : new Error(String(error)));
       stdin.once("error", onError);
-      stdin.end(Buffer.from(bytes), () => {
+      stdin.write(Buffer.from(bytes), () => {
         stdin.removeListener("error", onError);
         resolveWrite();
       });
     });
+  }
+
+  public endStdin(): Promise<void> {
+    if (this.#stdinEnded) return Promise.resolve();
+    this.#stdinEnded = true;
+    const stdin = this.bootstrapProcess.stdin;
+    if (stdin === null) {
+      return Promise.reject(
+        new Error("sandbox bootstrap stdin is unavailable"),
+      );
+    }
+    return new Promise<void>((resolveEnd, rejectEnd) => {
+      const onError = (error: unknown): void =>
+        rejectEnd(error instanceof Error ? error : new Error(String(error)));
+      stdin.once("error", onError);
+      stdin.end(() => {
+        stdin.removeListener("error", onError);
+        resolveEnd();
+      });
+    });
+  }
+
+  public async provideStdin(bytes: Uint8Array): Promise<void> {
+    await this.writeStdin(bytes);
+    await this.endStdin();
   }
 
   public async terminate(): Promise<void> {
@@ -500,11 +533,69 @@ const BootstrapReadyMessageSchema = z
   .object({ kind: z.literal("ready"), pid: z.number().int().positive() })
   .strict();
 
+const DEFAULT_READINESS_TIMEOUT_MS = 5_000;
+const DEFAULT_TERMINATION_TIMEOUT_MS = 2_000;
+
+const requireTimeout = (value: number, name: string): number => {
+  if (!Number.isInteger(value) || value < 1 || value > 600_000) {
+    throw new TypeError(`${name} must be an integer from 1 to 600000`);
+  }
+  return value;
+};
+
+const withinTimeout = <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> =>
+  new Promise<T>((resolveValue, rejectValue) => {
+    const timer = setTimeout(() => rejectValue(new Error(message)), timeoutMs);
+    timer.unref();
+    void promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolveValue(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        rejectValue(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+
+export class SandboxBootstrapReadinessCleanupError extends AggregateError {
+  public constructor(
+    public readonly primaryError: unknown,
+    cleanupError: unknown,
+    private readonly retry: () => Promise<void>,
+  ) {
+    super(
+      [primaryError, cleanupError],
+      "sandbox bootstrap readiness failed without proven detached process cleanup",
+    );
+    this.name = "SandboxBootstrapReadinessCleanupError";
+  }
+
+  public retryCleanup(): Promise<void> {
+    return this.retry();
+  }
+}
+
 export async function startSandboxBootstrap(input: {
   readonly processDriver?: ProcessDriver;
   readonly cwd: string;
   readonly inheritedFds: readonly number[];
+  readonly readinessTimeoutMs?: number;
+  readonly terminationTimeoutMs?: number;
 }): Promise<SandboxBootstrapSession> {
+  const readinessTimeoutMs = requireTimeout(
+    input.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS,
+    "bootstrap readiness timeout",
+  );
+  const terminationTimeoutMs = requireTimeout(
+    input.terminationTimeoutMs ?? DEFAULT_TERMINATION_TIMEOUT_MS,
+    "bootstrap termination timeout",
+  );
   const driver = input.processDriver ?? new NodeProcessDriver();
   const bootstrapProcess = driver.startIpc({
     executable: process.execPath,
@@ -517,16 +608,73 @@ export async function startSandboxBootstrap(input: {
     stdio: ["pipe", "pipe", "pipe", "ipc", ...input.inheritedFds],
   });
   const ready = deferred<void>();
+  const bootstrapExit = bootstrapProcess.wait();
+  let exitProven = false;
+  let activeCleanup: Promise<void> | undefined;
+  const retryCleanup = (): Promise<void> => {
+    if (exitProven) return Promise.resolve();
+    if (activeCleanup !== undefined) return activeCleanup;
+    const attempt = (async () => {
+      let signalError: unknown;
+      try {
+        bootstrapProcess.signal("SIGKILL");
+      } catch (error) {
+        signalError = error;
+      }
+      try {
+        await withinTimeout(
+          bootstrapExit,
+          terminationTimeoutMs,
+          "sandbox bootstrap termination timed out",
+        );
+        exitProven = true;
+      } catch (waitError) {
+        if (signalError === undefined) throw waitError;
+        throw new AggregateError(
+          [signalError, waitError],
+          "sandbox bootstrap kill and reap could not be proven",
+        );
+      }
+    })();
+    const tracked = attempt.finally(() => {
+      if (activeCleanup === tracked) activeCleanup = undefined;
+    });
+    activeCleanup = tracked;
+    return tracked;
+  };
   const unsubscribe = bootstrapProcess.onMessage((message) => {
     const parsed = BootstrapReadyMessageSchema.safeParse(message);
     if (parsed.success && parsed.data.pid === bootstrapProcess.pid)
       ready.resolve();
   });
-  void bootstrapProcess.wait().then(
-    () => ready.reject(new Error("sandbox bootstrap exited before ready")),
+  void bootstrapExit.then(
+    () => {
+      exitProven = true;
+      ready.reject(new Error("sandbox bootstrap exited before ready"));
+    },
     (error: unknown) => ready.reject(error),
   );
-  await ready.promise;
-  unsubscribe();
+  try {
+    await withinTimeout(
+      ready.promise,
+      readinessTimeoutMs,
+      "sandbox bootstrap readiness timed out",
+    );
+  } catch (readinessError) {
+    if (!exitProven) {
+      try {
+        await retryCleanup();
+      } catch (cleanupError) {
+        throw new SandboxBootstrapReadinessCleanupError(
+          readinessError,
+          cleanupError,
+          retryCleanup,
+        );
+      }
+    }
+    throw readinessError;
+  } finally {
+    unsubscribe();
+  }
   return new DirectSandboxBootstrapSession(bootstrapProcess);
 }

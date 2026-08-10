@@ -179,6 +179,16 @@ describe("VNextTaskStore", () => {
       store.readJson(taskId, "task.json", parseEvent),
     ).resolves.toEqual({ event: "created" });
 
+    await store.putJsonOnce(
+      taskId,
+      "managed-runtime.json",
+      { event: "managed" },
+      parseEvent,
+    );
+    await expect(
+      store.readJson(taskId, "managed-runtime.json", parseEvent),
+    ).resolves.toEqual({ event: "managed" });
+
     await expect(
       store.putJsonOnce(
         taskId,

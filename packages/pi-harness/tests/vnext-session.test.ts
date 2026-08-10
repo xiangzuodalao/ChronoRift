@@ -160,6 +160,17 @@ const fakeSessionFactory =
   };
 
 describe("vNext Pi AgentSession host", () => {
+  it("describes game resources and observation limits without a tool workflow", () => {
+    expect(VNEXT_ENVIRONMENT_APPENDIX).toMatch(/task-owned resource IDs/u);
+    expect(VNEXT_ENVIRONMENT_APPENDIX).toMatch(/coverage/u);
+    expect(VNEXT_ENVIRONMENT_APPENDIX).toMatch(/fidelity/u);
+    expect(VNEXT_ENVIRONMENT_APPENDIX).toMatch(/loss/u);
+    expect(VNEXT_ENVIRONMENT_APPENDIX).toMatch(/recoverable tool results/u);
+    expect(VNEXT_ENVIRONMENT_APPENDIX).not.toMatch(
+      /call first|only after|exactly once|must .* before|diagnos|caus|verdict|proposal|claim/iu,
+    );
+  });
+
   it("keeps Pi's Loop, resources, and persistence while exposing only the declared tools", async () => {
     const root = await createRoot();
     const captures: CreateAgentSessionOptions[] = [];

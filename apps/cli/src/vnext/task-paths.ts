@@ -16,6 +16,7 @@ import { M1Error } from "./errors.js";
 export interface TaskDirectoryLayout {
   readonly taskRootDirectory: string;
   readonly taskRecordDirectory: string;
+  readonly runtimeRecordDirectory: string;
   readonly workspaceDirectory: string;
   readonly sandboxTemporaryDirectory: string;
   readonly sandboxArtifactScratchDirectory: string;
@@ -26,6 +27,7 @@ export interface TaskDirectoryLayout {
 
 const TASK_CHILDREN = [
   "records",
+  "runtime-records",
   "workspace",
   "tmp",
   "sandbox-artifacts",
@@ -34,9 +36,14 @@ const TASK_CHILDREN = [
   "host-tmp",
 ] as const;
 
+const LEGACY_TASK_CHILDREN = TASK_CHILDREN.filter(
+  (child) => child !== "runtime-records",
+);
+
 const layoutForRoot = (taskRootDirectory: string): TaskDirectoryLayout => ({
   taskRootDirectory,
   taskRecordDirectory: join(taskRootDirectory, "records"),
+  runtimeRecordDirectory: join(taskRootDirectory, "runtime-records"),
   workspaceDirectory: join(taskRootDirectory, "workspace"),
   sandboxTemporaryDirectory: join(taskRootDirectory, "tmp"),
   sandboxArtifactScratchDirectory: join(taskRootDirectory, "sandbox-artifacts"),
@@ -99,11 +106,38 @@ const canonicalizeExistingDirectoryWithoutSymlinks = async (
   return canonicalPath;
 };
 
+const verifyPrivateOwnedDirectory = async (
+  inputPath: string,
+  label: string,
+): Promise<string> => {
+  const canonicalPath =
+    await canonicalizeExistingDirectoryWithoutSymlinks(inputPath);
+  const effectiveUserId = process.geteuid?.();
+  if (effectiveUserId === undefined) {
+    throw new M1Error(
+      "path_denied",
+      `unable to verify ${label} ownership on this platform`,
+    );
+  }
+  const statistics = await lstat(canonicalPath);
+  if (statistics.isSymbolicLink() || !statistics.isDirectory()) {
+    throw new M1Error("path_denied", `${label} must remain a real directory`);
+  }
+  if (statistics.uid !== effectiveUserId) {
+    throw new M1Error("path_denied", `${label} ownership changed`);
+  }
+  if ((statistics.mode & 0o7777) !== 0o700) {
+    throw new M1Error("path_denied", `${label} permissions changed`);
+  }
+  return canonicalPath;
+};
+
 const ensureTasksDirectory = async (runtimeRoot: string): Promise<string> => {
   const tasksDirectory = join(runtimeRoot, "tasks");
+  let created = false;
   try {
     await mkdir(tasksDirectory, { mode: 0o700 });
-    await chmod(tasksDirectory, 0o700);
+    created = true;
   } catch (error) {
     if (!isNodeError(error) || error.code !== "EEXIST") {
       throw new M1Error(
@@ -113,7 +147,18 @@ const ensureTasksDirectory = async (runtimeRoot: string): Promise<string> => {
       );
     }
   }
-  return canonicalizeExistingDirectoryWithoutSymlinks(tasksDirectory);
+  if (created) {
+    try {
+      await chmod(tasksDirectory, 0o700);
+    } catch (error) {
+      throw new M1Error(
+        "artifact_write_failed",
+        "unable to make the new vNext tasks directory private",
+        error,
+      );
+    }
+  }
+  return verifyPrivateOwnedDirectory(tasksDirectory, "vNext tasks directory");
 };
 
 const rollbackCreatedRoot = async (
@@ -195,11 +240,13 @@ export async function createTaskDirectoryLayout(input: {
   const createdChildren: string[] = [];
   try {
     await chmod(taskRootDirectory, 0o700);
+    await verifyPrivateOwnedDirectory(taskRootDirectory, "Task root directory");
     for (const child of TASK_CHILDREN) {
       const childPath = join(taskRootDirectory, child);
       await mkdir(childPath, { mode: 0o700 });
       createdChildren.push(childPath);
       await chmod(childPath, 0o700);
+      await verifyPrivateOwnedDirectory(childPath, "Task lifecycle directory");
     }
   } catch (error) {
     await rollbackCreatedRoot(taskRootDirectory, createdRoot, createdChildren);
@@ -220,29 +267,27 @@ export async function openTaskDirectoryLayout(input: {
   const runtimeRoot = await canonicalizeExistingDirectoryWithoutSymlinks(
     input.runtimeRoot,
   );
-  const tasksDirectory = await canonicalizeExistingDirectoryWithoutSymlinks(
+  const tasksDirectory = await verifyPrivateOwnedDirectory(
     join(runtimeRoot, "tasks"),
+    "vNext tasks directory",
   );
-  const taskRootDirectory = await canonicalizeExistingDirectoryWithoutSymlinks(
+  const taskRootDirectory = await verifyPrivateOwnedDirectory(
     join(tasksDirectory, taskNamespaceDigestV1(input.taskId)),
+    "Task root directory",
   );
   const entries = (await readdir(taskRootDirectory)).sort();
-  if (JSON.stringify(entries) !== JSON.stringify([...TASK_CHILDREN].sort())) {
+  const currentEntries = JSON.stringify(entries);
+  const currentLayout = JSON.stringify([...TASK_CHILDREN].sort());
+  const legacyLayout = JSON.stringify([...LEGACY_TASK_CHILDREN].sort());
+  if (currentEntries !== currentLayout && currentEntries !== legacyLayout) {
     throw new M1Error(
       "path_denied",
       "Task root does not contain the exact owned lifecycle directories",
     );
   }
-  for (const child of TASK_CHILDREN) {
+  for (const child of entries) {
     const path = join(taskRootDirectory, child);
-    const canonical = await canonicalizeExistingDirectoryWithoutSymlinks(path);
-    const statistics = await lstat(canonical);
-    if ((statistics.mode & 0o777) !== 0o700) {
-      throw new M1Error(
-        "path_denied",
-        "Task lifecycle directory permissions changed",
-      );
-    }
+    await verifyPrivateOwnedDirectory(path, "Task lifecycle directory");
   }
   return layoutForRoot(taskRootDirectory);
 }

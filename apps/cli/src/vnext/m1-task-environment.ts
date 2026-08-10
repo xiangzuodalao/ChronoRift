@@ -9,20 +9,35 @@ import {
   unlink,
   type FileHandle,
 } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 
 import {
   asSha256DigestV1,
+  asWorkspaceId,
   TaskIdentityV1Schema,
   TaskPatchIdentityV1Schema,
   taskNamespaceDigestV1,
   type JsonValue,
+  type Sha256DigestV1,
   type TaskId,
   type TaskIdentityV1,
+  type WorkspaceId,
 } from "@chronorift/domain";
 import {
+  VNextRuntimeStore,
   VNextTaskStore,
   contentHash,
+  type RuntimeEventEnvelopeV1,
+  type RuntimeExecutionSealV1,
+  type VNextRuntimeResourceSummaryV1,
+  type VNextRuntimeResourceKind,
   type VNextTaskBytesSlot,
   type VNextTaskJsonSlot,
   type VNextTaskLedgerSlot,
@@ -39,7 +54,7 @@ import {
   SandboxExecutionReceiptV1Schema,
   SandboxExecutionRequestV1Schema,
   SandboxOperationRecordV1Schema,
-  SandboxPolicyV1Schema,
+  SandboxPolicySchema,
   SandboxPreflightReceiptV1Schema,
   SandboxToolchainCapabilityV1Schema,
   SecurityEventV1Schema,
@@ -48,9 +63,10 @@ import {
   type SandboxCleanupReceiptV1,
   type SandboxExecutionRequestV1,
   type SandboxHostCapabilityV1,
-  type SandboxPolicyV1,
+  type SandboxPolicy,
   type SandboxToolchainCapabilityV1,
   type SecurityEventV1,
+  type TaskFixtureCapabilityV1,
   type WorkspaceMaterializationReceiptV1,
 } from "./contracts.js";
 import { M1Error, M1PatchExportError, sanitizeM1Diagnostic } from "./errors.js";
@@ -61,24 +77,42 @@ import {
   type ExtractedTaskPatch,
 } from "./patch-handoff.js";
 import {
-  createBwrapCgroupTaskSandbox,
+  createDuplexBwrapCgroupTaskSandbox,
+  SandboxBrokerSetupCleanupError,
+  type DuplexTaskSandboxBrokerV1,
+  type SandboxDuplexExecutionOptionsV1,
+  type SandboxDuplexOpenResultV1,
   type SandboxExecutionOptionsV1,
   type SandboxExecutionResultV1,
-  type TaskSandboxBrokerV1,
 } from "./sandbox-broker.js";
 import {
   assertSandboxHostBindingMatches,
+  assertSandboxTaskStorageLayoutMatches,
   preflightSandboxHost,
   type SandboxHostBinding,
   type SandboxHostPreflightRequest,
   type SandboxHostPreflightResult,
 } from "./sandbox-preflight.js";
-import { createSandboxPolicyV1 } from "./sandbox-policy.js";
+import {
+  createSandboxPolicyV1,
+  createSandboxPolicyV2,
+} from "./sandbox-policy.js";
 import {
   inspectSandboxToolchain,
   type SandboxToolchainBindingV1,
   type SandboxToolchainCommandBindingV1,
 } from "./sandbox-toolchain.js";
+import {
+  DEFAULT_MANAGED_GODOT_HOST_DEPENDENCY_PATHS,
+  preflightManagedGodotRuntimeV1,
+  type ManagedGodotRuntimePreflightInputV1,
+  type ManagedGodotRuntimePreflightResultV1,
+} from "./managed-godot-runtime-preflight.js";
+import {
+  ManagedGodotRuntimeCapabilityV1Schema,
+  type ManagedGodotRuntimeCapabilityV1,
+} from "./managed-godot-runtime.js";
+import { GodotSidecarPortV1 } from "./godot-sidecar-port.js";
 import {
   preflightCleanGitSubtree,
   type CleanGitSubtreePreflightRequest,
@@ -122,12 +156,80 @@ interface M1TaskRecordStore {
   discard(taskId: TaskId): Promise<void>;
 }
 
+interface M1TaskRuntimeRecordStore {
+  create(taskId: TaskId): Promise<void>;
+  open(taskId: TaskId): Promise<void>;
+  putResourceOnce<T>(
+    taskId: TaskId,
+    kind: VNextRuntimeResourceKind,
+    resourceId: string,
+    value: T,
+    parse: (input: unknown) => T,
+  ): Promise<void>;
+  readResource<T>(
+    taskId: TaskId,
+    kind: VNextRuntimeResourceKind,
+    resourceId: string,
+    parse: (input: unknown) => T,
+  ): Promise<T>;
+  appendExecutionEvent<T>(
+    taskId: TaskId,
+    executionId: string,
+    value: T,
+    parse: (input: unknown) => T,
+  ): Promise<RuntimeEventEnvelopeV1>;
+  readExecutionEvents<T>(
+    taskId: TaskId,
+    executionId: string,
+    parse: (input: unknown) => T,
+  ): Promise<readonly T[]>;
+  readExecutionSeal(
+    taskId: TaskId,
+    executionId: string,
+  ): Promise<RuntimeExecutionSealV1>;
+  sealExecution(
+    taskId: TaskId,
+    executionId: string,
+  ): Promise<RuntimeExecutionSealV1>;
+  summarize(taskId: TaskId): Promise<VNextRuntimeResourceSummaryV1>;
+  discard(taskId: TaskId): Promise<void>;
+}
+
+export interface M1TaskRuntimeArtifactStore {
+  putResourceOnce<T>(
+    kind: VNextRuntimeResourceKind,
+    resourceId: string,
+    value: T,
+    parse: (input: unknown) => T,
+  ): Promise<void>;
+  readResource<T>(
+    kind: VNextRuntimeResourceKind,
+    resourceId: string,
+    parse: (input: unknown) => T,
+  ): Promise<T>;
+  appendExecutionEvent<T>(
+    executionId: string,
+    value: T,
+    parse: (input: unknown) => T,
+  ): Promise<RuntimeEventEnvelopeV1>;
+  readExecutionEvents<T>(
+    executionId: string,
+    parse: (input: unknown) => T,
+  ): Promise<readonly T[]>;
+  readExecutionSeal(executionId: string): Promise<RuntimeExecutionSealV1>;
+  sealExecution(executionId: string): Promise<RuntimeExecutionSealV1>;
+  summarize(): Promise<VNextRuntimeResourceSummaryV1>;
+}
+
 export interface M1TaskEnvironment {
   readonly task: TaskIdentityV1;
   readonly workspace: WorkspaceMaterializationReceiptV1;
   readonly sandboxCapability: SandboxHostCapabilityV1;
   readonly toolchainCapability?: SandboxToolchainCapabilityV1 | undefined;
-  readonly policy: SandboxPolicyV1;
+  readonly managedRuntimeCapability?:
+    ManagedGodotRuntimeCapabilityV1 | undefined;
+  readonly policy: SandboxPolicy;
+  readonly runtimeStore: M1TaskRuntimeArtifactStore;
 }
 
 export interface PrepareM1TaskEnvironmentRequest {
@@ -142,6 +244,8 @@ export interface PrepareM1TaskEnvironmentRequest {
         readonly commands: readonly SandboxToolchainCommandBindingV1[];
       }
     | undefined;
+  readonly managedGodotRuntime?:
+    ManagedGodotRuntimePreflightInputV1 | undefined;
 }
 
 export interface ResumeM1TaskEnvironmentRequest {
@@ -149,6 +253,7 @@ export interface ResumeM1TaskEnvironmentRequest {
   readonly runtimeRoot: string;
   readonly sandboxHost: SandboxHostPreflightRequest;
   readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
+  readonly managedGodotRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotRuntime"];
 }
 
 interface M1TaskEnvironmentDependencies {
@@ -162,10 +267,15 @@ interface M1TaskEnvironmentDependencies {
   readonly createLayout: typeof createTaskDirectoryLayout;
   readonly openLayout: typeof openTaskDirectoryLayout;
   readonly createStore: (runtimeRoot: string) => M1TaskRecordStore;
+  readonly createRuntimeStore: (
+    runtimeRoot: string,
+  ) => M1TaskRuntimeRecordStore;
   readonly materializeWorkspace: typeof materializePrivateTaskWorkspace;
   readonly assertSandboxBinding: typeof assertSandboxHostBindingMatches;
+  readonly assertTaskStorageLayout: typeof assertSandboxTaskStorageLayoutMatches;
   readonly inspectToolchain: typeof inspectSandboxToolchain;
-  readonly createBroker: typeof createBwrapCgroupTaskSandbox;
+  readonly preflightManagedRuntime: typeof preflightManagedGodotRuntimeV1;
+  readonly createBroker: typeof createDuplexBwrapCgroupTaskSandbox;
   readonly extractPatch: typeof extractTaskPatch;
   readonly exportPatch: typeof exportTaskPatch;
   readonly cleanStagingRegistration: (
@@ -178,13 +288,17 @@ interface M1TaskEnvironmentState {
   readonly layout: TaskDirectoryLayout;
   readonly materialized: MaterializedPrivateTaskWorkspace;
   readonly binding: SandboxHostBinding;
-  readonly broker: TaskSandboxBrokerV1;
+  readonly broker: DuplexTaskSandboxBrokerV1;
+  readonly managedRuntime: ManagedGodotRuntimePreflightResultV1 | undefined;
+  readonly activeDuplexCompletions: Set<Promise<unknown>>;
   readonly store: M1TaskRecordStore;
+  readonly runtimeStore: M1TaskRuntimeRecordStore;
   readonly gate: TaskOperationGate;
   readonly dependencies: M1TaskEnvironmentDependencies;
   readonly sensitiveValues: readonly string[];
   readonly securityEvents: TaskSecurityEventRecorder;
   recordsDiscarded: boolean;
+  runtimeRecordsDiscarded: boolean;
   cleanupPromise: Promise<SandboxCleanupReceiptV1> | undefined;
   suspendPromise: Promise<SandboxCleanupReceiptV1> | undefined;
   discardPromise: Promise<SandboxCleanupReceiptV1> | undefined;
@@ -204,6 +318,8 @@ const MUTABLE_TASK_CHILDREN = [
   "host-tmp",
 ] as const;
 const DISCARDABLE_TASK_CHILDREN = new Set<string>(MUTABLE_TASK_CHILDREN);
+const ARTIFACT_TASK_CHILDREN = ["records", "runtime-records"] as const;
+const MANAGED_RUNTIME_SLOT = "managed-runtime.json" as VNextTaskJsonSlot;
 
 class TaskOperationGate {
   #accepting = true;
@@ -389,14 +505,54 @@ const DEFAULT_DEPENDENCIES: M1TaskEnvironmentDependencies = {
   createLayout: createTaskDirectoryLayout,
   openLayout: openTaskDirectoryLayout,
   createStore: (runtimeRoot) => new VNextTaskStore(runtimeRoot),
+  createRuntimeStore: (runtimeRoot) => new VNextRuntimeStore(runtimeRoot),
   materializeWorkspace: (request) => materializePrivateTaskWorkspace(request),
   assertSandboxBinding: assertSandboxHostBindingMatches,
+  assertTaskStorageLayout: assertSandboxTaskStorageLayoutMatches,
   inspectToolchain: (request) => inspectSandboxToolchain(request),
-  createBroker: (request) => createBwrapCgroupTaskSandbox(request),
+  preflightManagedRuntime: (request, dependencies) =>
+    preflightManagedGodotRuntimeV1(request, dependencies),
+  createBroker: (request) => createDuplexBwrapCgroupTaskSandbox(request),
   extractPatch: (request) => extractTaskPatch(request),
   exportPatch: (request) => exportTaskPatch(request),
   cleanStagingRegistration: defaultCleanStagingRegistration,
 };
+
+const bindTaskRuntimeStore = (
+  taskId: TaskId,
+  store: M1TaskRuntimeRecordStore,
+): M1TaskRuntimeArtifactStore =>
+  Object.freeze({
+    putResourceOnce: <T>(
+      kind: VNextRuntimeResourceKind,
+      resourceId: string,
+      value: T,
+      parse: (input: unknown) => T,
+    ): Promise<void> =>
+      store.putResourceOnce(taskId, kind, resourceId, value, parse),
+    readResource: <T>(
+      kind: VNextRuntimeResourceKind,
+      resourceId: string,
+      parse: (input: unknown) => T,
+    ): Promise<T> => store.readResource(taskId, kind, resourceId, parse),
+    appendExecutionEvent: <T>(
+      executionId: string,
+      value: T,
+      parse: (input: unknown) => T,
+    ): Promise<RuntimeEventEnvelopeV1> =>
+      store.appendExecutionEvent(taskId, executionId, value, parse),
+    readExecutionEvents: <T>(
+      executionId: string,
+      parse: (input: unknown) => T,
+    ): Promise<readonly T[]> =>
+      store.readExecutionEvents(taskId, executionId, parse),
+    readExecutionSeal: (executionId: string): Promise<RuntimeExecutionSealV1> =>
+      store.readExecutionSeal(taskId, executionId),
+    sealExecution: (executionId: string): Promise<RuntimeExecutionSealV1> =>
+      store.sealExecution(taskId, executionId),
+    summarize: (): Promise<VNextRuntimeResourceSummaryV1> =>
+      store.summarize(taskId),
+  });
 
 const fdChildPath = (parent: FileHandle, name: string): string =>
   `/proc/self/fd/${String(parent.fd)}/${name}`;
@@ -529,7 +685,10 @@ const removeMutableTaskState = async (
   withPinnedTaskRoot(taskId, layout, async (taskRoot) => {
     const entries = await readdir(`/proc/self/fd/${String(taskRoot.fd)}`);
     const unexpected = entries.find(
-      (entry) => entry !== "records" && !DISCARDABLE_TASK_CHILDREN.has(entry),
+      (entry) =>
+        !ARTIFACT_TASK_CHILDREN.includes(
+          entry as (typeof ARTIFACT_TASK_CHILDREN)[number],
+        ) && !DISCARDABLE_TASK_CHILDREN.has(entry),
     );
     if (unexpected !== undefined) {
       throw new M1Error(
@@ -543,10 +702,13 @@ const removeMutableTaskState = async (
       }
     }
     const remaining = await readdir(`/proc/self/fd/${String(taskRoot.fd)}`);
-    if (remaining.length !== 1 || remaining[0] !== "records") {
+    if (
+      JSON.stringify(remaining.sort()) !==
+      JSON.stringify([...ARTIFACT_TASK_CHILDREN].sort())
+    ) {
       throw new M1Error(
         "artifact_write_failed",
-        "mutable Task cleanup did not leave exactly the records directory",
+        "mutable Task cleanup did not leave exactly the owned artifact directories",
       );
     }
     await taskRoot.sync();
@@ -594,18 +756,27 @@ const removeCompleteTaskRoot = async (
 const assertCompleteTaskRootIsOwned = async (
   taskId: TaskId,
   layout: TaskDirectoryLayout,
+  state: {
+    readonly recordsDiscarded: boolean;
+    readonly runtimeRecordsDiscarded: boolean;
+  },
 ): Promise<void> =>
   withPinnedTaskRoot(taskId, layout, async (taskRoot) => {
     const entries = await readdir(`/proc/self/fd/${String(taskRoot.fd)}`);
+    const expectedArtifacts = [
+      ...(state.recordsDiscarded ? [] : ["records"]),
+      ...(state.runtimeRecordsDiscarded ? [] : ["runtime-records"]),
+    ];
     if (
-      !entries.includes("records") ||
-      entries.some(
-        (entry) => entry !== "records" && !DISCARDABLE_TASK_CHILDREN.has(entry),
-      )
+      expectedArtifacts.some((entry) => !entries.includes(entry)) ||
+      entries.some((entry) => {
+        if (expectedArtifacts.includes(entry)) return false;
+        return !DISCARDABLE_TASK_CHILDREN.has(entry);
+      })
     ) {
       throw new M1Error(
         "path_denied",
-        "Task root is missing its records or contains an unowned entry",
+        "Task root is missing an owned artifact directory or contains an unowned entry",
       );
     }
   });
@@ -651,29 +822,129 @@ const cleanupWasProven = (receipt: SandboxCleanupReceiptV1): boolean =>
   receipt.scopeRemoved;
 
 const cleanupBrokerAfterSetupFailure = async (
-  broker: TaskSandboxBrokerV1,
+  broker: DuplexTaskSandboxBrokerV1,
+  primaryError: unknown,
 ): Promise<void> => {
+  let lastCleanupError: unknown;
+  const cleanup = async (): Promise<void> => {
+    const receipt = SandboxCleanupReceiptV1Schema.parse(await broker.cleanup());
+    if (!cleanupWasProven(receipt)) {
+      throw new M1Error(
+        "artifact_write_failed",
+        "sandbox cleanup could not be proven after setup failure",
+      );
+    }
+  };
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const receipt = SandboxCleanupReceiptV1Schema.parse(
-        await broker.cleanup(),
-      );
-      if (cleanupWasProven(receipt)) return;
-    } catch {
+      await cleanup();
+      return;
+    } catch (error) {
+      lastCleanupError = error;
       // A retryable broker forgets a rejected or unproven cleanup attempt.
     }
   }
-  throw new M1Error(
-    "artifact_write_failed",
-    "sandbox cleanup could not be proven after setup failure",
+  throw new SandboxBrokerSetupCleanupError(
+    primaryError,
+    lastCleanupError,
+    cleanup,
   );
 };
+
+const retryRetainedBrokerSetupCleanup = async (
+  error: SandboxBrokerSetupCleanupError,
+): Promise<boolean> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await error.retryCleanup();
+      return true;
+    } catch {
+      // The error retains its retryable owner for the next bounded attempt.
+    }
+  }
+  return false;
+};
+
+const resolveBrokerSetupCleanupOwnership = async (
+  error: unknown,
+): Promise<{
+  readonly primaryError: unknown;
+  readonly retainedOwner: SandboxBrokerSetupCleanupError | undefined;
+}> => {
+  if (!(error instanceof SandboxBrokerSetupCleanupError)) {
+    return { primaryError: error, retainedOwner: undefined };
+  }
+  if (await retryRetainedBrokerSetupCleanup(error)) {
+    return { primaryError: error.primaryError, retainedOwner: undefined };
+  }
+  return { primaryError: error.primaryError, retainedOwner: error };
+};
+
+const retainedSetupCleanupError = (
+  owner: SandboxBrokerSetupCleanupError,
+  additionalError?: unknown,
+): M1Error =>
+  new M1Error(
+    "artifact_write_failed",
+    "sandbox setup cleanup remains unproven; Task state was retained",
+    additionalError === undefined
+      ? owner
+      : new AggregateError(
+          [owner, additionalError],
+          "sandbox setup cleanup and failure recording both failed",
+        ),
+  );
 
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   contentHash(left as JsonValue) === contentHash(right as JsonValue);
+
+const LEGACY_BWRAP_FEATURES = [
+  "block-fd",
+  "json-status-fd",
+  "bind-fd",
+  "ro-bind-fd",
+] as const;
+const CURRENT_BWRAP_FEATURES = [
+  ...LEGACY_BWRAP_FEATURES,
+  "remount-ro",
+] as const;
+
+const sameStableSandboxCapability = (
+  left: SandboxHostCapabilityV1,
+  right: SandboxHostCapabilityV1,
+  policySchemaVersion: SandboxPolicy["schemaVersion"],
+): boolean => {
+  const normalizedLeft =
+    policySchemaVersion === 1 &&
+    sameJson(left.bwrap.features, LEGACY_BWRAP_FEATURES) &&
+    sameJson(right.bwrap.features, CURRENT_BWRAP_FEATURES)
+      ? {
+          ...left,
+          bwrap: { ...left.bwrap, features: CURRENT_BWRAP_FEATURES },
+        }
+      : left;
+  // A fresh preflight must prove both fields, but neither is a stable Host
+  // security identity: the probe contains observed usage and a delegation is
+  // intentionally replaceable across process/container lifetimes.
+  const {
+    activeProbeSha256: _leftProbe,
+    delegatedCgroupRootIdentity: _leftDelegation,
+    ...leftStable
+  } = normalizedLeft;
+  const {
+    activeProbeSha256: _rightProbe,
+    delegatedCgroupRootIdentity: _rightDelegation,
+    ...rightStable
+  } = right;
+  void _leftProbe;
+  void _leftDelegation;
+  void _rightProbe;
+  void _rightDelegation;
+  return sameJson(leftStable, rightStable);
+};
 
 const assertStreamReceiptMatches = (
   streamName: "stdout" | "stderr",
@@ -773,12 +1044,16 @@ const runtimeSensitiveValues = (request: {
   readonly runtimeRoot: string;
   readonly sandboxHost: SandboxHostPreflightRequest;
   readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
+  readonly managedGodotRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotRuntime"];
 }): string[] => [
   request.runtimeRoot,
   request.sandboxHost.delegatedCgroupRoot,
   request.sandboxHost.bwrapPath,
   request.sandboxHost.prlimitPath,
   request.sandboxHost.busyboxPath,
+  ...(request.sandboxHost.taskStorageRoot === undefined
+    ? []
+    : [request.sandboxHost.taskStorageRoot]),
   ...(request.sandboxToolchain === undefined
     ? []
     : [
@@ -788,6 +1063,20 @@ const runtimeSensitiveValues = (request: {
           command.hostPath,
         ]),
       ]),
+  ...(request.managedGodotRuntime === undefined
+    ? []
+    : [
+        request.managedGodotRuntime.nodePath,
+        request.managedGodotRuntime.godotPath,
+        request.managedGodotRuntime.fontconfigProbePath ??
+          DEFAULT_MANAGED_GODOT_HOST_DEPENDENCY_PATHS.fontconfigProbePath,
+        request.managedGodotRuntime.shellPath ??
+          DEFAULT_MANAGED_GODOT_HOST_DEPENDENCY_PATHS.shellPath,
+        request.managedGodotRuntime.xdgUserDirPath ??
+          DEFAULT_MANAGED_GODOT_HOST_DEPENDENCY_PATHS.xdgUserDirPath,
+        request.managedGodotRuntime.lddPath,
+        request.managedGodotRuntime.addonRoot,
+      ]),
 ];
 
 const inspectM1Runtime = async (
@@ -795,6 +1084,7 @@ const inspectM1Runtime = async (
     readonly runtimeRoot: string;
     readonly sandboxHost: SandboxHostPreflightRequest;
     readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
+    readonly managedGodotRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotRuntime"];
   },
   dependencies: M1TaskEnvironmentDependencies,
   sensitiveValues: readonly string[],
@@ -856,6 +1146,63 @@ const inspectM1Runtime = async (
       "sandbox preflight capability does not match its receipt",
     );
   }
+  if (request.managedGodotRuntime !== undefined) {
+    const requestedStorageRoot = request.sandboxHost.taskStorageRoot;
+    const boundStorageRoot = sandboxResult.binding.taskStorageRoot;
+    if (
+      requestedStorageRoot === undefined ||
+      sandboxCapability.taskStorage === undefined ||
+      boundStorageRoot === undefined
+    ) {
+      throw new M1Error(
+        "resource_limit_unavailable",
+        "managed Godot runtime requires bounded aggregate Task storage",
+      );
+    }
+    if (
+      requestedStorageRoot !== boundStorageRoot ||
+      !isAbsolute(request.runtimeRoot) ||
+      resolve(request.runtimeRoot) !== request.runtimeRoot
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "managed runtime and task storage roots must be canonical absolute paths",
+      );
+    }
+    let canonicalRuntimeRoot: string;
+    let canonicalStorageRoot: string;
+    try {
+      [canonicalRuntimeRoot, canonicalStorageRoot] = await Promise.all([
+        realpath(request.runtimeRoot),
+        realpath(boundStorageRoot),
+      ]);
+    } catch (error) {
+      throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
+    }
+    const difference = relative(canonicalStorageRoot, canonicalRuntimeRoot);
+    if (
+      canonicalRuntimeRoot !== request.runtimeRoot ||
+      canonicalStorageRoot !== boundStorageRoot ||
+      difference === "" ||
+      difference === ".." ||
+      difference.startsWith("../") ||
+      isAbsolute(difference)
+    ) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "managed runtime root must be a canonical child of bounded Task storage",
+      );
+    }
+    try {
+      await dependencies.assertTaskStorageLayout(
+        sandboxCapability.taskStorage,
+        boundStorageRoot,
+        [canonicalRuntimeRoot],
+      );
+    } catch (error) {
+      throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
+    }
+  }
   let toolchain:
     | {
         readonly capability: SandboxToolchainCapabilityV1;
@@ -869,6 +1216,22 @@ const inspectM1Runtime = async (
       throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
     }
   }
+  let managedRuntime: ManagedGodotRuntimePreflightResultV1 | undefined;
+  if (request.managedGodotRuntime !== undefined) {
+    if (toolchain === undefined) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "managed Godot runtime requires the coding toolchain",
+      );
+    }
+    try {
+      managedRuntime = await dependencies.preflightManagedRuntime(
+        request.managedGodotRuntime,
+      );
+    } catch (error) {
+      throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
+    }
+  }
   return {
     sandbox: {
       ...sandboxResult,
@@ -876,6 +1239,7 @@ const inspectM1Runtime = async (
       receipt: sandboxReceipt,
     },
     toolchain,
+    managedRuntime,
   };
 };
 
@@ -889,11 +1253,25 @@ export async function prepareM1TaskEnvironment(
     request.trustedFixtureRoot,
     ...runtimeSensitiveValues(request),
   ];
-  const { sandbox, toolchain } = await inspectM1Runtime(
+  const { sandbox, toolchain, managedRuntime } = await inspectM1Runtime(
     request,
     dependencies,
     earlySensitiveValues,
   );
+  if (managedRuntime !== undefined) {
+    try {
+      await dependencies.assertSandboxBinding(
+        sandbox.capability,
+        sandbox.binding,
+      );
+    } catch (error) {
+      throw normalizeError(
+        error,
+        "sandbox_preflight_failed",
+        earlySensitiveValues,
+      );
+    }
+  }
 
   let source: VerifiedGitSubtree;
   try {
@@ -913,7 +1291,8 @@ export async function prepareM1TaskEnvironment(
   ];
   let layout: TaskDirectoryLayout | undefined;
   let store: M1TaskRecordStore | undefined;
-  let broker: TaskSandboxBrokerV1 | undefined;
+  let runtimeStore: M1TaskRuntimeRecordStore | undefined;
+  let broker: DuplexTaskSandboxBrokerV1 | undefined;
   try {
     layout = await dependencies.createLayout({
       runtimeRoot: request.runtimeRoot,
@@ -923,6 +1302,8 @@ export async function prepareM1TaskEnvironment(
     sensitiveValues.push(layout.taskRootDirectory);
     store = dependencies.createStore(request.runtimeRoot);
     await store.create(request.taskId);
+    runtimeStore = dependencies.createRuntimeStore(request.runtimeRoot);
+    await runtimeStore.create(request.taskId);
 
     const task = TaskIdentityV1Schema.parse({
       schemaVersion: 1,
@@ -963,6 +1344,14 @@ export async function prepareM1TaskEnvironment(
         (value) => SandboxToolchainCapabilityV1Schema.parse(value),
       );
     }
+    if (managedRuntime !== undefined) {
+      await store.putJsonOnce(
+        request.taskId,
+        MANAGED_RUNTIME_SLOT,
+        managedRuntime.capability,
+        (value) => ManagedGodotRuntimeCapabilityV1Schema.parse(value),
+      );
+    }
 
     const materialized = bindMaterializedWorkspace({
       taskId: request.taskId,
@@ -986,25 +1375,49 @@ export async function prepareM1TaskEnvironment(
       materialized.fixtureCapability,
       (value) => TaskFixtureCapabilityV1Schema.parse(value),
     );
-    const policy = createSandboxPolicyV1(
-      sandbox.capability.runtimeIdentity,
-      toolchain === undefined
-        ? undefined
-        : {
-            toolchainId: toolchain.capability.toolchainId,
-            targets: toolchain.capability.files.map((file) => file.target),
-          },
-    );
+    const policy =
+      managedRuntime === undefined
+        ? createSandboxPolicyV1(
+            sandbox.capability.runtimeIdentity,
+            toolchain === undefined
+              ? undefined
+              : {
+                  toolchainId: toolchain.capability.toolchainId,
+                  targets: toolchain.capability.files.map(
+                    (file) => file.target,
+                  ),
+                },
+          )
+        : createSandboxPolicyV2(sandbox.capability.runtimeIdentity, {
+            coding: {
+              toolchainId: toolchain!.capability.toolchainId,
+              targets: toolchain!.capability.files.map((file) => file.target),
+            },
+            godot: {
+              toolchainId: managedRuntime.capability.toolchain.toolchainId,
+              managedRuntimeId: managedRuntime.capability.managedRuntimeId,
+              targets: [
+                ...managedRuntime.capability.toolchain.files.map(
+                  (file) => file.target,
+                ),
+                managedRuntime.capability.fontconfigTarget,
+                managedRuntime.capability.addonParentTarget,
+                managedRuntime.capability.addonTarget,
+              ],
+            },
+          });
     await store.putJsonOnce(
       request.taskId,
       "sandbox-policy.json",
       policy,
-      (value) => SandboxPolicyV1Schema.parse(value),
+      (value) => SandboxPolicySchema.parse(value),
     );
-    await dependencies.assertSandboxBinding(
-      sandbox.capability,
-      sandbox.binding,
-    );
+    if (managedRuntime === undefined) {
+      await dependencies.assertSandboxBinding(
+        sandbox.capability,
+        sandbox.binding,
+      );
+    }
     const taskStore = store;
     const securityEvents = new TaskSecurityEventRecorder(
       request.taskId,
@@ -1017,6 +1430,14 @@ export async function prepareM1TaskEnvironment(
       hostBinding: sandbox.binding,
       policy,
       ...(toolchain === undefined ? {} : { toolchain }),
+      ...(managedRuntime === undefined
+        ? {}
+        : {
+            managedRuntime: {
+              capability: managedRuntime.capability,
+              binding: managedRuntime.binding,
+            },
+          }),
       layout,
       securityEvents: (event) => {
         securityEvents.stage(event);
@@ -1044,43 +1465,77 @@ export async function prepareM1TaskEnvironment(
       ...(toolchain === undefined
         ? {}
         : { toolchainCapability: cloneAndFreeze(toolchain.capability) }),
+      ...(managedRuntime === undefined
+        ? {}
+        : {
+            managedRuntimeCapability: cloneAndFreeze(managedRuntime.capability),
+          }),
       policy: cloneAndFreeze(policy),
+      runtimeStore: bindTaskRuntimeStore(request.taskId, runtimeStore),
     });
     ENVIRONMENT_STATES.set(environment, {
       layout,
       materialized,
       binding: sandbox.binding,
       broker,
+      managedRuntime,
+      activeDuplexCompletions: new Set(),
       store,
+      runtimeStore,
       gate: new TaskOperationGate(),
       dependencies,
       sensitiveValues,
       securityEvents,
       recordsDiscarded: false,
+      runtimeRecordsDiscarded: false,
       cleanupPromise: undefined,
       suspendPromise: undefined,
       discardPromise: undefined,
     });
     return environment;
   } catch (error) {
-    let normalized = normalizeError(
-      error,
-      "artifact_write_failed",
-      sensitiveValues,
-    );
+    const initialOwnership = await resolveBrokerSetupCleanupOwnership(error);
+    let retainedOwner = initialOwnership.retainedOwner;
+    let normalized =
+      retainedOwner === undefined
+        ? normalizeError(
+            initialOwnership.primaryError,
+            "artifact_write_failed",
+            sensitiveValues,
+          )
+        : retainedSetupCleanupError(retainedOwner);
     if (layout !== undefined && store !== undefined) {
-      try {
-        if (broker !== undefined) {
-          await cleanupBrokerAfterSetupFailure(broker);
+      if (retainedOwner === undefined && broker !== undefined) {
+        try {
+          await cleanupBrokerAfterSetupFailure(
+            broker,
+            initialOwnership.primaryError,
+          );
+        } catch (cleanupError) {
+          const cleanupOwnership =
+            await resolveBrokerSetupCleanupOwnership(cleanupError);
+          retainedOwner = cleanupOwnership.retainedOwner;
+          normalized =
+            retainedOwner === undefined
+              ? normalizeError(
+                  cleanupOwnership.primaryError,
+                  "artifact_write_failed",
+                  sensitiveValues,
+                )
+              : retainedSetupCleanupError(retainedOwner);
         }
-        await dependencies.cleanStagingRegistration(source, layout);
-        await removeMutableTaskState(request.taskId, layout);
-      } catch (cleanupError) {
-        normalized = normalizeError(
-          cleanupError,
-          "artifact_write_failed",
-          sensitiveValues,
-        );
+      }
+      if (retainedOwner === undefined) {
+        try {
+          await dependencies.cleanStagingRegistration(source, layout);
+          await removeMutableTaskState(request.taskId, layout);
+        } catch (cleanupError) {
+          normalized = normalizeError(
+            cleanupError,
+            "artifact_write_failed",
+            sensitiveValues,
+          );
+        }
       }
       try {
         await recordSetupFailure({
@@ -1090,11 +1545,15 @@ export async function prepareM1TaskEnvironment(
           error: normalized,
         });
       } catch (recordError) {
-        throw normalizeError(
-          recordError,
-          "artifact_write_failed",
-          sensitiveValues,
-        );
+        if (retainedOwner !== undefined) {
+          normalized = retainedSetupCleanupError(retainedOwner, recordError);
+        } else {
+          throw normalizeError(
+            recordError,
+            "artifact_write_failed",
+            sensitiveValues,
+          );
+        }
       }
     }
     throw normalized;
@@ -1107,13 +1566,14 @@ export async function resumeM1TaskEnvironment(
 ): Promise<M1TaskEnvironment> {
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
   const sensitiveValues = runtimeSensitiveValues(request);
-  const { sandbox, toolchain } = await inspectM1Runtime(
+  const { sandbox, toolchain, managedRuntime } = await inspectM1Runtime(
     request,
     dependencies,
     sensitiveValues,
   );
   let store: M1TaskRecordStore | undefined;
-  let broker: TaskSandboxBrokerV1 | undefined;
+  let runtimeStore: M1TaskRuntimeRecordStore | undefined;
+  let broker: DuplexTaskSandboxBrokerV1 | undefined;
   try {
     const layout = await dependencies.openLayout({
       runtimeRoot: request.runtimeRoot,
@@ -1122,12 +1582,7 @@ export async function resumeM1TaskEnvironment(
     sensitiveValues.push(layout.taskRootDirectory);
     store = dependencies.createStore(request.runtimeRoot);
     await store.create(request.taskId);
-    await store.append(
-      request.taskId,
-      "sandbox-preflight.jsonl",
-      sandbox.receipt,
-      (value) => SandboxPreflightReceiptV1Schema.parse(value),
-    );
+    runtimeStore = dependencies.createRuntimeStore(request.runtimeRoot);
     const [task, workspace, fixtureCapability, storedSandbox, policy] =
       await Promise.all([
         store.readJson(request.taskId, "task.json", (value) =>
@@ -1143,7 +1598,7 @@ export async function resumeM1TaskEnvironment(
           SandboxHostCapabilityV1Schema.parse(value),
         ),
         store.readJson(request.taskId, "sandbox-policy.json", (value) =>
-          SandboxPolicyV1Schema.parse(value),
+          SandboxPolicySchema.parse(value),
         ),
       ]);
     if (
@@ -1155,7 +1610,11 @@ export async function resumeM1TaskEnvironment(
         workspace.excludedCachePaths,
         fixtureCapability.ignoredCachePaths,
       ) ||
-      !sameJson(storedSandbox, sandbox.capability) ||
+      !sameStableSandboxCapability(
+        storedSandbox,
+        sandbox.capability,
+        policy.schemaVersion,
+      ) ||
       policy.runtimeIdentity !== storedSandbox.runtimeIdentity
     ) {
       throw new M1Error(
@@ -1164,45 +1623,143 @@ export async function resumeM1TaskEnvironment(
       );
     }
     let storedToolchain: SandboxToolchainCapabilityV1 | undefined;
-    if (policy.toolchainId === null) {
-      if (toolchain !== undefined) {
+    let storedManagedRuntime: ManagedGodotRuntimeCapabilityV1 | undefined;
+    await dependencies.assertSandboxBinding(
+      sandbox.capability,
+      sandbox.binding,
+    );
+    if (policy.schemaVersion === 1) {
+      if (managedRuntime !== undefined) {
         throw new M1Error(
           "sandbox_preflight_failed",
-          "Task was created without the requested toolchain",
+          "Sandbox Policy V1 Task cannot authorize a managed runtime",
         );
+      }
+      if (policy.toolchainId === null) {
+        if (toolchain !== undefined) {
+          throw new M1Error(
+            "sandbox_preflight_failed",
+            "Task was created without the requested toolchain",
+          );
+        }
+      } else {
+        if (toolchain === undefined) {
+          throw new M1Error(
+            "sandbox_preflight_failed",
+            "Task continuation requires its frozen toolchain",
+          );
+        }
+        storedToolchain = await store.readJson(
+          request.taskId,
+          "sandbox-toolchain.json",
+          (value) => SandboxToolchainCapabilityV1Schema.parse(value),
+        );
+        if (
+          policy.toolchainId !== storedToolchain.toolchainId ||
+          !sameJson(storedToolchain, toolchain.capability) ||
+          !sameJson(
+            policy.readonlyTargets,
+            [
+              "/bin/busybox",
+              ...storedToolchain.files.map((file) => file.target),
+            ].sort(),
+          )
+        ) {
+          throw new M1Error(
+            "sandbox_preflight_failed",
+            "current toolchain does not match the frozen Task capability",
+          );
+        }
       }
     } else {
-      if (toolchain === undefined) {
+      if (toolchain === undefined || managedRuntime === undefined) {
         throw new M1Error(
           "sandbox_preflight_failed",
-          "Task continuation requires its frozen toolchain",
+          "Task continuation requires its frozen coding and managed Godot toolchains",
         );
       }
-      storedToolchain = await store.readJson(
-        request.taskId,
-        "sandbox-toolchain.json",
-        (value) => SandboxToolchainCapabilityV1Schema.parse(value),
-      );
+      try {
+        const frozenCapabilities = await Promise.all([
+          store.readJson<SandboxToolchainCapabilityV1>(
+            request.taskId,
+            "sandbox-toolchain.json",
+            (value) => SandboxToolchainCapabilityV1Schema.parse(value),
+          ),
+          store.readJson<ManagedGodotRuntimeCapabilityV1>(
+            request.taskId,
+            MANAGED_RUNTIME_SLOT,
+            (value) => ManagedGodotRuntimeCapabilityV1Schema.parse(value),
+          ),
+        ]);
+        storedToolchain = frozenCapabilities[0];
+        storedManagedRuntime = frozenCapabilities[1];
+      } catch (error) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          "Task managed runtime capability is missing or invalid",
+          error,
+        );
+      }
+      if (storedToolchain === undefined || storedManagedRuntime === undefined) {
+        throw new M1Error(
+          "sandbox_preflight_failed",
+          "Task managed runtime capability is missing or invalid",
+        );
+      }
+      const codingTargets = [
+        "/bin/busybox",
+        ...storedToolchain.files.map((file) => file.target),
+      ].sort();
+      const godotTargets = [
+        "/bin/busybox",
+        ...storedManagedRuntime.toolchain.files.map((file) => file.target),
+        storedManagedRuntime.fontconfigTarget,
+        storedManagedRuntime.addonParentTarget,
+        storedManagedRuntime.addonTarget,
+      ].sort();
       if (
-        policy.toolchainId !== storedToolchain.toolchainId ||
         !sameJson(storedToolchain, toolchain.capability) ||
+        !sameJson(storedManagedRuntime, managedRuntime.capability) ||
+        policy.profileBindings["coding-default"].toolchainId !==
+          storedToolchain.toolchainId ||
+        policy.profileBindings["coding-default"].managedRuntimeId !== null ||
+        policy.profileBindings["coding-default"].workspaceAccess !==
+          "read-write" ||
         !sameJson(
-          policy.readonlyTargets,
-          [
-            "/bin/busybox",
-            ...storedToolchain.files.map((file) => file.target),
-          ].sort(),
+          policy.profileBindings["coding-default"].readonlyTargets,
+          codingTargets,
+        ) ||
+        policy.profileBindings["godot-headless"].toolchainId !==
+          storedManagedRuntime.toolchain.toolchainId ||
+        policy.profileBindings["godot-headless"].managedRuntimeId !==
+          storedManagedRuntime.managedRuntimeId ||
+        policy.profileBindings["godot-headless"].workspaceAccess !==
+          "read-only" ||
+        !sameJson(
+          policy.profileBindings["godot-headless"].readonlyTargets,
+          godotTargets,
         )
       ) {
         throw new M1Error(
           "sandbox_preflight_failed",
-          "current toolchain does not match the frozen Task capability",
+          "current managed runtime does not match the frozen Task capability",
         );
       }
     }
-    await dependencies.assertSandboxBinding(
-      sandbox.capability,
-      sandbox.binding,
+    if (policy.schemaVersion === 1) {
+      // Pre-M3 Tasks did not own a runtime-records namespace. Creating an
+      // empty, marked store is the only resume migration and leaves every
+      // frozen V1 Task/policy record untouched. V2 Tasks must already have
+      // their runtime store, so a missing namespace remains corruption.
+      await runtimeStore.create(request.taskId);
+    } else {
+      await runtimeStore.open(request.taskId);
+    }
+    await store.append(
+      request.taskId,
+      "sandbox-preflight.jsonl",
+      sandbox.receipt,
+      (value) => SandboxPreflightReceiptV1Schema.parse(value),
     );
     const taskStore = store;
     const securityEvents = new TaskSecurityEventRecorder(
@@ -1216,6 +1773,14 @@ export async function resumeM1TaskEnvironment(
       hostBinding: sandbox.binding,
       policy,
       ...(toolchain === undefined ? {} : { toolchain }),
+      ...(managedRuntime === undefined
+        ? {}
+        : {
+            managedRuntime: {
+              capability: managedRuntime.capability,
+              binding: managedRuntime.binding,
+            },
+          }),
       layout,
       securityEvents: (event) => {
         securityEvents.stage(event);
@@ -1245,43 +1810,73 @@ export async function resumeM1TaskEnvironment(
     const environment = Object.freeze({
       task: cloneAndFreeze(task),
       workspace: cloneAndFreeze(workspace),
-      sandboxCapability: cloneAndFreeze(storedSandbox),
+      // The persisted capability remains the immutable creation-time record,
+      // while executions after resume are bound to the freshly proven Host
+      // capability. Ephemeral probe and cgroup-delegation identities are
+      // intentionally allowed to change across Host lifetimes, so exposing
+      // the stored value here would make the broker receipt and Task lineage
+      // disagree on the first resumed operation.
+      sandboxCapability: cloneAndFreeze(sandbox.capability),
       ...(storedToolchain === undefined
         ? {}
         : { toolchainCapability: cloneAndFreeze(storedToolchain) }),
+      ...(storedManagedRuntime === undefined
+        ? {}
+        : {
+            managedRuntimeCapability: cloneAndFreeze(storedManagedRuntime),
+          }),
       policy: cloneAndFreeze(policy),
+      runtimeStore: bindTaskRuntimeStore(request.taskId, runtimeStore),
     });
     ENVIRONMENT_STATES.set(environment, {
       layout,
       materialized,
       binding: sandbox.binding,
       broker,
+      managedRuntime,
+      activeDuplexCompletions: new Set(),
       store,
+      runtimeStore,
       gate: new TaskOperationGate(),
       dependencies,
       sensitiveValues,
       securityEvents,
       recordsDiscarded: false,
+      runtimeRecordsDiscarded: false,
       cleanupPromise: undefined,
       suspendPromise: undefined,
       discardPromise: undefined,
     });
     return environment;
   } catch (error) {
-    let normalized = normalizeError(
-      error,
-      "artifact_write_failed",
-      sensitiveValues,
-    );
-    if (broker !== undefined) {
+    const initialOwnership = await resolveBrokerSetupCleanupOwnership(error);
+    let retainedOwner = initialOwnership.retainedOwner;
+    let normalized =
+      retainedOwner === undefined
+        ? normalizeError(
+            initialOwnership.primaryError,
+            "artifact_write_failed",
+            sensitiveValues,
+          )
+        : retainedSetupCleanupError(retainedOwner);
+    if (retainedOwner === undefined && broker !== undefined) {
       try {
-        await cleanupBrokerAfterSetupFailure(broker);
-      } catch (cleanupError) {
-        normalized = normalizeError(
-          cleanupError,
-          "artifact_write_failed",
-          sensitiveValues,
+        await cleanupBrokerAfterSetupFailure(
+          broker,
+          initialOwnership.primaryError,
         );
+      } catch (cleanupError) {
+        const cleanupOwnership =
+          await resolveBrokerSetupCleanupOwnership(cleanupError);
+        retainedOwner = cleanupOwnership.retainedOwner;
+        normalized =
+          retainedOwner === undefined
+            ? normalizeError(
+                cleanupOwnership.primaryError,
+                "artifact_write_failed",
+                sensitiveValues,
+              )
+            : retainedSetupCleanupError(retainedOwner);
       }
     }
     if (store !== undefined) {
@@ -1300,16 +1895,108 @@ export async function resumeM1TaskEnvironment(
           (value) => M1TaskEventV1Schema.parse(value),
         );
       } catch (recordError) {
-        throw normalizeError(
-          recordError,
-          "artifact_write_failed",
-          sensitiveValues,
-        );
+        if (retainedOwner !== undefined) {
+          normalized = retainedSetupCleanupError(retainedOwner, recordError);
+        } else {
+          throw normalizeError(
+            recordError,
+            "artifact_write_failed",
+            sensitiveValues,
+          );
+        }
       }
     }
     throw normalized;
   }
 }
+
+const recordExecutedM1Command = async (
+  environment: M1TaskEnvironment,
+  state: M1TaskEnvironmentState,
+  parsedRequest: SandboxExecutionRequestV1,
+  result: Extract<SandboxExecutionResultV1, { readonly kind: "executed" }>,
+): Promise<
+  Extract<SandboxExecutionResultV1, { readonly kind: "executed" }>
+> => {
+  if (
+    !(result.stdout instanceof Uint8Array) ||
+    !(result.stderr instanceof Uint8Array)
+  ) {
+    throw new M1Error(
+      "artifact_write_failed",
+      "sandbox execution returned invalid stream bytes",
+    );
+  }
+  const receipt = SandboxExecutionReceiptV1Schema.parse(result.receipt);
+  const expectedCapabilitySha256 = asSha256DigestV1(
+    contentHash(environment.sandboxCapability as unknown as JsonValue),
+  );
+  const frozenProfile = environment.policy.profiles[parsedRequest.profile];
+  const expectedRealizedResources = {
+    ...frozenProfile,
+    timeoutMs: parsedRequest.timeoutMs ?? frozenProfile.timeoutMs,
+  };
+  if (
+    receipt.taskId !== environment.task.taskId ||
+    receipt.operationId !== parsedRequest.operationId ||
+    receipt.policyId !== environment.policy.policyId ||
+    receipt.sandboxCapabilitySha256 !== expectedCapabilitySha256 ||
+    !sameJson(receipt.requested, parsedRequest) ||
+    !sameJson(receipt.realizedResources, expectedRealizedResources)
+  ) {
+    throw new M1Error(
+      "artifact_write_failed",
+      "sandbox execution receipt is not bound to the frozen Task lineage",
+    );
+  }
+  const taskStorage = environment.sandboxCapability.taskStorage;
+  const aggregateStorageUsage = receipt.resourceUsage.aggregateStorage;
+  const aggregateStorageUnavailable =
+    receipt.realizedMechanisms.aggregateStorage === undefined &&
+    receipt.realizedMechanisms.unavailable.length === 1 &&
+    aggregateStorageUsage === undefined;
+  const aggregateStorageObserved =
+    taskStorage !== undefined &&
+    receipt.realizedMechanisms.aggregateStorage === taskStorage.kind &&
+    receipt.realizedMechanisms.unavailable.length === 0 &&
+    aggregateStorageUsage !== undefined &&
+    aggregateStorageUsage.usedBytes <= taskStorage.totalBytes &&
+    aggregateStorageUsage.usedInodes <= taskStorage.totalInodes;
+  if (
+    taskStorage === undefined
+      ? receipt.realizedMechanisms.aggregateStorage !== undefined ||
+        aggregateStorageUsage !== undefined
+      : !aggregateStorageObserved && !aggregateStorageUnavailable
+  ) {
+    throw new M1Error(
+      "artifact_write_failed",
+      "sandbox execution receipt does not prove bounded aggregate Task storage",
+    );
+  }
+  assertStreamReceiptMatches("stdout", result.stdout, receipt.stdout);
+  assertStreamReceiptMatches("stderr", result.stderr, receipt.stderr);
+  try {
+    await state.store.append(
+      environment.task.taskId,
+      "sandbox-operations.jsonl",
+      {
+        schemaVersion: 1,
+        taskId: environment.task.taskId,
+        recordedAt: state.dependencies.now(),
+        receipt,
+      },
+      (value) => SandboxOperationRecordV1Schema.parse(value),
+    );
+  } finally {
+    if (!cleanupWasProven(receipt.cleanup)) state.gate.close();
+  }
+  return {
+    kind: "executed",
+    receipt,
+    stdout: Uint8Array.from(result.stdout),
+    stderr: Uint8Array.from(result.stderr),
+  };
+};
 
 export function executeAndRecordM1Command(
   environment: M1TaskEnvironment,
@@ -1332,61 +2019,12 @@ export function executeAndRecordM1Command(
           return { kind: "denied", securityEvent: event };
         }
         state.securityEvents.assertNoneStaged();
-        if (
-          !(result.stdout instanceof Uint8Array) ||
-          !(result.stderr instanceof Uint8Array)
-        ) {
-          throw new M1Error(
-            "artifact_write_failed",
-            "sandbox execution returned invalid stream bytes",
-          );
-        }
-        const receipt = SandboxExecutionReceiptV1Schema.parse(result.receipt);
-        const expectedCapabilitySha256 = asSha256DigestV1(
-          contentHash(environment.sandboxCapability as unknown as JsonValue),
+        return await recordExecutedM1Command(
+          environment,
+          state,
+          parsedRequest,
+          result,
         );
-        const frozenProfile =
-          environment.policy.profiles[parsedRequest.profile];
-        const expectedRealizedResources = {
-          ...frozenProfile,
-          timeoutMs: parsedRequest.timeoutMs ?? frozenProfile.timeoutMs,
-        };
-        if (
-          receipt.taskId !== environment.task.taskId ||
-          receipt.operationId !== parsedRequest.operationId ||
-          receipt.policyId !== environment.policy.policyId ||
-          receipt.sandboxCapabilitySha256 !== expectedCapabilitySha256 ||
-          !sameJson(receipt.requested, parsedRequest) ||
-          !sameJson(receipt.realizedResources, expectedRealizedResources)
-        ) {
-          throw new M1Error(
-            "artifact_write_failed",
-            "sandbox execution receipt is not bound to the frozen Task lineage",
-          );
-        }
-        assertStreamReceiptMatches("stdout", result.stdout, receipt.stdout);
-        assertStreamReceiptMatches("stderr", result.stderr, receipt.stderr);
-        try {
-          await state.store.append(
-            environment.task.taskId,
-            "sandbox-operations.jsonl",
-            {
-              schemaVersion: 1,
-              taskId: environment.task.taskId,
-              recordedAt: state.dependencies.now(),
-              receipt,
-            },
-            (value) => SandboxOperationRecordV1Schema.parse(value),
-          );
-        } finally {
-          if (!cleanupWasProven(receipt.cleanup)) state.gate.close();
-        }
-        return {
-          kind: "executed",
-          receipt,
-          stdout: Uint8Array.from(result.stdout),
-          stderr: Uint8Array.from(result.stderr),
-        };
       } finally {
         state.securityEvents.end(parsedRequest.operationId);
       }
@@ -1398,6 +2036,155 @@ export function executeAndRecordM1Command(
         state.sensitiveValues,
       );
     }
+  });
+}
+
+export interface M1TaskDuplexSandboxPortV1 {
+  openDuplex(
+    request: SandboxExecutionRequestV1,
+    options?: SandboxDuplexExecutionOptionsV1,
+  ): Promise<SandboxDuplexOpenResultV1>;
+}
+
+export function getM1TaskDuplexSandboxPort(
+  environment: M1TaskEnvironment,
+): M1TaskDuplexSandboxPortV1 {
+  const state = requireEnvironmentState(environment);
+  return Object.freeze({
+    openDuplex: (
+      request: SandboxExecutionRequestV1,
+      options?: SandboxDuplexExecutionOptionsV1,
+    ): Promise<SandboxDuplexOpenResultV1> =>
+      state.gate.run(async () => {
+        let brokerInvoked = false;
+        try {
+          const parsedRequest = SandboxExecutionRequestV1Schema.parse(request);
+          state.securityEvents.begin(parsedRequest.operationId);
+          try {
+            brokerInvoked = true;
+            const opened = await state.broker.openDuplex(
+              parsedRequest,
+              options,
+            );
+            if (opened.kind === "denied") {
+              const event = await state.securityEvents.commitDenial(
+                opened.securityEvent,
+              );
+              return { kind: "denied", securityEvent: event };
+            }
+            state.securityEvents.assertNoneStaged();
+            if (opened.kind === "executed") {
+              return await recordExecutedM1Command(
+                environment,
+                state,
+                parsedRequest,
+                opened,
+              );
+            }
+
+            const completion = opened.handle.completion
+              .then(async (result) => {
+                if (result.kind !== "executed") {
+                  throw new M1Error(
+                    "artifact_write_failed",
+                    "opened sandbox duplex execution completed with a denial",
+                  );
+                }
+                return await recordExecutedM1Command(
+                  environment,
+                  state,
+                  parsedRequest,
+                  result,
+                );
+              })
+              .catch((error: unknown) => {
+                state.gate.close();
+                throw normalizeError(
+                  error,
+                  "artifact_write_failed",
+                  state.sensitiveValues,
+                );
+              });
+            state.activeDuplexCompletions.add(completion);
+            void completion
+              .finally(() => state.activeDuplexCompletions.delete(completion))
+              .catch(() => undefined);
+            return {
+              kind: "opened",
+              handle: {
+                write: (bytes) => opened.handle.write(bytes),
+                endInput: () => opened.handle.endInput(),
+                terminate: () => opened.handle.terminate(),
+                completion,
+              },
+            };
+          } finally {
+            state.securityEvents.end(parsedRequest.operationId);
+          }
+        } catch (error) {
+          if (brokerInvoked) state.gate.close();
+          throw normalizeError(
+            error,
+            "artifact_write_failed",
+            state.sensitiveValues,
+          );
+        }
+      }),
+  });
+}
+
+export function createM1ManagedGodotSidecarPort(
+  environment: M1TaskEnvironment,
+): GodotSidecarPortV1 {
+  const state = requireEnvironmentState(environment);
+  if (
+    environment.managedRuntimeCapability === undefined ||
+    state.managedRuntime === undefined
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "Task has no managed Godot runtime",
+    );
+  }
+  return new GodotSidecarPortV1({
+    broker: getM1TaskDuplexSandboxPort(environment),
+    managedRuntime: state.managedRuntime,
+  });
+}
+
+export interface M1TaskGameRuntimeContextV1 {
+  readonly taskId: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceDirectory: string;
+  readonly baselineSourceHash: Sha256DigestV1;
+  readonly fixtureCapability: TaskFixtureCapabilityV1;
+  readonly managedRuntime: ManagedGodotRuntimeCapabilityV1;
+  readonly sidecarPort: GodotSidecarPortV1;
+  readonly runtimeStore: M1TaskRuntimeArtifactStore;
+}
+
+export function getM1TaskGameRuntimeContext(
+  environment: M1TaskEnvironment,
+): M1TaskGameRuntimeContextV1 {
+  const state = requireEnvironmentState(environment);
+  if (environment.managedRuntimeCapability === undefined) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "Task has no managed Godot runtime",
+    );
+  }
+  const workspaceId = asWorkspaceId(
+    `workspace:v1:${contentHash(environment.workspace as unknown as JsonValue)}`,
+  );
+  return Object.freeze({
+    taskId: environment.task.taskId,
+    workspaceId,
+    workspaceDirectory: state.layout.workspaceDirectory,
+    baselineSourceHash: environment.workspace.selectedTreeSha256,
+    fixtureCapability: cloneAndFreeze(state.materialized.fixtureCapability),
+    managedRuntime: cloneAndFreeze(environment.managedRuntimeCapability),
+    sidecarPort: createM1ManagedGodotSidecarPort(environment),
+    runtimeStore: environment.runtimeStore,
   });
 }
 
@@ -1664,6 +2451,13 @@ const cleanupM1TaskSandbox = (
       cleanup = SandboxCleanupReceiptV1Schema.parse(
         await state.broker.cleanup(),
       );
+      const completions = await Promise.allSettled([
+        ...state.activeDuplexCompletions,
+      ]);
+      const rejected = completions.find(
+        (completion) => completion.status === "rejected",
+      );
+      if (rejected?.status === "rejected") throw rejected.reason;
     } finally {
       await state.gate.drain();
     }
@@ -1728,10 +2522,20 @@ export function discardM1Task(
   const attempt = (async () => {
     try {
       const cleanup = await cleanupM1TaskSandbox(state);
+      if (!state.runtimeRecordsDiscarded) {
+        await assertCompleteTaskRootIsOwned(
+          environment.task.taskId,
+          state.layout,
+          state,
+        );
+        await state.runtimeStore.discard(environment.task.taskId);
+        state.runtimeRecordsDiscarded = true;
+      }
       if (!state.recordsDiscarded) {
         await assertCompleteTaskRootIsOwned(
           environment.task.taskId,
           state.layout,
+          state,
         );
         await state.store.discard(environment.task.taskId);
         state.recordsDiscarded = true;

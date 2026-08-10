@@ -71,6 +71,7 @@ func chronorift_capture() -> Dictionary:
 	return {
 		"started": started,
 		"jumping": jumping,
+		"windowOpen": window_open,
 		"leftFrame": left_frame,
 		"processCallbacks": process_callbacks,
 	}
@@ -79,9 +80,9 @@ func chronorift_capture() -> Dictionary:
 func chronorift_restore(state: Dictionary) -> void:
 	started = bool(state.get("started", false))
 	jumping = bool(state.get("jumping", false))
+	window_open = bool(state.get("windowOpen", false))
 	left_frame = int(state.get("leftFrame", -1))
 	process_callbacks = int(state.get("processCallbacks", 0))
-	window_open = false
 
 
 func chronorift_validate(expected: Dictionary) -> Dictionary:

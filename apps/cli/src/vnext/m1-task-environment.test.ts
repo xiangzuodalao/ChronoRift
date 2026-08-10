@@ -4,15 +4,17 @@ import {
   access,
   appendFile,
   cp,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
   rm,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -20,9 +22,23 @@ import {
   asTaskId,
   taskNamespaceDigestV1,
   type JsonValue,
+  type Sha256DigestV1,
   type TaskId,
 } from "@chronorift/domain";
-import { VNextTaskStore, contentHash } from "@chronorift/json-artifacts";
+import {
+  DEFAULT_RUNTIME_SIDECAR_TARGETS,
+  createRuntimeSidecarSource,
+} from "@chronorift/godot-adapter";
+import {
+  VNextRuntimeStore,
+  VNextTaskStore,
+  canonicalJson,
+  contentHash,
+  runtimeResourceNamespaceDigestV1,
+  type TaskLedgerEnvelopeV1,
+  type VNextTaskJsonSlot,
+  type VNextTaskLedgerSlot,
+} from "@chronorift/json-artifacts";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -40,19 +56,30 @@ import {
 import { M1Error } from "./errors.js";
 import {
   discardM1Task,
+  createM1ManagedGodotSidecarPort,
   executeAndRecordM1Command,
   exportM1Patch,
   extractAndPersistM1Patch,
   getM1TaskHostContext,
+  getM1TaskDuplexSandboxPort,
+  getM1TaskGameRuntimeContext,
   prepareM1TaskEnvironment,
   resumeM1TaskEnvironment,
   suspendM1Task,
 } from "./m1-task-environment.js";
+import {
+  ManagedGodotRuntimeCapabilityV1Schema,
+  createManagedGodotRuntimeV1,
+} from "./managed-godot-runtime.js";
 import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
-import type {
-  SandboxExecutionResultV1,
-  TaskSandboxBrokerV1,
+import { resolveResourceLimitsV1 } from "./sandbox-policy.js";
+import {
+  SandboxBrokerSetupCleanupError,
+  type DuplexTaskSandboxBrokerV1,
+  type SandboxExecutionResultV1,
+  type TaskSandboxBrokerV1,
 } from "./sandbox-broker.js";
+import type { SandboxHostPreflightRequest } from "./sandbox-preflight.js";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -84,6 +111,30 @@ const capability: SandboxHostCapabilityV1 = SandboxHostCapabilityV1Schema.parse(
 const capabilitySha256 = asSha256DigestV1(
   contentHash(capability as unknown as JsonValue),
 );
+const currentCapability = SandboxHostCapabilityV1Schema.parse({
+  ...capability,
+  bwrap: {
+    ...capability.bwrap,
+    features: [
+      "block-fd",
+      "json-status-fd",
+      "bind-fd",
+      "ro-bind-fd",
+      "remount-ro",
+    ],
+  },
+});
+const taskStorageCapability = {
+  kind: "dedicated-capacity-bounded-filesystem-v1" as const,
+  filesystem: "tmpfs" as const,
+  totalBytes: 4_194_304,
+  totalInodes: 1_024,
+  rootIdentitySha256: digest,
+};
+const managedSandboxCapability = SandboxHostCapabilityV1Schema.parse({
+  ...currentCapability,
+  taskStorage: taskStorageCapability,
+});
 const toolchainContent = {
   schemaVersion: 1 as const,
   files: [{ target: "/bin/bash", sha256: digest, command: true }],
@@ -92,6 +143,185 @@ const toolchainCapability = SandboxToolchainCapabilityV1Schema.parse({
   ...toolchainContent,
   toolchainId: `sandbox-toolchain:v1:${contentHash(toolchainContent)}`,
 });
+const managedToolchainContent = {
+  schemaVersion: 1 as const,
+  files: [
+    {
+      target: DEFAULT_RUNTIME_SIDECAR_TARGETS.shellExecutable,
+      sha256: digest,
+      command: false,
+    },
+    {
+      target: "/lib/x86_64-linux-gnu/libfontconfig.so.1",
+      sha256: digest,
+      command: false,
+    },
+    {
+      target: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+      sha256: digest,
+      command: true,
+    },
+    {
+      target: DEFAULT_RUNTIME_SIDECAR_TARGETS.nodeExecutable,
+      sha256: digest,
+      command: true,
+    },
+    {
+      target: DEFAULT_RUNTIME_SIDECAR_TARGETS.xdgUserDirExecutable,
+      sha256: digest,
+      command: false,
+    },
+  ],
+};
+const managedToolchainCapability = SandboxToolchainCapabilityV1Schema.parse({
+  ...managedToolchainContent,
+  toolchainId: `sandbox-toolchain:v1:${contentHash(managedToolchainContent)}`,
+});
+const productionSidecarSource = createRuntimeSidecarSource({
+  godotExecutable: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+  workspaceRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.workspaceRoot,
+  runtimeRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.runtimeRoot,
+});
+const managedRuntime = createManagedGodotRuntimeV1({
+  doctorVersion: "4.7.1.stable.official.a13da4feb",
+  nodeTarget: DEFAULT_RUNTIME_SIDECAR_TARGETS.nodeExecutable,
+  godotTarget: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+  toolchain: {
+    capability: managedToolchainCapability,
+    binding: {
+      toolchainId: managedToolchainCapability.toolchainId,
+      files: [
+        {
+          target: DEFAULT_RUNTIME_SIDECAR_TARGETS.shellExecutable,
+          hostPath: "/trusted/dash",
+        },
+        {
+          target: "/lib/x86_64-linux-gnu/libfontconfig.so.1",
+          hostPath: "/trusted/libfontconfig.so.1",
+        },
+        {
+          target: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+          hostPath: "/trusted/godot",
+        },
+        {
+          target: DEFAULT_RUNTIME_SIDECAR_TARGETS.nodeExecutable,
+          hostPath: "/trusted/node",
+        },
+        {
+          target: DEFAULT_RUNTIME_SIDECAR_TARGETS.xdgUserDirExecutable,
+          hostPath: "/trusted/xdg-user-dir",
+        },
+      ],
+    },
+  },
+  sidecarSource: productionSidecarSource,
+  addonFiles: [
+    { relativePath: "plugin.cfg", bytes: Buffer.from("[plugin]\n") },
+  ],
+});
+const managedRuntimeInput = {
+  nodePath: "/trusted/node",
+  godotPath: "/trusted/godot",
+  lddPath: "/trusted/ldd",
+  addonRoot: "/trusted/project/addons/chronorift",
+  sidecarSource: productionSidecarSource,
+} as const;
+
+interface TestRuntimeRecord {
+  readonly schemaVersion: 1;
+  readonly taskId: TaskId;
+  readonly label: string;
+}
+
+interface TestRuntimeEvent extends TestRuntimeRecord {
+  readonly executionId: string;
+  readonly sequence: number;
+}
+
+const parseTestRuntimeRecord = (input: unknown): TestRuntimeRecord => {
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    Array.isArray(input) ||
+    Object.keys(input).sort().join("\0") !==
+      ["label", "schemaVersion", "taskId"].join("\0") ||
+    !("schemaVersion" in input) ||
+    input.schemaVersion !== 1 ||
+    !("taskId" in input) ||
+    typeof input.taskId !== "string" ||
+    !("label" in input) ||
+    typeof input.label !== "string"
+  ) {
+    throw new Error("invalid test runtime record");
+  }
+  return {
+    schemaVersion: 1,
+    taskId: asTaskId(input.taskId),
+    label: input.label,
+  };
+};
+
+const parseTestRuntimeEvent = (input: unknown): TestRuntimeEvent => {
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    Array.isArray(input) ||
+    Object.keys(input).sort().join("\0") !==
+      ["executionId", "label", "schemaVersion", "sequence", "taskId"].join(
+        "\0",
+      ) ||
+    !("schemaVersion" in input) ||
+    input.schemaVersion !== 1 ||
+    !("taskId" in input) ||
+    typeof input.taskId !== "string" ||
+    !("executionId" in input) ||
+    typeof input.executionId !== "string" ||
+    !("sequence" in input) ||
+    typeof input.sequence !== "number" ||
+    !Number.isSafeInteger(input.sequence) ||
+    input.sequence < 0 ||
+    !("label" in input) ||
+    typeof input.label !== "string"
+  ) {
+    throw new Error("invalid test runtime event");
+  }
+  return {
+    schemaVersion: 1,
+    taskId: asTaskId(input.taskId),
+    executionId: input.executionId,
+    sequence: input.sequence,
+    label: input.label,
+  };
+};
+
+class FailingTaskEventStore extends VNextTaskStore {
+  public constructor(
+    runtimeRoot: string,
+    private readonly failedKinds: ReadonlySet<string>,
+  ) {
+    super(runtimeRoot);
+  }
+
+  public override append<T>(
+    taskId: TaskId,
+    slot: VNextTaskLedgerSlot,
+    payload: T,
+    parse: (input: unknown) => T,
+  ): Promise<TaskLedgerEnvelopeV1> {
+    const candidate: unknown = payload;
+    if (
+      slot === "task-events.jsonl" &&
+      candidate !== null &&
+      typeof candidate === "object" &&
+      "kind" in candidate &&
+      typeof candidate.kind === "string" &&
+      this.failedKinds.has(candidate.kind)
+    ) {
+      return Promise.reject(new Error(`failed to append ${candidate.kind}`));
+    }
+    return super.append(taskId, slot, payload, parse);
+  }
+}
 
 afterEach(async () => {
   for (const root of roots.splice(0)) {
@@ -156,6 +386,33 @@ const supportedPreflight = () =>
     }),
   });
 
+const supportedPreflightForCapability = (
+  sandboxCapability: SandboxHostCapabilityV1,
+  taskStorageRoot?: string,
+) =>
+  Promise.resolve({
+    kind: "supported" as const,
+    capability: sandboxCapability,
+    binding: {
+      delegatedCgroupRoot: "/test/cgroup",
+      bwrapPath: "/test/bwrap",
+      prlimitPath: "/test/prlimit",
+      busyboxPath: "/test/busybox",
+      ...(sandboxCapability.taskStorage === undefined
+        ? {}
+        : { taskStorageRoot }),
+    },
+    receipt: SupportedSandboxPreflightReceiptV1Schema.parse({
+      schemaVersion: 1,
+      status: "supported",
+      checkedAt: now,
+      capabilitySha256: asSha256DigestV1(
+        contentHash(sandboxCapability as unknown as JsonValue),
+      ),
+      blockers: [],
+    }),
+  });
+
 const streamReceipt = (bytes: Uint8Array) => ({
   totalBytes: bytes.byteLength,
   capturedBytes: bytes.byteLength,
@@ -169,6 +426,9 @@ const streamReceipt = (bytes: Uint8Array) => ({
 const createFakeBroker = (input: {
   readonly taskId: TaskId;
   readonly policyId: string;
+  readonly sandboxCapabilitySha256?: Sha256DigestV1;
+  readonly aggregateStorageUsage?:
+    { readonly usedBytes: number; readonly usedInodes: number } | undefined;
   readonly cleanup?: () => Promise<{
     readonly processGroupTerminated: boolean;
     readonly cgroupPopulated: boolean;
@@ -176,8 +436,8 @@ const createFakeBroker = (input: {
     readonly killSent: boolean;
     readonly scopeRemoved: boolean;
   }>;
-}): TaskSandboxBrokerV1 => ({
-  async execute(request): Promise<SandboxExecutionResultV1> {
+}): DuplexTaskSandboxBrokerV1 => {
+  const execute: DuplexTaskSandboxBrokerV1["execute"] = async (request) => {
     const stdout = Buffer.from("ok\n");
     const stderr = Buffer.alloc(0);
     return {
@@ -187,21 +447,20 @@ const createFakeBroker = (input: {
         taskId: input.taskId,
         operationId: request.operationId,
         policyId: input.policyId,
-        sandboxCapabilitySha256: capabilitySha256,
+        sandboxCapabilitySha256:
+          input.sandboxCapabilitySha256 ??
+          (input.policyId.startsWith("sandbox-policy:v2:")
+            ? asSha256DigestV1(
+                contentHash(managedSandboxCapability as unknown as JsonValue),
+              )
+            : capabilitySha256),
         sandboxBackend: "bwrap-direct-cgroup-v2",
         status: "succeeded",
         requested: request,
-        realizedResources: {
-          cpuMax: "200000 100000",
-          memoryMaxBytes: 2_147_483_648,
-          memorySwapMaxBytes: 0,
-          pidsMax: 128,
-          nofile: 1024,
-          fileSizeMaxBytes: 536_870_912,
-          stdoutMaxBytes: 16_777_216,
-          stderrMaxBytes: 16_777_216,
-          timeoutMs: 120_000,
-        },
+        realizedResources:
+          request.profile === "godot-headless"
+            ? resolveResourceLimitsV1(request.profile, request.timeoutMs)
+            : resolveResourceLimitsV1(request.profile, undefined),
         realizedMechanisms: {
           cpu: "cgroup-v2",
           memory: "cgroup-v2",
@@ -209,12 +468,26 @@ const createFakeBroker = (input: {
           openFiles: "rlimit-nofile",
           fileSize: "rlimit-fsize",
           wallTimeout: "host-monotonic-timer",
-          unavailable: [],
+          ...(input.policyId.startsWith("sandbox-policy:v2:")
+            ? {
+                aggregateStorage:
+                  "dedicated-capacity-bounded-filesystem-v1" as const,
+                unavailable: [] as const,
+              }
+            : { unavailable: ["aggregate-storage"] as const }),
         },
         resourceUsage: {
           cpuUsageUsec: 1,
           memoryPeakBytes: 2,
           pidsPeak: 1,
+          ...(input.policyId.startsWith("sandbox-policy:v2:")
+            ? {
+                aggregateStorage: input.aggregateStorageUsage ?? {
+                  usedBytes: 4_096,
+                  usedInodes: 12,
+                },
+              }
+            : {}),
         },
         stdout: streamReceipt(stdout),
         stderr: streamReceipt(stderr),
@@ -233,18 +506,22 @@ const createFakeBroker = (input: {
       stdout,
       stderr,
     };
-  },
-  cleanup:
-    input.cleanup ??
-    (() =>
-      Promise.resolve({
-        processGroupTerminated: true,
-        cgroupPopulated: false,
-        termSent: false,
-        killSent: false,
-        scopeRemoved: true,
-      })),
-});
+  };
+  return {
+    execute,
+    openDuplex: (request) => execute(request),
+    cleanup:
+      input.cleanup ??
+      (() =>
+        Promise.resolve({
+          processGroupTerminated: true,
+          cgroupPopulated: false,
+          termSent: false,
+          killSent: false,
+          scopeRemoved: true,
+        })),
+  };
+};
 
 const prepareReadyEnvironment = async (input: {
   readonly root: string;
@@ -253,6 +530,9 @@ const prepareReadyEnvironment = async (input: {
   readonly storeFactory?: NonNullable<
     Parameters<typeof prepareM1TaskEnvironment>[1]
   >["createStore"];
+  readonly runtimeStoreFactory?: NonNullable<
+    Parameters<typeof prepareM1TaskEnvironment>[1]
+  >["createRuntimeStore"];
   readonly brokerFactory?:
     | ((
         taskId: TaskId,
@@ -284,17 +564,34 @@ const prepareReadyEnvironment = async (input: {
       ...(input.storeFactory === undefined
         ? {}
         : { createStore: input.storeFactory }),
-      createBroker: async (options) =>
-        input.brokerFactory?.(
-          options.taskId,
-          options.policy.policyId,
-          options.securityEvents,
-        ) ??
-        createFakeBroker({
-          taskId: options.taskId,
-          policyId: options.policy.policyId,
-          ...(input.cleanup === undefined ? {} : { cleanup: input.cleanup }),
-        }),
+      ...(input.runtimeStoreFactory === undefined
+        ? {}
+        : { createRuntimeStore: input.runtimeStoreFactory }),
+      createBroker: async (options) => {
+        const broker =
+          input.brokerFactory?.(
+            options.taskId,
+            options.policy.policyId,
+            options.securityEvents,
+          ) ??
+          createFakeBroker({
+            taskId: options.taskId,
+            policyId: options.policy.policyId,
+            sandboxCapabilitySha256: asSha256DigestV1(
+              contentHash(options.capability as unknown as JsonValue),
+            ),
+            ...(input.cleanup === undefined ? {} : { cleanup: input.cleanup }),
+          });
+        const duplex = broker as Partial<DuplexTaskSandboxBrokerV1>;
+        return {
+          ...broker,
+          openDuplex:
+            typeof duplex.openDuplex === "function"
+              ? duplex.openDuplex.bind(broker)
+              : (request, duplexOptions) =>
+                  broker.execute(request, duplexOptions),
+        };
+      },
     },
   );
   const taskRoot = join(
@@ -305,7 +602,197 @@ const prepareReadyEnvironment = async (input: {
   return { environment, project, runtimeRoot, taskRoot };
 };
 
+const managedEnvironmentOverrides = (input?: {
+  readonly frozenRuntime?: typeof managedRuntime | undefined;
+  readonly sandboxCapability?: SandboxHostCapabilityV1 | undefined;
+  readonly createBroker?: NonNullable<
+    Parameters<typeof prepareM1TaskEnvironment>[1]
+  >["createBroker"];
+}) => ({
+  now: () => now,
+  preflightSandbox: (request: SandboxHostPreflightRequest) =>
+    supportedPreflightForCapability(
+      input?.sandboxCapability ?? managedSandboxCapability,
+      request.taskStorageRoot,
+    ),
+  inspectToolchain: async () => ({
+    capability: toolchainCapability,
+    binding: {
+      toolchainId: toolchainCapability.toolchainId,
+      files: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+    },
+  }),
+  preflightManagedRuntime: async () => input?.frozenRuntime ?? managedRuntime,
+  assertSandboxBinding: async () => undefined,
+  assertTaskStorageLayout: async () => ({ usedBytes: 0, usedInodes: 0 }),
+  createBroker:
+    input?.createBroker ??
+    (async (options) =>
+      createFakeBroker({
+        taskId: options.taskId,
+        policyId: options.policy.policyId,
+        sandboxCapabilitySha256: asSha256DigestV1(
+          contentHash(options.capability as unknown as JsonValue),
+        ),
+      })),
+});
+
+const prepareManagedReadyEnvironment = async (input: {
+  readonly root: string;
+  readonly taskId: TaskId;
+  readonly createBroker?: NonNullable<
+    Parameters<typeof prepareM1TaskEnvironment>[1]
+  >["createBroker"];
+}) => {
+  const project = await createCleanFixtureRepository(input.root);
+  const runtimeRoot = join(input.root, "runtime");
+  await mkdir(runtimeRoot);
+  const environment = await prepareM1TaskEnvironment(
+    {
+      taskId: input.taskId,
+      projectPath: project,
+      trustedFixtureRoot,
+      runtimeRoot,
+      sandboxHost: {
+        delegatedCgroupRoot: "/test/cgroup",
+        bwrapPath: "/test/bwrap",
+        prlimitPath: "/test/prlimit",
+        busyboxPath: "/test/busybox",
+        taskStorageRoot: input.root,
+      },
+      sandboxToolchain: {
+        lddPath: "/usr/bin/ldd",
+        commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+      },
+      managedGodotRuntime: managedRuntimeInput,
+    },
+    managedEnvironmentOverrides({
+      ...(input.createBroker === undefined
+        ? {}
+        : { createBroker: input.createBroker }),
+    }),
+  );
+  const taskRoot = join(
+    runtimeRoot,
+    "tasks",
+    taskNamespaceDigestV1(input.taskId),
+  );
+  return { environment, project, runtimeRoot, taskRoot };
+};
+
 describe("internal M1 Task environment", () => {
+  it("fails M3 closed before source inspection without an in-bounds storage root", async () => {
+    const root = await createHarnessRoot();
+    const project = await createCleanFixtureRepository(root);
+    const runtimeRoot = join(root, "runtime");
+    const otherStorageRoot = join(root, "other-storage");
+    await Promise.all([mkdir(runtimeRoot), mkdir(otherStorageRoot)]);
+    let sourceInspected = false;
+    const baseRequest = {
+      taskId: asTaskId("task_storage_preflight"),
+      projectPath: project,
+      trustedFixtureRoot,
+      runtimeRoot,
+      sandboxToolchain: {
+        lddPath: "/usr/bin/ldd",
+        commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+      },
+      managedGodotRuntime: managedRuntimeInput,
+    } as const;
+    const overrides = {
+      ...managedEnvironmentOverrides(),
+      preflightSource: async () => {
+        sourceInspected = true;
+        throw new Error("source inspection must not run");
+      },
+    };
+
+    await expect(
+      prepareM1TaskEnvironment(
+        {
+          ...baseRequest,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+          },
+        },
+        overrides,
+      ),
+    ).rejects.toMatchObject({ code: "resource_limit_unavailable" });
+    await expect(
+      prepareM1TaskEnvironment(
+        {
+          ...baseRequest,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+            taskStorageRoot: otherStorageRoot,
+          },
+        },
+        overrides,
+      ),
+    ).rejects.toMatchObject({ code: "sandbox_preflight_failed" });
+    expect(sourceInspected).toBe(false);
+  });
+
+  it("rejects a nested runtime filesystem before source inspection or materialization", async () => {
+    const root = await createHarnessRoot();
+    const project = await createCleanFixtureRepository(root);
+    const runtimeRoot = join(root, "runtime");
+    await mkdir(runtimeRoot);
+    let sourceInspected = false;
+    let materialized = false;
+
+    await expect(
+      prepareM1TaskEnvironment(
+        {
+          taskId: asTaskId("task_nested_storage_prepare"),
+          projectPath: project,
+          trustedFixtureRoot,
+          runtimeRoot,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+            taskStorageRoot: root,
+          },
+          sandboxToolchain: {
+            lddPath: "/usr/bin/ldd",
+            commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+          },
+          managedGodotRuntime: managedRuntimeInput,
+        },
+        {
+          ...managedEnvironmentOverrides(),
+          assertTaskStorageLayout: async () => {
+            throw new M1Error(
+              "sandbox_preflight_failed",
+              "runtime root crossed the bounded filesystem",
+            );
+          },
+          preflightSource: async () => {
+            sourceInspected = true;
+            throw new Error("source inspection must not run");
+          },
+          materializeWorkspace: async () => {
+            materialized = true;
+            throw new Error("materialization must not run");
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "sandbox_preflight_failed" });
+    expect(sourceInspected).toBe(false);
+    expect(materialized).toBe(false);
+    await expect(access(join(runtimeRoot, "tasks"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("freezes an inspected toolchain into Task records, policy, and broker composition", async () => {
     const root = await createHarnessRoot();
     const project = await createCleanFixtureRepository(root);
@@ -366,6 +853,594 @@ describe("internal M1 Task environment", () => {
       ),
     ).resolves.toEqual(toolchainCapability);
     await discardM1Task(environment);
+  });
+
+  it("persists a Policy V2 managed runtime and rebuilds a stable Host game context on resume", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_managed_runtime_resume");
+    let receivedManagedRuntimeId: string | undefined;
+    const prepared = await prepareManagedReadyEnvironment({
+      root,
+      taskId,
+      createBroker: async (options) => {
+        receivedManagedRuntimeId =
+          options.managedRuntime?.capability.managedRuntimeId;
+        return createFakeBroker({
+          taskId: options.taskId,
+          policyId: options.policy.policyId,
+        });
+      },
+    });
+
+    expect(receivedManagedRuntimeId).toBe(
+      managedRuntime.capability.managedRuntimeId,
+    );
+    expect(prepared.environment.policy).toMatchObject({
+      schemaVersion: 2,
+      profileBindings: {
+        "coding-default": {
+          toolchainId: toolchainCapability.toolchainId,
+          managedRuntimeId: null,
+          workspaceAccess: "read-write",
+          readonlyTargets: ["/bin/bash", "/bin/busybox"],
+        },
+        "godot-headless": {
+          toolchainId: managedToolchainCapability.toolchainId,
+          managedRuntimeId: managedRuntime.capability.managedRuntimeId,
+          workspaceAccess: "read-only",
+        },
+      },
+    });
+    if (prepared.environment.policy.schemaVersion !== 2) {
+      throw new Error("managed runtime must persist Sandbox Policy V2");
+    }
+    expect(
+      prepared.environment.policy.profileBindings["coding-default"]
+        .readonlyTargets,
+    ).not.toEqual(
+      expect.arrayContaining([
+        DEFAULT_RUNTIME_SIDECAR_TARGETS.shellExecutable,
+        "/lib/x86_64-linux-gnu/libfontconfig.so.1",
+        DEFAULT_RUNTIME_SIDECAR_TARGETS.xdgUserDirExecutable,
+        DEFAULT_RUNTIME_SIDECAR_TARGETS.fontconfigFile,
+      ]),
+    );
+    expect(
+      prepared.environment.policy.profileBindings["godot-headless"]
+        .readonlyTargets,
+    ).toEqual(
+      expect.arrayContaining([
+        DEFAULT_RUNTIME_SIDECAR_TARGETS.shellExecutable,
+        "/lib/x86_64-linux-gnu/libfontconfig.so.1",
+        DEFAULT_RUNTIME_SIDECAR_TARGETS.xdgUserDirExecutable,
+        DEFAULT_RUNTIME_SIDECAR_TARGETS.fontconfigFile,
+      ]),
+    );
+    const store = new VNextTaskStore(prepared.runtimeRoot);
+    await expect(
+      store.readJson(
+        taskId,
+        "managed-runtime.json" as VNextTaskJsonSlot,
+        (value) => ManagedGodotRuntimeCapabilityV1Schema.parse(value),
+      ),
+    ).resolves.toEqual(managedRuntime.capability);
+    expect(
+      await readFile(
+        join(prepared.taskRoot, "records", "managed-runtime.json"),
+        "utf8",
+      ),
+    ).not.toContain("/trusted/");
+    const firstContext = getM1TaskGameRuntimeContext(prepared.environment);
+    expect(firstContext.workspaceDirectory).toBe(
+      getM1TaskHostContext(prepared.environment).workspaceDirectory,
+    );
+    expect(firstContext.managedRuntime).toEqual(managedRuntime.capability);
+    expect(createM1ManagedGodotSidecarPort(prepared.environment)).toBeDefined();
+
+    await suspendM1Task(prepared.environment);
+    const resumed = await resumeM1TaskEnvironment(
+      {
+        taskId,
+        runtimeRoot: prepared.runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+          taskStorageRoot: dirname(prepared.runtimeRoot),
+        },
+        sandboxToolchain: {
+          lddPath: "/usr/bin/ldd",
+          commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+        },
+        managedGodotRuntime: managedRuntimeInput,
+      },
+      managedEnvironmentOverrides(),
+    );
+    const resumedContext = getM1TaskGameRuntimeContext(resumed);
+    expect(resumedContext.workspaceId).toBe(firstContext.workspaceId);
+    expect(resumedContext.fixtureCapability).toEqual(
+      firstContext.fixtureCapability,
+    );
+    await discardM1Task(resumed);
+  });
+
+  it("rejects aggregate storage usage above the frozen filesystem capacity", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_storage_usage_over_cap");
+    const prepared = await prepareManagedReadyEnvironment({
+      root,
+      taskId,
+      createBroker: async (options) =>
+        createFakeBroker({
+          taskId: options.taskId,
+          policyId: options.policy.policyId,
+          sandboxCapabilitySha256: asSha256DigestV1(
+            contentHash(options.capability as unknown as JsonValue),
+          ),
+          aggregateStorageUsage: {
+            usedBytes: taskStorageCapability.totalBytes + 1,
+            usedInodes: 12,
+          },
+        }),
+    });
+
+    await expect(
+      executeAndRecordM1Command(prepared.environment, {
+        schemaVersion: 1,
+        operationId: "forged_storage_usage",
+        profile: "coding-default",
+        argv: ["/bin/busybox", "true"],
+        cwd: "/workspace",
+        environment: {},
+      }),
+    ).rejects.toMatchObject({ code: "artifact_write_failed" });
+    await discardM1Task(prepared.environment);
+  });
+
+  it("accepts a fresh delegation and active probe while preserving stable sandbox identity", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_active_probe_resume");
+    const prepared = await prepareManagedReadyEnvironment({ root, taskId });
+    await suspendM1Task(prepared.environment);
+    const freshProbeCapability = SandboxHostCapabilityV1Schema.parse({
+      ...managedSandboxCapability,
+      delegatedCgroupRootIdentity: asSha256DigestV1("c".repeat(64)),
+      activeProbeSha256: asSha256DigestV1("b".repeat(64)),
+    });
+
+    const resumed = await resumeM1TaskEnvironment(
+      {
+        taskId,
+        runtimeRoot: prepared.runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+          taskStorageRoot: dirname(prepared.runtimeRoot),
+        },
+        sandboxToolchain: {
+          lddPath: "/usr/bin/ldd",
+          commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+        },
+        managedGodotRuntime: managedRuntimeInput,
+      },
+      managedEnvironmentOverrides({
+        sandboxCapability: freshProbeCapability,
+      }),
+    );
+
+    expect(resumed.sandboxCapability).toEqual(freshProbeCapability);
+    await executeAndRecordM1Command(resumed, {
+      schemaVersion: 1,
+      operationId: "after_ephemeral_capability_resume",
+      profile: "coding-default",
+      argv: ["/bin/busybox", "true"],
+      cwd: "/workspace",
+      environment: {},
+    });
+    const store = new VNextTaskStore(prepared.runtimeRoot);
+    const preflightRecords = await store.readLedger(
+      taskId,
+      "sandbox-preflight.jsonl",
+      (value) => SupportedSandboxPreflightReceiptV1Schema.parse(value),
+    );
+    expect(preflightRecords.at(-1)?.capabilitySha256).toBe(
+      asSha256DigestV1(
+        contentHash(freshProbeCapability as unknown as JsonValue),
+      ),
+    );
+    const operationRecords = await store.readLedger(
+      taskId,
+      "sandbox-operations.jsonl",
+      (value) => SandboxOperationRecordV1Schema.parse(value),
+    );
+    expect(operationRecords.at(-1)?.receipt.sandboxCapabilitySha256).toBe(
+      asSha256DigestV1(
+        contentHash(freshProbeCapability as unknown as JsonValue),
+      ),
+    );
+    await suspendM1Task(resumed);
+    const driftedBwrapCapability = SandboxHostCapabilityV1Schema.parse({
+      ...freshProbeCapability,
+      bwrap: {
+        ...freshProbeCapability.bwrap,
+        identity: asSha256DigestV1("d".repeat(64)),
+      },
+    });
+    const resumeRequest = {
+      taskId,
+      runtimeRoot: prepared.runtimeRoot,
+      sandboxHost: {
+        delegatedCgroupRoot: "/test/cgroup",
+        bwrapPath: "/test/bwrap",
+        prlimitPath: "/test/prlimit",
+        busyboxPath: "/test/busybox",
+        taskStorageRoot: dirname(prepared.runtimeRoot),
+      },
+      sandboxToolchain: {
+        lddPath: "/usr/bin/ldd",
+        commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+      },
+      managedGodotRuntime: managedRuntimeInput,
+    } as const;
+    await expect(
+      resumeM1TaskEnvironment(
+        resumeRequest,
+        managedEnvironmentOverrides({
+          sandboxCapability: driftedBwrapCapability,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "sandbox_preflight_failed" });
+    const recovered = await resumeM1TaskEnvironment(
+      resumeRequest,
+      managedEnvironmentOverrides({
+        sandboxCapability: freshProbeCapability,
+      }),
+    );
+    await suspendM1Task(recovered);
+    const driftedStorageCapability = SandboxHostCapabilityV1Schema.parse({
+      ...freshProbeCapability,
+      taskStorage: {
+        ...taskStorageCapability,
+        rootIdentitySha256: asSha256DigestV1("e".repeat(64)),
+      },
+    });
+    await expect(
+      resumeM1TaskEnvironment(
+        resumeRequest,
+        managedEnvironmentOverrides({
+          sandboxCapability: driftedStorageCapability,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "sandbox_preflight_failed" });
+    const storageRecovered = await resumeM1TaskEnvironment(
+      resumeRequest,
+      managedEnvironmentOverrides({
+        sandboxCapability: freshProbeCapability,
+      }),
+    );
+    await discardM1Task(storageRecovered);
+  });
+
+  it("rejects a nested runtime filesystem before opening or mutating a resumed M3 Task", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_nested_storage_resume");
+    const prepared = await prepareManagedReadyEnvironment({ root, taskId });
+    await suspendM1Task(prepared.environment);
+    const preflightPath = join(
+      prepared.taskRoot,
+      "records",
+      "sandbox-preflight.jsonl",
+    );
+    const preflightBefore = await readFile(preflightPath);
+    let layoutOpened = false;
+
+    const request = {
+      taskId,
+      runtimeRoot: prepared.runtimeRoot,
+      sandboxHost: {
+        delegatedCgroupRoot: "/test/cgroup",
+        bwrapPath: "/test/bwrap",
+        prlimitPath: "/test/prlimit",
+        busyboxPath: "/test/busybox",
+        taskStorageRoot: dirname(prepared.runtimeRoot),
+      },
+      sandboxToolchain: {
+        lddPath: "/usr/bin/ldd",
+        commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+      },
+      managedGodotRuntime: managedRuntimeInput,
+    } as const;
+    await expect(
+      resumeM1TaskEnvironment(request, {
+        ...managedEnvironmentOverrides(),
+        assertTaskStorageLayout: async () => {
+          throw new M1Error(
+            "sandbox_preflight_failed",
+            "runtime root crossed the bounded filesystem",
+          );
+        },
+        openLayout: async () => {
+          layoutOpened = true;
+          throw new Error("Task layout must not be opened");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "sandbox_preflight_failed" });
+    expect(layoutOpened).toBe(false);
+    await expect(readFile(preflightPath)).resolves.toEqual(preflightBefore);
+
+    const recovered = await resumeM1TaskEnvironment(
+      request,
+      managedEnvironmentOverrides(),
+    );
+    await discardM1Task(recovered);
+  });
+
+  it("migrates an exact pre-M3 V1 layout to an empty runtime store on resume", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_legacy_runtime_store_resume");
+    const prepared = await prepareReadyEnvironment({ root, taskId });
+    await suspendM1Task(prepared.environment);
+    await rm(join(prepared.taskRoot, "runtime-records"), {
+      recursive: true,
+      force: false,
+    });
+
+    const resumed = await resumeM1TaskEnvironment(
+      {
+        taskId,
+        runtimeRoot: prepared.runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+        },
+      },
+      {
+        now: () => now,
+        preflightSandbox: supportedPreflight,
+        assertSandboxBinding: async () => undefined,
+        createBroker: async (options) =>
+          createFakeBroker({
+            taskId: options.taskId,
+            policyId: options.policy.policyId,
+            sandboxCapabilitySha256: asSha256DigestV1(
+              contentHash(options.capability as unknown as JsonValue),
+            ),
+          }),
+      },
+    );
+    await executeAndRecordM1Command(resumed, {
+      schemaVersion: 1,
+      operationId: "after_legacy_runtime_store_migration",
+      profile: "coding-default",
+      argv: ["/bin/busybox", "true"],
+      cwd: "/workspace",
+      environment: {},
+    });
+    await expect(resumed.runtimeStore.summarize()).resolves.toMatchObject({
+      taskId,
+      executions: [],
+    });
+    await discardM1Task(resumed);
+  });
+
+  it("rejects a missing runtime store for a frozen M3 V2 Task", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_m3_missing_runtime_store");
+    const prepared = await prepareManagedReadyEnvironment({ root, taskId });
+    const taskRoot = prepared.taskRoot;
+    await suspendM1Task(prepared.environment);
+    await rm(join(taskRoot, "runtime-records"), {
+      recursive: true,
+      force: false,
+    });
+    let brokerCreated = false;
+
+    await expect(
+      resumeM1TaskEnvironment(
+        {
+          taskId,
+          runtimeRoot: prepared.runtimeRoot,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+            taskStorageRoot: dirname(prepared.runtimeRoot),
+          },
+          sandboxToolchain: {
+            lddPath: "/usr/bin/ldd",
+            commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+          },
+          managedGodotRuntime: managedRuntimeInput,
+        },
+        managedEnvironmentOverrides({
+          createBroker: async (options) => {
+            brokerCreated = true;
+            return createFakeBroker({
+              taskId: options.taskId,
+              policyId: options.policy.policyId,
+            });
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "artifact_write_failed" });
+    expect(brokerCreated).toBe(false);
+    await expect(
+      lstat(join(taskRoot, "runtime-records")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("fails resume closed when a frozen managed runtime is missing or changes identity", async () => {
+    const root = await createHarnessRoot();
+    const changedTaskId = asTaskId("task_managed_runtime_changed");
+    const changed = await prepareManagedReadyEnvironment({
+      root,
+      taskId: changedTaskId,
+    });
+    await suspendM1Task(changed.environment);
+    const driftedRuntime = createManagedGodotRuntimeV1({
+      doctorVersion: "4.7.1.stable.official.b13da4feb",
+      nodeTarget: DEFAULT_RUNTIME_SIDECAR_TARGETS.nodeExecutable,
+      godotTarget: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+      toolchain: {
+        capability: managedToolchainCapability,
+        binding: managedRuntime.binding.toolchain,
+      },
+      sidecarSource: productionSidecarSource,
+      addonFiles: managedRuntime.binding.addonFiles,
+    });
+    const resumeRequest = {
+      taskId: changedTaskId,
+      runtimeRoot: changed.runtimeRoot,
+      sandboxHost: {
+        delegatedCgroupRoot: "/test/cgroup",
+        bwrapPath: "/test/bwrap",
+        prlimitPath: "/test/prlimit",
+        busyboxPath: "/test/busybox",
+        taskStorageRoot: dirname(changed.runtimeRoot),
+      },
+      sandboxToolchain: {
+        lddPath: "/usr/bin/ldd",
+        commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+      },
+      managedGodotRuntime: managedRuntimeInput,
+    } as const;
+    await expect(
+      resumeM1TaskEnvironment(
+        resumeRequest,
+        managedEnvironmentOverrides({ frozenRuntime: driftedRuntime }),
+      ),
+    ).rejects.toMatchObject({ code: "sandbox_preflight_failed" });
+    const recovered = await resumeM1TaskEnvironment(
+      resumeRequest,
+      managedEnvironmentOverrides(),
+    );
+    await discardM1Task(recovered);
+
+    const missingRoot = await createHarnessRoot();
+    const missingTaskId = asTaskId("task_managed_runtime_missing");
+    const missing = await prepareManagedReadyEnvironment({
+      root: missingRoot,
+      taskId: missingTaskId,
+    });
+    await suspendM1Task(missing.environment);
+    await unlink(join(missing.taskRoot, "records", "managed-runtime.json"));
+    await expect(
+      resumeM1TaskEnvironment(
+        {
+          ...resumeRequest,
+          taskId: missingTaskId,
+          runtimeRoot: missing.runtimeRoot,
+          sandboxHost: {
+            ...resumeRequest.sandboxHost,
+            taskStorageRoot: dirname(missing.runtimeRoot),
+          },
+        },
+        managedEnvironmentOverrides(),
+      ),
+    ).rejects.toMatchObject({ code: "sandbox_preflight_failed" });
+  });
+
+  it("terminates an active duplex runtime on suspend and records its real completion", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_duplex_runtime_cleanup");
+    let cleanupCalls = 0;
+    let capturedRequest:
+      Parameters<DuplexTaskSandboxBrokerV1["openDuplex"]>[0] | undefined;
+    let complete!: (result: SandboxExecutionResultV1) => void;
+    const completion = new Promise<SandboxExecutionResultV1>((resolve) => {
+      complete = resolve;
+    });
+    const prepared = await prepareManagedReadyEnvironment({
+      root,
+      taskId,
+      createBroker: async (options) => {
+        const honest = createFakeBroker({
+          taskId: options.taskId,
+          policyId: options.policy.policyId,
+        });
+        return {
+          execute: (request, executeOptions) =>
+            honest.execute(request, executeOptions),
+          openDuplex: async (request) => {
+            capturedRequest = request;
+            return {
+              kind: "opened" as const,
+              handle: {
+                write: async () => undefined,
+                endInput: async () => undefined,
+                terminate: async () => undefined,
+                completion,
+              },
+            };
+          },
+          cleanup: async () => {
+            cleanupCalls += 1;
+            if (capturedRequest !== undefined) {
+              const executed = await honest.execute(capturedRequest);
+              if (executed.kind !== "executed") {
+                throw new Error("fake duplex completion was denied");
+              }
+              complete({
+                ...executed,
+                receipt: SandboxExecutionReceiptV1Schema.parse({
+                  ...executed.receipt,
+                  status: "cancelled",
+                  exitCode: null,
+                  signal: null,
+                  cleanup: {
+                    processGroupTerminated: true,
+                    cgroupPopulated: false,
+                    termSent: true,
+                    killSent: false,
+                    scopeRemoved: true,
+                  },
+                }),
+              });
+            }
+            return {
+              processGroupTerminated: true,
+              cgroupPopulated: false,
+              termSent: true,
+              killSent: false,
+              scopeRemoved: true,
+            };
+          },
+        };
+      },
+    });
+    const port = getM1TaskDuplexSandboxPort(prepared.environment);
+    const opened = await port.openDuplex({
+      schemaVersion: 1,
+      operationId: "game-runtime:cleanup",
+      profile: "godot-headless",
+      argv: [DEFAULT_RUNTIME_SIDECAR_TARGETS.nodeExecutable, "--version"],
+      cwd: "/workspace",
+      environment: {},
+    });
+    if (opened.kind !== "opened") {
+      throw new Error("fake duplex runtime did not open");
+    }
+    await suspendM1Task(prepared.environment);
+    await expect(opened.handle.completion).resolves.toMatchObject({
+      kind: "executed",
+      receipt: { status: "cancelled" },
+    });
+    expect(cleanupCalls).toBe(1);
+    const store = new VNextTaskStore(prepared.runtimeRoot);
+    await expect(
+      store.readLedger(taskId, "sandbox-operations.jsonl", (value) =>
+        SandboxOperationRecordV1Schema.parse(value),
+      ),
+    ).resolves.toMatchObject([
+      { receipt: { operationId: "game-runtime:cleanup", status: "cancelled" } },
+    ]);
+    await discardM1Task(prepared.environment);
   });
 
   it("fails sandbox preflight before source inspection or Task creation", async () => {
@@ -473,6 +1548,19 @@ describe("internal M1 Task environment", () => {
         SandboxHostCapabilityV1Schema.parse(value),
       ),
     ).resolves.toEqual(capability);
+    await environment.runtimeStore.putResourceOnce(
+      "build",
+      "build_lifecycle",
+      { schemaVersion: 1, taskId, label: "lifecycle" },
+      parseTestRuntimeRecord,
+    );
+    await expect(
+      environment.runtimeStore.readResource(
+        "build",
+        "build_lifecycle",
+        parseTestRuntimeRecord,
+      ),
+    ).resolves.toMatchObject({ label: "lifecycle" });
 
     await executeAndRecordM1Command(environment, {
       schemaVersion: 1,
@@ -553,6 +1641,26 @@ describe("internal M1 Task environment", () => {
       join(context.workspaceDirectory, "resume-marker.txt"),
       "kept\n",
     );
+    const executionId = "execution_suspend_resume";
+    await environment.runtimeStore.putResourceOnce(
+      "execution",
+      executionId,
+      { schemaVersion: 1, taskId, label: "running" },
+      parseTestRuntimeRecord,
+    );
+    await environment.runtimeStore.appendExecutionEvent(
+      executionId,
+      {
+        schemaVersion: 1,
+        taskId,
+        executionId,
+        sequence: 0,
+        label: "before-suspend",
+      },
+      parseTestRuntimeEvent,
+    );
+    const runtimeSeal =
+      await environment.runtimeStore.sealExecution(executionId);
 
     await suspendM1Task(environment);
     await expect(access(taskRoot)).resolves.toBeUndefined();
@@ -598,6 +1706,27 @@ describe("internal M1 Task environment", () => {
         "utf8",
       ),
     ).toBe("kept\n");
+    await expect(
+      resumed.runtimeStore.readResource(
+        "execution",
+        executionId,
+        parseTestRuntimeRecord,
+      ),
+    ).resolves.toMatchObject({ label: "running" });
+    await expect(
+      resumed.runtimeStore.readExecutionEvents(
+        executionId,
+        parseTestRuntimeEvent,
+      ),
+    ).resolves.toMatchObject([{ label: "before-suspend", sequence: 0 }]);
+    await expect(
+      resumed.runtimeStore.sealExecution(executionId),
+    ).resolves.toEqual(runtimeSeal);
+    await expect(resumed.runtimeStore.summarize()).resolves.toMatchObject({
+      schemaVersion: 1,
+      taskId,
+      executions: [{ executionId, sealed: true }],
+    });
     await executeAndRecordM1Command(resumed, {
       schemaVersion: 1,
       operationId: "after_resume",
@@ -619,6 +1748,170 @@ describe("internal M1 Task environment", () => {
       "resumed",
     ]);
     await discardM1Task(resumed);
+  });
+
+  it("resumes and executes a legacy four-feature Policy V1 Task only after a fresh remount-ro preflight", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_legacy_bwrap_feature_resume");
+    const { environment, runtimeRoot } = await prepareReadyEnvironment({
+      root,
+      taskId,
+    });
+    expect(environment.sandboxCapability.bwrap.features).toEqual([
+      "block-fd",
+      "json-status-fd",
+      "bind-fd",
+      "ro-bind-fd",
+    ]);
+    await suspendM1Task(environment);
+
+    const resumed = await resumeM1TaskEnvironment(
+      {
+        taskId,
+        runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+        },
+      },
+      {
+        now: () => now,
+        preflightSandbox: () =>
+          supportedPreflightForCapability(currentCapability),
+        assertSandboxBinding: async () => undefined,
+        createBroker: async (options) =>
+          createFakeBroker({
+            taskId: options.taskId,
+            policyId: options.policy.policyId,
+            sandboxCapabilitySha256: asSha256DigestV1(
+              contentHash(options.capability as unknown as JsonValue),
+            ),
+          }),
+      },
+    );
+    expect(resumed.sandboxCapability.bwrap.features).toEqual([
+      "block-fd",
+      "json-status-fd",
+      "bind-fd",
+      "ro-bind-fd",
+      "remount-ro",
+    ]);
+    await expect(
+      executeAndRecordM1Command(resumed, {
+        schemaVersion: 1,
+        operationId: "after_remount_feature_upgrade",
+        profile: "coding-default",
+        argv: ["/bin/busybox", "true"],
+        cwd: "/workspace",
+        environment: {},
+      }),
+    ).resolves.toMatchObject({ kind: "executed" });
+    await discardM1Task(resumed);
+  });
+
+  it("rejects corrupted runtime records before mutating resume ledgers or launching a broker", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_runtime_resume_corrupt");
+    const { environment, runtimeRoot, taskRoot } =
+      await prepareReadyEnvironment({ root, taskId });
+    const indexId = "index_resume_corrupt";
+    await environment.runtimeStore.putResourceOnce(
+      "index",
+      indexId,
+      { schemaVersion: 1, taskId, label: "before" },
+      parseTestRuntimeRecord,
+    );
+    await suspendM1Task(environment);
+    const preflightPath = join(taskRoot, "records", "sandbox-preflight.jsonl");
+    const preflightBefore = await readFile(preflightPath);
+    const recordPath = join(
+      taskRoot,
+      "runtime-records",
+      "indexes",
+      runtimeResourceNamespaceDigestV1(taskId, "index", indexId),
+      "record.json",
+    );
+    const envelope = JSON.parse(await readFile(recordPath, "utf8")) as {
+      payload: { label: string };
+    };
+    envelope.payload.label = "tampered";
+    await writeFile(
+      recordPath,
+      `${canonicalJson(envelope as unknown as JsonValue)}\n`,
+    );
+    let brokerCreated = false;
+
+    await expect(
+      resumeM1TaskEnvironment(
+        {
+          taskId,
+          runtimeRoot,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+          },
+        },
+        {
+          now: () => now,
+          preflightSandbox: supportedPreflight,
+          assertSandboxBinding: async () => undefined,
+          createBroker: async (options) => {
+            brokerCreated = true;
+            return createFakeBroker({
+              taskId: options.taskId,
+              policyId: options.policy.policyId,
+            });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "artifact_write_failed" });
+    expect(brokerCreated).toBe(false);
+    await expect(readFile(preflightPath)).resolves.toEqual(preflightBefore);
+  });
+
+  it("rejects a foreign runtime-records child on resume without leaking a broker", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_runtime_resume_foreign");
+    const { environment, runtimeRoot, taskRoot } =
+      await prepareReadyEnvironment({ root, taskId });
+    await suspendM1Task(environment);
+    await writeFile(join(taskRoot, "runtime-records", "foreign"), "foreign\n");
+    let brokerCreated = false;
+
+    await expect(
+      resumeM1TaskEnvironment(
+        {
+          taskId,
+          runtimeRoot,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+          },
+        },
+        {
+          now: () => now,
+          preflightSandbox: supportedPreflight,
+          assertSandboxBinding: async () => undefined,
+          createBroker: async (options) => {
+            brokerCreated = true;
+            return createFakeBroker({
+              taskId: options.taskId,
+              policyId: options.policy.policyId,
+            });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: "artifact_write_failed" });
+    expect(brokerCreated).toBe(false);
+    await expect(
+      readFile(join(taskRoot, "runtime-records", "foreign"), "utf8"),
+    ).resolves.toBe("foreign\n");
   });
 
   it("retains write-once records and removes mutable state after setup failure", async () => {
@@ -659,7 +1952,9 @@ describe("internal M1 Task environment", () => {
     });
 
     const taskRoot = join(runtimeRoot, "tasks", taskNamespaceDigestV1(taskId));
-    expect(await readdir(taskRoot)).toEqual(["records"]);
+    expect((await readdir(taskRoot)).sort()).toEqual(
+      ["records", "runtime-records"].sort(),
+    );
     const store = new VNextTaskStore(runtimeRoot);
     const events = await store.readLedger(
       taskId,
@@ -674,6 +1969,216 @@ describe("internal M1 Task environment", () => {
       message: "[REDACTED]/broker failed",
     });
     expect(await git(project, ["status", "--porcelain"])).toBe("");
+  });
+
+  it("retries retained broker setup ownership and preserves mutable Task state on permanent failure", async () => {
+    const run = async (permanent: boolean) => {
+      const root = await createHarnessRoot();
+      const project = await createCleanFixtureRepository(root);
+      const runtimeRoot = join(root, "runtime");
+      await mkdir(runtimeRoot);
+      const taskId = asTaskId(
+        permanent ? "task_setup_owner_permanent" : "task_setup_owner_transient",
+      );
+      let retryCalls = 0;
+      let caught: unknown;
+      try {
+        await prepareM1TaskEnvironment(
+          {
+            taskId,
+            projectPath: project,
+            trustedFixtureRoot,
+            runtimeRoot,
+            sandboxHost: {
+              delegatedCgroupRoot: "/test/cgroup",
+              bwrapPath: "/test/bwrap",
+              prlimitPath: "/test/prlimit",
+              busyboxPath: "/test/busybox",
+            },
+          },
+          {
+            now: () => now,
+            preflightSandbox: supportedPreflight,
+            assertSandboxBinding: async () => undefined,
+            createBroker: async () => {
+              throw new SandboxBrokerSetupCleanupError(
+                new M1Error(
+                  "sandbox_launch_failed",
+                  "broker post-bind validation failed",
+                ),
+                new Error("initial cleanup attempts failed"),
+                async () => {
+                  retryCalls += 1;
+                  if (permanent || retryCalls === 1) {
+                    throw new Error("retained cleanup still failed");
+                  }
+                },
+              );
+            },
+          },
+        );
+      } catch (error) {
+        caught = error;
+      }
+      const taskRoot = join(
+        runtimeRoot,
+        "tasks",
+        taskNamespaceDigestV1(taskId),
+      );
+      return { caught, retryCalls, taskRoot };
+    };
+
+    const transient = await run(false);
+    expect(transient.caught).toMatchObject({
+      code: "sandbox_launch_failed",
+      message: "broker post-bind validation failed",
+    });
+    expect(transient.retryCalls).toBe(2);
+    expect((await readdir(transient.taskRoot)).sort()).toEqual(
+      ["records", "runtime-records"].sort(),
+    );
+
+    const permanent = await run(true);
+    expect(permanent.retryCalls).toBe(3);
+    expect(permanent.caught).toBeInstanceOf(M1Error);
+    if (!(permanent.caught instanceof M1Error)) {
+      throw new Error("expected retained M1 setup error");
+    }
+    expect(permanent.caught.code).toBe("artifact_write_failed");
+    expect(permanent.caught.message).toMatch(/Task state was retained/u);
+    expect(permanent.caught.storedCause).toBeInstanceOf(
+      SandboxBrokerSetupCleanupError,
+    );
+    await expect(
+      access(join(permanent.taskRoot, "workspace")),
+    ).resolves.toBeUndefined();
+  });
+
+  it("retains a permanently unclean broker through prepare and resume record failures", async () => {
+    const unprovenCleanup = (calls: { value: number }) => async () => {
+      calls.value += 1;
+      return {
+        processGroupTerminated: false,
+        cgroupPopulated: true,
+        termSent: true,
+        killSent: true,
+        scopeRemoved: false,
+      } as const;
+    };
+
+    const prepareRoot = await createHarnessRoot();
+    const prepareProject = await createCleanFixtureRepository(prepareRoot);
+    const prepareRuntimeRoot = join(prepareRoot, "runtime");
+    await mkdir(prepareRuntimeRoot);
+    const prepareTaskId = asTaskId("task_broker_cleanup_prepare_retained");
+    const prepareCleanupCalls = { value: 0 };
+    let prepareError: unknown;
+    try {
+      await prepareM1TaskEnvironment(
+        {
+          taskId: prepareTaskId,
+          projectPath: prepareProject,
+          trustedFixtureRoot,
+          runtimeRoot: prepareRuntimeRoot,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+          },
+        },
+        {
+          now: () => now,
+          preflightSandbox: supportedPreflight,
+          assertSandboxBinding: async () => undefined,
+          createStore: (runtimeRoot) =>
+            new FailingTaskEventStore(runtimeRoot, new Set(["ready"])),
+          createBroker: async (options) =>
+            createFakeBroker({
+              taskId: options.taskId,
+              policyId: options.policy.policyId,
+              cleanup: unprovenCleanup(prepareCleanupCalls),
+            }),
+        },
+      );
+    } catch (error) {
+      prepareError = error;
+    }
+    expect(prepareCleanupCalls.value).toBe(6);
+    expect(prepareError).toBeInstanceOf(M1Error);
+    if (!(prepareError instanceof M1Error)) {
+      throw new Error("expected retained prepare cleanup error");
+    }
+    expect(prepareError.storedCause).toBeInstanceOf(
+      SandboxBrokerSetupCleanupError,
+    );
+    const prepareTaskRoot = join(
+      prepareRuntimeRoot,
+      "tasks",
+      taskNamespaceDigestV1(prepareTaskId),
+    );
+    await expect(
+      access(join(prepareTaskRoot, "workspace")),
+    ).resolves.toBeUndefined();
+
+    const resumeRoot = await createHarnessRoot();
+    const resumeTaskId = asTaskId("task_broker_cleanup_resume_retained");
+    const prepared = await prepareReadyEnvironment({
+      root: resumeRoot,
+      taskId: resumeTaskId,
+    });
+    await suspendM1Task(prepared.environment);
+    const resumeCleanupCalls = { value: 0 };
+    let resumeError: unknown;
+    try {
+      await resumeM1TaskEnvironment(
+        {
+          taskId: resumeTaskId,
+          runtimeRoot: prepared.runtimeRoot,
+          sandboxHost: {
+            delegatedCgroupRoot: "/test/cgroup",
+            bwrapPath: "/test/bwrap",
+            prlimitPath: "/test/prlimit",
+            busyboxPath: "/test/busybox",
+          },
+        },
+        {
+          now: () => now,
+          preflightSandbox: supportedPreflight,
+          assertSandboxBinding: async () => undefined,
+          createStore: (runtimeRoot) =>
+            new FailingTaskEventStore(
+              runtimeRoot,
+              new Set(["resumed", "resume_failed"]),
+            ),
+          createBroker: async (options) =>
+            createFakeBroker({
+              taskId: options.taskId,
+              policyId: options.policy.policyId,
+              cleanup: unprovenCleanup(resumeCleanupCalls),
+            }),
+        },
+      );
+    } catch (error) {
+      resumeError = error;
+    }
+    expect(resumeCleanupCalls.value).toBe(6);
+    expect(resumeError).toBeInstanceOf(M1Error);
+    if (!(resumeError instanceof M1Error)) {
+      throw new Error("expected retained resume cleanup error");
+    }
+    expect(resumeError.storedCause).toBeInstanceOf(AggregateError);
+    if (!(resumeError.storedCause instanceof AggregateError)) {
+      throw new Error("expected aggregate retained resume cause");
+    }
+    expect(
+      resumeError.storedCause.errors.some(
+        (cause) => cause instanceof SandboxBrokerSetupCleanupError,
+      ),
+    ).toBe(true);
+    await expect(
+      access(join(prepared.taskRoot, "workspace")),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects a materialization receipt detached from the verified Task source", async () => {
@@ -748,6 +2253,136 @@ describe("internal M1 Task environment", () => {
       scopeRemoved: true,
     });
     expect(cleanupAttempts).toBe(2);
+    await expect(access(taskRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("retries Task cleanup when bootstrap lifecycle ownership remains", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_bootstrap_cleanup_owner");
+    let cleanupAttempts = 0;
+    const { environment, taskRoot } = await prepareReadyEnvironment({
+      root,
+      taskId,
+      cleanup: async () => {
+        cleanupAttempts += 1;
+        return cleanupAttempts === 1
+          ? {
+              processGroupTerminated: false,
+              cgroupPopulated: false,
+              termSent: false,
+              killSent: true,
+              scopeRemoved: false,
+            }
+          : {
+              processGroupTerminated: true,
+              cgroupPopulated: false,
+              termSent: false,
+              killSent: true,
+              scopeRemoved: true,
+            };
+      },
+    });
+
+    await expect(discardM1Task(environment)).rejects.toMatchObject({
+      code: "artifact_write_failed",
+    });
+    expect(await readdir(taskRoot)).toContain("records");
+
+    await expect(discardM1Task(environment)).resolves.toMatchObject({
+      processGroupTerminated: true,
+      cgroupPopulated: false,
+      scopeRemoved: true,
+    });
+    expect(cleanupAttempts).toBe(2);
+    await expect(access(taskRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("discards runtime records before Task records and does not repeat a completed runtime discard", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_runtime_discard_order");
+    let runtimeDiscardAttempts = 0;
+    let foreignPath = "";
+    const { environment, runtimeRoot, taskRoot } =
+      await prepareReadyEnvironment({
+        root,
+        taskId,
+        runtimeStoreFactory: (createdRuntimeRoot) =>
+          new (class extends VNextRuntimeStore {
+            public override async discard(
+              discardedTaskId: TaskId,
+            ): Promise<void> {
+              runtimeDiscardAttempts += 1;
+              await super.discard(discardedTaskId);
+              foreignPath = join(
+                createdRuntimeRoot,
+                "tasks",
+                taskNamespaceDigestV1(discardedTaskId),
+                "foreign-after-runtime-records",
+              );
+              await mkdir(foreignPath);
+            }
+          })(createdRuntimeRoot),
+      });
+    await environment.runtimeStore.putResourceOnce(
+      "build",
+      "build_discard_order",
+      { schemaVersion: 1, taskId, label: "discard-order" },
+      parseTestRuntimeRecord,
+    );
+
+    await expect(discardM1Task(environment)).rejects.toMatchObject({
+      code: "path_denied",
+    });
+    expect(runtimeDiscardAttempts).toBe(1);
+    await expect(
+      access(join(taskRoot, "runtime-records")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(join(taskRoot, "records"))).resolves.toBeUndefined();
+
+    await rm(foreignPath, { recursive: true, force: false });
+    await expect(discardM1Task(environment)).resolves.toMatchObject({
+      scopeRemoved: true,
+    });
+    expect(runtimeDiscardAttempts).toBe(1);
+    await expect(access(taskRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(runtimeRoot)).resolves.toBeUndefined();
+  });
+
+  it("retries runtime discard after a foreign child is removed without partially deleting records", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_runtime_foreign_retry");
+    const { environment, taskRoot } = await prepareReadyEnvironment({
+      root,
+      taskId,
+    });
+    const buildId = "build_foreign_retry";
+    await environment.runtimeStore.putResourceOnce(
+      "build",
+      buildId,
+      { schemaVersion: 1, taskId, label: "must-survive-first-attempt" },
+      parseTestRuntimeRecord,
+    );
+    const resourceDirectory = join(
+      taskRoot,
+      "runtime-records",
+      "builds",
+      runtimeResourceNamespaceDigestV1(taskId, "build", buildId),
+    );
+    const foreignPath = join(resourceDirectory, "foreign");
+    await writeFile(foreignPath, "foreign\n");
+
+    await expect(discardM1Task(environment)).rejects.toMatchObject({
+      code: "artifact_write_failed",
+    });
+    await expect(
+      access(join(resourceDirectory, "record.json")),
+    ).resolves.toBeUndefined();
+    await expect(access(join(taskRoot, "records"))).resolves.toBeUndefined();
+
+    await unlink(foreignPath);
+    await expect(discardM1Task(environment)).resolves.toMatchObject({
+      scopeRemoved: true,
+    });
     await expect(access(taskRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -1107,7 +2742,7 @@ describe("internal M1 Task environment", () => {
     let resolveExecution!:
       ((result: SandboxExecutionResultV1) => void) | undefined;
     let capturedRequest:
-      Parameters<TaskSandboxBrokerV1["execute"]>[0] | undefined;
+      Parameters<DuplexTaskSandboxBrokerV1["execute"]>[0] | undefined;
     let brokerTaskId: TaskId | undefined;
     let brokerPolicyId: string | undefined;
     const { environment, taskRoot } = await prepareReadyEnvironment({

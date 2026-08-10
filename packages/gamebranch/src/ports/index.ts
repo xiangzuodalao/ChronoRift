@@ -8,3 +8,4 @@ export * from "./v03-benchmark-artifact-repository-v3.js";
 export * from "./v03-fixture.js";
 export * from "./v04-artifact-repository.js";
 export * from "./v04-investigation.js";
+export * from "./vnext-runtime.js";

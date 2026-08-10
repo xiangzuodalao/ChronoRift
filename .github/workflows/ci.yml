@@ -67,3 +67,92 @@ jobs:
             --setenv=PATH="${PATH}" \
             --setenv=HOME="${HOME}" \
             /bin/bash .github/scripts/run-sandbox-conformance.sh
+
+  vnext-godot-sandbox:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap busybox-static fontconfig ripgrep xdg-user-dirs
+      - uses: actions/cache@v4
+        with:
+          path: .tools/godot/4.7.1
+          key: godot-4.7.1-linux-x86_64-c7ff14fd
+      - run: corepack pnpm godot:install
+      - name: Stage immutable managed runtime executables
+        run: |
+          set -euo pipefail
+          node_source="$(realpath -e "$(command -v node)")"
+          godot_source="$(realpath -e .tools/godot/4.7.1/Godot_v4.7.1-stable_linux.x86_64)"
+          sudo install -d -o root -g root -m 0755 /usr/lib/chronorift-ci/bin
+          sudo install -o root -g root -m 0755 "${node_source}" /usr/lib/chronorift-ci/bin/node-22.23.1
+          sudo install -o root -g root -m 0755 "${godot_source}" /usr/lib/chronorift-ci/bin/godot-4.7.1
+          test "$(stat -c '%u:%g:%a' /usr/lib/chronorift-ci/bin/node-22.23.1)" = "0:0:755"
+          test "$(stat -c '%u:%g:%a' /usr/lib/chronorift-ci/bin/godot-4.7.1)" = "0:0:755"
+          test "$(/usr/lib/chronorift-ci/bin/node-22.23.1 --version)" = "v22.23.1"
+          /usr/lib/chronorift-ci/bin/godot-4.7.1 --version | grep -E '^4\.7\.1\.stable\.official\.[a-f0-9]{7,64}$'
+      - name: Configure ephemeral runner user namespaces
+        run: |
+          sudo sysctl --write kernel.unprivileged_userns_clone=1
+          sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run required vNext Godot sandbox conformance
+        run: |
+          set -euo pipefail
+          storage_root="/mnt/chronorift-m3-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup_storage() {
+            main_status="$?"
+            cleanup_status=0
+            trap - EXIT
+            set +e
+            if mountpoint -q "${storage_root}"; then
+              if ! sudo umount "${storage_root}"; then
+                echo "failed to unmount bounded M3 Task storage: ${storage_root}" >&2
+                cleanup_status=1
+              fi
+            fi
+            if ! sudo rmdir "${storage_root}"; then
+              echo "failed to remove bounded M3 Task storage mountpoint: ${storage_root}" >&2
+              cleanup_status=1
+            fi
+            if ((main_status != 0)); then
+              exit "${main_status}"
+            fi
+            exit "${cleanup_status}"
+          }
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 "${storage_root}"
+          trap cleanup_storage EXIT
+          sudo mount -t tmpfs \
+            -o "size=1G,nr_inodes=131072,mode=0700,uid=$(id -u),gid=$(id -g)" \
+            chronorift-m3-task-storage "${storage_root}"
+          sudo systemd-run --quiet --wait --pipe --collect \
+            --unit="chronorift-vnext-godot-sandbox-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --property=Delegate=yes \
+            --property=User="$(id -un)" \
+            --property=WorkingDirectory="${GITHUB_WORKSPACE}" \
+            --setenv=PATH="${PATH}" \
+            --setenv=HOME="${HOME}" \
+            --setenv=GITHUB_WORKSPACE="${GITHUB_WORKSPACE}" \
+            --setenv=CHRONORIFT_NODE_BIN=/usr/lib/chronorift-ci/bin/node-22.23.1 \
+            --setenv=GODOT_BIN=/usr/lib/chronorift-ci/bin/godot-4.7.1 \
+            --setenv=CHRONORIFT_GODOT_ADDON_ROOT="${GITHUB_WORKSPACE}/godot/addons/chronorift" \
+            --setenv=CHRONORIFT_TEST_NODE_BIN=/usr/lib/chronorift-ci/bin/node-22.23.1 \
+            --setenv=CHRONORIFT_TEST_GODOT_BIN=/usr/lib/chronorift-ci/bin/godot-4.7.1 \
+            --setenv=CHRONORIFT_TEST_GODOT_ADDON_ROOT="${GITHUB_WORKSPACE}/godot/addons/chronorift" \
+            --setenv=CHRONORIFT_TEST_TASK_STORAGE_ROOT="${storage_root}" \
+            --setenv=CHRONORIFT_TEST_BWRAP_BIN=/usr/bin/bwrap \
+            --setenv=CHRONORIFT_TEST_PRLIMIT_BIN=/usr/bin/prlimit \
+            --setenv=CHRONORIFT_TEST_BUSYBOX_BIN=/usr/bin/busybox \
+            --setenv=CHRONORIFT_TEST_LDD_BIN=/usr/bin/ldd \
+            --setenv=CHRONORIFT_TEST_FONTCONFIG_PROBE_BIN=/usr/bin/fc-match \
+            --setenv=CHRONORIFT_TEST_XDG_USER_DIR_BIN=/usr/bin/xdg-user-dir \
+            --setenv=CHRONORIFT_TEST_BASH_BIN=/usr/bin/bash \
+            --setenv=CHRONORIFT_TEST_RG_BIN=/usr/bin/rg \
+            --setenv=CHRONORIFT_TEST_FIND_BIN=/usr/bin/find \
+            --setenv=CHRONORIFT_TEST_LS_BIN=/usr/bin/ls \
+            /bin/bash .github/scripts/run-vnext-godot-sandbox-conformance.sh

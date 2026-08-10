@@ -3,3 +3,6 @@ export * from "./capabilities.js";
 export * from "./handles.js";
 export * from "./proposal.js";
 export * from "./tools.js";
+export * from "./vnext-game-tool-inputs.js";
+export * from "./vnext-game-tool-outputs.js";
+export * from "./vnext-game-tools.js";

@@ -27,13 +27,8 @@ import type {
 } from "@chronorift/gamebranch";
 import {
   GodotWireMessageSchema,
-  WireFrameDecoder,
-  encodeWireFrame,
   hasCapabilities,
-  makeGodotWireMessage,
-  parseGodotWireMessage,
   type GodotWireMessage,
-  type GodotWireMessageKind,
 } from "@chronorift/godot-protocol";
 
 import {
@@ -43,9 +38,13 @@ import {
   clearGeneratedGodotCache,
   verifyStagedGodotProject,
 } from "./fixture.js";
+import { GodotAdapterError } from "./errors.js";
+import {
+  GodotWireClient,
+  createSocketGodotTransport,
+} from "./godot-wire-client.js";
 
 const CONNECTION_TIMEOUT_MS = 30_000;
-const COMMAND_TIMEOUT_MS = 10_000;
 const EXECUTION_TIMEOUT_MS = 60_000;
 const MAX_PROCESS_OUTPUT_BYTES = 1024 * 1024;
 
@@ -65,181 +64,6 @@ const fixtureControls = (
       .filter(([key]) => key.startsWith("fixture."))
       .map(([key, value]) => [key.slice("fixture.".length), value]),
   );
-
-export class GodotAdapterError extends Error {
-  public override readonly name = "GodotAdapterError";
-
-  public constructor(
-    public readonly code:
-      | "PROCESS_FAILED"
-      | "CONNECTION_TIMEOUT"
-      | "PROTOCOL_ERROR"
-      | "CAPABILITY_UNSUPPORTED"
-      | "COMMAND_TIMEOUT",
-    message: string,
-    options?: ErrorOptions,
-  ) {
-    super(message, options);
-  }
-}
-
-interface Waiter {
-  readonly predicate: (message: GodotWireMessage) => boolean;
-  readonly resolve: (message: GodotWireMessage) => void;
-  readonly reject: (error: Error) => void;
-  readonly timer: ReturnType<typeof setTimeout>;
-}
-
-class WirePeer {
-  private readonly decoder = new WireFrameDecoder();
-  private readonly queue: GodotWireMessage[] = [];
-  private readonly waiters = new Set<Waiter>();
-  private incomingSequence = 0;
-  private outgoingSequence = 0;
-  private failure: Error | undefined;
-
-  public constructor(
-    private readonly socket: Socket,
-    private readonly protocolVersion: 1 | 2,
-  ) {
-    socket.on("data", (chunk) => {
-      try {
-        for (const json of this.decoder.push(chunk)) {
-          const message = parseGodotWireMessage(json);
-          if (message.sequence !== this.incomingSequence) {
-            throw new GodotAdapterError(
-              "PROTOCOL_ERROR",
-              `Expected runtime sequence ${this.incomingSequence}, received ${message.sequence}`,
-            );
-          }
-          this.incomingSequence += 1;
-          this.deliver(message);
-        }
-      } catch (error) {
-        this.fail(
-          error instanceof Error
-            ? error
-            : new GodotAdapterError("PROTOCOL_ERROR", String(error)),
-        );
-      }
-    });
-    socket.on("error", (error) => this.fail(error));
-    socket.on("close", () => {
-      if (this.failure === undefined) {
-        this.fail(
-          new GodotAdapterError(
-            "PROCESS_FAILED",
-            "Godot runtime connection closed unexpectedly",
-          ),
-        );
-      }
-    });
-  }
-
-  public send(
-    kind: GodotWireMessageKind,
-    payload: unknown,
-    requestId?: string,
-  ): void {
-    if (this.failure !== undefined) throw this.failure;
-    const message = makeGodotWireMessage({
-      sequence: this.outgoingSequence,
-      kind,
-      protocolVersion: this.protocolVersion,
-      ...(requestId === undefined ? {} : { requestId }),
-      payload: payload as JsonValue,
-    });
-    this.outgoingSequence += 1;
-    this.socket.write(encodeWireFrame(JSON.stringify(message)));
-  }
-
-  public waitFor(
-    predicate: (message: GodotWireMessage) => boolean,
-    timeoutMs = COMMAND_TIMEOUT_MS,
-  ): Promise<GodotWireMessage> {
-    if (this.failure !== undefined) return Promise.reject(this.failure);
-    const queuedIndex = this.queue.findIndex(predicate);
-    if (queuedIndex >= 0) {
-      const message = this.queue.splice(queuedIndex, 1)[0];
-      if (message !== undefined) return Promise.resolve(message);
-    }
-    return new Promise((resolveWait, rejectWait) => {
-      const waiter: Waiter = {
-        predicate,
-        resolve: resolveWait,
-        reject: rejectWait,
-        timer: setTimeout(() => {
-          this.waiters.delete(waiter);
-          rejectWait(
-            new GodotAdapterError(
-              "COMMAND_TIMEOUT",
-              `Godot protocol command timed out after ${timeoutMs}ms`,
-            ),
-          );
-        }, timeoutMs),
-      };
-      this.waiters.add(waiter);
-    });
-  }
-
-  public async request(
-    kind: "configure" | "restore" | "step" | "snapshot" | "shutdown",
-    payload: unknown,
-    expectedKind:
-      | "configured"
-      | "restored"
-      | "stepped"
-      | "snapshot_result"
-      | "shutdown_ack",
-  ): Promise<GodotWireMessage> {
-    const requestId = `request:${randomUUID()}`;
-    this.send(kind, payload, requestId);
-    const response = await this.waitFor(
-      (message) => message.requestId === requestId,
-    );
-    if (response.kind === "error") {
-      throw new GodotAdapterError(
-        response.payload.code === "CAPABILITY_UNSUPPORTED"
-          ? "CAPABILITY_UNSUPPORTED"
-          : "PROTOCOL_ERROR",
-        `${response.payload.code}: ${response.payload.message}`,
-      );
-    }
-    if (response.kind !== expectedKind) {
-      throw new GodotAdapterError(
-        "PROTOCOL_ERROR",
-        `Expected ${expectedKind}, received ${response.kind}`,
-      );
-    }
-    return response;
-  }
-
-  public close(): void {
-    this.socket.end();
-  }
-
-  private deliver(message: GodotWireMessage): void {
-    for (const waiter of this.waiters) {
-      if (waiter.predicate(message)) {
-        clearTimeout(waiter.timer);
-        this.waiters.delete(waiter);
-        waiter.resolve(message);
-        return;
-      }
-    }
-    this.queue.push(message);
-  }
-
-  private fail(error: Error): void {
-    if (this.failure !== undefined) return;
-    this.failure = error;
-    for (const waiter of this.waiters) {
-      clearTimeout(waiter.timer);
-      waiter.reject(error);
-    }
-    this.waiters.clear();
-  }
-}
 
 const withTimeout = async <T>(
   promise: Promise<T>,
@@ -310,7 +134,7 @@ const boundedOutput = (
 type GodotChild = ChildProcessByStdio<null, Readable, Readable>;
 
 interface LaunchedRuntime {
-  readonly peer: WirePeer;
+  readonly peer: GodotWireClient;
   readonly child: GodotChild;
   readonly server: Server;
   readonly fingerprint: RuntimeFingerprintV1;
@@ -455,7 +279,10 @@ const launchRuntime = async (options: {
     throw error;
   }
   server.close();
-  const peer = new WirePeer(socket, expected.protocolVersion);
+  const peer = new GodotWireClient(
+    createSocketGodotTransport(socket),
+    expected.protocolVersion,
+  );
   try {
     const hello = await peer.waitFor(
       (message) => message.kind === "hello",
@@ -465,7 +292,7 @@ const launchRuntime = async (options: {
       throw new GodotAdapterError("PROTOCOL_ERROR", "Runtime omitted hello");
     }
     if (hello.payload.token !== token) {
-      peer.send("error", {
+      await peer.send("error", {
         code: "AUTH_FAILED",
         message: "Single-run token mismatch",
       });
@@ -511,7 +338,7 @@ const launchRuntime = async (options: {
       );
     }
     const helloRequestId = `request:${randomUUID()}`;
-    peer.send(
+    await peer.send(
       "hello_accept",
       { requiredCapabilities: options.request.requiredCapabilities },
       helloRequestId,
@@ -538,7 +365,7 @@ const launchRuntime = async (options: {
     );
     return { peer, child, server, fingerprint, output };
   } catch (error) {
-    peer.close();
+    await peer.close();
     child.kill("SIGTERM");
     throw error;
   }
@@ -693,7 +520,7 @@ class GodotGameEnvironment implements GameEnvironmentPort {
     } catch {
       // Process cleanup below remains mandatory after a protocol failure.
     }
-    this.runtime.peer.close();
+    await this.runtime.peer.close();
     await new Promise<void>((resolveExit) => {
       if (this.runtime.child.exitCode !== null) {
         resolveExit();

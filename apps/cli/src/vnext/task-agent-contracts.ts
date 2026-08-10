@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  GAME_TOOL_NAMES_V1,
+  type GameToolNameV1,
+} from "@chronorift/agent-protocol";
 import { TaskIdSchema, type TaskId } from "@chronorift/domain";
 import type { PiThinkingLevel } from "@chronorift/pi-harness";
 
@@ -14,8 +18,72 @@ const ThinkingLevelSchema = z.enum([
   "max",
 ]);
 
-export interface VNextAgentTaskV1 {
+const AGENT_TASK_GAME_TOOL_NAMES_V1 = Object.freeze(
+  Object.values(GAME_TOOL_NAMES_V1),
+);
+
+export interface VNextAgentGameCapabilityV1 {
   readonly schemaVersion: 1;
+  readonly capabilityKind: "chronorift-m3-game-tools";
+  readonly toolCatalogVersion: 1;
+  readonly fixtureId: "frame-input-window";
+  readonly managedRuntimeId: string;
+  readonly toolNames: readonly GameToolNameV1[];
+}
+
+const freezeGameCapability = (
+  capability: VNextAgentGameCapabilityV1,
+): VNextAgentGameCapabilityV1 =>
+  Object.freeze({
+    ...capability,
+    toolNames: Object.freeze([...capability.toolNames]),
+  });
+
+export const VNextAgentGameCapabilityV1Schema: z.ZodType<VNextAgentGameCapabilityV1> =
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      capabilityKind: z.literal("chronorift-m3-game-tools"),
+      toolCatalogVersion: z.literal(1),
+      fixtureId: z.literal("frame-input-window"),
+      managedRuntimeId: z
+        .string()
+        .regex(/^managed-godot-runtime:v1:[a-f0-9]{64}$/u),
+      toolNames: z
+        .array(z.enum(GAME_TOOL_NAMES_V1))
+        .length(AGENT_TASK_GAME_TOOL_NAMES_V1.length),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.toolNames.some(
+          (toolName, index) =>
+            toolName !== AGENT_TASK_GAME_TOOL_NAMES_V1[index],
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["toolNames"],
+          message:
+            "game tool catalog must match the complete ordered V1 catalog",
+        });
+      }
+    })
+    .transform(freezeGameCapability);
+
+export const createVNextAgentGameCapabilityV1 = (
+  managedRuntimeId: string,
+): VNextAgentGameCapabilityV1 =>
+  VNextAgentGameCapabilityV1Schema.parse({
+    schemaVersion: 1,
+    capabilityKind: "chronorift-m3-game-tools",
+    toolCatalogVersion: 1,
+    fixtureId: "frame-input-window",
+    managedRuntimeId,
+    toolNames: AGENT_TASK_GAME_TOOL_NAMES_V1,
+  });
+
+interface VNextAgentTaskFields {
   readonly taskId: TaskId;
   readonly goal: string;
   readonly provider: string;
@@ -24,20 +92,48 @@ export interface VNextAgentTaskV1 {
   readonly createdAt: string;
 }
 
+export interface VNextAgentTaskV1 extends VNextAgentTaskFields {
+  readonly schemaVersion: 1;
+}
+
+export interface VNextAgentTaskV2 extends VNextAgentTaskFields {
+  readonly schemaVersion: 2;
+  readonly gameCapability: VNextAgentGameCapabilityV1;
+}
+
+export type VNextAgentTask = VNextAgentTaskV1 | VNextAgentTaskV2;
+
+const agentTaskFields = {
+  taskId: TaskIdSchema,
+  goal: z
+    .string()
+    .min(1)
+    .max(1024 * 1024),
+  provider: z.string().min(1).max(256),
+  model: z.string().min(1).max(256),
+  thinkingLevel: ThinkingLevelSchema,
+  createdAt: IsoTimestampSchema,
+} as const;
+
 export const VNextAgentTaskV1Schema: z.ZodType<VNextAgentTaskV1> = z
   .object({
     schemaVersion: z.literal(1),
-    taskId: TaskIdSchema,
-    goal: z
-      .string()
-      .min(1)
-      .max(1024 * 1024),
-    provider: z.string().min(1).max(256),
-    model: z.string().min(1).max(256),
-    thinkingLevel: ThinkingLevelSchema,
-    createdAt: IsoTimestampSchema,
+    ...agentTaskFields,
   })
   .strict();
+
+export const VNextAgentTaskV2Schema: z.ZodType<VNextAgentTaskV2> = z
+  .object({
+    schemaVersion: z.literal(2),
+    ...agentTaskFields,
+    gameCapability: VNextAgentGameCapabilityV1Schema,
+  })
+  .strict();
+
+export const VNextAgentTaskSchema: z.ZodType<VNextAgentTask> = z.union([
+  VNextAgentTaskV1Schema,
+  VNextAgentTaskV2Schema,
+]);
 
 export interface VNextAgentTurnV1 {
   readonly schemaVersion: 1;

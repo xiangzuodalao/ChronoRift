@@ -110,6 +110,7 @@ describe("Godot semantic addon", () => {
           "func _ready() -> void:",
           "\ttimer.timeout.connect(_spawn)",
           "\ttimer.start(spawn_interval)",
+          "\t_spawn()",
           "func _spawn() -> void:",
           "\tget_parent().add_child(scene_to_spawn.instantiate())",
           "",
@@ -117,7 +118,13 @@ describe("Godot semantic addon", () => {
       ),
       writeFile(
         join(root, "entity.gd"),
-        "extends Node2D\nvar velocity := Vector2(1, 2)\n",
+        [
+          "extends Node2D",
+          "var velocity := Vector2(0.999999, 1.000001)",
+          "func _ready() -> void:",
+          "\tposition = Vector2(0.999999, 1.000001)",
+          "",
+        ].join("\n"),
       ),
       writeFile(
         join(root, "entity.tscn"),
@@ -150,7 +157,7 @@ describe("Godot semantic addon", () => {
       adapterKind: "timer_spawn_v1" as const,
       projectCapabilitySha256: asSha256DigestV1("f".repeat(64)),
       targetScene: "res://spawner.tscn",
-      spawnIntervalSeconds: 1,
+      spawnIntervalSeconds: 1.000001,
       checkpointBarrier: "adapter_process_tail" as const,
       limits: {
         activeRuntimesMaximum: 2 as const,
@@ -248,6 +255,20 @@ describe("Godot semantic addon", () => {
       expect(runtime.ready.sample.projection.subject.targetScene).toBe(
         "res://spawner.tscn",
       );
+      expect(
+        runtime.ready.sample.projection.subject.spawnIntervalSeconds,
+      ).toBeCloseTo(1.000001, 6);
+      expect(
+        runtime.ready.sample.projection.subject.spawnIntervalSeconds,
+      ).not.toBe(1);
+      const nearIntegerEntity = runtime.ready.sample.projection.entities[0];
+      expect(nearIntegerEntity).toBeDefined();
+      expect(nearIntegerEntity?.transform.position.x).toBeCloseTo(0.999999, 6);
+      expect(nearIntegerEntity?.transform.position.y).toBeCloseTo(1.000001, 6);
+      expect(nearIntegerEntity?.velocity?.x).toBeCloseTo(0.999999, 6);
+      expect(nearIntegerEntity?.velocity?.y).toBeCloseTo(1.000001, 6);
+      expect(nearIntegerEntity?.transform.position.x).not.toBe(1);
+      expect(nearIntegerEntity?.transform.position.y).not.toBe(1);
       const checkpoint = await runtime.checkpoint();
       const restored = await runtime.restore(checkpoint.sample.projection);
       expect(

@@ -539,7 +539,7 @@ func _canonical_json(value: Variant) -> String:
 	if value is int:
 		return str(value)
 	if value is float:
-		if is_equal_approx(value, round(value)):
+		if value == round(value):
 			return str(int(value))
 		return JSON.stringify(value)
 	if value is String:

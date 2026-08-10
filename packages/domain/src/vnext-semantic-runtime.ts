@@ -421,10 +421,23 @@ export const VNextSemanticCheckpointResourceV1Schema = z
   .object({
     schemaVersion: z.literal(1),
     resourceKind: z.literal("semantic_checkpoint"),
+    taskId: TaskIdSchema,
     checkpointId: CheckpointIdSchema,
     payload: VNextSemanticCheckpointPayloadV1Schema,
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.payload.taskId !== value.taskId ||
+      value.payload.checkpointId !== value.checkpointId
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["payload"],
+        message: "semantic checkpoint payload is detached from its resource",
+      });
+    }
+  });
 
 export const VNextSemanticBranchResourceV1Schema = z
   .object({

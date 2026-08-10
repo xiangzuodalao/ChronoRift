@@ -59,7 +59,16 @@ const createStore = (
     putResourceOnce: (_kind, resourceId, value, parse) => {
       const key = `${_kind}:${resourceId}`;
       if (resources.has(key)) throw new Error("duplicate resource");
-      resources.set(key, parse(value));
+      const parsed = parse(value);
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        !("taskId" in parsed) ||
+        parsed.taskId !== "task:semantic"
+      ) {
+        throw new Error("runtime record belongs to a different Task");
+      }
+      resources.set(key, parsed);
       if (failAfterPut?.(_kind) === true) {
         return Promise.reject(new Error("injected post-write failure"));
       }

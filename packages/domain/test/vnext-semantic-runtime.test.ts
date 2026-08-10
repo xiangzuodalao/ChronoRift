@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   GodotSemanticAdapterProfileV1Schema,
   VNextSemanticCheckpointPayloadV1Schema,
+  VNextSemanticCheckpointResourceV1Schema,
   VNextSemanticTraceV1Schema,
   VNextTimerSpawnProjectionV1Schema,
 } from "../src/index.js";
@@ -57,6 +58,35 @@ const projection = {
   ],
   nextSpawnOrdinal: 1,
   capturedAt: clock,
+};
+
+const checkpointPayload = {
+  schemaVersion: 1 as const,
+  taskId: "task:v1:test",
+  checkpointId: "checkpoint:v1:test",
+  executionId: "execution:v1:test",
+  runtimeId: "runtime:v1:test",
+  buildId: "build:v1:test",
+  adapterId: "adapter:v1:test",
+  adapterProfileSha256: digest,
+  semanticBarrier: "adapter_process_tail" as const,
+  projection,
+  projectionSha256: digest,
+  capturedDomains: [
+    "subject.configuration",
+    "spawned_entities",
+    "timer.configuration",
+    "timer.runtime",
+  ],
+  uncontrolledDomains: ["physics_server"],
+  restoreDependencyOrder: [
+    "subject.configuration",
+    "spawned_entities",
+    "timer.configuration",
+    "timer.runtime",
+  ] as const,
+  fidelity: "descriptive_only" as const,
+  equivalentForkEligible: false as const,
 };
 
 describe("external Timer/spawn semantic contracts", () => {
@@ -119,35 +149,33 @@ describe("external Timer/spawn semantic contracts", () => {
 
   it("keeps checkpoint fidelity descriptive with explicit uncontrolled state", () => {
     expect(
-      VNextSemanticCheckpointPayloadV1Schema.parse({
-        schemaVersion: 1,
-        taskId: "task:v1:test",
-        checkpointId: "checkpoint:v1:test",
-        executionId: "execution:v1:test",
-        runtimeId: "runtime:v1:test",
-        buildId: "build:v1:test",
-        adapterId: "adapter:v1:test",
-        adapterProfileSha256: digest,
-        semanticBarrier: "adapter_process_tail",
-        projection,
-        projectionSha256: digest,
-        capturedDomains: [
-          "subject.configuration",
-          "spawned_entities",
-          "timer.configuration",
-          "timer.runtime",
-        ],
-        uncontrolledDomains: ["physics_server"],
-        restoreDependencyOrder: [
-          "subject.configuration",
-          "spawned_entities",
-          "timer.configuration",
-          "timer.runtime",
-        ],
-        fidelity: "descriptive_only",
-        equivalentForkEligible: false,
-      }).fidelity,
+      VNextSemanticCheckpointPayloadV1Schema.parse(checkpointPayload).fidelity,
     ).toBe("descriptive_only");
+  });
+
+  it("binds a checkpoint resource to its Task and checkpoint payload", () => {
+    const resource = {
+      schemaVersion: 1 as const,
+      resourceKind: "semantic_checkpoint" as const,
+      taskId: checkpointPayload.taskId,
+      checkpointId: checkpointPayload.checkpointId,
+      payload: checkpointPayload,
+    };
+    expect(VNextSemanticCheckpointResourceV1Schema.parse(resource)).toEqual(
+      resource,
+    );
+    expect(() =>
+      VNextSemanticCheckpointResourceV1Schema.parse({
+        ...resource,
+        taskId: "task:v1:other",
+      }),
+    ).toThrow("detached");
+    expect(() =>
+      VNextSemanticCheckpointResourceV1Schema.parse({
+        ...resource,
+        checkpointId: "checkpoint:v1:other",
+      }),
+    ).toThrow("detached");
   });
 
   it("requires contiguous, strictly increasing trace samples", () => {

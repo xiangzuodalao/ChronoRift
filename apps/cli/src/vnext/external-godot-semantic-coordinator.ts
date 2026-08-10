@@ -1025,6 +1025,7 @@ export class ExternalGodotSemanticCoordinator {
     const resource = VNextSemanticCheckpointResourceV1Schema.parse({
       schemaVersion: 1,
       resourceKind: "semantic_checkpoint",
+      taskId: this.options.taskId,
       checkpointId,
       payload,
     });

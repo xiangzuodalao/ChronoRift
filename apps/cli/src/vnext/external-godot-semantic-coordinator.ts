@@ -211,6 +211,29 @@ const managedLaunchFailure = (
   );
 };
 
+type SemanticTraceReplayStage =
+  | "origin_observation"
+  | "sample_observation"
+  | "observation_persistence"
+  | "projection_processing";
+
+const runSemanticTraceReplayStage = async <T>(
+  stage: SemanticTraceReplayStage,
+  operation: () => Promise<T> | T,
+): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof SemanticToolError) throw error;
+    const detail = error instanceof GodotAdapterError ? ` (${error.code})` : "";
+    throw new SemanticToolError(
+      "operation_failed",
+      `Semantic trace replay failed during ${stage}${detail}`,
+      false,
+    );
+  }
+};
+
 const semanticClock = (receipt: GodotSemanticObservationReceiptV1) => ({
   processFrame: receipt.sample.projection.capturedAt.processFrame,
   physicsTick: receipt.sample.projection.capturedAt.physicsTick,
@@ -1360,7 +1383,10 @@ export class ExternalGodotSemanticCoordinator {
     const context = this.requireRunning(String(input["runtimeId"]));
     const trace = await this.readTrace(String(input["traceId"]));
     const maxTicks = Number(input["maxTicks"]);
-    const originReceipt = await context.client.status();
+    const originReceipt = await runSemanticTraceReplayStage(
+      "origin_observation",
+      () => context.client.status(),
+    );
     const originPosition =
       trace.clockDomain === "process_frame"
         ? originReceipt.sample.projection.capturedAt.processFrame
@@ -1382,7 +1408,9 @@ export class ExternalGodotSemanticCoordinator {
             "Semantic replay was aborted",
             true,
           );
-        observed = await context.client.status();
+        observed = await runSemanticTraceReplayStage("sample_observation", () =>
+          context.client.status(),
+        );
         const position =
           trace.clockDomain === "process_frame"
             ? observed.sample.projection.capturedAt.processFrame
@@ -1390,36 +1418,41 @@ export class ExternalGodotSemanticCoordinator {
         if (position >= originPosition + expected.requestedOffset) break;
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
-      await this.recordObservation(context, "trace", observed);
-      const position =
-        (trace.clockDomain === "process_frame"
-          ? observed.sample.projection.capturedAt.processFrame
-          : observed.sample.projection.capturedAt.physicsTick) - originPosition;
-      const projectionSha256 = asSha256DigestV1(
-        contentHash(observed.sample.projection),
+      await runSemanticTraceReplayStage("observation_persistence", () =>
+        this.recordObservation(context, "trace", observed),
       );
-      realizedSamples.push({
-        ...expected,
-        realizedOffset: position,
-        quantized: position !== expected.requestedOffset,
-        projectionSha256,
-        projection: observed.sample.projection,
-        clock: {
-          ...observed.sample.projection.capturedAt,
-          hostMonotonicUs: semanticClock(observed).hostMonotonicUs,
-        },
+      await runSemanticTraceReplayStage("projection_processing", () => {
+        const position =
+          (trace.clockDomain === "process_frame"
+            ? observed.sample.projection.capturedAt.processFrame
+            : observed.sample.projection.capturedAt.physicsTick) -
+          originPosition;
+        const projectionSha256 = asSha256DigestV1(
+          contentHash(observed.sample.projection),
+        );
+        realizedSamples.push({
+          ...expected,
+          realizedOffset: position,
+          quantized: position !== expected.requestedOffset,
+          projectionSha256,
+          projection: observed.sample.projection,
+          clock: {
+            ...observed.sample.projection.capturedAt,
+            hostMonotonicUs: semanticClock(observed).hostMonotonicUs,
+          },
+        });
+        if (
+          firstDivergence === null &&
+          projectionSha256 !== expected.projectionSha256
+        ) {
+          firstDivergence = {
+            sequence: expected.sequence,
+            subject: "timer_spawn_projection",
+            expected: json(expected.projection),
+            observed: json(observed.sample.projection),
+          };
+        }
       });
-      if (
-        firstDivergence === null &&
-        projectionSha256 !== expected.projectionSha256
-      ) {
-        firstDivergence = {
-          sequence: expected.sequence,
-          subject: "timer_spawn_projection",
-          expected: json(expected.projection),
-          observed: json(observed.sample.projection),
-        };
-      }
     }
     return {
       schemaVersion: 1,

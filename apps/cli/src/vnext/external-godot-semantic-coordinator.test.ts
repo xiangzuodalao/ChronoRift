@@ -15,6 +15,7 @@ import {
   asWorkspaceId,
   type JsonValue,
 } from "@chronorift/domain";
+import { GodotAdapterError } from "@chronorift/godot-adapter";
 import { ArtifactNotFoundError, contentHash } from "@chronorift/json-artifacts";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -210,6 +211,7 @@ describe("external Godot semantic coordinator", () => {
     );
     let nextFrame = 1;
     let failExecutionPut = false;
+    let statusFailureAfter: number | undefined;
     const clients: Array<{ frame: number }> = [];
     const options: ExternalGodotSemanticCoordinatorOptions = {
       taskId: asTaskId("task:semantic"),
@@ -293,7 +295,21 @@ describe("external Godot semantic coordinator", () => {
         const ready = observe();
         return {
           ready,
-          status: () => Promise.resolve(observe()),
+          status: () => {
+            if (statusFailureAfter !== undefined) {
+              if (statusFailureAfter === 0) {
+                statusFailureAfter = undefined;
+                return Promise.reject(
+                  new GodotAdapterError(
+                    "PROCESS_FAILED",
+                    "sensitive /host/path must not escape",
+                  ),
+                );
+              }
+              statusFailureAfter -= 1;
+            }
+            return Promise.resolve(observe());
+          },
           checkpoint: () => Promise.resolve(observe()),
           restore: (captured) => {
             state.frame += 1;
@@ -384,6 +400,51 @@ describe("external Godot semantic coordinator", () => {
     await invoke("game_checkpoint_restore", {
       runtimeId: childRuntimeId,
       checkpointId: checkpoint.checkpointId,
+    });
+    statusFailureAfter = 0;
+    const originFailure = await coordinator.invoke({
+      schemaVersion: 1,
+      toolCallId: "call:replay-origin-failure",
+      toolName: "game_trace_replay",
+      input: {
+        schemaVersion: 1,
+        taskId: options.taskId,
+        runtimeId: childRuntimeId,
+        traceId: trace.traceId,
+        maxTicks: 10,
+      },
+    });
+    expect(originFailure).toMatchObject({
+      outcome: "error",
+      error: {
+        code: "operation_failed",
+        message:
+          "Semantic trace replay failed during origin_observation (PROCESS_FAILED)",
+        recoverable: false,
+      },
+    });
+    expect(JSON.stringify(originFailure)).not.toContain("/host/path");
+    statusFailureAfter = 1;
+    const sampleFailure = await coordinator.invoke({
+      schemaVersion: 1,
+      toolCallId: "call:replay-sample-failure",
+      toolName: "game_trace_replay",
+      input: {
+        schemaVersion: 1,
+        taskId: options.taskId,
+        runtimeId: childRuntimeId,
+        traceId: trace.traceId,
+        maxTicks: 10,
+      },
+    });
+    expect(sampleFailure).toMatchObject({
+      outcome: "error",
+      error: {
+        code: "operation_failed",
+        message:
+          "Semantic trace replay failed during sample_observation (PROCESS_FAILED)",
+        recoverable: false,
+      },
     });
     await invoke("game_trace_replay", {
       runtimeId: childRuntimeId,

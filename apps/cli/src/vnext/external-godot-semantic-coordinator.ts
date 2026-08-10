@@ -615,17 +615,49 @@ export class ExternalGodotSemanticCoordinator {
       },
       signal,
     );
+    if (vanilla.kind !== "completed") {
+      throw new SemanticToolError(
+        "runtime_unavailable",
+        `Vanilla qualification was denied (${vanilla.securityEvent.code})`,
+        true,
+      );
+    }
+    const vanillaSidecarError = [...vanilla.result.diagnostics]
+      .reverse()
+      .find((diagnostic) => diagnostic.kind === "sidecar_error");
+    if (vanillaSidecarError?.kind === "sidecar_error") {
+      throw new SemanticToolError(
+        "runtime_unavailable",
+        `Vanilla qualification failed during ${vanillaSidecarError.phase} (${vanillaSidecarError.code})`,
+        true,
+      );
+    }
+    const vanillaSmokeFailure = [...vanilla.result.diagnostics]
+      .reverse()
+      .find((diagnostic) => diagnostic.kind === "smoke_failed");
+    if (vanillaSmokeFailure?.kind === "smoke_failed") {
+      throw new SemanticToolError(
+        "runtime_unavailable",
+        `Vanilla qualification failed during ${vanillaSmokeFailure.failedPhase}`,
+        true,
+      );
+    }
     if (
-      vanilla.kind !== "completed" ||
       vanilla.result.diagnosticFacts.status !== "complete" ||
       !vanilla.result.diagnostics.some(
         (entry) => entry.kind === "smoke_complete",
-      ) ||
-      !provenCleanup(vanilla.result.sandbox.receipt.cleanup)
+      )
     ) {
       throw new SemanticToolError(
         "runtime_unavailable",
-        "Vanilla qualification failed or cleanup was not proven",
+        "Vanilla qualification ended without a complete diagnostic receipt",
+        true,
+      );
+    }
+    if (!provenCleanup(vanilla.result.sandbox.receipt.cleanup)) {
+      throw new SemanticToolError(
+        "runtime_unavailable",
+        "Vanilla qualification cleanup was not proven",
         true,
       );
     }

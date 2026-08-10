@@ -68,7 +68,7 @@ const LaunchResourceIdSchema = z
 export const ExternalGodotLifecycleDiagnosticChunkV1Schema = z
   .object({
     schemaVersion: z.literal(1),
-    phase: z.enum(["import", "vanilla", "managed"]),
+    phase: z.enum(["import", "vanilla", "managed_import", "managed"]),
     stream: z.enum(["stdout", "stderr"]),
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     byteLength: z
@@ -249,7 +249,7 @@ const decodedOutput = (
     readonly offset?: number | undefined;
     readonly bytesBase64?: string | undefined;
   }[],
-  phase: "import" | "vanilla" | "managed",
+  phase: "import" | "vanilla" | "managed_import" | "managed",
   stream: "stdout" | "stderr",
 ): Buffer => {
   const chunks: Buffer[] = [];
@@ -295,6 +295,7 @@ const diagnosticChunks = (
       record.kind !== "process_output" ||
       (record.phase !== "import" &&
         record.phase !== "vanilla" &&
+        record.phase !== "managed_import" &&
         record.phase !== "managed") ||
       (record.stream !== "stdout" && record.stream !== "stderr") ||
       record.offset === undefined ||
@@ -396,6 +397,20 @@ const viewsForManaged = (
   };
 };
 
+const viewsForManagedImport = (
+  records: readonly GodotLifecycleSidecarDiagnosticV1[],
+  receipt: GodotLifecycleProcessReceiptV1,
+): DiagnosticViews => ({
+  stdout: streamView(
+    receipt.stdout,
+    decodedOutput(records, "managed_import", "stdout"),
+  ),
+  stderr: streamView(
+    receipt.stderr,
+    decodedOutput(records, "managed_import", "stderr"),
+  ),
+});
+
 const sourceVerificationsMatch = (
   records: readonly {
     readonly kind: string;
@@ -404,7 +419,7 @@ const sourceVerificationsMatch = (
     readonly fileCount?: number | undefined;
     readonly byteLength?: number | undefined;
   }[],
-  phases: readonly ("import" | "vanilla" | "managed")[],
+  phases: readonly ("import" | "vanilla" | "managed_import" | "managed")[],
   expected: {
     readonly candidateSourceHash: string;
     readonly fileCount: number;
@@ -414,19 +429,18 @@ const sourceVerificationsMatch = (
   const verifications = records.filter(
     (record) => record.kind === "source_verified",
   );
-  return (
-    verifications.length === phases.length &&
-    phases.every(
-      (phase) =>
-        verifications.filter(
-          (record) =>
-            record.phase === phase &&
-            record.candidateSourceHash === expected.candidateSourceHash &&
-            record.fileCount === expected.fileCount &&
-            record.byteLength === expected.byteLength,
-        ).length === 1,
-    )
-  );
+  return phases.every((phase) => {
+    const phaseVerifications = verifications.filter(
+      (record) => record.phase === phase,
+    );
+    return (
+      phaseVerifications.length === 1 &&
+      phaseVerifications[0]?.candidateSourceHash ===
+        expected.candidateSourceHash &&
+      phaseVerifications[0].fileCount === expected.fileCount &&
+      phaseVerifications[0].byteLength === expected.byteLength
+    );
+  });
 };
 
 const terminalDiagnosticsFailed = (
@@ -452,7 +466,11 @@ const terminalDiagnosticsFailed = (
     exits.length !== 1 ||
     stdoutSummaries.length !== 1 ||
     stderrSummaries.length !== 1 ||
-    !sourceVerificationsMatch(facts.records, ["managed"], expectedSource) ||
+    !sourceVerificationsMatch(
+      facts.records,
+      ["managed_import", "managed"],
+      expectedSource,
+    ) ||
     exit?.kind !== "godot_exit" ||
     exit.timedOut ||
     exit.exitCode !== 0 ||
@@ -1513,8 +1531,9 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
         overlayHash: options.managedRuntime.overlayHash,
         addonHash: options.managedRuntime.addonHash,
         expectedMainScene: request.prepared.configuredMainScene,
+        importTimeoutMs: 120_000,
         startupTimeoutMs: 30_000,
-        executionTimeoutMs: 600_000,
+        executionTimeoutMs: 450_000,
         ...DEFAULT_DIAGNOSTIC_LIMITS,
       });
       const managedStartUs = monotonicUs();
@@ -1612,6 +1631,8 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
       const sidecar = opened.sidecar;
       let runtime: GodotLifecycleRuntimeClient;
       let firstStatus: GodotLifecycleStatusReceiptV1;
+      let managedImportReceipt: GodotLifecycleProcessReceiptV1;
+      let admittedManagedDiagnostics: readonly GodotLifecycleSidecarDiagnosticV1[];
       try {
         runtime = await connectGodotLifecycleRuntime(sidecar.transport, {
           schemaVersion: 1,
@@ -1639,6 +1660,9 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
         const stage = diagnosticFacts.records.find(
           (record) => record.kind === "stage_ready",
         );
+        const importResult = diagnosticFacts.records.find(
+          (record) => record.kind === "managed_import_result",
+        );
         if (
           diagnosticFacts.failure !== null ||
           stage?.kind !== "stage_ready" ||
@@ -1647,6 +1671,20 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
           stage.byteLength !== request.prepared.byteLength ||
           stage.overlayHash !== options.managedRuntime.overlayHash ||
           stage.addonHash !== options.managedRuntime.addonHash ||
+          importResult?.kind !== "managed_import_result" ||
+          importResult.outcome !== "succeeded" ||
+          importResult.receipt.exitCode !== 0 ||
+          importResult.receipt.signal !== null ||
+          importResult.receipt.timedOut ||
+          !sourceVerificationsMatch(
+            diagnosticFacts.records,
+            ["managed_import"],
+            {
+              candidateSourceHash: request.prepared.build.sourceHash,
+              fileCount: request.prepared.fileCount,
+              byteLength: request.prepared.byteLength,
+            },
+          ) ||
           !diagnosticFacts.records.some(
             (record) => record.kind === "godot_started",
           )
@@ -1655,6 +1693,8 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
             "managed lifecycle staging diagnostics did not match the admitted runtime",
           );
         }
+        managedImportReceipt = importResult.receipt;
+        admittedManagedDiagnostics = diagnosticFacts.records;
       } catch (error) {
         let terminateFailure: unknown;
         try {
@@ -1709,14 +1749,34 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
         const stage = diagnosticFacts.records.find(
           (record) => record.kind === "stage_ready",
         );
-        const managedStageAdmitted =
-          diagnosticFacts.failure === null &&
+        const importResult = diagnosticFacts.records.find(
+          (record) => record.kind === "managed_import_result",
+        );
+        const stageMatched =
           stage?.kind === "stage_ready" &&
           stage.candidateSourceHash === request.prepared.build.sourceHash &&
           stage.fileCount === request.prepared.fileCount &&
           stage.byteLength === request.prepared.byteLength &&
           stage.overlayHash === options.managedRuntime.overlayHash &&
-          stage.addonHash === options.managedRuntime.addonHash &&
+          stage.addonHash === options.managedRuntime.addonHash;
+        const managedImportSucceeded =
+          stageMatched &&
+          importResult?.kind === "managed_import_result" &&
+          importResult.outcome === "succeeded" &&
+          importResult.receipt.exitCode === 0 &&
+          importResult.receipt.signal === null &&
+          !importResult.receipt.timedOut &&
+          sourceVerificationsMatch(
+            diagnosticFacts.records,
+            ["managed_import"],
+            {
+              candidateSourceHash: request.prepared.build.sourceHash,
+              fileCount: request.prepared.fileCount,
+              byteLength: request.prepared.byteLength,
+            },
+          );
+        const managedHandshakeStarted =
+          managedImportSucceeded &&
           diagnosticFacts.records.some(
             (record) => record.kind === "godot_started",
           );
@@ -1732,6 +1792,13 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
                 Math.floor(executedCleanup.receipt.endedAtMonotonicMs * 1_000),
               );
         const managedViews = viewsForManaged(diagnosticFacts.records);
+        const managedImportViews =
+          importResult?.kind === "managed_import_result"
+            ? viewsForManagedImport(
+                diagnosticFacts.records,
+                importResult.receipt,
+              )
+            : undefined;
         const failedPhases: VNextLifecyclePhaseReceiptV1[] = [
           ...initialPhases,
           phaseReceipt({
@@ -1743,27 +1810,41 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
               executedCleanup === null
                 ? "host_observed_bounds"
                 : "operation_bounds",
-            outcome: managedStageAdmitted ? "succeeded" : "failed",
+            outcome: managedImportSucceeded
+              ? "succeeded"
+              : importResult?.kind === "managed_import_result" &&
+                  importResult.receipt.timedOut
+                ? "timed_out"
+                : "failed",
             startedAt,
             endedAt: now(),
             hostMonotonicStartUs: failureStartUs,
             hostMonotonicEndUs: failureEndUs,
-            exitCode: managedStageAdmitted
-              ? null
-              : (executedCleanup?.receipt.exitCode ?? null),
-            signal: managedStageAdmitted
-              ? null
-              : (executedCleanup?.receipt.signal ?? null),
-            ...(managedStageAdmitted ? {} : { views: managedViews }),
-            cleanup: managedStageAdmitted ? null : handshakeCleanup,
+            exitCode:
+              importResult?.kind === "managed_import_result"
+                ? importResult.receipt.exitCode
+                : (executedCleanup?.receipt.exitCode ?? null),
+            signal:
+              importResult?.kind === "managed_import_result"
+                ? importResult.receipt.signal
+                : (executedCleanup?.receipt.signal ?? null),
+            ...(importResult?.kind === "managed_import_result"
+              ? {
+                  processDurationMs: importResult.receipt.durationMs,
+                  views: managedImportViews,
+                }
+              : {}),
+            cleanup: managedImportSucceeded ? null : handshakeCleanup,
             knownSideEffects: [
-              managedStageAdmitted
-                ? "managed addon and override were admitted as read-only overlay inputs"
-                : "managed overlay admission could not be proven",
+              managedImportSucceeded
+                ? "managed overlay project import completed and the staged candidate identity was revalidated"
+                : stageMatched
+                  ? "managed overlay project import did not complete with a verified staged source"
+                  : "managed overlay admission could not be proven",
             ],
           }),
         ];
-        if (managedStageAdmitted) {
+        if (managedHandshakeStarted) {
           failedPhases.push(
             phaseReceipt({
               sequence: 3,
@@ -1794,7 +1875,7 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
         }
         throw launchFailure({
           request,
-          stage: managedStageAdmitted ? "managed_handshake" : "managed_open",
+          stage: managedHandshakeStarted ? "managed_handshake" : "managed_open",
           message: "managed lifecycle launch failed",
           phases: failedPhases,
           diagnostics: [
@@ -1828,10 +1909,15 @@ export const createExternalGodotLifecycleSandboxDriverV1 = (
           endedAt: now(),
           hostMonotonicStartUs: managedStartUs,
           hostMonotonicEndUs: runtime.ready.hostMonotonicStartUs,
-          exitCode: null,
-          signal: null,
+          exitCode: managedImportReceipt.exitCode,
+          signal: managedImportReceipt.signal,
+          processDurationMs: managedImportReceipt.durationMs,
+          views: viewsForManagedImport(
+            admittedManagedDiagnostics,
+            managedImportReceipt,
+          ),
           knownSideEffects: [
-            "managed addon and override were admitted as read-only overlay inputs",
+            "managed overlay project import completed and the staged candidate identity was revalidated",
           ],
         }),
         phaseReceipt({

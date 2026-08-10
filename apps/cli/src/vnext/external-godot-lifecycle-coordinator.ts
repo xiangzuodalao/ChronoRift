@@ -2066,7 +2066,9 @@ class ExternalGodotLifecycleCoordinator implements ExternalGodotLifecycleCoordin
           ? candidate.phase === "vanilla_import"
           : chunk.phase === "vanilla"
             ? candidate.phase === "vanilla_smoke"
-            : candidate.phase.startsWith("managed_"),
+            : chunk.phase === "managed_import"
+              ? candidate.phase === "managed_import"
+              : candidate.phase.startsWith("managed_"),
       );
       const hostMonotonicStartUs =
         operationPhases.length === 0

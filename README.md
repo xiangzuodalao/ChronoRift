@@ -153,9 +153,11 @@ M4 在 M3 之外新增一个独立、严格版本化的 profile，不放宽 `fra
 这个 profile 只向 Agent 暴露 `game_capabilities`、`game_launch`、`game_status` 和 `game_stop`。Agent catalog
 中不存在 input、step、query、capture、checkpoint、restore、fork、replay 和 compare；内部 coordinator 若收到
 这类请求则报告 `unsupported_capability`，不能从 M3 实现中继承出一个表面可用的 optional API。Godot
-import、vanilla smoke 和受管 overlay launch 都执行在同一类 task sandbox、bounded storage 和 cleanup/seal
-边界内；Host checkout 不挂入 sandbox，Task-owned 只读 `/workspace`、writable operation-stage、import cache 与
-managed overlay 彼此分离，Host checkout 不运行也不修改。当前实现会在 import、vanilla stop 和 managed stop 的边界重验 staged selected-tree，并在隔离
+vanilla import/smoke 与受管 overlay import/launch 都执行在同一类 task sandbox、bounded storage 和 cleanup/seal
+边界内；两个 operation 各自在 fresh stage 中 import，避免把 cache 当作可跨隔离边界复用的输入，并使 UID main
+scene 在 managed launch 前可解析。Host checkout 不挂入 sandbox，Task-owned 只读 `/workspace`、writable
+operation-stage、各自的 import cache 与 managed overlay 彼此分离，Host checkout 不运行也不修改。当前实现会在
+两次 import、vanilla stop 和 managed stop 的边界重验 staged selected-tree，并在隔离
 PID namespace 中拒绝 phase 结束后仍存活的额外进程；它没有把 staged tree 物理挂成只读，因此这些 identity
 是 admission/endpoint facts，不是运行窗口内每一时刻执行字节都未被 mutate-and-restore 的证明。
 回溯写入的 phase 和 process-output raw event 使用写入前最近一次真实 engine sample，并在 payload 中标记

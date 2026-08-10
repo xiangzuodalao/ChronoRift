@@ -549,7 +549,7 @@ const ProcessOutputEventPayloadSchema = z
   .object({
     schemaVersion: z.literal(1),
     kind: z.literal("process_output"),
-    phase: z.enum(["import", "vanilla", "managed"]),
+    phase: z.enum(["import", "vanilla", "managed_import", "managed"]),
     stream: z.enum(["stdout", "stderr"]),
     offset: z.number().int().nonnegative(),
     byteLength: z.number().int().positive(),
@@ -579,7 +579,12 @@ const assertPersistedDiagnosticBytes = (
     return parsed.success ? [parsed.data] : [];
   });
   const retainedByGroup = new Map<string, Buffer>();
-  for (const phase of ["import", "vanilla", "managed"] as const) {
+  for (const phase of [
+    "import",
+    "vanilla",
+    "managed_import",
+    "managed",
+  ] as const) {
     for (const stream of ["stdout", "stderr"] as const) {
       const selected = chunks
         .filter((chunk) => chunk.phase === phase && chunk.stream === stream)
@@ -602,6 +607,7 @@ const assertPersistedDiagnosticBytes = (
   for (const [phaseName, diagnosticPhase] of [
     ["vanilla_import", "import"],
     ["vanilla_smoke", "vanilla"],
+    ["managed_import", "managed_import"],
     ["managed_stop", "managed"],
   ] as const) {
     const phase = phaseNamed(record, phaseName);

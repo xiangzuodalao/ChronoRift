@@ -340,7 +340,10 @@ export class GodotLifecycleSidecarPortV1 {
       ],
       cwd: "/workspace",
       environment: {},
-      timeoutMs: Math.min(600_000, launch.executionTimeoutMs + 5_000),
+      timeoutMs: Math.min(
+        600_000,
+        launch.importTimeoutMs + launch.executionTimeoutMs + 5_000,
+      ),
     };
     const readable = new PassThrough();
     readable.on("error", () => undefined);

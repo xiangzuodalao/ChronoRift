@@ -641,11 +641,12 @@ M4 复用已经实现并测试的 sandbox、bounded storage、process/cgroup cle
 process frame、physics tick、status、bounded diagnostics 和 shutdown。Host 通过独立
 `CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT` 冻结该输入，不能与 M3 Addon capability 串线或共用 identity。
 
-首次 M4 launch 在 bounded operation scratch 中依次执行 import、无 overlay 的 vanilla smoke、再注入 hashed
-overlay 并握手。Godot import 可能执行项目 tool script/plugin，因此也属于不可信项目执行，必须留在同一
+首次 M4 launch 使用两个 bounded operation scratch：vanilla operation 先 import 再无 overlay smoke；managed
+operation 在 fresh stage 中再次 import，随后注入 hashed overlay 并握手。cache 不跨 operation 复用，managed
+import 使 UID main scene 在 launch 前可解析。Godot import 可能执行项目 tool script/plugin，因此也属于不可信项目执行，必须留在同一
 无网络、无 credential、只读 Task `/workspace` 和有界 cleanup 边界中；Host source checkout 不挂入 sandbox，
 也不能在其上预跑。
-Godot 实际执行 bounded scratch 中的 writable staged copy；实现会在 import、vanilla stop 和 managed stop
+Godot 实际执行 bounded scratch 中的 writable staged copy；实现会在两次 import、vanilla stop 和 managed stop
 endpoint 重验 selected-tree，并在隔离 PID namespace 中拒绝 phase 后残留进程，但不能排除同一 Godot 进程
 在窗口内 mutate/load/restore。因此 source identity 是 admission 与 endpoint fact，不是 continuous immutable
 execution attestation。vanilla 与 overlay 结果分别记录；一方失败不能由另一方成功掩盖，也不能被 Harness
@@ -851,7 +852,8 @@ lifecycle。它不同时证明 gameplay 修复、深层 runtime 原语、跨项�
    实际 HEAD 和 selected-tree bytes 才是 execution 输入事实。
 3. M4 写独立 Task profile/capability，Agent 只获得 §15 的四个 lifecycle tools。M3 `FixtureManifestV1`、完整
    V1 catalog、Protocol v2、runtime resources 和外部 13 场景 evaluator 保持原语义。
-4. Godot import、vanilla main-scene smoke 和 managed lifecycle overlay 都在 §17 的 task sandbox 内执行。
+4. vanilla 与 managed operation 都在各自 fresh stage 中先执行 Godot import；随后分别执行 main-scene smoke 和
+   managed lifecycle overlay。所有步骤都在 §17 的 task sandbox 内执行。
    source、descriptor、overlay、Addon、runtime、build 与 requested/realized clock identity 分开记录；import
    cache、overlay 与 Addon 不进入候选 patch。
 5. Task 继续使用 `start/continue/show/export/discard`。continue 只重新 strict validation Task 内持久化的

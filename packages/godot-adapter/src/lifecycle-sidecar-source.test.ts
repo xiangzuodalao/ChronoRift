@@ -429,7 +429,18 @@ describe("Godot lifecycle sidecar sources", () => {
     await writeFile(
       fakeGodot,
       [
+        'const fs = require("node:fs");',
+        'const path = require("node:path");',
         'const net = require("node:net");',
+        'const projectRoot = process.argv[process.argv.indexOf("--path") + 1];',
+        'const importMarker = path.join(projectRoot, ".godot", "managed-import-complete");',
+        'if (process.argv.includes("--import")) {',
+        "  fs.mkdirSync(path.dirname(importMarker), { recursive: true });",
+        '  fs.writeFileSync(importMarker, "ok");',
+        '  process.stdout.write("managed import complete\\n");',
+        "  process.exit(0);",
+        "}",
+        "if (!fs.existsSync(importMarker)) process.exit(12);",
         'process.stdout.write("managed runtime\\n");',
         "const socket = net.connect(Number(process.env.CHRONORIFT_PORT), process.env.CHRONORIFT_HOST);",
         'socket.on("data", (chunk) => socket.write(chunk));',
@@ -470,6 +481,7 @@ describe("Godot lifecycle sidecar sources", () => {
         { relativePath: "lifecycle_probe.gd", bytes: addonBytes },
       ]),
       expectedMainScene: "res://main.tscn",
+      importTimeoutMs: 5_000,
       startupTimeoutMs: 5_000,
       executionTimeoutMs: 10_000,
     });
@@ -509,6 +521,15 @@ describe("Godot lifecycle sidecar sources", () => {
           overlayHash: launch.overlayHash,
           addonHash: launch.addonHash,
         }),
+        expect.objectContaining({
+          kind: "managed_import_result",
+          outcome: "succeeded",
+        }),
+        expect.objectContaining({
+          kind: "source_verified",
+          phase: "managed_import",
+          candidateSourceHash,
+        }),
         expect.objectContaining({ kind: "godot_started" }),
         expect.objectContaining({ kind: "stream_summary", stream: "stdout" }),
         expect.objectContaining({
@@ -523,6 +544,129 @@ describe("Godot lifecycle sidecar sources", () => {
           candidateSourceHash,
         }),
       ]),
+    );
+    const managedImport = diagnostics.find(
+      (record) => record.kind === "managed_import_result",
+    );
+    expect(managedImport?.receipt.exitCode).toBe(0);
+    expect(managedImport?.receipt.signal).toBeNull();
+    expect(managedImport?.receipt.timedOut).toBe(false);
+  });
+
+  it("records a failed managed import before starting the lifecycle runtime", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "chronorift-lifecycle-managed-import-failure-"),
+    );
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    const runtime = join(root, "runtime");
+    const overlayProject = join(runtime, "overlay", "project");
+    const addonRoot = join(overlayProject, "addons", "chronorift_lifecycle");
+    await Promise.all([
+      mkdir(workspace),
+      mkdir(addonRoot, { recursive: true }),
+    ]);
+    const projectBytes = Buffer.from(
+      '[application]\nrun/main_scene="uid://main-scene"\n',
+    );
+    const sceneBytes = Buffer.from(
+      '[gd_scene format=3 uid="uid://main-scene"]\n\n[node name="Main" type="Node"]\n',
+    );
+    const addonBytes = Buffer.from("extends Node\n");
+    await Promise.all([
+      writeFile(join(workspace, "project.godot"), projectBytes),
+      writeFile(join(workspace, "main.tscn"), sceneBytes),
+      writeFile(join(addonRoot, "lifecycle_probe.gd"), addonBytes),
+      writeFile(
+        join(overlayProject, "override.cfg"),
+        GODOT_LIFECYCLE_OVERRIDE_SOURCE,
+      ),
+    ]);
+    const fakeGodot = join(root, "fake-import-failure.cjs");
+    await writeFile(
+      fakeGodot,
+      [
+        'if (!process.argv.includes("--import")) process.exit(12);',
+        'process.stderr.write("managed import failed\\n");',
+        "process.exit(9);",
+      ].join("\n"),
+    );
+    const source = createLifecycleRuntimeSidecarSource({
+      godotExecutable: process.execPath,
+      godotArgsPrefix: [fakeGodot],
+      workspaceRoot: workspace,
+      runtimeRoot: runtime,
+    });
+    const sidecar = spawn(
+      process.execPath,
+      ["--input-type=commonjs", "--eval", source],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const stderr: Buffer[] = [];
+    sidecar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const candidateSourceHash = selectedTreeDigest([
+      { relativePath: "main.tscn", mode: "100644", bytes: sceneBytes },
+      {
+        relativePath: "project.godot",
+        mode: "100644",
+        bytes: projectBytes,
+      },
+    ]);
+    sidecar.stdin.end(
+      encodeWireFrame(
+        JSON.stringify(
+          GodotLifecycleSidecarLaunchV1Schema.parse({
+            ...commonLaunch(candidateSourceHash),
+            operation: "managed_lifecycle",
+            protocolProfile: "chronorift-godot-lifecycle-v1",
+            protocolVersion: 1,
+            token: "e".repeat(64),
+            overlayHash: sha256(GODOT_LIFECYCLE_OVERRIDE_SOURCE),
+            addonHash: treeDigest([
+              { relativePath: "lifecycle_probe.gd", bytes: addonBytes },
+            ]),
+            expectedMainScene: "uid://main-scene",
+            importTimeoutMs: 5_000,
+            startupTimeoutMs: 5_000,
+            executionTimeoutMs: 10_000,
+          }),
+        ),
+      ),
+    );
+
+    await expect(waitForExit(sidecar)).resolves.toEqual({
+      code: 1,
+      signal: null,
+    });
+    const diagnostics = decode(Buffer.concat(stderr), (value) =>
+      GodotLifecycleSidecarDiagnosticV1Schema.parse(value),
+    );
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "managed_import_result",
+          outcome: "failed",
+        }),
+        expect.objectContaining({
+          kind: "sidecar_error",
+          phase: "managed_import",
+          code: "GODOT_IMPORT_FAILED",
+        }),
+      ]),
+    );
+    const managedImport = diagnostics.find(
+      (record) => record.kind === "managed_import_result",
+    );
+    expect(managedImport?.receipt.exitCode).toBe(9);
+    expect(managedImport?.receipt.signal).toBeNull();
+    expect(managedImport?.receipt.timedOut).toBe(false);
+    expect(managedImport?.receipt.stderr).toMatchObject({
+      totalBytes: 22,
+      retainedBytes: 22,
+      truncated: false,
+    });
+    expect(diagnostics.some((record) => record.kind === "godot_started")).toBe(
+      false,
     );
   });
 

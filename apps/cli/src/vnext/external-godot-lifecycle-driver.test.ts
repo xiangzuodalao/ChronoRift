@@ -253,7 +253,8 @@ interface FakePortOptions {
   readonly corruptedFullStdoutSummary?: boolean;
   readonly terminalStdout?: boolean;
   readonly omitVanillaSourceVerification?: boolean;
-  readonly omitManagedSourceVerification?: boolean;
+  readonly omitManagedImportSourceVerification?: boolean;
+  readonly omitManagedTerminalSourceVerification?: boolean;
   readonly vanillaPortReject?: boolean;
   readonly managedPortReject?: boolean;
 }
@@ -380,6 +381,24 @@ const fakePort = (
           fileCount: 2,
           byteLength: 64,
         },
+        {
+          schemaVersion: 1,
+          kind: "managed_import_result",
+          outcome: "succeeded",
+          receipt: processReceipt(),
+        },
+        ...(options.omitManagedImportSourceVerification === true
+          ? []
+          : [
+              {
+                schemaVersion: 1 as const,
+                kind: "source_verified" as const,
+                phase: "managed_import" as const,
+                candidateSourceHash: launch.candidateSourceHash,
+                fileCount: 2,
+                byteLength: 64,
+              },
+            ]),
         { schemaVersion: 1, kind: "godot_started", pid: 123 },
       ];
       if (
@@ -493,7 +512,7 @@ const fakePort = (
             timedOut: false,
           },
         );
-        if (options.omitManagedSourceVerification !== true) {
+        if (options.omitManagedTerminalSourceVerification !== true) {
           records.push({
             schemaVersion: 1,
             kind: "source_verified",
@@ -1003,7 +1022,7 @@ describe("external Godot lifecycle sandbox driver", () => {
 
     const managedDriver = createExternalGodotLifecycleSandboxDriverV1({
       sidecarPort: fakePort(runtime.capability, {
-        omitManagedSourceVerification: true,
+        omitManagedTerminalSourceVerification: true,
       }).port,
       managedRuntime: runtime.capability,
     });

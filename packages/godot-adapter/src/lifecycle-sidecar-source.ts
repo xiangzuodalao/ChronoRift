@@ -180,7 +180,7 @@ const parseLaunch = (json) => {
   ];
   const operationKeys = OPERATION === "vanilla_smoke"
     ? ["importTimeoutMs", "vanillaTimeoutMs", "stabilityWindowMs"]
-    : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "startupTimeoutMs", "executionTimeoutMs"];
+    : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "importTimeoutMs", "startupTimeoutMs", "executionTimeoutMs"];
   if (!exactKeys(value, [...common, ...operationKeys]) || value.schemaVersion !== 1 ||
       value.runtimeProfile !== RUNTIME_PROFILE || value.operation !== OPERATION) {
     throw new Error("launch prelude has an unsupported lifecycle shape or profile");
@@ -204,6 +204,7 @@ const parseLaunch = (json) => {
       typeof value.addonHash !== "string" || !HASH.test(value.addonHash) ||
       typeof value.expectedMainScene !== "string" || value.expectedMainScene.length < 1 || value.expectedMainScene.length > 1024 ||
       !["res://", "uid://"].some((prefix) => value.expectedMainScene.startsWith(prefix)) ||
+      !Number.isInteger(value.importTimeoutMs) || value.importTimeoutMs < 1000 || value.importTimeoutMs > 120000 ||
       !Number.isInteger(value.startupTimeoutMs) || value.startupTimeoutMs < 1000 || value.startupTimeoutMs > 60000 ||
       !Number.isInteger(value.executionTimeoutMs) || value.executionTimeoutMs < 1000 || value.executionTimeoutMs > 600000) {
     throw new Error("managed lifecycle launch fields are invalid");
@@ -695,6 +696,47 @@ const startManagedRuntime = async (launch, stage, remainder) => {
     const mismatch = new Error("managed overlay, addon, or main-scene identity mismatch"); mismatch.code = "BUILD_IDENTITY_MISMATCH"; throw mismatch;
   }
   diagnostic({ kind: "stage_ready", ...stage, overlayHash, addonHash });
+  let importRun;
+  try {
+    importRun = await runBoundedProcess(
+      "managed_import",
+      launch,
+      ["--headless", "--path", PROJECT_ROOT, "--import"],
+      launch.importTimeoutMs
+    );
+  } catch (error) {
+    if (error?.processReceipt) {
+      diagnostic({ kind: "managed_import_result", outcome: "failed", receipt: error.processReceipt }, true);
+    }
+    error.phase = "managed_import";
+    throw error;
+  }
+  const importSucceeded = !importRun.receipt.timedOut && importRun.receipt.signal === null && importRun.receipt.exitCode === 0;
+  diagnostic({
+    kind: "managed_import_result",
+    outcome: importSucceeded ? "succeeded" : "failed",
+    receipt: importRun.receipt
+  }, !importSucceeded);
+  if (!importSucceeded) {
+    const failure = new Error("managed Godot import did not exit successfully");
+    failure.phase = "managed_import";
+    failure.code = "GODOT_IMPORT_FAILED";
+    failure.processReceipt = importRun.receipt;
+    throw failure;
+  }
+  try {
+    await verifyStagedCandidate(stage);
+    diagnostic({
+      kind: "source_verified",
+      phase: "managed_import",
+      candidateSourceHash: stage.candidateSourceHash,
+      fileCount: stage.fileCount,
+      byteLength: stage.byteLength
+    });
+  } catch (error) {
+    error.phase = "managed_import";
+    throw error;
+  }
   server = net.createServer();
   let connected = false;
   const connection = new Promise((resolve, reject) => {

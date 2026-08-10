@@ -109,6 +109,7 @@ export const GodotLifecycleSidecarLaunchV1Schema = z
         (value) => value.startsWith("res://") || value.startsWith("uid://"),
         "expected main scene must use the res:// or uid:// scheme",
       ),
+    importTimeoutMs: z.number().int().min(1_000).max(120_000),
     startupTimeoutMs: z.number().int().min(1_000).max(60_000),
     executionTimeoutMs: z.number().int().min(1_000).max(600_000),
   })
@@ -179,7 +180,7 @@ const ProcessOutputDiagnosticSchema = z
   .object({
     schemaVersion: z.literal(1),
     kind: z.literal("process_output"),
-    phase: z.enum(["import", "vanilla", "managed"]),
+    phase: z.enum(["import", "vanilla", "managed_import", "managed"]),
     stream: z.enum(["stdout", "stderr"]),
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     bytesBase64: z.string().max(2 * 1024 * 1024),
@@ -190,7 +191,7 @@ const SourceVerifiedDiagnosticSchema = z
   .object({
     schemaVersion: z.literal(1),
     kind: z.literal("source_verified"),
-    phase: z.enum(["import", "vanilla", "managed"]),
+    phase: z.enum(["import", "vanilla", "managed_import", "managed"]),
     candidateSourceHash: Sha256Schema,
     fileCount: z.number().int().nonnegative().max(4_096),
     byteLength: z
@@ -210,6 +211,7 @@ const SidecarErrorDiagnosticSchema = z
       "stage",
       "import",
       "vanilla",
+      "managed_import",
       "managed",
       "protocol",
       "cleanup",
@@ -320,6 +322,22 @@ export const GodotLifecycleSidecarDiagnosticV1Schema = z.discriminatedUnion(
         schemaVersion: z.literal(1),
         kind: z.literal("godot_started"),
         pid: z.number().int().positive(),
+      })
+      .strict(),
+    z
+      .object({
+        schemaVersion: z.literal(1),
+        kind: z.literal("phase_started"),
+        phase: z.literal("managed_import"),
+        pid: z.number().int().positive(),
+      })
+      .strict(),
+    z
+      .object({
+        schemaVersion: z.literal(1),
+        kind: z.literal("managed_import_result"),
+        outcome: z.enum(["succeeded", "failed"]),
+        receipt: GodotLifecycleProcessReceiptV1Schema,
       })
       .strict(),
     ProcessOutputDiagnosticSchema,

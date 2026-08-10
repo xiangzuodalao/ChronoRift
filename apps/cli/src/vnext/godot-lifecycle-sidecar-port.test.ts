@@ -188,8 +188,9 @@ const managedLaunch = () => ({
   overlayHash: digest("replaced-overlay"),
   addonHash: digest("replaced-addon"),
   expectedMainScene: "res://main.tscn",
+  importTimeoutMs: 120_000,
   startupTimeoutMs: 30_000,
-  executionTimeoutMs: 600_000,
+  executionTimeoutMs: 450_000,
 });
 
 describe("GodotLifecycleSidecarPortV1", () => {

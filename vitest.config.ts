@@ -12,6 +12,7 @@ export default defineConfig({
       "**/*.sandbox.{test,spec}.ts",
       "**/*.godot-sandbox.{test,spec}.ts",
       "**/*.external-project.{test,spec}.ts",
+      "**/*.external-semantic.{test,spec}.ts",
       "**/node_modules/**",
       "**/dist/**",
     ],

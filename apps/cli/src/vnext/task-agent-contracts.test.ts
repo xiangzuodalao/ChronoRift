@@ -5,9 +5,11 @@ import { asSha256DigestV1 } from "@chronorift/domain";
 import {
   createVNextAgentGameCapabilityV1,
   createVNextAgentLifecycleProfileV1,
+  createVNextAgentSemanticProfileV1,
   VNextAgentLifecycleProfileV1Schema,
   VNextAgentTaskSchema,
 } from "./task-agent-contracts.js";
+import { SEMANTIC_GAME_TOOL_NAMES_V1 } from "@chronorift/agent-protocol";
 
 describe("vNext Agent Task profile contracts", () => {
   it("adds a strict four-tool M4 profile without changing M3", () => {
@@ -50,5 +52,26 @@ describe("vNext Agent Task profile contracts", () => {
         toolNames: [...valid.toolNames].reverse(),
       }),
     ).toThrow(/ordered/iu);
+  });
+
+  it("adds an independent eleven-tool semantic Task V4 profile", () => {
+    const profile = createVNextAgentSemanticProfileV1({
+      projectCapabilitySha256: asSha256DigestV1("c".repeat(64)),
+      semanticAdapterProfileSha256: asSha256DigestV1("d".repeat(64)),
+      managedRuntimeId: `managed-godot-semantic-runtime:v1:${"e".repeat(64)}`,
+    });
+    expect(profile.toolNames).toEqual(SEMANTIC_GAME_TOOL_NAMES_V1);
+    expect(
+      VNextAgentTaskSchema.parse({
+        schemaVersion: 4,
+        taskId: "task:v1:semantic",
+        goal: "Inspect Timer and spawned entities",
+        provider: "fake",
+        model: "fake",
+        thinkingLevel: "off",
+        createdAt: "2026-08-11T00:00:00.000Z",
+        profile,
+      }).schemaVersion,
+    ).toBe(4);
   });
 });

@@ -18,10 +18,12 @@ import {
   createVNextCodingToolDefinitions,
   createVNextGameToolDefinitions,
   createVNextLifecycleGameToolDefinitions,
+  createVNextSemanticGameToolDefinitions,
   runVNextPiTurnWithSdk,
   type PiThinkingLevel,
   type VNextGameToolPort,
   type VNextLifecycleGameToolPort,
+  type VNextSemanticGameToolPort,
   type VNextPiTurnResult,
 } from "@chronorift/pi-harness";
 
@@ -31,6 +33,7 @@ import {
   exportM1Patch,
   extractAndPersistM1Patch,
   getM1TaskExternalGodotRuntimeContext,
+  getM1TaskExternalGodotSemanticRuntimeContext,
   getM1TaskGameRuntimeContext,
   getM1TaskHostContext,
   prepareM1TaskEnvironment,
@@ -51,17 +54,21 @@ import type {
 } from "./contracts.js";
 import { createExternalGodotLifecycleCoordinator } from "./external-godot-lifecycle-coordinator.js";
 import { createExternalGodotLifecycleSandboxDriverV1 } from "./external-godot-lifecycle-driver.js";
+import { createExternalGodotSemanticCoordinator } from "./external-godot-semantic-coordinator.js";
 import { createVNextGodotRuntimeCoordinator } from "./vnext-godot-runtime-coordinator.js";
 import {
   createVNextAgentGameCapabilityV1,
   createVNextAgentLifecycleProfileV1,
+  createVNextAgentSemanticProfileV1,
   VNextAgentTaskSchema,
   VNextAgentTaskV1Schema,
   VNextAgentTaskV2Schema,
   VNextAgentTaskV3Schema,
+  VNextAgentTaskV4Schema,
   VNextAgentTurnV1Schema,
   type VNextAgentGameCapabilityV1,
   type VNextAgentLifecycleProfileV1,
+  type VNextAgentSemanticProfileV1,
   type VNextAgentTask,
   type VNextAgentTurnV1,
 } from "./task-agent-contracts.js";
@@ -146,8 +153,24 @@ export interface VNextAgentLifecycleGameToolPort extends VNextLifecycleGameToolP
   cleanup(): Promise<void>;
 }
 
+export interface VNextAgentSemanticGameToolTurnContextV1 {
+  readonly schemaVersion: 1;
+  readonly taskId: TaskId;
+  readonly turn: number;
+  readonly kind: "start" | "continue";
+  readonly prompt: string;
+  readonly profile: VNextAgentSemanticProfileV1;
+}
+
+export interface VNextAgentSemanticGameToolPort extends VNextSemanticGameToolPort {
+  reconcileSandboxCleanup?(cleanup: SandboxCleanupReceiptV1): Promise<void>;
+  cleanup(): Promise<void>;
+}
+
 type AgentRuntimeToolPort =
-  VNextAgentGameToolPort | VNextAgentLifecycleGameToolPort;
+  | VNextAgentGameToolPort
+  | VNextAgentLifecycleGameToolPort
+  | VNextAgentSemanticGameToolPort;
 
 const cleanupGameToolPort = async (
   port: AgentRuntimeToolPort | undefined,
@@ -199,6 +222,7 @@ interface VNextAgentTaskDependencies {
   readonly exportPatch: typeof exportM1Patch;
   readonly hostContext: typeof getM1TaskHostContext;
   readonly externalRuntimeContext: typeof getM1TaskExternalGodotRuntimeContext;
+  readonly semanticRuntimeContext: typeof getM1TaskExternalGodotSemanticRuntimeContext;
   readonly execute: typeof executeAndRecordM1Command;
   readonly createGameToolPort: (
     environment: M1TaskEnvironment,
@@ -208,6 +232,10 @@ interface VNextAgentTaskDependencies {
     environment: M1TaskEnvironment,
     context: VNextAgentLifecycleGameToolTurnContextV1,
   ) => Promise<VNextAgentLifecycleGameToolPort>;
+  readonly createSemanticGameToolPort: (
+    environment: M1TaskEnvironment,
+    context: VNextAgentSemanticGameToolTurnContextV1,
+  ) => Promise<VNextAgentSemanticGameToolPort>;
   readonly runTurn: typeof runVNextPiTurnWithSdk;
 }
 
@@ -224,6 +252,8 @@ const DEFAULT_DEPENDENCIES: VNextAgentTaskDependencies = {
   hostContext: (environment) => getM1TaskHostContext(environment),
   externalRuntimeContext: (environment) =>
     getM1TaskExternalGodotRuntimeContext(environment),
+  semanticRuntimeContext: (environment) =>
+    getM1TaskExternalGodotSemanticRuntimeContext(environment),
   execute: (environment, request, options) =>
     executeAndRecordM1Command(environment, request, options),
   createGameToolPort: (environment) => {
@@ -267,6 +297,32 @@ const DEFAULT_DEPENDENCIES: VNextAgentTaskDependencies = {
       Object.freeze({
         invoke: (
           request: Parameters<VNextLifecycleGameToolPort["invoke"]>[0],
+          signal?: AbortSignal,
+        ) => coordinator.invoke(request, signal),
+        cleanup: () => coordinator.close(),
+        reconcileSandboxCleanup: (cleanup: SandboxCleanupReceiptV1) =>
+          coordinator.reconcileSandboxCleanup(cleanup),
+      }),
+    );
+  },
+  createSemanticGameToolPort: (environment) => {
+    const runtime = getM1TaskExternalGodotSemanticRuntimeContext(environment);
+    const coordinator = createExternalGodotSemanticCoordinator({
+      taskId: runtime.taskId,
+      workspaceId: runtime.workspaceId,
+      workspaceDirectory: runtime.workspaceDirectory,
+      baselineSourceHash: runtime.baselineSourceHash,
+      projectCapability: runtime.projectCapability,
+      managedRuntime: runtime.managedSemanticRuntime,
+      adapterProfile: runtime.semanticAdapterProfile.profile,
+      adapterProfileSha256: runtime.semanticAdapterProfile.adapterProfileSha256,
+      sidecarPort: runtime.sidecarPort,
+      runtimeStore: runtime.runtimeStore,
+    });
+    return Promise.resolve(
+      Object.freeze({
+        invoke: (
+          request: Parameters<VNextSemanticGameToolPort["invoke"]>[0],
           signal?: AbortSignal,
         ) => coordinator.invoke(request, signal),
         cleanup: () => coordinator.close(),
@@ -331,7 +387,9 @@ const gameEnvironmentInstructions = (
 ): string =>
   task.schemaVersion === 2
     ? `ChronoRift game tools:\n- Exact taskId: ${task.taskId}\n- Exact fixtureId: ${task.gameCapability.fixtureId}\n- The game_* tools declared for this Task are available.\n- Game resource IDs are identifiers, not filesystem paths.`
-    : `ChronoRift lifecycle-only game tools:\n- Exact taskId: ${task.taskId}\n- Exact project capability: ${task.profile.projectCapabilitySha256}\n- Available game tools: ${task.profile.toolNames.join(", ")}\n- Other game_* capabilities are unsupported in this profile.\n- Game resource IDs are identifiers, not filesystem paths.`;
+    : task.schemaVersion === 3
+      ? `ChronoRift lifecycle-only game tools:\n- Exact taskId: ${task.taskId}\n- Exact project capability: ${task.profile.projectCapabilitySha256}\n- Available game tools: ${task.profile.toolNames.join(", ")}\n- Other game_* capabilities are unsupported in this profile.\n- Game resource IDs are identifiers, not filesystem paths.`
+      : `ChronoRift external semantic game tools:\n- Exact taskId: ${task.taskId}\n- Exact project capability: ${task.profile.projectCapabilitySha256}\n- Exact semantic adapter profile: ${task.profile.semanticAdapterProfileSha256}\n- Available game tools: ${task.profile.toolNames.join(", ")}\n- Checkpoints, restores, forks, traces, and comparisons are descriptive evidence; they do not establish equivalent execution or causality.\n- Other game_* capabilities are unsupported in this profile.\n- Game resource IDs are identifiers, not filesystem paths.`;
 
 const composeTurnTools = async (input: {
   readonly task: VNextAgentTask;
@@ -382,6 +440,41 @@ const composeTurnTools = async (input: {
         ...createVNextLifecycleGameToolDefinitions(lifecyclePort),
       ]),
       gamePort: lifecyclePort,
+    };
+  }
+  if (input.task.schemaVersion === 4) {
+    const runtime = input.dependencies.semanticRuntimeContext(
+      input.environment,
+    );
+    if (
+      runtime.projectCapability.capabilitySha256 !==
+        input.task.profile.projectCapabilitySha256 ||
+      runtime.semanticAdapterProfile.adapterProfileSha256 !==
+        input.task.profile.semanticAdapterProfileSha256 ||
+      runtime.managedSemanticRuntime.managedRuntimeId !==
+        input.task.profile.managedRuntimeId
+    ) {
+      throw new Error(
+        "Prepared external Godot semantic runtime does not match the persisted Task profile",
+      );
+    }
+    const semanticPort = await input.dependencies.createSemanticGameToolPort(
+      input.environment,
+      Object.freeze({
+        schemaVersion: 1,
+        taskId: input.task.taskId,
+        turn: input.turn,
+        kind: input.kind,
+        prompt: input.prompt,
+        profile: input.task.profile,
+      }),
+    );
+    return {
+      tools: Object.freeze([
+        ...codingTools,
+        ...createVNextSemanticGameToolDefinitions(semanticPort),
+      ]),
+      gamePort: semanticPort,
     };
   }
   const environmentGameCapability = gameCapabilityFromEnvironment(
@@ -549,6 +642,10 @@ export async function startVNextAgentTask(
       environment.sourceKind === "godot-external-lifecycle-v1"
         ? dependencies.externalRuntimeContext(environment)
         : undefined;
+    const semanticRuntime =
+      environment.sourceKind === "godot-external-semantic-v1"
+        ? dependencies.semanticRuntimeContext(environment)
+        : undefined;
     const lifecycleProfile =
       externalRuntime === undefined
         ? undefined
@@ -559,41 +656,65 @@ export async function startVNextAgentTask(
               externalRuntime.managedLifecycleRuntime.managedRuntimeId,
           });
     const gameCapability =
-      lifecycleProfile === undefined && request.enableGameTools === true
+      lifecycleProfile === undefined &&
+      semanticRuntime === undefined &&
+      request.enableGameTools === true
         ? gameCapabilityFromEnvironment(environment)
         : undefined;
+    const semanticProfile =
+      semanticRuntime === undefined
+        ? undefined
+        : createVNextAgentSemanticProfileV1({
+            projectCapabilitySha256:
+              semanticRuntime.projectCapability.capabilitySha256,
+            semanticAdapterProfileSha256:
+              semanticRuntime.semanticAdapterProfile.adapterProfileSha256,
+            managedRuntimeId:
+              semanticRuntime.managedSemanticRuntime.managedRuntimeId,
+          });
     const task: VNextAgentTask =
-      lifecycleProfile !== undefined
-        ? VNextAgentTaskV3Schema.parse({
-            schemaVersion: 3,
+      semanticProfile !== undefined
+        ? VNextAgentTaskV4Schema.parse({
+            schemaVersion: 4,
             taskId: request.taskId,
             goal,
             provider: request.provider,
             model: request.model,
             thinkingLevel: request.thinkingLevel,
             createdAt: dependencies.now(),
-            profile: lifecycleProfile,
+            profile: semanticProfile,
           })
-        : gameCapability === undefined
-          ? VNextAgentTaskV1Schema.parse({
-              schemaVersion: 1,
+        : lifecycleProfile !== undefined
+          ? VNextAgentTaskV3Schema.parse({
+              schemaVersion: 3,
               taskId: request.taskId,
               goal,
               provider: request.provider,
               model: request.model,
               thinkingLevel: request.thinkingLevel,
               createdAt: dependencies.now(),
+              profile: lifecycleProfile,
             })
-          : VNextAgentTaskV2Schema.parse({
-              schemaVersion: 2,
-              taskId: request.taskId,
-              goal,
-              provider: request.provider,
-              model: request.model,
-              thinkingLevel: request.thinkingLevel,
-              createdAt: dependencies.now(),
-              gameCapability,
-            });
+          : gameCapability === undefined
+            ? VNextAgentTaskV1Schema.parse({
+                schemaVersion: 1,
+                taskId: request.taskId,
+                goal,
+                provider: request.provider,
+                model: request.model,
+                thinkingLevel: request.thinkingLevel,
+                createdAt: dependencies.now(),
+              })
+            : VNextAgentTaskV2Schema.parse({
+                schemaVersion: 2,
+                taskId: request.taskId,
+                goal,
+                provider: request.provider,
+                model: request.model,
+                thinkingLevel: request.thinkingLevel,
+                createdAt: dependencies.now(),
+                gameCapability,
+              });
     await store.putJsonOnce(request.taskId, "agent-task.json", task, (value) =>
       VNextAgentTaskSchema.parse(value),
     );

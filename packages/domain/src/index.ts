@@ -24,3 +24,4 @@ export * from "./v03.js";
 export * from "./v04.js";
 export * from "./vnext-runtime.js";
 export * from "./vnext-lifecycle-runtime.js";
+export * from "./vnext-semantic-runtime.js";

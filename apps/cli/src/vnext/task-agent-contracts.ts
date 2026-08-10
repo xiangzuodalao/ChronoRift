@@ -3,8 +3,10 @@ import { z } from "zod";
 import {
   GAME_TOOL_NAMES_V1,
   LIFECYCLE_GAME_TOOL_NAMES_V1,
+  SEMANTIC_GAME_TOOL_NAMES_V1,
   type LifecycleGameToolNameV1,
   type GameToolNameV1,
+  type SemanticGameToolNameV1,
 } from "@chronorift/agent-protocol";
 import {
   Sha256DigestV1Schema,
@@ -151,6 +153,71 @@ export const createVNextAgentLifecycleProfileV1 = (input: {
     toolNames: LIFECYCLE_GAME_TOOL_NAMES_V1,
   });
 
+export interface VNextAgentSemanticProfileV1 {
+  readonly schemaVersion: 1;
+  readonly kind: "godot-external-semantic-v1";
+  readonly projectCapabilitySha256: Sha256DigestV1;
+  readonly semanticAdapterProfileSha256: Sha256DigestV1;
+  readonly managedRuntimeId: string;
+  readonly toolCatalogVersion: 1;
+  readonly toolNames: readonly SemanticGameToolNameV1[];
+}
+
+const freezeSemanticProfile = (
+  profile: VNextAgentSemanticProfileV1,
+): VNextAgentSemanticProfileV1 =>
+  Object.freeze({
+    ...profile,
+    toolNames: Object.freeze([...profile.toolNames]),
+  });
+
+export const VNextAgentSemanticProfileV1Schema: z.ZodType<VNextAgentSemanticProfileV1> =
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      kind: z.literal("godot-external-semantic-v1"),
+      projectCapabilitySha256: Sha256DigestV1Schema,
+      semanticAdapterProfileSha256: Sha256DigestV1Schema,
+      managedRuntimeId: z
+        .string()
+        .regex(/^managed-godot-semantic-runtime:v1:[a-f0-9]{64}$/u),
+      toolCatalogVersion: z.literal(1),
+      toolNames: z
+        .array(z.enum(SEMANTIC_GAME_TOOL_NAMES_V1))
+        .length(SEMANTIC_GAME_TOOL_NAMES_V1.length),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.toolNames.some(
+          (toolName, index) => toolName !== SEMANTIC_GAME_TOOL_NAMES_V1[index],
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["toolNames"],
+          message:
+            "semantic tool catalog must match the complete ordered eleven-tool catalog",
+        });
+      }
+    })
+    .transform(freezeSemanticProfile);
+
+export const createVNextAgentSemanticProfileV1 = (input: {
+  readonly projectCapabilitySha256: Sha256DigestV1;
+  readonly semanticAdapterProfileSha256: Sha256DigestV1;
+  readonly managedRuntimeId: string;
+}): VNextAgentSemanticProfileV1 =>
+  VNextAgentSemanticProfileV1Schema.parse({
+    schemaVersion: 1,
+    kind: "godot-external-semantic-v1",
+    projectCapabilitySha256: input.projectCapabilitySha256,
+    semanticAdapterProfileSha256: input.semanticAdapterProfileSha256,
+    managedRuntimeId: input.managedRuntimeId,
+    toolCatalogVersion: 1,
+    toolNames: SEMANTIC_GAME_TOOL_NAMES_V1,
+  });
+
 interface VNextAgentTaskFields {
   readonly taskId: TaskId;
   readonly goal: string;
@@ -174,8 +241,13 @@ export interface VNextAgentTaskV3 extends VNextAgentTaskFields {
   readonly profile: VNextAgentLifecycleProfileV1;
 }
 
+export interface VNextAgentTaskV4 extends VNextAgentTaskFields {
+  readonly schemaVersion: 4;
+  readonly profile: VNextAgentSemanticProfileV1;
+}
+
 export type VNextAgentTask =
-  VNextAgentTaskV1 | VNextAgentTaskV2 | VNextAgentTaskV3;
+  VNextAgentTaskV1 | VNextAgentTaskV2 | VNextAgentTaskV3 | VNextAgentTaskV4;
 
 const agentTaskFields = {
   taskId: TaskIdSchema,
@@ -212,10 +284,19 @@ export const VNextAgentTaskV3Schema: z.ZodType<VNextAgentTaskV3> = z
   })
   .strict();
 
+export const VNextAgentTaskV4Schema: z.ZodType<VNextAgentTaskV4> = z
+  .object({
+    schemaVersion: z.literal(4),
+    ...agentTaskFields,
+    profile: VNextAgentSemanticProfileV1Schema,
+  })
+  .strict();
+
 export const VNextAgentTaskSchema: z.ZodType<VNextAgentTask> = z.union([
   VNextAgentTaskV1Schema,
   VNextAgentTaskV2Schema,
   VNextAgentTaskV3Schema,
+  VNextAgentTaskV4Schema,
 ]);
 
 export interface VNextAgentTurnV1 {

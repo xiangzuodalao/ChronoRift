@@ -16,11 +16,14 @@ import {
 } from "@chronorift/domain";
 import {
   DEFAULT_LIFECYCLE_SIDECAR_TARGETS,
+  DEFAULT_SEMANTIC_SIDECAR_TARGETS,
   DEFAULT_RUNTIME_SIDECAR_TARGETS,
   V03_FIXTURE_IDS,
   asV03FixtureName,
   createLifecycleRuntimeSidecarSource,
   createLifecycleVanillaSmokeSidecarSource,
+  createSemanticRuntimeSidecarSource,
+  createSemanticVanillaSmokeSidecarSource,
   createRuntimeSidecarSource,
   doctorGodot,
   installGodot,
@@ -107,6 +110,8 @@ import {
 import { SandboxPolicySchema } from "./vnext/contracts.js";
 import { readGodotProjectDescriptorSnapshotV1 } from "./vnext/godot-project-descriptor.js";
 import { ManagedGodotLifecycleRuntimeCapabilityV1Schema } from "./vnext/managed-godot-lifecycle-runtime.js";
+import { ManagedGodotSemanticRuntimeCapabilityV1Schema } from "./vnext/managed-godot-semantic-runtime.js";
+import { readGodotSemanticAdapterProfileSnapshotV1 } from "./vnext/semantic-adapter-profile.js";
 import { createSandboxTaskRuntimeRoot } from "./vnext/sandbox-preflight.js";
 
 interface Arguments {
@@ -1093,6 +1098,7 @@ const taskSandboxFlagNames = [
   "godot-bin",
   "addon-root",
   "lifecycle-addon-root",
+  "semantic-addon-root",
 ] as const;
 
 async function existingCanonicalPath(path: string): Promise<string> {
@@ -1144,7 +1150,7 @@ async function taskSandboxRequest(
   args: Arguments,
   taskId: ReturnType<typeof asTaskId>,
   createRuntimeRoot: boolean,
-  lifecycleProfileOnCreate = false,
+  externalProfileOnCreate: "fixture" | "lifecycle" | "semantic" = "fixture",
 ) {
   const configuredTaskStorageRoot = flag(
     args,
@@ -1173,10 +1179,21 @@ async function taskSandboxRequest(
       )
     ).schemaVersion === 2;
   const lifecycleProfile = createRuntimeRoot
-    ? lifecycleProfileOnCreate
+    ? externalProfileOnCreate === "lifecycle"
     : await new VNextTaskStore(runtimeRoot)
         .readJson(taskId, "managed-lifecycle-runtime.json", (value) =>
           ManagedGodotLifecycleRuntimeCapabilityV1Schema.parse(value),
+        )
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (error instanceof ArtifactNotFoundError) return false;
+          throw error;
+        });
+  const semanticProfile = createRuntimeRoot
+    ? externalProfileOnCreate === "semantic"
+    : await new VNextTaskStore(runtimeRoot)
+        .readJson(taskId, "managed-semantic-runtime.json", (value) =>
+          ManagedGodotSemanticRuntimeCapabilityV1Schema.parse(value),
         )
         .then(() => true)
         .catch((error: unknown) => {
@@ -1214,7 +1231,7 @@ async function taskSandboxRequest(
     existingCanonicalPath(flag(args, "ls-bin") ?? "/usr/bin/ls"),
   ]);
   const managedGodotRuntime =
-    managedGodotEnabled && !lifecycleProfile
+    managedGodotEnabled && !lifecycleProfile && !semanticProfile
       ? await (async () => {
           const [nodePath, godotPath, addonRoot] = await Promise.all([
             existingCanonicalPath(
@@ -1273,6 +1290,40 @@ async function taskSandboxRequest(
         } as const;
       })()
     : undefined;
+  const managedGodotSemanticRuntime = semanticProfile
+    ? await (async () => {
+        const [nodePath, godotPath, addonRoot] = await Promise.all([
+          existingCanonicalPath(
+            requiredFlag(args, "node-bin", "CHRONORIFT_NODE_BIN"),
+          ),
+          existingCanonicalPath(requiredFlag(args, "godot-bin", "GODOT_BIN")),
+          existingCanonicalPath(
+            requiredFlag(
+              args,
+              "semantic-addon-root",
+              "CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT",
+            ),
+          ),
+        ]);
+        return {
+          nodePath,
+          godotPath,
+          shellPath: busyboxPath,
+          lddPath,
+          addonRoot,
+          vanillaSidecarSource: createSemanticVanillaSmokeSidecarSource({
+            godotExecutable: DEFAULT_SEMANTIC_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.runtimeRoot,
+          }),
+          semanticSidecarSource: createSemanticRuntimeSidecarSource({
+            godotExecutable: DEFAULT_SEMANTIC_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.runtimeRoot,
+          }),
+        } as const;
+      })()
+    : undefined;
   return {
     taskId,
     runtimeRoot,
@@ -1298,6 +1349,9 @@ async function taskSandboxRequest(
     ...(managedGodotLifecycleRuntime === undefined
       ? {}
       : { managedGodotLifecycleRuntime }),
+    ...(managedGodotSemanticRuntime === undefined
+      ? {}
+      : { managedGodotSemanticRuntime }),
   } as const;
 }
 
@@ -1308,6 +1362,7 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     "task-id",
     "trusted-fixture",
     "project-descriptor",
+    "semantic-adapter-profile",
     "provider",
     "model",
     "thinking",
@@ -1330,11 +1385,26 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     descriptorPath === undefined
       ? undefined
       : await readGodotProjectDescriptorSnapshotV1(descriptorPath);
+  const semanticAdapterPath = flag(args, "semantic-adapter-profile");
+  if (
+    semanticAdapterPath !== undefined &&
+    externalProjectDescriptor === undefined
+  ) {
+    throw new Error("--semantic-adapter-profile requires --project-descriptor");
+  }
+  const semanticAdapterProfile =
+    semanticAdapterPath === undefined
+      ? undefined
+      : await readGodotSemanticAdapterProfileSnapshotV1(semanticAdapterPath);
   const runtime = await taskSandboxRequest(
     args,
     taskId,
     true,
-    externalProjectDescriptor !== undefined,
+    externalProjectDescriptor === undefined
+      ? "fixture"
+      : semanticAdapterProfile === undefined
+        ? "lifecycle"
+        : "semantic",
   );
   const timeoutMs =
     flag(args, "timeout-ms") === undefined
@@ -1351,7 +1421,12 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
                 join(cwd, "fixtures", "godot-frame-input-window"),
             ),
           }
-        : { externalProjectDescriptor }),
+        : {
+            externalProjectDescriptor,
+            ...(semanticAdapterProfile === undefined
+              ? {}
+              : { semanticAdapterProfile }),
+          }),
       goal: requiredFlag(args, "goal"),
       provider:
         flag(args, "provider", "CHRONORIFT_PI_PROVIDER") ?? DEFAULT_PI_PROVIDER,
@@ -1432,7 +1507,7 @@ function printHelp(): void {
     `  pnpm task continue --task-id ID --prompt TEXT\n  pnpm task show --task-id ID\n  pnpm task export --task-id ID --output FILE\n  pnpm task discard --task-id ID\n`,
   );
   process.stdout.write(
-    `  New game Tasks require --task-storage-root PATH, --node-bin PATH, and --godot-bin PATH; M3 uses --addon-root, while external lifecycle Tasks require --project-descriptor and --lifecycle-addon-root (or CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT). Continuations, exports, and discards revalidate the persisted profile without rereading the descriptor.\n  --runtime-root must be a strict child of the bounded Task storage root (default: TASK_STORAGE_ROOT/runtime). Task execution also requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT).\n\n`,
+    `  New game Tasks require --task-storage-root PATH, --node-bin PATH, and --godot-bin PATH. M3 uses --addon-root. External lifecycle Tasks use --project-descriptor and --lifecycle-addon-root. E2 semantic Tasks additionally use --semantic-adapter-profile and --semantic-addon-root (or CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT). Continuations, exports, and discards revalidate persisted bytes without rereading either Host profile file.\n  --runtime-root must be a strict child of the bounded Task storage root (default: TASK_STORAGE_ROOT/runtime). Task execution also requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT).\n\n`,
   );
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,

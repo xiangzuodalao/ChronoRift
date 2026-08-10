@@ -5,6 +5,7 @@ export * from "./godot-environment.js";
 export * from "./godot-wire-client.js";
 export * from "./installer.js";
 export * from "./lifecycle-wire-client.js";
+export * from "./semantic-wire-client.js";
 export * from "./external-source-policy.js";
 export * from "./lifecycle-sidecar-source.js";
 export * from "./runtime-sidecar-source.js";

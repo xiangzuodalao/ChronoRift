@@ -18,6 +18,7 @@
     "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
     "test:vnext:godot-sandbox": "vitest run --config vitest.godot-sandbox.config.ts",
     "test:vnext:external-project": "vitest run --config vitest.external-project.config.ts",
+    "test:vnext:external-semantic": "vitest run --config vitest.external-semantic.config.ts",
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm run test",

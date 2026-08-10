@@ -16,6 +16,11 @@ checkpoint、fork、replay、query 和 compare 原语。
 > strict descriptor，Agent 只获得 capabilities/launch/status/stop 四项生命周期能力。M4 的代码入口和 required Host Gate
 > 即使已经存在，也必须以 `test:vnext:external-project` 的实际输出为准；没有该输出时只能写“已实现路径”，
 > 不能写成外部项目接入已经得到证明。
+>
+> 源码还包含实验性 **E2 external semantic slice**：它在 M4 source/sandbox 基础上增加独立 Task V4、独立
+> semantic wire/Addon、data-only adapter profile，以及 Timer + spawned-entity 的 query/checkpoint/restore/fork/
+> trace/replay/compare。所有状态操作都明确是 `descriptive_only`；public exposed task Gate 只验证 plumbing，
+> 不证明智能诊断、等价恢复、修复正确性、独立验收或泛化。
 
 ## 产品契约（vNext 目标）
 
@@ -180,6 +185,34 @@ corepack pnpm task -- start \
 
 `continue/show/export/discard` 沿用统一 Task 生命周期；M4 Task 从持久化 profile 选择 lifecycle-only runtime，
 不会把旧 Task 或 M3 capability 静默迁移成新语义。
+
+### 实验性 E2 external semantic 入口
+
+E2 不扩展 M4 wire，而是使用 `godot-external-semantic-v1` Task profile、
+`chronorift-godot-semantic-v1` wire、独立 `chronorift_semantic` Addon 和一份冻结、只含数据的 adapter profile。
+当前 adapter 只声明一个 target scene 及其 Timer/spawn 投影；产品 core 不含项目名、根因、期望修复或 evaluator
+oracle。Agent 获得精确 11-tool catalog：四个 lifecycle 工具，加 `game_query`、checkpoint create/restore、
+fork、trace create/replay 和 compare。capture、input、step 和 controls 在该 profile 中不可用。
+
+Checkpoint 只捕获 adapter 声明的 subject 配置、Timer 配置/运行态和已生成实体投影。scene-private state、
+signals/callables、RNG、render/audio、外部状态与 pending engine work 均为 uncontrolled；restore、fork、replay、
+compare 即使成功也不建立 equivalent start 或因果结论。语义事件是 command-endpoint sampling，不能冒充逐帧
+历史。
+
+```bash
+export CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT=/path/to/chronorift/godot/addons/chronorift_semantic
+
+corepack pnpm task -- start \
+  --project /path/to/clean/moddable-platformer \
+  --project-descriptor /path/to/moddable-platformer.project.v1.json \
+  --semantic-adapter-profile /path/to/moddable-platformer.semantic-adapter.v1.json \
+  --semantic-addon-root "$CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT" \
+  --goal "Inspect the Timer and spawned-entity behavior"
+```
+
+首个 E2 conformance 使用上游明确暴露的 `enemy_spawner_broken` 场景。文件名、注释和 FIXME 已泄露问题，
+所以它只能证明 11-tool/sandbox/lineage 管线，不是模型诊断能力证据，也不是独立 acceptance。真正的能力主张
+仍需要产品与 adapter freeze 之后选取的隔离 holdout、独立 evaluator、预注册预算与全部失败结果。
 
 Linux Host 必须先提供受委派的 cgroup v2 root，以及由当前用户拥有、mode `0700` 的独立 Task storage
 mount；mount 只接受精确识别的 `tmpfs`、`ext4` 或 `xfs`，总容量不得超过 1 GiB、总 inode 不得超过 131072。
@@ -346,6 +379,7 @@ Godot 根因 taxonomy。
 | `corepack pnpm test:sandbox`                        | 真实 Host coding sandbox conformance；需要 delegated cgroup   |
 | `corepack pnpm test:vnext:godot-sandbox`            | M3 Godot + sidecar + sandbox 联合 conformance                 |
 | `corepack pnpm test:vnext:external-project`         | M4 冻结外部项目 lifecycle-only Host conformance               |
+| `corepack pnpm test:vnext:external-semantic`        | E2 Timer/spawn 11-tool public-exposed Host conformance        |
 | `corepack pnpm test:vnext:pi-live`                  | 真实 Luna/max 的 vNext Pi Session/tool smoke；非 release Gate |
 | `corepack pnpm test:vnext:live`                     | release-only Luna/max + 外部 13 场景 acceptance；非默认 CI    |
 | `corepack pnpm demo:v04`                            | v0.4 固定 workflow 的离线完整诊断                             |
@@ -435,6 +469,8 @@ fixtures/godot-*                 四个受支持的真实 Godot Fixture
   onboarding。首个 Gate 只证明一个冻结 checkout；URL、commit 和 content hash 都不是签名或上游 attestation。
 - M4 不提供 gameplay input/query/capture/checkpoint/fork/replay/compare，不证明候选修改正确，也不支持把单一
   conformance target 外推成跨项目兼容性或相对 coding agent 优势。
+- E2 只增加声明式 Timer/spawn 投影；它仍不支持任意项目语义、input、step、capture、视觉、音频或 GPU。
+  checkpoint/restore/fork/replay/compare 全部是 `descriptive_only`，public exposed spawner task 不能证明诊断能力。
 - M4 不把 Host checkout 挂入 sandbox；它先物化 Task-owned candidate，Godot 对该 `/workspace` view 只读，
   再使用 writable operation-stage 容纳 import。stage 在 lifecycle
   endpoints 重验；同一 Godot 进程在窗口内修改、加载再恢复源码的行为仍不可排除，因此当前 slice 不提供
@@ -546,9 +582,13 @@ export CHRONORIFT_TEST_EXTERNAL_PROJECT_DESCRIPTOR=/path/to/moddable-platformer.
 export CHRONORIFT_TEST_EXTERNAL_PROJECT_CONFORMANCE_SPEC=/path/to/moddable-platformer.conformance.v1.json
 export CHRONORIFT_TEST_EXTERNAL_PROJECT_EVIDENCE_SCHEMA=/path/to/evidence-summary.schema.v1.json
 export CHRONORIFT_TEST_GODOT_LIFECYCLE_ADDON_ROOT=/path/to/chronorift/godot/addons/chronorift_lifecycle
+export CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT=/path/to/chronorift/godot/addons/chronorift_semantic
+export CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE=/path/to/moddable-platformer.semantic-adapter.v1.json
 export CHRONORIFT_TEST_EVIDENCE_OUTPUT=/path/to/new/sanitized-evidence.json
+export CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT=/path/to/new/sanitized-semantic-evidence.json
 
 corepack pnpm test:vnext:external-project
+corepack pnpm test:vnext:external-semantic
 ```
 
 该命令自身不得 clone 或 fetch，也不会因缺少 Host 条件而 skip。CI 可以在 Host provisioning 阶段联网取得
@@ -563,6 +603,8 @@ attestation。summary 也不是签名、provider attestation 或产品 verdict�
 不声称另起 CLI 进程或单独证明 CLI argv parsing。本文列出命令不代表当前 checkout 已产生通过输出。
 clock/probe 当前只保留 lifecycle endpoint samples，并明确记录中间位置
 未采样及 observer effect 未知；健康运行不能被描述成逐帧完整观测。
+E2 evidence 另固定标注 `public_exposed_plumbing_conformance` 和排除的五类 claim；该 evidence 同样不是签名、
+外部 attestation、修复验收或跨项目能力证明。
 
 Godot、checkpoint、replay、schema、canonicalization、branching 或 storage 变更还应运行相应成功、失败、
 corruption、reference-integrity 和 determinism/nondeterminism 覆盖；需要本机 Godot 的改动再运行

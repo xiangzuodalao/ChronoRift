@@ -28,9 +28,12 @@ import {
 import {
   DEFAULT_LIFECYCLE_SIDECAR_TARGETS,
   DEFAULT_RUNTIME_SIDECAR_TARGETS,
+  DEFAULT_SEMANTIC_SIDECAR_TARGETS,
   createLifecycleRuntimeSidecarSource,
   createLifecycleVanillaSmokeSidecarSource,
   createRuntimeSidecarSource,
+  createSemanticRuntimeSidecarSource,
+  createSemanticVanillaSmokeSidecarSource,
 } from "@chronorift/godot-adapter";
 import {
   VNextRuntimeStore,
@@ -67,12 +70,15 @@ import {
   getM1TaskDuplexSandboxPort,
   getM1TaskGameRuntimeContext,
   getM1TaskExternalGodotRuntimeContext,
+  getM1TaskExternalGodotSemanticRuntimeContext,
   prepareM1TaskEnvironment,
   resumeM1TaskEnvironment,
   suspendM1Task,
 } from "./m1-task-environment.js";
 import { createManagedGodotLifecycleRuntimeV1 } from "./managed-godot-lifecycle-runtime.js";
+import { createManagedGodotSemanticRuntimeV1 } from "./managed-godot-semantic-runtime.js";
 import { readGodotProjectDescriptorSnapshotV1 } from "./godot-project-descriptor.js";
+import { readGodotSemanticAdapterProfileSnapshotV1 } from "./semantic-adapter-profile.js";
 import {
   ManagedGodotRuntimeCapabilityV1Schema,
   createManagedGodotRuntimeV1,
@@ -86,6 +92,7 @@ import {
   type TaskSandboxBrokerV1,
 } from "./sandbox-broker.js";
 import type { SandboxHostPreflightRequest } from "./sandbox-preflight.js";
+import { preflightCleanExternalGodotProject } from "./source-preflight.js";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -267,6 +274,42 @@ const managedLifecycleRuntimeInput = {
   addonRoot: "/trusted/addons/chronorift_lifecycle",
   vanillaSidecarSource: lifecycleVanillaSidecarSource,
   lifecycleSidecarSource: lifecycleRuntimeSidecarSource,
+} as const;
+const semanticSidecarOptions = {
+  godotExecutable: DEFAULT_SEMANTIC_SIDECAR_TARGETS.godotExecutable,
+  workspaceRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.workspaceRoot,
+  runtimeRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.runtimeRoot,
+} as const;
+const semanticVanillaSidecarSource = createSemanticVanillaSmokeSidecarSource(
+  semanticSidecarOptions,
+);
+const semanticRuntimeSidecarSource = createSemanticRuntimeSidecarSource(
+  semanticSidecarOptions,
+);
+const managedSemanticRuntime = createManagedGodotSemanticRuntimeV1({
+  doctorVersion: "4.7.1.stable.official.a13da4feb",
+  nodeTarget: DEFAULT_SEMANTIC_SIDECAR_TARGETS.nodeExecutable,
+  godotTarget: DEFAULT_SEMANTIC_SIDECAR_TARGETS.godotExecutable,
+  toolchain: {
+    capability: managedToolchainCapability,
+    binding: managedRuntime.binding.toolchain,
+  },
+  vanillaSidecarSource: semanticVanillaSidecarSource,
+  semanticSidecarSource: semanticRuntimeSidecarSource,
+  addonFiles: [
+    {
+      relativePath: "semantic_probe.gd",
+      bytes: Buffer.from("extends Node\n", "utf8"),
+    },
+  ],
+});
+const managedSemanticRuntimeInput = {
+  nodePath: "/trusted/node",
+  godotPath: "/trusted/godot",
+  lddPath: "/trusted/ldd",
+  addonRoot: "/trusted/addons/chronorift_semantic",
+  vanillaSidecarSource: semanticVanillaSidecarSource,
+  semanticSidecarSource: semanticRuntimeSidecarSource,
 } as const;
 
 interface TestRuntimeRecord {
@@ -807,6 +850,82 @@ const prepareExternalReadyEnvironment = async (input: {
   };
 };
 
+const prepareSemanticReadyEnvironment = async (input: {
+  readonly root: string;
+  readonly taskId: TaskId;
+}) => {
+  const { project, descriptorPath } = await createCleanExternalRepository(
+    input.root,
+  );
+  const descriptorSnapshot =
+    await readGodotProjectDescriptorSnapshotV1(descriptorPath);
+  const runtimeRoot = join(input.root, "runtime");
+  await mkdir(runtimeRoot);
+  const verified = await preflightCleanExternalGodotProject({
+    projectPath: project,
+    descriptorSnapshot,
+    sourceRepositoryExclusionRoots: [runtimeRoot],
+  });
+  const adapterPath = join(input.root, "semantic-adapter.json");
+  await writeFile(
+    adapterPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      profileKind: "chronorift-godot-semantic-adapter",
+      adapterKind: "timer_spawn_v1",
+      projectCapabilitySha256: verified.projectCapability.capabilitySha256,
+      targetScene: "res://main.tscn",
+      spawnIntervalSeconds: 1,
+      checkpointBarrier: "adapter_process_tail",
+      limits: {
+        activeRuntimesMaximum: 2,
+        launchesPerTurnMaximum: 8,
+        entityMaximum: 256,
+        eventMaximum: 4096,
+        rawSemanticBytesMaximum: 2_097_152,
+        checkpointBytesMaximum: 1_048_576,
+        traceSamplesMaximum: 32,
+        traceTicksMaximum: 600,
+        queryRowsMaximum: 200,
+      },
+    }),
+  );
+  const semanticAdapterProfile =
+    await readGodotSemanticAdapterProfileSnapshotV1(adapterPath);
+  const environment = await prepareM1TaskEnvironment(
+    {
+      taskId: input.taskId,
+      projectPath: project,
+      externalProjectDescriptor: descriptorSnapshot,
+      semanticAdapterProfile,
+      runtimeRoot,
+      sandboxHost: {
+        delegatedCgroupRoot: "/test/cgroup",
+        bwrapPath: "/test/bwrap",
+        prlimitPath: "/test/prlimit",
+        busyboxPath: "/test/busybox",
+        taskStorageRoot: input.root,
+      },
+      sandboxToolchain: {
+        lddPath: "/usr/bin/ldd",
+        commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+      },
+      managedGodotSemanticRuntime: managedSemanticRuntimeInput,
+    },
+    {
+      ...managedEnvironmentOverrides(),
+      preflightManagedSemanticRuntime: async () => managedSemanticRuntime,
+    },
+  );
+  return {
+    adapterPath,
+    descriptorPath,
+    environment,
+    project,
+    runtimeRoot,
+  };
+};
+
 describe("internal M1 Task environment", () => {
   it("persists and resumes an external lifecycle Task without rereading the Host descriptor", async () => {
     const root = await createHarnessRoot();
@@ -877,6 +996,64 @@ describe("internal M1 Task environment", () => {
     expect(
       getM1TaskExternalGodotRuntimeContext(resumed).baselineSourceHash,
     ).toBe(prepared.environment.workspace.selectedTreeSha256);
+    await discardM1Task(resumed);
+  });
+
+  it("persists and resumes a semantic Task from frozen descriptor and adapter bytes", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_external_semantic");
+    const prepared = await prepareSemanticReadyEnvironment({ root, taskId });
+    if (prepared.environment.sourceKind !== "godot-external-semantic-v1") {
+      throw new Error("expected a semantic Godot Task environment");
+    }
+    const context = getM1TaskExternalGodotSemanticRuntimeContext(
+      prepared.environment,
+    );
+    expect(context.semanticAdapterProfile.profile.projectCapabilitySha256).toBe(
+      context.projectCapability.capabilitySha256,
+    );
+    expect(context.managedSemanticRuntime.managedRuntimeId).toBe(
+      managedSemanticRuntime.capability.managedRuntimeId,
+    );
+    const store = new VNextTaskStore(prepared.runtimeRoot);
+    await expect(
+      store.readJson(taskId, "semantic-adapter-profile.json", (value) => value),
+    ).resolves.toMatchObject({
+      adapterProfileSha256: context.semanticAdapterProfile.adapterProfileSha256,
+    });
+
+    await suspendM1Task(prepared.environment);
+    await Promise.all([
+      unlink(prepared.descriptorPath),
+      unlink(prepared.adapterPath),
+    ]);
+    const resumed = await resumeM1TaskEnvironment(
+      {
+        taskId,
+        runtimeRoot: prepared.runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+          taskStorageRoot: root,
+        },
+        sandboxToolchain: {
+          lddPath: "/usr/bin/ldd",
+          commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+        },
+        managedGodotSemanticRuntime: managedSemanticRuntimeInput,
+      },
+      {
+        ...managedEnvironmentOverrides(),
+        preflightManagedSemanticRuntime: async () => managedSemanticRuntime,
+      },
+    );
+    expect(resumed.sourceKind).toBe("godot-external-semantic-v1");
+    expect(
+      getM1TaskExternalGodotSemanticRuntimeContext(resumed)
+        .semanticAdapterProfile.adapterProfileSha256,
+    ).toBe(context.semanticAdapterProfile.adapterProfileSha256);
     await discardM1Task(resumed);
   });
 

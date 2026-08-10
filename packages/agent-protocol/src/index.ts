@@ -7,3 +7,4 @@ export * from "./vnext-game-tool-inputs.js";
 export * from "./vnext-game-tool-outputs.js";
 export * from "./vnext-game-tools.js";
 export * from "./vnext-lifecycle-game-tools.js";
+export * from "./vnext-semantic-game-tools.js";

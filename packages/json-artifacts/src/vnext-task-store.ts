@@ -38,6 +38,8 @@ export type VNextTaskJsonSlot =
   | "sandbox-toolchain.json"
   | "managed-runtime.json"
   | "managed-lifecycle-runtime.json"
+  | "managed-semantic-runtime.json"
+  | "semantic-adapter-profile.json"
   | "sandbox-policy.json"
   | "agent-task.json"
   | "patch.json";
@@ -118,6 +120,8 @@ const JSON_SLOTS: readonly VNextTaskJsonSlot[] = [
   "sandbox-toolchain.json",
   "managed-runtime.json",
   "managed-lifecycle-runtime.json",
+  "managed-semantic-runtime.json",
+  "semantic-adapter-profile.json",
   "sandbox-policy.json",
   "agent-task.json",
   "patch.json",

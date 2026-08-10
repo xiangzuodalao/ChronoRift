@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profileKind": "chronorift-godot-semantic-adapter",
+  "adapterKind": "timer_spawn_v1",
+  "projectCapabilitySha256": "5fcb49b2a8dc64e7f38af7c26e630dec67799bf0dd1a713310baefac32c58836",
+  "targetScene": "res://components/spawner/enemy_spawner_broken.tscn",
+  "spawnIntervalSeconds": 1,
+  "checkpointBarrier": "adapter_process_tail",
+  "limits": {
+    "activeRuntimesMaximum": 2,
+    "launchesPerTurnMaximum": 8,
+    "entityMaximum": 256,
+    "eventMaximum": 4096,
+    "rawSemanticBytesMaximum": 2097152,
+    "checkpointBytesMaximum": 1048576,
+    "traceSamplesMaximum": 32,
+    "traceTicksMaximum": 600,
+    "queryRowsMaximum": 200
+  }
+}

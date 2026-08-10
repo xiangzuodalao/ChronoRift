@@ -233,6 +233,7 @@ jobs:
           set -euo pipefail
           storage_root="/mnt/chronorift-m4-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           evidence_output="${RUNNER_TEMP}/chronorift-m4-external-project-evidence.json"
+          semantic_evidence_output="${RUNNER_TEMP}/chronorift-e2-external-semantic-evidence.json"
           cleanup_storage() {
             main_status="$?"
             cleanup_status=0
@@ -254,6 +255,7 @@ jobs:
             exit "${cleanup_status}"
           }
           test ! -e "${evidence_output}"
+          test ! -e "${semantic_evidence_output}"
           sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 "${storage_root}"
           trap cleanup_storage EXIT
           sudo mount -t tmpfs \
@@ -272,9 +274,11 @@ jobs:
             --setenv=CHRONORIFT_NODE_BIN=/usr/lib/chronorift-ci/bin/node-22.23.1 \
             --setenv=GODOT_BIN=/usr/lib/chronorift-ci/bin/godot-4.7.1 \
             --setenv=CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT="${GITHUB_WORKSPACE}/godot/addons/chronorift_lifecycle" \
+            --setenv=CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT="${GITHUB_WORKSPACE}/godot/addons/chronorift_semantic" \
             --setenv=CHRONORIFT_TEST_NODE_BIN=/usr/lib/chronorift-ci/bin/node-22.23.1 \
             --setenv=CHRONORIFT_TEST_GODOT_BIN=/usr/lib/chronorift-ci/bin/godot-4.7.1 \
             --setenv=CHRONORIFT_TEST_GODOT_LIFECYCLE_ADDON_ROOT="${GITHUB_WORKSPACE}/godot/addons/chronorift_lifecycle" \
+            --setenv=CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT="${GITHUB_WORKSPACE}/godot/addons/chronorift_semantic" \
             --setenv=CHRONORIFT_TEST_TASK_STORAGE_ROOT="${storage_root}" \
             --setenv=CHRONORIFT_TEST_BWRAP_BIN=/usr/bin/bwrap \
             --setenv=CHRONORIFT_TEST_PRLIMIT_BIN=/usr/bin/prlimit \
@@ -288,15 +292,19 @@ jobs:
             --setenv=CHRONORIFT_TEST_LS_BIN=/usr/bin/ls \
             --setenv=CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT="${CHRONORIFT_CI_EXTERNAL_PROJECT_ROOT}" \
             --setenv=CHRONORIFT_TEST_EXTERNAL_PROJECT_DESCRIPTOR="${GITHUB_WORKSPACE}/testdata/vnext/external-project/moddable-platformer.project.v1.json" \
+            --setenv=CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE="${GITHUB_WORKSPACE}/testdata/vnext/external-project/moddable-platformer.semantic-adapter.v1.json" \
             --setenv=CHRONORIFT_TEST_EXTERNAL_PROJECT_CONFORMANCE_SPEC="${GITHUB_WORKSPACE}/testdata/vnext/external-project/moddable-platformer.conformance.v1.json" \
             --setenv=CHRONORIFT_TEST_EXTERNAL_PROJECT_EVIDENCE_SCHEMA="${GITHUB_WORKSPACE}/testdata/vnext/external-project/evidence-summary.schema.v1.json" \
             --setenv=CHRONORIFT_TEST_EVIDENCE_OUTPUT="${evidence_output}" \
+            --setenv=CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT="${semantic_evidence_output}" \
             /bin/bash .github/scripts/run-vnext-external-project-conformance.sh
-      - name: Upload sanitized M4 conformance evidence
+      - name: Upload sanitized M4 and E2 conformance evidence
         uses: actions/upload-artifact@v4
         with:
-          name: chronorift-m4-external-project-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/chronorift-m4-external-project-evidence.json
+          name: chronorift-external-project-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/chronorift-m4-external-project-evidence.json
+            ${{ runner.temp }}/chronorift-e2-external-semantic-evidence.json
           if-no-files-found: error
           retention-days: 30
       - name: Remove frozen external project checkout

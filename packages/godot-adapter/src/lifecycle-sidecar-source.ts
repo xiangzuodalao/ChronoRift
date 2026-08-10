@@ -15,6 +15,8 @@ import {
 
 export const GODOT_LIFECYCLE_OVERRIDE_SOURCE =
   '[autoload]\n\nChronoRiftLifecycle="*res://addons/chronorift_lifecycle/lifecycle_probe.gd"\n';
+export const GODOT_SEMANTIC_OVERRIDE_SOURCE =
+  '[autoload]\n\nChronoRiftSemantic="*res://addons/chronorift_semantic/semantic_probe.gd"\n';
 
 export const DEFAULT_LIFECYCLE_SIDECAR_TARGETS = Object.freeze({
   nodeExecutable: DEFAULT_RUNTIME_SIDECAR_TARGETS.nodeExecutable,
@@ -35,6 +37,12 @@ export const DEFAULT_LIFECYCLE_SIDECAR_TARGETS = Object.freeze({
   managedOverrideFile: "/run/chronorift/overlay/project/override.cfg",
 } as const);
 
+export const DEFAULT_SEMANTIC_SIDECAR_TARGETS = Object.freeze({
+  ...DEFAULT_LIFECYCLE_SIDECAR_TARGETS,
+  managedAddonRoot:
+    "/run/chronorift/overlay/project/addons/chronorift_semantic",
+} as const);
+
 export { MANAGED_FONTCONFIG_SOURCE as LIFECYCLE_MANAGED_FONTCONFIG_SOURCE };
 
 export interface LifecycleSidecarSourceOptions {
@@ -42,6 +50,15 @@ export interface LifecycleSidecarSourceOptions {
   readonly workspaceRoot: string;
   readonly runtimeRoot: string;
   readonly godotArgsPrefix?: readonly string[] | undefined;
+  readonly managedProfile?:
+    | {
+        readonly runtimeProfile: "chronorift-managed-godot-semantic-v1";
+        readonly protocolProfile: "chronorift-godot-semantic-v1";
+        readonly addonDirectory: "chronorift_semantic";
+        readonly reservedAutoload: "ChronoRiftSemantic";
+        readonly adapterProfileHash: true;
+      }
+    | undefined;
 }
 
 const assertAbsoluteNormalized = (label: string, value: string): void => {
@@ -62,6 +79,13 @@ const createLifecycleSidecarSource = (
   assertAbsoluteNormalized("workspaceRoot", options.workspaceRoot);
   assertAbsoluteNormalized("runtimeRoot", options.runtimeRoot);
   const argsPrefix = [...(options.godotArgsPrefix ?? [])];
+  const managedProfile = options.managedProfile ?? {
+    runtimeProfile: GODOT_LIFECYCLE_RUNTIME_PROFILE_V1,
+    protocolProfile: "chronorift-godot-lifecycle-v1" as const,
+    addonDirectory: "chronorift_lifecycle" as const,
+    reservedAutoload: "ChronoRiftLifecycle" as const,
+    adapterProfileHash: false as const,
+  };
   if (
     argsPrefix.length > 16 ||
     argsPrefix.some(
@@ -82,14 +106,22 @@ const path = require("node:path");
 const childProcess = require("node:child_process");
 
 const OPERATION = ${JSON.stringify(operation)};
-const RUNTIME_PROFILE = ${JSON.stringify(GODOT_LIFECYCLE_RUNTIME_PROFILE_V1)};
-const PROTOCOL_PROFILE = "chronorift-godot-lifecycle-v1";
+const RUNTIME_PROFILE = ${JSON.stringify(managedProfile.runtimeProfile)};
+const PROTOCOL_PROFILE = ${JSON.stringify(managedProfile.protocolProfile)};
+const ADDON_DIRECTORY = ${JSON.stringify(managedProfile.addonDirectory)};
+const RESERVED_AUTOLOAD = ${JSON.stringify(managedProfile.reservedAutoload)};
+const REQUIRES_ADAPTER_PROFILE_HASH = ${JSON.stringify(managedProfile.adapterProfileHash)};
+const MANAGED_RUNTIME_ID = ${
+    managedProfile.adapterProfileHash
+      ? "/^managed-godot-semantic-runtime:v1:[a-f0-9]{64}$/u"
+      : "/^managed-godot-runtime:v1:[a-f0-9]{64}$/u"
+  };
 const GODOT_EXECUTABLE = ${JSON.stringify(options.godotExecutable)};
 const GODOT_ARGS_PREFIX = Object.freeze(${JSON.stringify(argsPrefix)});
 const WORKSPACE_ROOT = ${JSON.stringify(options.workspaceRoot)};
 const RUNTIME_ROOT = ${JSON.stringify(options.runtimeRoot)};
 const PROJECT_ROOT = path.join(RUNTIME_ROOT, OPERATION === "vanilla_smoke" ? "vanilla/project" : "overlay/project");
-const ADDON_ROOT = path.join(PROJECT_ROOT, "addons", "chronorift_lifecycle");
+const ADDON_ROOT = path.join(PROJECT_ROOT, "addons", ADDON_DIRECTORY);
 const OVERRIDE_FILE = path.join(PROJECT_ROOT, "override.cfg");
 const PROC_SELF_FD = "/proc/self/fd";
 const MAX_LAUNCH_BYTES = 8 * 1024 * 1024;
@@ -180,7 +212,7 @@ const parseLaunch = (json) => {
   ];
   const operationKeys = OPERATION === "vanilla_smoke"
     ? ["importTimeoutMs", "vanillaTimeoutMs", "stabilityWindowMs"]
-    : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "importTimeoutMs", "startupTimeoutMs", "executionTimeoutMs"];
+    : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "importTimeoutMs", "startupTimeoutMs", "executionTimeoutMs", ...(REQUIRES_ADAPTER_PROFILE_HASH ? ["adapterProfileSha256"] : [])];
   if (!exactKeys(value, [...common, ...operationKeys]) || value.schemaVersion !== 1 ||
       value.runtimeProfile !== RUNTIME_PROFILE || value.operation !== OPERATION) {
     throw new Error("launch prelude has an unsupported lifecycle shape or profile");
@@ -188,7 +220,7 @@ const parseLaunch = (json) => {
   for (const key of ["taskId", "buildId", "runtimeId", "executionId"]) {
     if (!assertResourceId(value[key])) throw new Error("launch resource identity is invalid");
   }
-  if (typeof value.managedRuntimeId !== "string" || !/^managed-godot-runtime:v1:[a-f0-9]{64}$/u.test(value.managedRuntimeId) ||
+  if (typeof value.managedRuntimeId !== "string" || !MANAGED_RUNTIME_ID.test(value.managedRuntimeId) ||
       typeof value.candidateSourceHash !== "string" || !HASH.test(value.candidateSourceHash) || !assertDiagnosticBounds(value)) {
     throw new Error("launch identity or diagnostic bounds are invalid");
   }
@@ -202,6 +234,7 @@ const parseLaunch = (json) => {
       typeof value.token !== "string" || !HASH.test(value.token) ||
       typeof value.overlayHash !== "string" || !HASH.test(value.overlayHash) ||
       typeof value.addonHash !== "string" || !HASH.test(value.addonHash) ||
+      (REQUIRES_ADAPTER_PROFILE_HASH && (typeof value.adapterProfileSha256 !== "string" || !HASH.test(value.adapterProfileSha256))) ||
       typeof value.expectedMainScene !== "string" || value.expectedMainScene.length < 1 || value.expectedMainScene.length > 1024 ||
       !["res://", "uid://"].some((prefix) => value.expectedMainScene.startsWith(prefix)) ||
       !Number.isInteger(value.importTimeoutMs) || value.importTimeoutMs < 1000 || value.importTimeoutMs > 120000 ||
@@ -306,7 +339,7 @@ const prepareProjectRoot = async () => {
   const projectEntries = (await fsp.readdir(PROJECT_ROOT)).sort();
   const addonEntries = (await fsp.readdir(path.join(PROJECT_ROOT, "addons"))).sort();
   if (JSON.stringify(projectEntries) !== JSON.stringify(["addons", "override.cfg"]) ||
-      JSON.stringify(addonEntries) !== JSON.stringify(["chronorift_lifecycle"])) {
+      JSON.stringify(addonEntries) !== JSON.stringify([ADDON_DIRECTORY])) {
     const collision = new Error("managed lifecycle project root contains an unexpected entry");
     collision.code = "MANAGED_RUNTIME_COLLISION";
     throw collision;
@@ -355,8 +388,9 @@ const copyCandidate = async () => {
           const bytes = await pinned.handle.readFile();
           const after = await pinnedStat(pinned.handle);
           if (!sameSnapshotIdentity(pinned.stat, after) || bytes.byteLength !== Number(pinned.stat.size)) throw new Error("candidate source changed during snapshot: " + relativePath);
-          if (relativePath === "project.godot" && /^\s*ChronoRiftLifecycle\s*=/mu.test(bytes.toString("utf8"))) {
-            const collision = new Error("candidate project defines the reserved ChronoRiftLifecycle autoload");
+          const autoloadPattern = new RegExp("^\\\\s*" + RESERVED_AUTOLOAD + "\\\\s*=", "mu");
+          if (relativePath === "project.godot" && autoloadPattern.test(bytes.toString("utf8"))) {
+            const collision = new Error("candidate project defines the reserved managed autoload");
             collision.code = "MANAGED_RUNTIME_COLLISION";
             throw collision;
           }
@@ -775,7 +809,8 @@ const startManagedRuntime = async (launch, stage, remainder) => {
       CHRONORIFT_RUNTIME_ID: launch.runtimeId, CHRONORIFT_EXECUTION_ID: launch.executionId,
       CHRONORIFT_MANAGED_RUNTIME_ID: launch.managedRuntimeId,
       CHRONORIFT_CANDIDATE_SOURCE_HASH: launch.candidateSourceHash,
-      CHRONORIFT_OVERLAY_HASH: launch.overlayHash, CHRONORIFT_ADDON_HASH: launch.addonHash
+      CHRONORIFT_OVERLAY_HASH: launch.overlayHash, CHRONORIFT_ADDON_HASH: launch.addonHash,
+      ...(REQUIRES_ADAPTER_PROFILE_HASH ? { CHRONORIFT_ADAPTER_PROFILE_HASH: launch.adapterProfileSha256 } : {})
     }),
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -863,3 +898,31 @@ export const createLifecycleVanillaSmokeSidecarSource = (
 export const createLifecycleRuntimeSidecarSource = (
   options: LifecycleSidecarSourceOptions,
 ): string => createLifecycleSidecarSource("managed_lifecycle", options);
+
+export const createSemanticRuntimeSidecarSource = (
+  options: Omit<LifecycleSidecarSourceOptions, "managedProfile">,
+): string =>
+  createLifecycleSidecarSource("managed_lifecycle", {
+    ...options,
+    managedProfile: {
+      runtimeProfile: "chronorift-managed-godot-semantic-v1",
+      protocolProfile: "chronorift-godot-semantic-v1",
+      addonDirectory: "chronorift_semantic",
+      reservedAutoload: "ChronoRiftSemantic",
+      adapterProfileHash: true,
+    },
+  });
+
+export const createSemanticVanillaSmokeSidecarSource = (
+  options: Omit<LifecycleSidecarSourceOptions, "managedProfile">,
+): string =>
+  createLifecycleSidecarSource("vanilla_smoke", {
+    ...options,
+    managedProfile: {
+      runtimeProfile: "chronorift-managed-godot-semantic-v1",
+      protocolProfile: "chronorift-godot-semantic-v1",
+      addonDirectory: "chronorift_semantic",
+      reservedAutoload: "ChronoRiftSemantic",
+      adapterProfileHash: true,
+    },
+  });

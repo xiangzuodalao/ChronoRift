@@ -64,6 +64,20 @@ export interface PreparedExternalGodotLifecycleBuildV1 {
   readonly byteLength: number;
 }
 
+export interface PreparedExternalGodotSemanticBuildV1 {
+  readonly build: VNextBuildV1;
+  readonly configuredMainScene: string;
+  readonly projectHash: Sha256DigestV1;
+  readonly descriptorHash: Sha256DigestV1;
+  readonly adapterProfileSha256: Sha256DigestV1;
+  readonly overlayHash: Sha256DigestV1;
+  readonly addonHash: Sha256DigestV1;
+  readonly vanillaSidecarHash: Sha256DigestV1;
+  readonly semanticSidecarHash: Sha256DigestV1;
+  readonly fileCount: number;
+  readonly byteLength: number;
+}
+
 const inspectExternalProjectConfiguration = (
   entry: SelectedTreeEntryV1,
 ): { readonly configuredMainScene: string } => {
@@ -78,6 +92,11 @@ const inspectExternalProjectConfiguration = (
   if (/^\s*ChronoRiftLifecycle\s*=/mu.test(source)) {
     throw new TypeError(
       "candidate project.godot defines the reserved ChronoRiftLifecycle autoload",
+    );
+  }
+  if (/^\s*ChronoRiftSemantic\s*=/mu.test(source)) {
+    throw new TypeError(
+      "candidate project.godot defines the reserved ChronoRiftSemantic autoload",
     );
   }
   const scenes = [
@@ -487,6 +506,119 @@ export const prepareExternalGodotLifecycleBuildV1 = async (input: {
     addonHash,
     vanillaSidecarHash,
     lifecycleSidecarHash,
+    fileCount: files.length,
+    byteLength: files.reduce(
+      (total, file) => total + file.content.byteLength,
+      0,
+    ),
+  });
+};
+
+export const prepareExternalGodotSemanticBuildV1 = async (input: {
+  readonly taskId: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceDirectory: string;
+  readonly baselineSourceHash: Sha256DigestV1;
+  readonly projectCapability: {
+    readonly capabilitySha256: Sha256DigestV1;
+    readonly descriptorSha256: Sha256DigestV1;
+  };
+  readonly adapterProfileSha256: Sha256DigestV1;
+  readonly managedRuntime: {
+    readonly managedRuntimeId: string;
+    readonly addonHash: Sha256DigestV1;
+    readonly overlayHash: Sha256DigestV1;
+    readonly vanillaSidecarSourceSha256: Sha256DigestV1;
+    readonly semanticSidecarSourceSha256: Sha256DigestV1;
+    readonly protocolProfile: "chronorift-godot-semantic-v1";
+  };
+  readonly now: string;
+}): Promise<PreparedExternalGodotSemanticBuildV1> => {
+  const files = await collectCandidate(
+    input.workspaceDirectory,
+    "external-lifecycle",
+  );
+  const projectFile = files.find(
+    (entry) => entry.relativePath === "project.godot",
+  );
+  if (projectFile === undefined) {
+    throw new TypeError(
+      "candidate external Godot project is missing project.godot",
+    );
+  }
+  const { configuredMainScene } =
+    inspectExternalProjectConfiguration(projectFile);
+  const sourceHash = selectedTreeSha256(files);
+  const descriptorHash = input.projectCapability.descriptorSha256;
+  const { overlayHash, addonHash } = input.managedRuntime;
+  const vanillaSidecarHash = input.managedRuntime.vanillaSidecarSourceSha256;
+  const semanticSidecarHash = input.managedRuntime.semanticSidecarSourceSha256;
+  const projectHash = asSha256DigestV1(
+    createHash("sha256")
+      .update("chronorift-external-godot-semantic-project-v1\0")
+      .update(sourceHash)
+      .update("\0")
+      .update(descriptorHash)
+      .update("\0")
+      .update(input.adapterProfileSha256)
+      .update("\0")
+      .update(overlayHash)
+      .update("\0")
+      .update(addonHash)
+      .digest("hex"),
+  );
+  const workspaceDiffHash = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      baselineSourceHash: input.baselineSourceHash,
+      candidateSourceHash: sourceHash,
+    }),
+  );
+  const buildConfigurationHash = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      runtimeProfile: "godot-external-semantic-v1",
+      protocolProfile: input.managedRuntime.protocolProfile,
+      projectCapabilitySha256: input.projectCapability.capabilitySha256,
+      adapterProfileSha256: input.adapterProfileSha256,
+      managedRuntimeId: input.managedRuntime.managedRuntimeId,
+      descriptorHash,
+      overlayHash,
+      addonHash,
+      vanillaSidecarHash,
+      semanticSidecarHash,
+      configuredMainScene,
+    }),
+  );
+  const outputHash = projectHash;
+  const buildIdentityHash = contentHash({
+    schemaVersion: 1,
+    projectHash,
+    buildConfigurationHash,
+    outputHash,
+  });
+  const build = VNextBuildV1Schema.parse({
+    schemaVersion: 1,
+    taskId: input.taskId,
+    workspaceId: input.workspaceId,
+    sourceId: asSourceId(`source:${sourceHash}`),
+    buildId: asBuildId(`build:${buildIdentityHash}`),
+    sourceHash,
+    workspaceDiffHash,
+    buildConfigurationHash,
+    outputHash,
+    createdAt: input.now,
+  });
+  return Object.freeze({
+    build,
+    configuredMainScene,
+    projectHash,
+    descriptorHash,
+    adapterProfileSha256: input.adapterProfileSha256,
+    overlayHash,
+    addonHash,
+    vanillaSidecarHash,
+    semanticSidecarHash,
     fileCount: files.length,
     byteLength: files.reduce(
       (total, file) => total + file.content.byteLength,

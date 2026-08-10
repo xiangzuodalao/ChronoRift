@@ -6,6 +6,7 @@ import {
   GAME_TOOL_DEFINITIONS_V1,
   GAME_TOOL_NAMES_V1,
   LIFECYCLE_GAME_TOOL_NAMES_V1,
+  SEMANTIC_GAME_TOOL_NAMES_V1,
 } from "@chronorift/agent-protocol";
 import {
   TaskPatchIdentityV1Schema,
@@ -758,6 +759,116 @@ describe("vNext Agent Task composition", () => {
     expect(store.task).toMatchObject({
       schemaVersion: 3,
       profile: { projectCapabilitySha256, managedRuntimeId },
+    });
+  });
+
+  it("persists a semantic profile and exposes exactly eleven game tools", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chronorift-agent-e2-"));
+    roots.push(root);
+    const workspaceDirectory = join(root, "workspace");
+    const piSessionDirectory = join(root, "pi-sessions");
+    const runtimeRoot = join(root, "runtime");
+    await Promise.all([
+      mkdir(workspaceDirectory),
+      mkdir(piSessionDirectory),
+      mkdir(runtimeRoot),
+    ]);
+    const taskId = asTaskId("task:e2-agent");
+    const projectCapabilitySha256 = asSha256DigestV1("d".repeat(64));
+    const semanticAdapterProfileSha256 = asSha256DigestV1("f".repeat(64));
+    const managedRuntimeId = `managed-godot-semantic-runtime:v1:${"e".repeat(64)}`;
+    const environment = {
+      sourceKind: "godot-external-semantic-v1",
+    } as unknown as M1TaskEnvironment;
+    const store = new MemoryAgentStore();
+    let cleanupCalls = 0;
+    let activeTools: readonly string[] = [];
+
+    await startVNextAgentTask(
+      {
+        taskId,
+        projectPath: root,
+        runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/cgroup",
+          bwrapPath: "/bwrap",
+          prlimitPath: "/prlimit",
+          busyboxPath: "/busybox",
+        },
+        goal: "Inspect Timer and spawned entities",
+        provider: "openai-codex",
+        model: "gpt-5.6-luna",
+        thinkingLevel: "max",
+      },
+      {
+        now: () => "2026-08-11T00:00:00.000Z",
+        createStore: () => store,
+        prepare: async () => environment,
+        suspend: async () => ({
+          processGroupTerminated: true,
+          cgroupPopulated: false,
+          termSent: false,
+          killSent: false,
+          scopeRemoved: true,
+        }),
+        hostContext: () => ({ workspaceDirectory, piSessionDirectory }),
+        semanticRuntimeContext: () =>
+          ({
+            taskId,
+            projectCapability: {
+              capabilitySha256: projectCapabilitySha256,
+            },
+            semanticAdapterProfile: {
+              adapterProfileSha256: semanticAdapterProfileSha256,
+            },
+            managedSemanticRuntime: { managedRuntimeId },
+          }) as never,
+        createSemanticGameToolPort: async () => ({
+          invoke: async () => undefined,
+          cleanup: async () => {
+            cleanupCalls += 1;
+          },
+          reconcileSandboxCleanup: async () => undefined,
+        }),
+        runTurn: async (request): Promise<VNextPiTurnResult> => {
+          activeTools = request.tools.map((tool) => tool.name);
+          expect(request.additionalEnvironmentInstructions).toContain(
+            `Exact semantic adapter profile: ${semanticAdapterProfileSha256}`,
+          );
+          const sessionFile = join(
+            request.sessionDirectory,
+            "session-e2.jsonl",
+          );
+          await writeFile(sessionFile, "session\n");
+          return {
+            schemaVersion: 1,
+            status: "completed",
+            sessionId: "session-agent-e2",
+            sessionFile,
+            provider: request.provider,
+            model: request.model,
+            requestedThinkingLevel: request.thinkingLevel,
+            realizedThinkingLevel: request.thinkingLevel,
+            activeTools,
+            assistantText: "e2 turn",
+            errorMessage: null,
+            eventsObserved: 0,
+            stats: { ...stats, sessionFile },
+          };
+        },
+      },
+    );
+
+    expect(activeTools.slice(-11)).toEqual(SEMANTIC_GAME_TOOL_NAMES_V1);
+    expect(activeTools).toHaveLength(18);
+    expect(cleanupCalls).toBe(1);
+    expect(store.task).toMatchObject({
+      schemaVersion: 4,
+      profile: {
+        projectCapabilitySha256,
+        semanticAdapterProfileSha256,
+        managedRuntimeId,
+      },
     });
   });
 

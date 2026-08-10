@@ -23,6 +23,7 @@ export default tseslint.config(
             "vitest.sandbox.config.ts",
             "vitest.godot-sandbox.config.ts",
             "vitest.external-project.config.ts",
+            "vitest.external-semantic.config.ts",
             "vitest.vnext-live.config.ts",
           ],
         },

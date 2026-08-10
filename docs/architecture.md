@@ -875,9 +875,33 @@ summary 与 content hash 不是签名、GitHub provenance attestation 或产品 
 实际成功输出，只能声称 M4 路径和 Gate 已实现，不能声称目标项目已经成功接入。clock/probe receipt 只覆盖
 lifecycle endpoint sampling，并保留未采样位置和未知 observer effect；不得把它提升为逐帧完整 coverage。
 
+### 20.3 E2：外部项目 Timer/spawn semantic profile
+
+E2 在 M4 source/workspace/sandbox lifecycle 上增加一个语义轴，不扩展或重解释 M3 Protocol v2 与 M4
+lifecycle wire。它使用独立 Task V4、`chronorift-godot-semantic-v1` wire、独立 managed Addon，以及绑定冻结
+project capability 的 data-only adapter profile。core/domain 不得按 `moddable-platformer` 名称分支，adapter
+也不得包含根因、源码位置、期望值或 evaluator oracle。
+
+E2 的 Agent catalog 精确为 lifecycle 四工具，加 query、checkpoint create/restore、fork、trace create/replay
+与 compare，共 11 项。input、step、controls、capture configure/pin 显式不暴露。adapter 只投影一个声明的
+Timer、subject 配置和由其生成的实体 lifecycle；事件为 endpoint samples，并记录 partial coverage 与未采样
+限制。
+
+Checkpoint barrier 是 `adapter_process_tail`。manifest 明确区分 captured 与 uncontrolled domains；restore
+只写回声明投影。所有 checkpoint、restore、fork、replay 和 compare 均固定为 `descriptive_only`，且
+`equivalentForkEligible=false`。compare 只报告 sealed Execution 的 observable differences、alignment 与
+confounders，不做因果或修复 verdict。
+
+首个 required Host conformance 仍钉死 `moddable-platformer` 同一提交，但使用公开、文件名/注释/FIXME 已泄题
+的 `enemy_spawner_broken`。因此 `corepack pnpm test:vnext:external-semantic` 只能验证实际 11-tool、sandbox、
+checkpoint lineage、seal/cleanup 和 sanitized evidence plumbing；证据必须标记
+`public_exposed_plumbing_conformance`，不能支持智能诊断、独立 acceptance、等价恢复、泛化或产品优势。后续
+任务 acceptance 必须在产品和 adapter freeze 后由隔离 curator/evaluator 提供 holdout，并预注册预算、重试与
+全部结果。
+
 ## 21. 当前实现映射
 
-本节把 2026-08-10 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3 与 M4 都是源码中的实验性
+本节把 2026-08-11 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3、M4 与 E2 都是源码中的实验性
 vNext slice，不因为代码、测试入口或 CI job 存在就自动成为 release，也不能把尚无实际输出的 Gate 写成已
 通过。
 
@@ -907,6 +931,15 @@ M4 相对上述 M3 映射只增加以下实现面：
 | Task/patch     | 统一 start/continue/show/export/discard、source 不变、round-trip checked patch       | gameplay acceptance、自动 apply/commit/push                   |
 | Conformance    | pinned `moddable-platformer` Host Gate、private-network fake-Pi deterministic driver | provider表现、修复正确性、跨项目泛化、产品优势                |
 
+E2 再增加以下独立实现面：
+
+| 能力               | 实验性 E2 semantic path                                                 | 明确未覆盖                                          |
+| ------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| Profile/wire       | Task V4、独立 semantic wire/Addon、冻结 data-only Timer/spawn adapter   | 任意项目语义、M3/M4 wire 迁移、candidate adapter    |
+| Agent/runtime      | 11 tools；query/checkpoint/restore/fork/trace/replay/compare            | input、step、capture、视觉/音频/GPU                 |
+| State/lineage      | Timer + spawned entity projection、raw observation chain、physical seal | private state、engine internals、等价起点或因果结论 |
+| Public conformance | pinned exposed spawner task、strict sanitized evidence                  | 智能诊断、独立 acceptance、泛化或相对产品优势       |
+
 默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 coding sandbox boundary 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、
 `pids` controller 的 delegated cgroup v2 root。仓库脚本 `.github/scripts/run-sandbox-conformance.sh` 建立和
@@ -928,6 +961,10 @@ M4 另由 `corepack pnpm test:vnext:external-project` 和
 frozen checkout；Gate 本身运行在 `PrivateNetwork=yes` 的 systemd namespace，只有 loopback，并要求独立
 `CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT`、fresh bounded mount、delegated cgroup 与精确 toolchain。成功 job
 上传 sanitized evidence，失败或 cleanup 未证明时不得产生可发布的成功 claim。
+
+E2 另由 `corepack pnpm test:vnext:external-semantic` 验证；CI wrapper 在同一 private-network Host boundary 中、
+完成 M4 cleanup 并确认 bounded storage 为空后再运行它。语义 Addon/profile 有独立冻结 identity，成功 evidence
+有独立 strict validator，并强制列出不支持的 claim。命令存在不代表当前 checkout 已取得通过证据。
 
 M4 当前 cleanup reconciliation 只在同一 Host command 仍持有 coordinator 时成立：Task sandbox 的最终
 cleanup receipt 只有在进程/cgroup/scope cleanup 与 fresh bounded Task-storage inspection 都明确成功时才可

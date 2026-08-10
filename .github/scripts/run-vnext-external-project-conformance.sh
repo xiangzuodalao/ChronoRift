@@ -49,9 +49,11 @@ for name in \
   CHRONORIFT_NODE_BIN \
   GODOT_BIN \
   CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT \
+  CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT \
   CHRONORIFT_TEST_NODE_BIN \
   CHRONORIFT_TEST_GODOT_BIN \
   CHRONORIFT_TEST_GODOT_LIFECYCLE_ADDON_ROOT \
+  CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT \
   CHRONORIFT_TEST_TASK_STORAGE_ROOT \
   CHRONORIFT_TEST_BWRAP_BIN \
   CHRONORIFT_TEST_PRLIMIT_BIN \
@@ -65,9 +67,11 @@ for name in \
   CHRONORIFT_TEST_LS_BIN \
   CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT \
   CHRONORIFT_TEST_EXTERNAL_PROJECT_DESCRIPTOR \
+  CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE \
   CHRONORIFT_TEST_EXTERNAL_PROJECT_CONFORMANCE_SPEC \
   CHRONORIFT_TEST_EXTERNAL_PROJECT_EVIDENCE_SCHEMA \
-  CHRONORIFT_TEST_EVIDENCE_OUTPUT; do
+  CHRONORIFT_TEST_EVIDENCE_OUTPUT \
+  CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT; do
   require_environment "${name}"
 done
 
@@ -77,6 +81,8 @@ done
   fail "Godot Host path aliases disagree"
 [[ "${CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT}" == "${CHRONORIFT_TEST_GODOT_LIFECYCLE_ADDON_ROOT}" ]] ||
   fail "Godot lifecycle addon Host path aliases disagree"
+[[ "${CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT}" == "${CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT}" ]] ||
+  fail "Godot semantic addon Host path aliases disagree"
 
 assert_canonical_path "RUNNER_TEMP" "${RUNNER_TEMP}"
 assert_canonical_path "GITHUB_WORKSPACE" "${GITHUB_WORKSPACE}"
@@ -110,6 +116,11 @@ assert_canonical_path "managed lifecycle addon" "${CHRONORIFT_TEST_GODOT_LIFECYC
   fail "managed lifecycle addon must be a directory"
 [[ "${CHRONORIFT_TEST_GODOT_LIFECYCLE_ADDON_ROOT}" == "${GITHUB_WORKSPACE}/godot/addons/chronorift_lifecycle" ]] ||
   fail "managed lifecycle addon must come from this checkout"
+assert_canonical_path "managed semantic addon" "${CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT}"
+[[ -d "${CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT}" ]] ||
+  fail "managed semantic addon must be a directory"
+[[ "${CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT}" == "${GITHUB_WORKSPACE}/godot/addons/chronorift_semantic" ]] ||
+  fail "managed semantic addon must come from this checkout"
 [[ "$("${CHRONORIFT_TEST_NODE_BIN}" --version)" == "v22.23.1" ]] ||
   fail "managed Node must be exactly v22.23.1"
 godot_version="$("${CHRONORIFT_TEST_GODOT_BIN}" --version)"
@@ -142,6 +153,14 @@ assert_canonical_path "external project descriptor" "${CHRONORIFT_TEST_EXTERNAL_
 [[ "$(sha256sum "${CHRONORIFT_TEST_EXTERNAL_PROJECT_DESCRIPTOR}" | awk '{ print $1 }')" == "534dcd8aa14aeea74685059f8d66e44e5bebe21742b7a702ee7d78e91e1a955e" ]] ||
   fail "external project descriptor bytes changed"
 
+assert_canonical_path "external semantic adapter profile" "${CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE}"
+[[ -f "${CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE}" ]] ||
+  fail "external semantic adapter profile must be a regular file"
+[[ "${CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE}" == "${GITHUB_WORKSPACE}/testdata/vnext/external-project/moddable-platformer.semantic-adapter.v1.json" ]] ||
+  fail "external semantic adapter must be the frozen conformance input"
+[[ "$(sha256sum "${CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE}" | awk '{ print $1 }')" == "1ca17b9f3fff8556d5fa260331929126ba54e18518de2d2386562b230327238b" ]] ||
+  fail "external semantic adapter bytes changed"
+
 assert_canonical_path "external project conformance spec" "${CHRONORIFT_TEST_EXTERNAL_PROJECT_CONFORMANCE_SPEC}"
 [[ -f "${CHRONORIFT_TEST_EXTERNAL_PROJECT_CONFORMANCE_SPEC}" ]] ||
   fail "external project conformance spec must be a regular file"
@@ -160,6 +179,10 @@ assert_canonical_path "external project evidence schema" "${CHRONORIFT_TEST_EXTE
   fail "evidence output must use the fixed RUNNER_TEMP path"
 [[ ! -e "${CHRONORIFT_TEST_EVIDENCE_OUTPUT}" ]] ||
   fail "evidence output must not exist before conformance"
+[[ "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}" == "${RUNNER_TEMP}/chronorift-e2-external-semantic-evidence.json" ]] ||
+  fail "semantic evidence output must use the fixed RUNNER_TEMP path"
+[[ ! -e "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}" ]] ||
+  fail "semantic evidence output must not exist before conformance"
 
 assert_canonical_path "bounded Task storage" "${CHRONORIFT_TEST_TASK_STORAGE_ROOT}"
 [[ -d "${CHRONORIFT_TEST_TASK_STORAGE_ROOT}" ]] ||
@@ -311,6 +334,15 @@ export CHRONORIFT_TEST_CGROUP_ROOT="${test_root}"
 export CI=true
 corepack pnpm test:vnext:external-project
 
+mapfile -t semantic_conformance_tests < <(
+  find apps/cli/src/vnext -type f -name '*.external-semantic.test.ts' -print
+)
+[[ "${#semantic_conformance_tests[@]}" -gt 0 ]] ||
+  fail "at least one E2 external semantic conformance test is required"
+[[ -z "$(find "${CHRONORIFT_TEST_TASK_STORAGE_ROOT}" -mindepth 1 -maxdepth 1 -print -quit)" ]] ||
+  fail "M4 left bounded Task storage nonempty before E2"
+corepack pnpm test:vnext:external-semantic
+
 [[ "$(git -C "${CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT}" rev-parse HEAD)" == "3e793f53598a131c53fb82555191cc14b8db07ff" ]] ||
   fail "external project HEAD changed during conformance"
 [[ "$(git -C "${CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT}" rev-parse 'HEAD^{tree}')" == "a013bd677c712dbf354e8e2f6e8ff7c53d5684c6" ]] ||
@@ -330,4 +362,17 @@ evidence_size="$(stat -c '%s' -- "${CHRONORIFT_TEST_EVIDENCE_OUTPUT}")"
 if grep -Fq -- "${CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT}" "${CHRONORIFT_TEST_EVIDENCE_OUTPUT}" ||
   grep -Fq -- "${CHRONORIFT_TEST_TASK_STORAGE_ROOT}" "${CHRONORIFT_TEST_EVIDENCE_OUTPUT}"; then
   fail "evidence summary exposed a Host path"
+fi
+
+[[ -f "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}" && ! -L "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}" ]] ||
+  fail "successful semantic conformance must create a regular evidence summary"
+semantic_evidence_size="$(stat -c '%s' -- "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}")"
+((semantic_evidence_size > 0 && semantic_evidence_size <= 65536)) ||
+  fail "semantic evidence must be nonempty and no larger than 64 KiB"
+"${CHRONORIFT_TEST_NODE_BIN}" \
+  .github/scripts/validate-vnext-external-semantic-evidence.mjs \
+  "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}"
+if grep -Fq -- "${CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT}" "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}" ||
+  grep -Fq -- "${CHRONORIFT_TEST_TASK_STORAGE_ROOT}" "${CHRONORIFT_TEST_SEMANTIC_EVIDENCE_OUTPUT}"; then
+  fail "semantic evidence exposed a Host path"
 fi

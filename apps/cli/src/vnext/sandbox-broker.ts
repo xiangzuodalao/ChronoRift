@@ -90,6 +90,12 @@ import {
   type ManagedGodotLifecycleRuntimeBindingV1,
   type ManagedGodotLifecycleRuntimeCapabilityV1,
 } from "./managed-godot-lifecycle-runtime.js";
+import {
+  ManagedGodotSemanticRuntimeCapabilityV1Schema,
+  assertManagedGodotSemanticRuntimeBinding,
+  type ManagedGodotSemanticRuntimeBindingV1,
+  type ManagedGodotSemanticRuntimeCapabilityV1,
+} from "./managed-godot-semantic-runtime.js";
 
 export type SandboxManagedGodotRuntimeV1 =
   | {
@@ -99,9 +105,15 @@ export type SandboxManagedGodotRuntimeV1 =
   | {
       readonly capability: ManagedGodotLifecycleRuntimeCapabilityV1;
       readonly binding: ManagedGodotLifecycleRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotSemanticRuntimeCapabilityV1;
+      readonly binding: ManagedGodotSemanticRuntimeBindingV1;
     };
 type SandboxManagedGodotRuntimeBindingV1 =
-  ManagedGodotRuntimeBindingV1 | ManagedGodotLifecycleRuntimeBindingV1;
+  | ManagedGodotRuntimeBindingV1
+  | ManagedGodotLifecycleRuntimeBindingV1
+  | ManagedGodotSemanticRuntimeBindingV1;
 
 const isLifecycleManagedRuntime = (
   runtime: SandboxManagedGodotRuntimeV1,
@@ -112,11 +124,38 @@ const isLifecycleManagedRuntime = (
   "runtimeProfile" in runtime.capability &&
   runtime.capability.runtimeProfile === "chronorift-managed-godot-lifecycle-v1";
 
+const isSemanticManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is {
+  readonly capability: ManagedGodotSemanticRuntimeCapabilityV1;
+  readonly binding: ManagedGodotSemanticRuntimeBindingV1;
+} =>
+  "runtimeProfile" in runtime.capability &&
+  runtime.capability.runtimeProfile === "chronorift-managed-godot-semantic-v1";
+
+const isOverlayManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is
+  | {
+      readonly capability: ManagedGodotLifecycleRuntimeCapabilityV1;
+      readonly binding: ManagedGodotLifecycleRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotSemanticRuntimeCapabilityV1;
+      readonly binding: ManagedGodotSemanticRuntimeBindingV1;
+    } =>
+  isLifecycleManagedRuntime(runtime) || isSemanticManagedRuntime(runtime);
+
 const assertSandboxManagedRuntimeBinding = (
   runtime: SandboxManagedGodotRuntimeV1,
 ): void => {
   if (isLifecycleManagedRuntime(runtime)) {
     assertManagedGodotLifecycleRuntimeBinding(
+      runtime.capability,
+      runtime.binding,
+    );
+  } else if (isSemanticManagedRuntime(runtime)) {
+    assertManagedGodotSemanticRuntimeBinding(
       runtime.capability,
       runtime.binding,
     );
@@ -927,7 +966,7 @@ async function bindDefaultResources(input: {
         fd: addonHandle.fd,
         target: input.managedRuntime.capability.addonTarget,
       };
-      if (isLifecycleManagedRuntime(input.managedRuntime)) {
+      if (isOverlayManagedRuntime(input.managedRuntime)) {
         const overlayDirectory = await mkdtemp(
           join(
             input.layout.hostOperationTemporaryDirectory,
@@ -1126,6 +1165,7 @@ function assertLayoutWithinTaskStorage(
   managedRuntime:
     | ManagedGodotRuntimeCapabilityV1
     | ManagedGodotLifecycleRuntimeCapabilityV1
+    | ManagedGodotSemanticRuntimeCapabilityV1
     | undefined,
 ): void {
   if (
@@ -1852,13 +1892,13 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
           request.profile === "godot-headless" &&
           this.resources.managedAddon !== undefined &&
           (this.managedRuntime === undefined ||
-            !isLifecycleManagedRuntime(this.managedRuntime) ||
+            !isOverlayManagedRuntime(this.managedRuntime) ||
             duplex);
         const includeManagedOverlay =
           request.profile === "godot-headless" &&
           this.resources.managedOverlay !== undefined &&
           this.managedRuntime !== undefined &&
-          isLifecycleManagedRuntime(this.managedRuntime) &&
+          isOverlayManagedRuntime(this.managedRuntime) &&
           duplex;
         const runtimeStart =
           SANDBOX_FDS.runtimeStart +
@@ -2360,12 +2400,19 @@ export async function createDuplexBwrapCgroupTaskSandbox(
           ),
           binding: options.managedRuntime.binding,
         }
-      : {
-          capability: ManagedGodotRuntimeCapabilityV1Schema.parse(
-            options.managedRuntime.capability,
-          ),
-          binding: options.managedRuntime.binding,
-        };
+      : isSemanticManagedRuntime(options.managedRuntime)
+        ? {
+            capability: ManagedGodotSemanticRuntimeCapabilityV1Schema.parse(
+              options.managedRuntime.capability,
+            ),
+            binding: options.managedRuntime.binding,
+          }
+        : {
+            capability: ManagedGodotRuntimeCapabilityV1Schema.parse(
+              options.managedRuntime.capability,
+            ),
+            binding: options.managedRuntime.binding,
+          };
   }
   assertHostBinding(capability, options.hostBinding);
   const hostBinding = Object.freeze({ ...options.hostBinding });
@@ -2427,7 +2474,7 @@ export async function createDuplexBwrapCgroupTaskSandbox(
           managedRuntime.capability.fontconfigTarget,
           managedRuntime.capability.addonParentTarget,
           managedRuntime.capability.addonTarget,
-          ...(isLifecycleManagedRuntime(managedRuntime)
+          ...(isOverlayManagedRuntime(managedRuntime)
             ? [managedRuntime.capability.overlayTarget]
             : []),
         ].sort();
@@ -2500,7 +2547,7 @@ export async function createDuplexBwrapCgroupTaskSandbox(
       (managedRuntime === undefined) !==
         (resources.managedFontconfig === undefined) ||
       (managedRuntime !== undefined &&
-        isLifecycleManagedRuntime(managedRuntime)) !==
+        isOverlayManagedRuntime(managedRuntime)) !==
         (resources.managedOverlay !== undefined) ||
       (managedRuntime !== undefined &&
         (resources.managedAddon?.target !==
@@ -2509,7 +2556,7 @@ export async function createDuplexBwrapCgroupTaskSandbox(
             managedRuntime.capability.addonParentTarget ||
           resources.managedFontconfig?.target !==
             managedRuntime.capability.fontconfigTarget ||
-          (isLifecycleManagedRuntime(managedRuntime) &&
+          (isOverlayManagedRuntime(managedRuntime) &&
             resources.managedOverlay?.target !==
               managedRuntime.capability.overlayTarget)))
     ) {

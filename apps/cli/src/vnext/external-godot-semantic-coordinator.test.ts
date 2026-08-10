@@ -43,7 +43,11 @@ const cleanup = {
   processGroupTerminated: true,
   cgroupPopulated: false,
   scopeRemoved: true,
-  storageReconciled: true,
+};
+
+const boundedStorageObservation = {
+  realizedMechanisms: { aggregateStorage: "tmpfs" },
+  resourceUsage: { aggregateStorage: { bytes: 0, inodes: 0 } },
 };
 
 const createStore = (
@@ -229,7 +233,10 @@ describe("external Godot semantic coordinator", () => {
           Promise.resolve({
             kind: "completed" as const,
             result: {
-              sandbox: { kind: "executed" as const, receipt: { cleanup } },
+              sandbox: {
+                kind: "executed" as const,
+                receipt: { cleanup, ...boundedStorageObservation },
+              },
               diagnostics: [{ kind: "smoke_complete" as const }],
               diagnosticFacts: { status: "complete" as const },
             },
@@ -245,7 +252,7 @@ describe("external Godot semantic coordinator", () => {
               },
               completion: Promise.resolve({
                 kind: "executed" as const,
-                receipt: { cleanup },
+                receipt: { cleanup, ...boundedStorageObservation },
               }),
               diagnostics: () => [],
               diagnosticFacts: () => ({ status: "complete" as const }),

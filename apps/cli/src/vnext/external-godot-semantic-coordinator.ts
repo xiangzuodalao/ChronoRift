@@ -63,6 +63,7 @@ import type {
 } from "./godot-semantic-sidecar-port.js";
 import type { ManagedGodotSemanticRuntimeCapabilityV1 } from "./managed-godot-semantic-runtime.js";
 import type { M1TaskRuntimeArtifactStore } from "./m1-task-environment.js";
+import type { SandboxExecutionResultV1 } from "./sandbox-broker.js";
 
 const LIMITATIONS = Object.freeze([
   "Only the declared Timer and spawned-entity projection is observed.",
@@ -131,16 +132,29 @@ const loss = () => [
   },
 ];
 
-const provenCleanup = (cleanup: {
+const processCleanupProven = (cleanup: {
+  readonly processGroupTerminated: boolean;
+  readonly cgroupPopulated: boolean;
+  readonly scopeRemoved: boolean;
+}): boolean =>
+  cleanup.processGroupTerminated &&
+  !cleanup.cgroupPopulated &&
+  cleanup.scopeRemoved;
+
+const operationCleanupProven = (
+  result: Extract<SandboxExecutionResultV1, { readonly kind: "executed" }>,
+): boolean =>
+  processCleanupProven(result.receipt.cleanup) &&
+  result.receipt.realizedMechanisms.aggregateStorage !== undefined &&
+  result.receipt.resourceUsage.aggregateStorage !== undefined;
+
+const globalCleanupProven = (cleanup: {
   readonly processGroupTerminated: boolean;
   readonly cgroupPopulated: boolean;
   readonly scopeRemoved: boolean;
   readonly storageReconciled?: boolean | undefined;
 }): boolean =>
-  cleanup.processGroupTerminated &&
-  !cleanup.cgroupPopulated &&
-  cleanup.scopeRemoved &&
-  cleanup.storageReconciled === true;
+  processCleanupProven(cleanup) && cleanup.storageReconciled === true;
 
 const SAFE_ADAPTER_FAILURES = new Set([
   "Adapter profile has an unsupported shape",
@@ -390,7 +404,7 @@ export class ExternalGodotSemanticCoordinator {
     readonly scopeRemoved: boolean;
     readonly storageReconciled?: boolean | undefined;
   }): Promise<void> {
-    if (!provenCleanup(cleanup)) {
+    if (!globalCleanupProven(cleanup)) {
       throw new Error("semantic sandbox cleanup is not proven");
     }
     const pending: Promise<unknown>[] = [];
@@ -654,7 +668,7 @@ export class ExternalGodotSemanticCoordinator {
         true,
       );
     }
-    if (!provenCleanup(vanilla.result.sandbox.receipt.cleanup)) {
+    if (!operationCleanupProven(vanilla.result.sandbox)) {
       throw new SemanticToolError(
         "runtime_unavailable",
         "Vanilla qualification cleanup was not proven",
@@ -807,7 +821,7 @@ export class ExternalGodotSemanticCoordinator {
       const completion = await context.sidecar.completion;
       if (
         completion.kind !== "executed" ||
-        !provenCleanup(completion.receipt.cleanup)
+        !operationCleanupProven(completion)
       ) {
         context.state = "cleanup_pending";
         throw new Error("semantic runtime cleanup is not proven");

@@ -367,7 +367,24 @@ const invokeLifecycleTool = async <Schema extends TSchema>(
     throw new Error(`${toolName} returned an invalid response envelope`);
   }
   if (response.toolCallId !== toolCallId || response.outcome !== "success") {
-    throw new Error(`${toolName} did not complete successfully`);
+    const details =
+      response.outcome === "error" ? response.error.details : null;
+    const detailRecord =
+      details !== null &&
+      details !== undefined &&
+      typeof details === "object" &&
+      !Array.isArray(details)
+        ? (details as Record<string, unknown>)
+        : null;
+    const stage =
+      detailRecord !== null && typeof detailRecord["stage"] === "string"
+        ? detailRecord["stage"]
+        : "withheld";
+    const code =
+      response.outcome === "error" ? response.error.code : "envelope_mismatch";
+    throw new Error(
+      `${toolName} did not complete successfully (${code}; stage=${stage})`,
+    );
   }
   if (!Check(outputSchema, response.output)) {
     throw new Error(`${toolName} returned invalid lifecycle output`);

@@ -232,7 +232,12 @@ describe("frozen moddable-platformer E2 semantic conformance", () => {
           toolName,
           input: { schemaVersion: 1, taskId, ...request },
         });
-        expect(response.outcome, `${toolName} failed`).toBe("success");
+        expect(
+          response.outcome,
+          response.outcome === "error"
+            ? `${toolName} failed: ${response.error.code}: ${response.error.message}`
+            : `${toolName} failed`,
+        ).toBe("success");
         if (response.outcome !== "success") {
           throw new Error(`${response.error.code}: ${response.error.message}`);
         }

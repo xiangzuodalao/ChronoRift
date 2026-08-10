@@ -5,6 +5,9 @@ export default defineConfig({
     // Several M1 suites exercise real filesystem and process boundaries. Capping
     // workers prevents high-core Hosts from turning those checks into I/O races.
     maxWorkers: 4,
+    // CI runs the filesystem-heavy v0.3 recovery suite beside other workers;
+    // keep its deterministic assertions while allowing bounded runner jitter.
+    testTimeout: 15_000,
     include: ["{apps,packages}/**/*.{test,spec}.ts"],
     exclude: [
       "**/*.live.{test,spec}.ts",

@@ -37,6 +37,7 @@ import {
   type WorkspaceId,
 } from "@chronorift/domain";
 import {
+  GodotAdapterError,
   connectGodotSemanticRuntime,
   type GodotSemanticObservationReceiptV1,
   type GodotSemanticRuntimeClient,
@@ -140,6 +141,61 @@ const provenCleanup = (cleanup: {
   !cleanup.cgroupPopulated &&
   cleanup.scopeRemoved &&
   cleanup.storageReconciled === true;
+
+const SAFE_ADAPTER_FAILURES = new Set([
+  "Adapter profile has an unsupported shape",
+  "Adapter profile kind or version is unsupported",
+  "Adapter target scene is unavailable",
+  "Adapter target is not a PackedScene",
+  "Adapter target scene could not be instantiated",
+  "Adapter target does not expose the Timer/spawn contract",
+  "Adapter target has no spawn scene",
+  "Adapter target did not create a Timer child",
+]);
+
+const managedLaunchFailure = (
+  sidecar: SandboxedGodotSemanticSidecarV1,
+  error: unknown,
+): SemanticToolError => {
+  const sidecarError = [...sidecar.diagnostics()]
+    .reverse()
+    .find((diagnostic) => diagnostic.kind === "sidecar_error");
+  if (sidecarError?.kind === "sidecar_error") {
+    return new SemanticToolError(
+      "runtime_unavailable",
+      `Managed semantic launch failed during ${sidecarError.phase} (${sidecarError.code})`,
+      true,
+    );
+  }
+  if (error instanceof GodotAdapterError) {
+    const remoteAdapterPrefix = "ADAPTER_FAILURE: ";
+    const remoteAdapterFailure = error.message.startsWith(remoteAdapterPrefix)
+      ? error.message.slice(remoteAdapterPrefix.length)
+      : null;
+    const safeDetail =
+      remoteAdapterFailure !== null &&
+      SAFE_ADAPTER_FAILURES.has(remoteAdapterFailure)
+        ? `: ${remoteAdapterFailure}`
+        : "";
+    return new SemanticToolError(
+      "runtime_unavailable",
+      `Managed semantic handshake failed (${error.code})${safeDetail}`,
+      true,
+    );
+  }
+  if (sidecar.diagnosticFacts().status === "failed") {
+    return new SemanticToolError(
+      "runtime_unavailable",
+      "Managed semantic diagnostic channel failed",
+      true,
+    );
+  }
+  return new SemanticToolError(
+    "runtime_unavailable",
+    "Managed semantic handshake failed",
+    true,
+  );
+};
 
 const semanticClock = (receipt: GodotSemanticObservationReceiptV1) => ({
   processFrame: receipt.sample.projection.capturedAt.processFrame,
@@ -651,7 +707,7 @@ export class ExternalGodotSemanticCoordinator {
     } catch (error) {
       await opened.sidecar.terminate().catch(() => undefined);
       await opened.sidecar.completion.catch(() => undefined);
-      throw error;
+      throw managedLaunchFailure(opened.sidecar, error);
     }
   }
 

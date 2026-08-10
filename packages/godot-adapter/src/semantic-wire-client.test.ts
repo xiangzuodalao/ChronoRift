@@ -11,6 +11,7 @@ import {
 import { asSha256DigestV1 } from "@chronorift/domain";
 import { describe, expect, it } from "vitest";
 
+import { GodotAdapterError } from "./errors.js";
 import {
   GodotSemanticWireClient,
   connectGodotSemanticRuntime,
@@ -236,6 +237,48 @@ describe("GodotSemanticWireClient", () => {
     readable.write(frame(1, "hello", { token: digest("9"), fingerprint }));
     await expect(waiting).rejects.toThrow("Expected semantic sequence 0");
     expect(closeCount).toBe(1);
+  });
+
+  it("classifies transport errors without exposing their raw message", async () => {
+    const readable = new PassThrough();
+    const client = new GodotSemanticWireClient({
+      readable,
+      write: async () => undefined,
+      close: async () => undefined,
+    });
+    const waiting = client.waitFor(() => true);
+
+    readable.destroy(new Error("sensitive transport path: /host/private"));
+    const failure: unknown = await waiting.catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(GodotAdapterError);
+    expect(failure).toMatchObject({
+      code: "PROCESS_FAILED",
+      message: "Godot semantic transport failed",
+    });
+    expect((failure as Error).message).not.toContain("/host/private");
+  });
+
+  it("classifies malformed messages without exposing their raw payload", async () => {
+    const readable = new PassThrough();
+    const client = new GodotSemanticWireClient({
+      readable,
+      write: async () => undefined,
+      close: async () => undefined,
+    });
+    const waiting = client.waitFor(() => true);
+
+    readable.write(
+      encodeWireFrame(JSON.stringify({ sensitive: "/host/private" })),
+    );
+    const failure: unknown = await waiting.catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(GodotAdapterError);
+    expect(failure).toMatchObject({
+      code: "PROTOCOL_ERROR",
+      message: "Godot semantic decode failed",
+    });
+    expect((failure as Error).message).not.toContain("/host/private");
   });
 
   it("rejects a fingerprint outside the admitted renderer", async () => {

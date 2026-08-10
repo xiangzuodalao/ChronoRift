@@ -96,7 +96,11 @@ export class GodotSemanticWireClient {
     try {
       await this.transport.write(encodeWireFrame(JSON.stringify(message)));
     } catch (error) {
-      const failure = this.asFailure(error, "Godot semantic wire write failed");
+      const failure = this.asFailure(
+        error,
+        "Godot semantic wire write failed",
+        "PROCESS_FAILED",
+      );
       this.fail(failure);
       throw failure;
     }
@@ -207,7 +211,14 @@ export class GodotSemanticWireClient {
     }
   };
 
-  private readonly onError = (error: Error): void => this.fail(error);
+  private readonly onError = (error: Error): void =>
+    this.fail(
+      this.asFailure(
+        error,
+        "Godot semantic transport failed",
+        "PROCESS_FAILED",
+      ),
+    );
   private readonly onEnd = (): void => {
     try {
       this.#decoder.end();
@@ -294,10 +305,14 @@ export class GodotSemanticWireClient {
     }
   }
 
-  private asFailure(error: unknown, fallback: string): Error {
-    return error instanceof Error
+  private asFailure(
+    error: unknown,
+    fallback: string,
+    code: GodotAdapterError["code"] = "PROTOCOL_ERROR",
+  ): GodotAdapterError {
+    return error instanceof GodotAdapterError
       ? error
-      : new GodotAdapterError("PROTOCOL_ERROR", fallback, { cause: error });
+      : new GodotAdapterError(code, fallback, { cause: error });
   }
 }
 

@@ -15,15 +15,19 @@ import {
   type V03ExecutionLog,
 } from "@chronorift/domain";
 import {
+  DEFAULT_LIFECYCLE_SIDECAR_TARGETS,
   DEFAULT_RUNTIME_SIDECAR_TARGETS,
   V03_FIXTURE_IDS,
   asV03FixtureName,
+  createLifecycleRuntimeSidecarSource,
+  createLifecycleVanillaSmokeSidecarSource,
   createRuntimeSidecarSource,
   doctorGodot,
   installGodot,
   prepareGodotSwitchDoorFixture,
 } from "@chronorift/godot-adapter";
 import {
+  ArtifactNotFoundError,
   V01JsonArtifactRepository,
   V03BenchmarkJsonArtifactRepository,
   V03BenchmarkJsonArtifactRepositoryV3,
@@ -101,6 +105,8 @@ import {
   startVNextAgentTask,
 } from "./vnext/task-agent.js";
 import { SandboxPolicySchema } from "./vnext/contracts.js";
+import { readGodotProjectDescriptorSnapshotV1 } from "./vnext/godot-project-descriptor.js";
+import { ManagedGodotLifecycleRuntimeCapabilityV1Schema } from "./vnext/managed-godot-lifecycle-runtime.js";
 import { createSandboxTaskRuntimeRoot } from "./vnext/sandbox-preflight.js";
 
 interface Arguments {
@@ -1086,6 +1092,7 @@ const taskSandboxFlagNames = [
   "node-bin",
   "godot-bin",
   "addon-root",
+  "lifecycle-addon-root",
 ] as const;
 
 async function existingCanonicalPath(path: string): Promise<string> {
@@ -1107,7 +1114,9 @@ async function taskRuntimeRoot(
       : join(taskStorageRoot, "runtime"));
   if (create) {
     if (taskStorageRoot === undefined) {
-      throw new Error("M3 runtime root creation requires bounded Task storage");
+      throw new Error(
+        "game Task runtime root creation requires bounded Task storage",
+      );
     }
     return createSandboxTaskRuntimeRoot(taskStorageRoot, configured);
   }
@@ -1126,7 +1135,7 @@ const assertRuntimeRootWithinTaskStorage = (
     isAbsolute(difference)
   ) {
     throw new Error(
-      "--runtime-root must be a strict child of --task-storage-root for M3 Tasks",
+      "--runtime-root must be a strict child of --task-storage-root for game Tasks",
     );
   }
 };
@@ -1135,6 +1144,7 @@ async function taskSandboxRequest(
   args: Arguments,
   taskId: ReturnType<typeof asTaskId>,
   createRuntimeRoot: boolean,
+  lifecycleProfileOnCreate = false,
 ) {
   const configuredTaskStorageRoot = flag(
     args,
@@ -1162,6 +1172,17 @@ async function taskSandboxRequest(
         (value) => SandboxPolicySchema.parse(value),
       )
     ).schemaVersion === 2;
+  const lifecycleProfile = createRuntimeRoot
+    ? lifecycleProfileOnCreate
+    : await new VNextTaskStore(runtimeRoot)
+        .readJson(taskId, "managed-lifecycle-runtime.json", (value) =>
+          ManagedGodotLifecycleRuntimeCapabilityV1Schema.parse(value),
+        )
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (error instanceof ArtifactNotFoundError) return false;
+          throw error;
+        });
   if (managedGodotEnabled && taskStorageRoot === undefined) {
     requiredFlag(args, "task-storage-root", "CHRONORIFT_TASK_STORAGE_ROOT");
   }
@@ -1192,7 +1213,33 @@ async function taskSandboxRequest(
     existingCanonicalPath(flag(args, "find-bin") ?? "/usr/bin/find"),
     existingCanonicalPath(flag(args, "ls-bin") ?? "/usr/bin/ls"),
   ]);
-  const managedGodotRuntime = managedGodotEnabled
+  const managedGodotRuntime =
+    managedGodotEnabled && !lifecycleProfile
+      ? await (async () => {
+          const [nodePath, godotPath, addonRoot] = await Promise.all([
+            existingCanonicalPath(
+              requiredFlag(args, "node-bin", "CHRONORIFT_NODE_BIN"),
+            ),
+            existingCanonicalPath(requiredFlag(args, "godot-bin", "GODOT_BIN")),
+            existingCanonicalPath(
+              requiredFlag(args, "addon-root", "CHRONORIFT_GODOT_ADDON_ROOT"),
+            ),
+          ]);
+          return {
+            nodePath,
+            godotPath,
+            shellPath: busyboxPath,
+            lddPath,
+            addonRoot,
+            sidecarSource: createRuntimeSidecarSource({
+              godotExecutable: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+              workspaceRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.workspaceRoot,
+              runtimeRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.runtimeRoot,
+            }),
+          } as const;
+        })()
+      : undefined;
+  const managedGodotLifecycleRuntime = lifecycleProfile
     ? await (async () => {
         const [nodePath, godotPath, addonRoot] = await Promise.all([
           existingCanonicalPath(
@@ -1200,7 +1247,11 @@ async function taskSandboxRequest(
           ),
           existingCanonicalPath(requiredFlag(args, "godot-bin", "GODOT_BIN")),
           existingCanonicalPath(
-            requiredFlag(args, "addon-root", "CHRONORIFT_GODOT_ADDON_ROOT"),
+            requiredFlag(
+              args,
+              "lifecycle-addon-root",
+              "CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT",
+            ),
           ),
         ]);
         return {
@@ -1209,10 +1260,15 @@ async function taskSandboxRequest(
           shellPath: busyboxPath,
           lddPath,
           addonRoot,
-          sidecarSource: createRuntimeSidecarSource({
-            godotExecutable: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
-            workspaceRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.workspaceRoot,
-            runtimeRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.runtimeRoot,
+          vanillaSidecarSource: createLifecycleVanillaSmokeSidecarSource({
+            godotExecutable: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.runtimeRoot,
+          }),
+          lifecycleSidecarSource: createLifecycleRuntimeSidecarSource({
+            godotExecutable: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.runtimeRoot,
           }),
         } as const;
       })()
@@ -1239,6 +1295,9 @@ async function taskSandboxRequest(
       ],
     },
     ...(managedGodotRuntime === undefined ? {} : { managedGodotRuntime }),
+    ...(managedGodotLifecycleRuntime === undefined
+      ? {}
+      : { managedGodotLifecycleRuntime }),
   } as const;
 }
 
@@ -1248,6 +1307,7 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     "goal",
     "task-id",
     "trusted-fixture",
+    "project-descriptor",
     "provider",
     "model",
     "thinking",
@@ -1257,7 +1317,25 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     ...taskSandboxFlagNames,
   ]);
   const taskId = asTaskId(flag(args, "task-id") ?? `task:${randomUUID()}`);
-  const runtime = await taskSandboxRequest(args, taskId, true);
+  const descriptorPath = flag(args, "project-descriptor");
+  if (
+    descriptorPath !== undefined &&
+    flag(args, "trusted-fixture") !== undefined
+  ) {
+    throw new Error(
+      "--project-descriptor and --trusted-fixture are mutually exclusive",
+    );
+  }
+  const externalProjectDescriptor =
+    descriptorPath === undefined
+      ? undefined
+      : await readGodotProjectDescriptorSnapshotV1(descriptorPath);
+  const runtime = await taskSandboxRequest(
+    args,
+    taskId,
+    true,
+    externalProjectDescriptor !== undefined,
+  );
   const timeoutMs =
     flag(args, "timeout-ms") === undefined
       ? undefined
@@ -1266,10 +1344,14 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     await startVNextAgentTask({
       ...runtime,
       projectPath: resolve(flag(args, "project") ?? cwd),
-      trustedFixtureRoot: resolve(
-        flag(args, "trusted-fixture") ??
-          join(cwd, "fixtures", "godot-frame-input-window"),
-      ),
+      ...(externalProjectDescriptor === undefined
+        ? {
+            trustedFixtureRoot: resolve(
+              flag(args, "trusted-fixture") ??
+                join(cwd, "fixtures", "godot-frame-input-window"),
+            ),
+          }
+        : { externalProjectDescriptor }),
       goal: requiredFlag(args, "goal"),
       provider:
         flag(args, "provider", "CHRONORIFT_PI_PROVIDER") ?? DEFAULT_PI_PROVIDER,
@@ -1350,7 +1432,7 @@ function printHelp(): void {
     `  pnpm task continue --task-id ID --prompt TEXT\n  pnpm task show --task-id ID\n  pnpm task export --task-id ID --output FILE\n  pnpm task discard --task-id ID\n`,
   );
   process.stdout.write(
-    `  New game Tasks require --task-storage-root PATH, --node-bin PATH, --godot-bin PATH, and --addon-root PATH; M3 continuations, exports, and discards revalidate them each time.\n  For M3, --runtime-root must be a strict child of the bounded Task storage root (default: TASK_STORAGE_ROOT/runtime). Task execution also requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT).\n\n`,
+    `  New game Tasks require --task-storage-root PATH, --node-bin PATH, and --godot-bin PATH; M3 uses --addon-root, while external lifecycle Tasks require --project-descriptor and --lifecycle-addon-root (or CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT). Continuations, exports, and discards revalidate the persisted profile without rereading the descriptor.\n  --runtime-root must be a strict child of the bounded Task storage root (default: TASK_STORAGE_ROOT/runtime). Task execution also requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT).\n\n`,
   );
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,

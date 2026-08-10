@@ -26,14 +26,20 @@ import {
   type TaskFixtureCapabilityV1,
 } from "./contracts.js";
 import { assertCandidateFixtureCompatible } from "./fixture-manifest.js";
+import {
+  EXTERNAL_GODOT_MAX_BYTES_V1,
+  EXTERNAL_GODOT_MAX_FILES_V1,
+  isExternalGodotNativeSourcePathV1,
+  isExternalGodotReservedSourcePathV1,
+} from "./external-godot-source-policy.js";
 import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
 import {
   selectedTreeSha256,
   type SelectedTreeEntryV1,
 } from "./selected-tree.js";
 
-const MAX_FILES = 4_096;
-const MAX_BYTES = 256 * 1024 * 1024;
+const MAX_FILES = EXTERNAL_GODOT_MAX_FILES_V1;
+const MAX_BYTES = EXTERNAL_GODOT_MAX_BYTES_V1;
 const PROC_SELF_FD = "/proc/self/fd";
 
 export interface PreparedCandidateGodotBuildV1 {
@@ -44,6 +50,52 @@ export interface PreparedCandidateGodotBuildV1 {
   readonly fileCount: number;
   readonly byteLength: number;
 }
+
+export interface PreparedExternalGodotLifecycleBuildV1 {
+  readonly build: VNextBuildV1;
+  readonly configuredMainScene: string;
+  readonly projectHash: Sha256DigestV1;
+  readonly descriptorHash: Sha256DigestV1;
+  readonly overlayHash: Sha256DigestV1;
+  readonly addonHash: Sha256DigestV1;
+  readonly vanillaSidecarHash: Sha256DigestV1;
+  readonly lifecycleSidecarHash: Sha256DigestV1;
+  readonly fileCount: number;
+  readonly byteLength: number;
+}
+
+const inspectExternalProjectConfiguration = (
+  entry: SelectedTreeEntryV1,
+): { readonly configuredMainScene: string } => {
+  let source: string;
+  try {
+    source = new TextDecoder("utf-8", { fatal: true }).decode(entry.content);
+  } catch (error) {
+    throw new TypeError("candidate project.godot is not valid UTF-8", {
+      cause: error,
+    });
+  }
+  if (/^\s*ChronoRiftLifecycle\s*=/mu.test(source)) {
+    throw new TypeError(
+      "candidate project.godot defines the reserved ChronoRiftLifecycle autoload",
+    );
+  }
+  const scenes = [
+    ...source.matchAll(/^\s*run\/main_scene\s*=\s*"([^"\r\n]+)"\s*$/gmu),
+  ].map((match) => match[1]);
+  const configuredMainScene = scenes[0];
+  if (
+    scenes.length !== 1 ||
+    configuredMainScene === undefined ||
+    (!configuredMainScene.startsWith("res://") &&
+      !configuredMainScene.startsWith("uid://"))
+  ) {
+    throw new TypeError(
+      "candidate project.godot must declare exactly one supported run/main_scene",
+    );
+  }
+  return { configuredMainScene };
+};
 
 const fdPath = (handle: FileHandle, name?: string): string =>
   name === undefined
@@ -100,6 +152,7 @@ const openPinnedEntry = async (
 
 const collectCandidate = async (
   workspaceDirectory: string,
+  policy: "m3-fixture" | "external-lifecycle" = "m3-fixture",
 ): Promise<readonly SelectedTreeEntryV1[]> => {
   const root = resolve(workspaceDirectory);
   const inspectedRoot = await lstat(root, { bigint: true });
@@ -138,6 +191,22 @@ const collectCandidate = async (
     for (const name of names) {
       if (prefix === "" && (name === ".git" || name === ".godot")) continue;
       const relativePath = prefix === "" ? name : `${prefix}/${name}`;
+      if (
+        policy === "external-lifecycle" &&
+        isExternalGodotReservedSourcePathV1(relativePath)
+      ) {
+        throw new TypeError(
+          `candidate source collides with reserved lifecycle overlay state: ${relativePath}`,
+        );
+      }
+      if (
+        policy === "external-lifecycle" &&
+        isExternalGodotNativeSourcePathV1(relativePath)
+      ) {
+        throw new TypeError(
+          `external Godot lifecycle candidate contains a native or non-GDScript path: ${relativePath}`,
+        );
+      }
       if (relativePath === "addons" || relativePath.startsWith("addons/")) {
         throw new TypeError(
           "candidate source collides with the managed read-only addons mount",
@@ -213,6 +282,12 @@ const collectCandidate = async (
     await rootHandle.close();
   }
 };
+
+export const collectCandidateGodotSourceV1 = (
+  workspaceDirectory: string,
+  profile: "m3-fixture" | "external-lifecycle",
+): Promise<readonly SelectedTreeEntryV1[]> =>
+  collectCandidate(workspaceDirectory, profile);
 
 const fixtureTreeHash = (
   files: readonly SelectedTreeEntryV1[],
@@ -308,4 +383,114 @@ export const prepareCandidateGodotBuildV1 = async (input: {
       0,
     ),
   };
+};
+
+export const prepareExternalGodotLifecycleBuildV1 = async (input: {
+  readonly taskId: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceDirectory: string;
+  readonly baselineSourceHash: Sha256DigestV1;
+  readonly projectCapability: {
+    readonly capabilitySha256: Sha256DigestV1;
+    readonly descriptorSha256: Sha256DigestV1;
+  };
+  readonly managedRuntime: {
+    readonly managedRuntimeId: string;
+    readonly addonHash: Sha256DigestV1;
+    readonly overlayHash: Sha256DigestV1;
+    readonly vanillaSidecarSourceSha256: Sha256DigestV1;
+    readonly lifecycleSidecarSourceSha256: Sha256DigestV1;
+    readonly protocolProfile: "chronorift-godot-lifecycle-v1";
+  };
+  readonly now: string;
+}): Promise<PreparedExternalGodotLifecycleBuildV1> => {
+  const files = await collectCandidate(
+    input.workspaceDirectory,
+    "external-lifecycle",
+  );
+  const projectFile = files.find(
+    (entry) => entry.relativePath === "project.godot",
+  );
+  if (projectFile === undefined) {
+    throw new TypeError(
+      "candidate external Godot project is missing project.godot",
+    );
+  }
+  const { configuredMainScene } =
+    inspectExternalProjectConfiguration(projectFile);
+  const sourceHash = selectedTreeSha256(files);
+  const descriptorHash = input.projectCapability.descriptorSha256;
+  const overlayHash = input.managedRuntime.overlayHash;
+  const addonHash = input.managedRuntime.addonHash;
+  const vanillaSidecarHash = input.managedRuntime.vanillaSidecarSourceSha256;
+  const lifecycleSidecarHash =
+    input.managedRuntime.lifecycleSidecarSourceSha256;
+  const projectHash = asSha256DigestV1(
+    createHash("sha256")
+      .update("chronorift-external-godot-project-v1\0")
+      .update(sourceHash)
+      .update("\0")
+      .update(descriptorHash)
+      .update("\0")
+      .update(overlayHash)
+      .update("\0")
+      .update(addonHash)
+      .digest("hex"),
+  );
+  const workspaceDiffHash = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      baselineSourceHash: input.baselineSourceHash,
+      candidateSourceHash: sourceHash,
+    }),
+  );
+  const buildConfigurationHash = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      runtimeProfile: "godot-external-lifecycle-v1",
+      protocolProfile: input.managedRuntime.protocolProfile,
+      projectCapabilitySha256: input.projectCapability.capabilitySha256,
+      managedRuntimeId: input.managedRuntime.managedRuntimeId,
+      descriptorHash,
+      overlayHash,
+      addonHash,
+      vanillaSidecarHash,
+      lifecycleSidecarHash,
+      configuredMainScene,
+    }),
+  );
+  const outputHash = projectHash;
+  const buildIdentityHash = contentHash({
+    schemaVersion: 1,
+    projectHash,
+    buildConfigurationHash,
+    outputHash,
+  });
+  const build = VNextBuildV1Schema.parse({
+    schemaVersion: 1,
+    taskId: input.taskId,
+    workspaceId: input.workspaceId,
+    sourceId: asSourceId(`source:${sourceHash}`),
+    buildId: asBuildId(`build:${buildIdentityHash}`),
+    sourceHash,
+    workspaceDiffHash,
+    buildConfigurationHash,
+    outputHash,
+    createdAt: input.now,
+  });
+  return Object.freeze({
+    build,
+    configuredMainScene,
+    projectHash,
+    descriptorHash,
+    overlayHash,
+    addonHash,
+    vanillaSidecarHash,
+    lifecycleSidecarHash,
+    fileCount: files.length,
+    byteLength: files.reduce(
+      (total, file) => total + file.content.byteLength,
+      0,
+    ),
+  });
 };

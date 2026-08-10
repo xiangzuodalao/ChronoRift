@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import {
   chmod,
@@ -14,9 +15,12 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import type { TaskId } from "@chronorift/domain";
 
 import {
+  WorkspaceMaterializationReceiptV2Schema,
   WorkspaceMaterializationReceiptV1Schema,
+  type TaskGodotProjectCapabilityV1,
   type TaskFixtureCapabilityV1,
   type WorkspaceMaterializationReceiptV1,
+  type WorkspaceMaterializationReceiptV2,
 } from "./contracts.js";
 import { M1Error } from "./errors.js";
 import {
@@ -31,9 +35,12 @@ import {
 } from "./selected-tree.js";
 import {
   parseGitTreeListing,
+  type VerifiedExternalGodotProject,
   type VerifiedGitSubtree,
+  type VerifiedTaskSource,
   type VerifiedGitTreeEntry,
 } from "./source-preflight.js";
+import type { GodotProjectDescriptorSnapshotV1 } from "./godot-project-descriptor.js";
 import type { TaskDirectoryLayout } from "./task-paths.js";
 
 export interface MaterializedPrivateTaskWorkspace {
@@ -44,6 +51,30 @@ export interface MaterializedPrivateTaskWorkspace {
   readonly receipt: WorkspaceMaterializationReceiptV1;
   readonly fixtureCapability: TaskFixtureCapabilityV1;
 }
+
+export interface MaterializedExternalGodotProjectWorkspace {
+  readonly sourceKind: "godot-external-lifecycle-v1";
+  readonly workspaceDirectory: string;
+  readonly hostBaselineGitDirectory: string;
+  readonly agentBaselineCommit: string;
+  readonly hostBaselineCommit: string;
+  readonly receipt: WorkspaceMaterializationReceiptV2;
+  readonly projectCapability: TaskGodotProjectCapabilityV1;
+  readonly descriptorSnapshot: GodotProjectDescriptorSnapshotV1;
+}
+
+export type MaterializedTaskWorkspace =
+  MaterializedPrivateTaskWorkspace | MaterializedExternalGodotProjectWorkspace;
+
+export interface MaterializeTaskWorkspaceRequest {
+  readonly taskId: TaskId;
+  readonly source: VerifiedTaskSource;
+  readonly layout: TaskDirectoryLayout;
+}
+
+const isExternalGodotSource = (
+  source: VerifiedTaskSource,
+): source is VerifiedExternalGodotProject => "projectCapability" in source;
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
   error instanceof Error && "code" in error;
@@ -144,7 +175,7 @@ const ensureSafeParentDirectories = async (
 
 const materializeSourceFiles = async (input: {
   readonly git: HostGitPort;
-  readonly source: VerifiedGitSubtree;
+  readonly source: VerifiedTaskSource;
   readonly workspaceDirectory: string;
 }): Promise<void> => {
   for (const entry of input.source.entries) {
@@ -402,14 +433,30 @@ const cleanupStagingWorktree = async (input: {
   }
 };
 
-export async function materializePrivateTaskWorkspace(
+export function materializePrivateTaskWorkspace(
   request: {
     readonly taskId: TaskId;
     readonly source: VerifiedGitSubtree;
     readonly layout: TaskDirectoryLayout;
   },
   dependencies?: { readonly git?: HostGitPort },
-): Promise<MaterializedPrivateTaskWorkspace> {
+): Promise<MaterializedPrivateTaskWorkspace>;
+export function materializePrivateTaskWorkspace(
+  request: {
+    readonly taskId: TaskId;
+    readonly source: VerifiedExternalGodotProject;
+    readonly layout: TaskDirectoryLayout;
+  },
+  dependencies?: { readonly git?: HostGitPort },
+): Promise<MaterializedExternalGodotProjectWorkspace>;
+export function materializePrivateTaskWorkspace(
+  request: MaterializeTaskWorkspaceRequest,
+  dependencies?: { readonly git?: HostGitPort },
+): Promise<MaterializedTaskWorkspace>;
+export async function materializePrivateTaskWorkspace(
+  request: MaterializeTaskWorkspaceRequest,
+  dependencies?: { readonly git?: HostGitPort },
+): Promise<MaterializedTaskWorkspace> {
   const git = dependencies?.git ?? new NodeHostGitPort();
   await verifyLayoutBoundary(request.layout);
   const stagingPath = join(
@@ -417,7 +464,13 @@ export async function materializePrivateTaskWorkspace(
     "staging-worktree",
   );
   let addWasAttempted = false;
-  let result: MaterializedPrivateTaskWorkspace | undefined;
+  let result: MaterializedTaskWorkspace | undefined;
+  let externalPending:
+    | {
+        readonly agentBaselineCommit: string;
+        readonly hostBaselineCommit: string;
+      }
+    | undefined;
   let operationError: unknown;
   try {
     try {
@@ -510,28 +563,33 @@ export async function materializePrivateTaskWorkspace(
         label: "host",
       });
 
-      const receipt = WorkspaceMaterializationReceiptV1Schema.parse({
-        schemaVersion: 1,
-        taskId: request.taskId,
-        repositoryIdentity: request.source.repositoryIdentity,
-        sourceRevision: request.source.headCommit,
-        projectPrefix: request.source.projectPrefix,
-        selectedTreeSha256: request.source.selectedTreeSha256,
-        agentBaselineCommit,
-        hostBaselineCommit,
-        copyRule: "git-object-plumbing-v1",
-        excludedCachePaths: request.source.fixtureCapability.ignoredCachePaths,
-        fixtureCapabilitySha256:
-          request.source.fixtureCapability.capabilitySha256,
-      });
-      result = {
-        workspaceDirectory: request.layout.workspaceDirectory,
-        hostBaselineGitDirectory: request.layout.hostBaselineGitDirectory,
-        agentBaselineCommit,
-        hostBaselineCommit,
-        receipt,
-        fixtureCapability: request.source.fixtureCapability,
-      };
+      if (isExternalGodotSource(request.source)) {
+        externalPending = { agentBaselineCommit, hostBaselineCommit };
+      } else {
+        const receipt = WorkspaceMaterializationReceiptV1Schema.parse({
+          schemaVersion: 1,
+          taskId: request.taskId,
+          repositoryIdentity: request.source.repositoryIdentity,
+          sourceRevision: request.source.headCommit,
+          projectPrefix: request.source.projectPrefix,
+          selectedTreeSha256: request.source.selectedTreeSha256,
+          agentBaselineCommit,
+          hostBaselineCommit,
+          copyRule: "git-object-plumbing-v1",
+          excludedCachePaths:
+            request.source.fixtureCapability.ignoredCachePaths,
+          fixtureCapabilitySha256:
+            request.source.fixtureCapability.capabilitySha256,
+        });
+        result = {
+          workspaceDirectory: request.layout.workspaceDirectory,
+          hostBaselineGitDirectory: request.layout.hostBaselineGitDirectory,
+          agentBaselineCommit,
+          hostBaselineCommit,
+          receipt,
+          fixtureCapability: request.source.fixtureCapability,
+        };
+      }
     } finally {
       await unlink(hostIndexFile).catch((error: unknown) => {
         if (!isNodeError(error) || error.code !== "ENOENT") throw error;
@@ -562,6 +620,77 @@ export async function materializePrivateTaskWorkspace(
       "private Task workspace materialization failed",
       operationError,
     );
+  }
+  if (externalPending !== undefined && isExternalGodotSource(request.source)) {
+    try {
+      const observedHeadCommit = await git.resolveHeadCommit(
+        request.source.repositoryRoot,
+      );
+      const status = await git.statusPorcelain(request.source.repositoryRoot);
+      if (
+        observedHeadCommit !== request.source.headCommit ||
+        status.byteLength !== 0
+      ) {
+        throw new M1Error(
+          "artifact_write_failed",
+          "source checkout changed during external project materialization",
+        );
+      }
+      await verifyBaselineTree({
+        git,
+        context: { cwd: request.source.repositoryRoot },
+        commit: observedHeadCommit,
+        expectedEntries: request.source.entries,
+        expectedSelectedTreeSha256: request.source.selectedTreeSha256,
+        temporaryRoot: request.layout.hostOperationTemporaryDirectory,
+        label: "source-postflight",
+      });
+      const receipt = WorkspaceMaterializationReceiptV2Schema.parse({
+        schemaVersion: 2,
+        taskId: request.taskId,
+        repositoryIdentity: request.source.repositoryIdentity,
+        sourceRevision: request.source.headCommit,
+        projectPrefix: "",
+        selectedTreeSha256: request.source.selectedTreeSha256,
+        agentBaselineCommit: externalPending.agentBaselineCommit,
+        hostBaselineCommit: externalPending.hostBaselineCommit,
+        copyRule: "git-object-plumbing-v1",
+        excludedCachePaths: request.source.projectCapability.ignoredCachePaths,
+        sourceCapabilityKind: "godot-external-lifecycle-v1",
+        projectCapabilitySha256:
+          request.source.projectCapability.capabilitySha256,
+        descriptorSha256: request.source.descriptorSnapshot.descriptorSha256,
+        sourcePostflight: {
+          observedHeadCommit,
+          observedSelectedTreeSha256: request.source.selectedTreeSha256,
+          statusPorcelainSha256: createHash("sha256")
+            .update(status)
+            .digest("hex"),
+          stagingWorktreeRegistered: false,
+        },
+      });
+      result = {
+        sourceKind: "godot-external-lifecycle-v1",
+        workspaceDirectory: request.layout.workspaceDirectory,
+        hostBaselineGitDirectory: request.layout.hostBaselineGitDirectory,
+        agentBaselineCommit: externalPending.agentBaselineCommit,
+        hostBaselineCommit: externalPending.hostBaselineCommit,
+        receipt,
+        projectCapability: request.source.projectCapability,
+        descriptorSnapshot: Object.freeze({
+          descriptor: request.source.descriptorSnapshot.descriptor,
+          descriptorSha256: request.source.descriptorSnapshot.descriptorSha256,
+          bytes: Uint8Array.from(request.source.descriptorSnapshot.bytes),
+        }),
+      };
+    } catch (error) {
+      if (error instanceof M1Error) throw error;
+      throw new M1Error(
+        "artifact_write_failed",
+        "external source checkout postflight could not be proven",
+        error,
+      );
+    }
   }
   if (result === undefined) {
     throw new M1Error(

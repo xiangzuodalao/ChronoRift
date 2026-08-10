@@ -188,6 +188,24 @@ describe("VNextTaskStore", () => {
     await expect(
       store.readJson(taskId, "managed-runtime.json", parseEvent),
     ).resolves.toEqual({ event: "managed" });
+    await store.putJsonOnce(
+      taskId,
+      "managed-lifecycle-runtime.json",
+      { event: "managed-lifecycle" },
+      parseEvent,
+    );
+    await expect(
+      store.readJson(taskId, "managed-lifecycle-runtime.json", parseEvent),
+    ).resolves.toEqual({ event: "managed-lifecycle" });
+    await store.putJsonOnce(
+      taskId,
+      "project-capability.json",
+      { event: "external" },
+      parseEvent,
+    );
+    await expect(
+      store.readJson(taskId, "project-capability.json", parseEvent),
+    ).resolves.toEqual({ event: "external" });
 
     await expect(
       store.putJsonOnce(
@@ -221,6 +239,22 @@ describe("VNextTaskStore", () => {
         () => ({ event: undefined }) as unknown as EventPayload,
       ),
     ).rejects.toThrow();
+  });
+
+  it("stores exact bounded external project descriptor bytes", async () => {
+    const { store, taskId } = await createStoreHarness();
+    const descriptor = Buffer.from('{"schemaVersion":1}\n');
+    await store.putBytesOnce(taskId, "project-descriptor.json", descriptor);
+    await expect(
+      store.readBytes(taskId, "project-descriptor.json"),
+    ).resolves.toEqual(Uint8Array.from(descriptor));
+    await expect(
+      store.putBytesOnce(
+        taskId,
+        "project-descriptor.json",
+        Buffer.alloc(64 * 1024 + 1),
+      ),
+    ).rejects.toThrow(/byte limit/u);
   });
 
   it("rejects invalid or noncanonical stored JSON", async () => {

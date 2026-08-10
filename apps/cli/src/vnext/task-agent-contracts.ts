@@ -2,9 +2,16 @@ import { z } from "zod";
 
 import {
   GAME_TOOL_NAMES_V1,
+  LIFECYCLE_GAME_TOOL_NAMES_V1,
+  type LifecycleGameToolNameV1,
   type GameToolNameV1,
 } from "@chronorift/agent-protocol";
-import { TaskIdSchema, type TaskId } from "@chronorift/domain";
+import {
+  Sha256DigestV1Schema,
+  TaskIdSchema,
+  type Sha256DigestV1,
+  type TaskId,
+} from "@chronorift/domain";
 import type { PiThinkingLevel } from "@chronorift/pi-harness";
 
 const IsoTimestampSchema = z.string().datetime({ offset: true });
@@ -83,6 +90,67 @@ export const createVNextAgentGameCapabilityV1 = (
     toolNames: AGENT_TASK_GAME_TOOL_NAMES_V1,
   });
 
+export interface VNextAgentLifecycleProfileV1 {
+  readonly schemaVersion: 1;
+  readonly kind: "godot-external-lifecycle-v1";
+  readonly projectCapabilitySha256: Sha256DigestV1;
+  readonly managedRuntimeId: string;
+  readonly toolCatalogVersion: 1;
+  readonly toolNames: readonly LifecycleGameToolNameV1[];
+}
+
+const freezeLifecycleProfile = (
+  profile: VNextAgentLifecycleProfileV1,
+): VNextAgentLifecycleProfileV1 =>
+  Object.freeze({
+    ...profile,
+    toolNames: Object.freeze([...profile.toolNames]),
+  });
+
+export const VNextAgentLifecycleProfileV1Schema: z.ZodType<VNextAgentLifecycleProfileV1> =
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      kind: z.literal("godot-external-lifecycle-v1"),
+      projectCapabilitySha256: Sha256DigestV1Schema,
+      managedRuntimeId: z
+        .string()
+        .regex(/^managed-godot-runtime:v1:[a-f0-9]{64}$/u),
+      toolCatalogVersion: z.literal(1),
+      toolNames: z
+        .array(z.enum(LIFECYCLE_GAME_TOOL_NAMES_V1))
+        .length(LIFECYCLE_GAME_TOOL_NAMES_V1.length),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.toolNames.some(
+          (toolName, index) => toolName !== LIFECYCLE_GAME_TOOL_NAMES_V1[index],
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["toolNames"],
+          message:
+            "lifecycle tool catalog must match the complete ordered four-tool catalog",
+        });
+      }
+    })
+    .transform(freezeLifecycleProfile);
+
+export const createVNextAgentLifecycleProfileV1 = (input: {
+  readonly projectCapabilitySha256: Sha256DigestV1;
+  readonly managedRuntimeId: string;
+}): VNextAgentLifecycleProfileV1 =>
+  VNextAgentLifecycleProfileV1Schema.parse({
+    schemaVersion: 1,
+    kind: "godot-external-lifecycle-v1",
+    projectCapabilitySha256: input.projectCapabilitySha256,
+    managedRuntimeId: input.managedRuntimeId,
+    toolCatalogVersion: 1,
+    toolNames: LIFECYCLE_GAME_TOOL_NAMES_V1,
+  });
+
 interface VNextAgentTaskFields {
   readonly taskId: TaskId;
   readonly goal: string;
@@ -101,7 +169,13 @@ export interface VNextAgentTaskV2 extends VNextAgentTaskFields {
   readonly gameCapability: VNextAgentGameCapabilityV1;
 }
 
-export type VNextAgentTask = VNextAgentTaskV1 | VNextAgentTaskV2;
+export interface VNextAgentTaskV3 extends VNextAgentTaskFields {
+  readonly schemaVersion: 3;
+  readonly profile: VNextAgentLifecycleProfileV1;
+}
+
+export type VNextAgentTask =
+  VNextAgentTaskV1 | VNextAgentTaskV2 | VNextAgentTaskV3;
 
 const agentTaskFields = {
   taskId: TaskIdSchema,
@@ -130,9 +204,18 @@ export const VNextAgentTaskV2Schema: z.ZodType<VNextAgentTaskV2> = z
   })
   .strict();
 
+export const VNextAgentTaskV3Schema: z.ZodType<VNextAgentTaskV3> = z
+  .object({
+    schemaVersion: z.literal(3),
+    ...agentTaskFields,
+    profile: VNextAgentLifecycleProfileV1Schema,
+  })
+  .strict();
+
 export const VNextAgentTaskSchema: z.ZodType<VNextAgentTask> = z.union([
   VNextAgentTaskV1Schema,
   VNextAgentTaskV2Schema,
+  VNextAgentTaskV3Schema,
 ]);
 
 export interface VNextAgentTurnV1 {

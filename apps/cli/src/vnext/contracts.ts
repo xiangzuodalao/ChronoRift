@@ -16,6 +16,7 @@ import {
   sanitizeM1Diagnostic,
   type M1ErrorCode,
 } from "./errors.js";
+import { DeclaredSourceUrlV1Schema } from "./godot-project-descriptor.js";
 
 const GitObjectIdV1Schema = z
   .string()
@@ -458,6 +459,102 @@ export const TaskFixtureCapabilityV1Schema: z.ZodType<TaskFixtureCapabilityV1> =
       }
     });
 
+export interface TaskGodotProjectCapabilityV1 {
+  readonly schemaVersion: 1;
+  readonly capabilityKind: "godot-external-lifecycle-v1";
+  readonly descriptorSha256: Sha256DigestV1;
+  readonly declaredSourceUrl: string;
+  readonly sourceRevision: string;
+  readonly baselineSelectedTreeSha256: Sha256DigestV1;
+  readonly projectFile: "project.godot";
+  readonly engineVersion: "4.7.1-stable (official)";
+  readonly scripting: "gdscript";
+  readonly renderer: "gl_compatibility";
+  readonly executionMode: "headless";
+  readonly startup: "project-main-scene";
+  readonly runtimeProfile: "chronorift-godot-lifecycle-v1";
+  readonly bridgeMode: "managed-runtime-overlay";
+  readonly protocolVersion: 1;
+  readonly ignoredCachePaths: readonly [".godot"];
+  readonly reservedSourceRoots: readonly [
+    ".chronorift",
+    "addons",
+    "override.cfg",
+  ];
+  readonly capabilitySha256: Sha256DigestV1;
+}
+
+export type TaskGodotProjectCapabilityContentV1 = Omit<
+  TaskGodotProjectCapabilityV1,
+  "capabilitySha256"
+>;
+
+export const TaskGodotProjectCapabilityContentV1Schema: z.ZodType<TaskGodotProjectCapabilityContentV1> =
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      capabilityKind: z.literal("godot-external-lifecycle-v1"),
+      descriptorSha256: Sha256DigestV1Schema,
+      declaredSourceUrl: DeclaredSourceUrlV1Schema,
+      sourceRevision: GitObjectIdV1Schema,
+      baselineSelectedTreeSha256: Sha256DigestV1Schema,
+      projectFile: z.literal("project.godot"),
+      engineVersion: z.literal("4.7.1-stable (official)"),
+      scripting: z.literal("gdscript"),
+      renderer: z.literal("gl_compatibility"),
+      executionMode: z.literal("headless"),
+      startup: z.literal("project-main-scene"),
+      runtimeProfile: z.literal("chronorift-godot-lifecycle-v1"),
+      bridgeMode: z.literal("managed-runtime-overlay"),
+      protocolVersion: z.literal(1),
+      ignoredCachePaths: z.tuple([z.literal(".godot")]),
+      reservedSourceRoots: z.tuple([
+        z.literal(".chronorift"),
+        z.literal("addons"),
+        z.literal("override.cfg"),
+      ]),
+    })
+    .strict();
+
+export const TaskGodotProjectCapabilityV1Schema: z.ZodType<TaskGodotProjectCapabilityV1> =
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      capabilityKind: z.literal("godot-external-lifecycle-v1"),
+      descriptorSha256: Sha256DigestV1Schema,
+      declaredSourceUrl: DeclaredSourceUrlV1Schema,
+      sourceRevision: GitObjectIdV1Schema,
+      baselineSelectedTreeSha256: Sha256DigestV1Schema,
+      projectFile: z.literal("project.godot"),
+      engineVersion: z.literal("4.7.1-stable (official)"),
+      scripting: z.literal("gdscript"),
+      renderer: z.literal("gl_compatibility"),
+      executionMode: z.literal("headless"),
+      startup: z.literal("project-main-scene"),
+      runtimeProfile: z.literal("chronorift-godot-lifecycle-v1"),
+      bridgeMode: z.literal("managed-runtime-overlay"),
+      protocolVersion: z.literal(1),
+      ignoredCachePaths: z.tuple([z.literal(".godot")]),
+      reservedSourceRoots: z.tuple([
+        z.literal(".chronorift"),
+        z.literal("addons"),
+        z.literal("override.cfg"),
+      ]),
+      capabilitySha256: Sha256DigestV1Schema,
+    })
+    .strict()
+    .superRefine((value, context) => {
+      const { capabilitySha256, ...content } = value;
+      if (capabilitySha256 !== contentHash(content)) {
+        context.addIssue({
+          code: "custom",
+          path: ["capabilitySha256"],
+          message:
+            "capabilitySha256 must match the canonical Godot project capability content",
+        });
+      }
+    });
+
 export interface WorkspaceMaterializationReceiptV1 {
   readonly schemaVersion: 1;
   readonly taskId: TaskId;
@@ -488,6 +585,94 @@ export const WorkspaceMaterializationReceiptV1Schema: z.ZodType<WorkspaceMateria
       fixtureCapabilitySha256: Sha256DigestV1Schema,
     })
     .strict();
+
+export interface WorkspaceMaterializationReceiptV2 {
+  readonly schemaVersion: 2;
+  readonly taskId: TaskId;
+  readonly repositoryIdentity: Sha256DigestV1;
+  readonly sourceRevision: string;
+  readonly projectPrefix: "";
+  readonly selectedTreeSha256: Sha256DigestV1;
+  readonly agentBaselineCommit: string;
+  readonly hostBaselineCommit: string;
+  readonly copyRule: "git-object-plumbing-v1";
+  readonly excludedCachePaths: readonly [".godot"];
+  readonly sourceCapabilityKind: "godot-external-lifecycle-v1";
+  readonly projectCapabilitySha256: Sha256DigestV1;
+  readonly descriptorSha256: Sha256DigestV1;
+  readonly sourcePostflight: {
+    readonly observedHeadCommit: string;
+    readonly observedSelectedTreeSha256: Sha256DigestV1;
+    readonly statusPorcelainSha256: Sha256DigestV1;
+    readonly stagingWorktreeRegistered: false;
+  };
+}
+
+export const WorkspaceMaterializationReceiptV2Schema: z.ZodType<WorkspaceMaterializationReceiptV2> =
+  z
+    .object({
+      schemaVersion: z.literal(2),
+      taskId: TaskIdSchema,
+      repositoryIdentity: Sha256DigestV1Schema,
+      sourceRevision: GitObjectIdV1Schema,
+      projectPrefix: z.literal(""),
+      selectedTreeSha256: Sha256DigestV1Schema,
+      agentBaselineCommit: GitObjectIdV1Schema,
+      hostBaselineCommit: GitObjectIdV1Schema,
+      copyRule: z.literal("git-object-plumbing-v1"),
+      excludedCachePaths: z.tuple([z.literal(".godot")]),
+      sourceCapabilityKind: z.literal("godot-external-lifecycle-v1"),
+      projectCapabilitySha256: Sha256DigestV1Schema,
+      descriptorSha256: Sha256DigestV1Schema,
+      sourcePostflight: z
+        .object({
+          observedHeadCommit: GitObjectIdV1Schema,
+          observedSelectedTreeSha256: Sha256DigestV1Schema,
+          statusPorcelainSha256: Sha256DigestV1Schema,
+          stagingWorktreeRegistered: z.literal(false),
+        })
+        .strict(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (value.sourcePostflight.observedHeadCommit !== value.sourceRevision) {
+        context.addIssue({
+          code: "custom",
+          path: ["sourcePostflight", "observedHeadCommit"],
+          message: "observedHeadCommit must match the frozen sourceRevision",
+        });
+      }
+      if (
+        value.sourcePostflight.observedSelectedTreeSha256 !==
+        value.selectedTreeSha256
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["sourcePostflight", "observedSelectedTreeSha256"],
+          message:
+            "observedSelectedTreeSha256 must match the frozen selected tree",
+        });
+      }
+      if (
+        value.sourcePostflight.statusPorcelainSha256 !==
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["sourcePostflight", "statusPorcelainSha256"],
+          message: "source postflight status must be empty",
+        });
+      }
+    });
+
+export type WorkspaceMaterializationReceipt =
+  WorkspaceMaterializationReceiptV1 | WorkspaceMaterializationReceiptV2;
+
+export const WorkspaceMaterializationReceiptSchema: z.ZodType<WorkspaceMaterializationReceipt> =
+  z.union([
+    WorkspaceMaterializationReceiptV1Schema,
+    WorkspaceMaterializationReceiptV2Schema,
+  ]);
 
 export interface SandboxTaskStorageCapabilityV1 {
   readonly kind: "dedicated-capacity-bounded-filesystem-v1";
@@ -1096,6 +1281,12 @@ export interface SandboxCleanupReceiptV1 {
   readonly termSent: boolean;
   readonly killSent: boolean;
   readonly scopeRemoved: boolean;
+  /**
+   * Present only when bounded Task-storage inspection was available during
+   * this cleanup attempt. `true` means that inspection completed; omission or
+   * `false` must not be upgraded to a storage cleanup fact by consumers.
+   */
+  readonly storageReconciled?: boolean | undefined;
 }
 
 export const SandboxCleanupReceiptV1Schema: z.ZodType<SandboxCleanupReceiptV1> =
@@ -1106,6 +1297,7 @@ export const SandboxCleanupReceiptV1Schema: z.ZodType<SandboxCleanupReceiptV1> =
       termSent: z.boolean(),
       killSent: z.boolean(),
       scopeRemoved: z.boolean(),
+      storageReconciled: z.boolean().optional(),
     })
     .strict()
     .superRefine((value, context) => {
@@ -1125,6 +1317,83 @@ export const SandboxCleanupReceiptV1Schema: z.ZodType<SandboxCleanupReceiptV1> =
           code: "custom",
           path: ["scopeRemoved"],
           message: "a removed scope requires proven process-group termination",
+        });
+      }
+    });
+
+export interface SandboxMountAdmissionReceiptV1 {
+  readonly schemaVersion: 1;
+  readonly evidenceBasis: "validated-process-plan";
+  readonly profile: SandboxResourceProfileNameV1;
+  readonly workspaceAccess: "read-write" | "read-only";
+  readonly taskSharedWritableTargets: readonly ["/tmp", "/artifacts"];
+  readonly operationPrivateWritableTargets:
+    readonly [] | readonly ["/run/chronorift"];
+  readonly readonlyTargetCount: number;
+  readonly readonlyTargetsSha256: Sha256DigestV1;
+  readonly mountCount: number;
+  readonly mountPlanSha256: Sha256DigestV1;
+  readonly credentialTargetCount: 0;
+}
+
+export const SandboxMountAdmissionReceiptV1Schema: z.ZodType<SandboxMountAdmissionReceiptV1> =
+  z
+    .object({
+      schemaVersion: z.literal(1),
+      evidenceBasis: z.literal("validated-process-plan"),
+      profile: SandboxResourceProfileNameV1Schema,
+      workspaceAccess: z.enum(["read-write", "read-only"]),
+      taskSharedWritableTargets: z.tuple([
+        z.literal("/tmp"),
+        z.literal("/artifacts"),
+      ]),
+      operationPrivateWritableTargets: z.union([
+        z.tuple([]),
+        z.tuple([z.literal("/run/chronorift")]),
+      ]),
+      readonlyTargetCount: z.number().int().min(1).max(258),
+      readonlyTargetsSha256: Sha256DigestV1Schema,
+      mountCount: z.number().int().min(4).max(261),
+      mountPlanSha256: Sha256DigestV1Schema,
+      credentialTargetCount: z.literal(0),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      const godotProfile = value.profile === "godot-headless";
+      if (
+        (godotProfile && value.workspaceAccess !== "read-only") ||
+        (!godotProfile && value.workspaceAccess !== "read-write")
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["workspaceAccess"],
+          message: "workspace access must match the admitted sandbox profile",
+        });
+      }
+      if (
+        (godotProfile && value.operationPrivateWritableTargets.length !== 1) ||
+        (!godotProfile && value.operationPrivateWritableTargets.length !== 0)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["operationPrivateWritableTargets"],
+          message:
+            "operation-private writable targets must match the admitted sandbox profile",
+        });
+      }
+      const workspaceReadonlyCount =
+        value.workspaceAccess === "read-only" ? 1 : 0;
+      const expectedMountCount =
+        3 +
+        value.operationPrivateWritableTargets.length +
+        value.readonlyTargetCount -
+        workspaceReadonlyCount;
+      if (value.mountCount !== expectedMountCount) {
+        context.addIssue({
+          code: "custom",
+          path: ["mountCount"],
+          message:
+            "mountCount must account for every admitted fixed and read-only target",
         });
       }
     });
@@ -1149,6 +1418,8 @@ export interface SandboxExecutionReceiptV1 {
   readonly startedAtMonotonicMs: number;
   readonly endedAtMonotonicMs: number;
   readonly cleanup: SandboxCleanupReceiptV1;
+  /** Added after M1; absent on historical receipts and pre-plan launch failures. */
+  readonly mountAdmission?: SandboxMountAdmissionReceiptV1 | undefined;
 }
 
 export const SandboxExecutionReceiptV1Schema: z.ZodType<SandboxExecutionReceiptV1> =
@@ -1178,6 +1449,7 @@ export const SandboxExecutionReceiptV1Schema: z.ZodType<SandboxExecutionReceiptV
       startedAtMonotonicMs: z.number().finite().nonnegative(),
       endedAtMonotonicMs: z.number().finite().nonnegative(),
       cleanup: SandboxCleanupReceiptV1Schema,
+      mountAdmission: SandboxMountAdmissionReceiptV1Schema.optional(),
     })
     .strict()
     .superRefine((value, context) => {
@@ -1198,6 +1470,16 @@ export const SandboxExecutionReceiptV1Schema: z.ZodType<SandboxExecutionReceiptV
           code: "custom",
           path: ["startedAtMonotonicMs"],
           message: "startedAtMonotonicMs must not exceed endedAtMonotonicMs",
+        });
+      }
+      if (
+        value.mountAdmission !== undefined &&
+        value.mountAdmission.profile !== value.requested.profile
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["mountAdmission", "profile"],
+          message: "mount admission profile must match the requested profile",
         });
       }
       const cleanExit = value.exitCode === 0 && value.signal === null;

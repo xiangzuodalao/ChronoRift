@@ -5,10 +5,12 @@ import { join } from "node:path";
 import {
   GAME_TOOL_DEFINITIONS_V1,
   GAME_TOOL_NAMES_V1,
+  LIFECYCLE_GAME_TOOL_NAMES_V1,
 } from "@chronorift/agent-protocol";
 import {
   TaskPatchIdentityV1Schema,
   TaskIdentityV1Schema,
+  asSha256DigestV1,
   asTaskId,
   taskNamespaceDigestV1,
   type TaskId,
@@ -656,6 +658,107 @@ describe("vNext Agent Task composition", () => {
     ).rejects.toThrow("provider turn failed");
     expect(cleanups).toBe(2);
     expect(suspends).toBe(1);
+  });
+
+  it("persists an external lifecycle profile and exposes exactly four game tools", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chronorift-agent-m4-"));
+    roots.push(root);
+    const workspaceDirectory = join(root, "workspace");
+    const piSessionDirectory = join(root, "pi-sessions");
+    const runtimeRoot = join(root, "runtime");
+    await Promise.all([
+      mkdir(workspaceDirectory),
+      mkdir(piSessionDirectory),
+      mkdir(runtimeRoot),
+    ]);
+    const taskId = asTaskId("task:m4-agent");
+    const projectCapabilitySha256 = asSha256DigestV1("d".repeat(64));
+    const managedRuntimeId = `managed-godot-runtime:v1:${"e".repeat(64)}`;
+    const environment = {
+      sourceKind: "godot-external-lifecycle-v1",
+    } as unknown as M1TaskEnvironment;
+    const store = new MemoryAgentStore();
+    let cleanupCalls = 0;
+    let activeTools: readonly string[] = [];
+
+    await startVNextAgentTask(
+      {
+        taskId,
+        projectPath: root,
+        runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/cgroup",
+          bwrapPath: "/bwrap",
+          prlimitPath: "/prlimit",
+          busyboxPath: "/busybox",
+        },
+        goal: "Onboard the external project",
+        provider: "openai-codex",
+        model: "gpt-5.6-luna",
+        thinkingLevel: "max",
+      },
+      {
+        now: () => "2026-08-10T00:00:00.000Z",
+        createStore: () => store,
+        prepare: async () => environment,
+        suspend: async () => ({
+          processGroupTerminated: true,
+          cgroupPopulated: false,
+          termSent: false,
+          killSent: false,
+          scopeRemoved: true,
+        }),
+        hostContext: () => ({ workspaceDirectory, piSessionDirectory }),
+        externalRuntimeContext: () =>
+          ({
+            taskId,
+            projectCapability: {
+              capabilitySha256: projectCapabilitySha256,
+            },
+            managedLifecycleRuntime: { managedRuntimeId },
+          }) as never,
+        createLifecycleGameToolPort: async () => ({
+          invoke: async () => undefined,
+          cleanup: async () => {
+            cleanupCalls += 1;
+          },
+        }),
+        runTurn: async (request): Promise<VNextPiTurnResult> => {
+          activeTools = request.tools.map((tool) => tool.name);
+          expect(request.additionalEnvironmentInstructions).toContain(
+            `Exact project capability: ${projectCapabilitySha256}`,
+          );
+          const sessionFile = join(
+            request.sessionDirectory,
+            "session-m4.jsonl",
+          );
+          await writeFile(sessionFile, "session\n");
+          return {
+            schemaVersion: 1,
+            status: "completed",
+            sessionId: "session-agent-m4",
+            sessionFile,
+            provider: request.provider,
+            model: request.model,
+            requestedThinkingLevel: request.thinkingLevel,
+            realizedThinkingLevel: request.thinkingLevel,
+            activeTools,
+            assistantText: "m4 turn",
+            errorMessage: null,
+            eventsObserved: 0,
+            stats: { ...stats, sessionFile },
+          };
+        },
+      },
+    );
+
+    expect(activeTools.slice(-4)).toEqual(LIFECYCLE_GAME_TOOL_NAMES_V1);
+    expect(activeTools).toHaveLength(11);
+    expect(cleanupCalls).toBe(1);
+    expect(store.task).toMatchObject({
+      schemaVersion: 3,
+      profile: { projectCapabilitySha256, managedRuntimeId },
+    });
   });
 
   it("strictly versions the M3 capability without accepting a partial tool catalog", () => {

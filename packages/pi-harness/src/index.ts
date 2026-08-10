@@ -72,6 +72,7 @@ export {
   type VNextCodingToolPort,
 } from "./vnext-coding-tools.js";
 export {
+  createVNextLifecycleGameToolDefinitions,
   createVNextGameToolDefinitions,
   VNextGameToolErrorEnvelopeV1Schema,
   VNextGameToolErrorV1Schema,
@@ -83,6 +84,8 @@ export {
   type VNextGameToolErrorV1,
   type VNextGameToolPort,
   type VNextGameToolPortRequestV1,
+  type VNextLifecycleGameToolPort,
+  type VNextLifecycleGameToolPortRequestV1,
   type VNextGameToolResponseV1,
   type VNextGameToolSuccessEnvelopeV1,
 } from "./vnext-game-tools.js";

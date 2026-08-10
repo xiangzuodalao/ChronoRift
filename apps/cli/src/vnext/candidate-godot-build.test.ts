@@ -62,7 +62,10 @@ import {
 } from "@chronorift/domain";
 import { contentHash } from "@chronorift/json-artifacts";
 
-import { prepareCandidateGodotBuildV1 } from "./candidate-godot-build.js";
+import {
+  prepareCandidateGodotBuildV1,
+  prepareExternalGodotLifecycleBuildV1,
+} from "./candidate-godot-build.js";
 import type { TaskFixtureCapabilityV1 } from "./contracts.js";
 import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
 
@@ -223,5 +226,117 @@ describe("candidate Godot build snapshot", () => {
     await expect(readFile(join(parked, "local.gd"), "utf8")).resolves.toBe(
       "extends Node\n",
     );
+  });
+});
+
+describe("external lifecycle candidate build snapshot", () => {
+  const lifecycleRuntime = {
+    managedRuntimeId: `managed-godot-runtime:v1:${"1".repeat(64)}`,
+    addonHash: asSha256DigestV1("2".repeat(64)),
+    overlayHash: asSha256DigestV1("3".repeat(64)),
+    vanillaSidecarSourceSha256: asSha256DigestV1("4".repeat(64)),
+    lifecycleSidecarSourceSha256: asSha256DigestV1("5".repeat(64)),
+    protocolProfile: "chronorift-godot-lifecycle-v1" as const,
+  };
+
+  const prepareLifecycle = (workspaceDirectory: string) =>
+    prepareExternalGodotLifecycleBuildV1({
+      taskId: asTaskId("task:external"),
+      workspaceId: asWorkspaceId("workspace:external"),
+      workspaceDirectory,
+      baselineSourceHash: hash,
+      projectCapability: {
+        capabilitySha256: asSha256DigestV1("6".repeat(64)),
+        descriptorSha256: asSha256DigestV1("7".repeat(64)),
+      },
+      managedRuntime: lifecycleRuntime,
+      now: "2026-08-10T00:00:00.000Z",
+    });
+
+  it("binds source, descriptor, overlay, addon, and sidecars into build identity", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-external-candidate-"),
+    );
+    roots.push(workspace);
+    await writeFile(
+      join(workspace, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(workspace, "main.gd"), "extends Node\n");
+
+    const first = await prepareLifecycle(workspace);
+    const changed = await prepareExternalGodotLifecycleBuildV1({
+      taskId: asTaskId("task:external"),
+      workspaceId: asWorkspaceId("workspace:external"),
+      workspaceDirectory: workspace,
+      baselineSourceHash: hash,
+      projectCapability: {
+        capabilitySha256: asSha256DigestV1("6".repeat(64)),
+        descriptorSha256: asSha256DigestV1("7".repeat(64)),
+      },
+      managedRuntime: {
+        ...lifecycleRuntime,
+        overlayHash: asSha256DigestV1("8".repeat(64)),
+      },
+      now: "2026-08-10T00:00:00.000Z",
+    });
+    expect(first.projectHash).not.toBe(changed.projectHash);
+    expect(first.build.buildId).not.toBe(changed.build.buildId);
+    expect(first.build.sourceHash).toBe(changed.build.sourceHash);
+  });
+
+  it("rejects candidate-only overlay and product state", async () => {
+    for (const relativePath of [
+      "override.cfg",
+      ".chronorift/state.json",
+      "Addons/plugin.gd",
+      ".ChronoRift/state.json",
+    ]) {
+      const workspace = await mkdtemp(
+        join(tmpdir(), "chronorift-external-collision-"),
+      );
+      roots.push(workspace);
+      await writeFile(join(workspace, "project.godot"), "[application]\n");
+      const target = join(workspace, relativePath);
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, "reserved\n");
+      await expect(prepareLifecycle(workspace)).rejects.toThrow(/reserved/iu);
+    }
+  });
+
+  it("rejects native and non-GDScript candidate additions before launch", async () => {
+    for (const relativePath of [
+      "native.SO",
+      "bridge.gdextension",
+      "Logic.CS",
+    ]) {
+      const workspace = await mkdtemp(
+        join(tmpdir(), "chronorift-external-native-"),
+      );
+      roots.push(workspace);
+      await writeFile(
+        join(workspace, "project.godot"),
+        '[application]\nrun/main_scene="res://main.tscn"\n',
+      );
+      await writeFile(join(workspace, relativePath), "unsupported\n");
+      await expect(prepareLifecycle(workspace)).rejects.toThrow(
+        /native|non-GDScript/iu,
+      );
+    }
+  });
+
+  it("rejects a missing main scene and the reserved lifecycle autoload", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-external-project-config-"),
+    );
+    roots.push(workspace);
+    await writeFile(join(workspace, "project.godot"), "[application]\n");
+    await expect(prepareLifecycle(workspace)).rejects.toThrow(/main_scene/iu);
+
+    await writeFile(
+      join(workspace, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n[autoload]\nChronoRiftLifecycle="*res://probe.gd"\n',
+    );
+    await expect(prepareLifecycle(workspace)).rejects.toThrow(/autoload/iu);
   });
 });

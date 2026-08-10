@@ -23,7 +23,10 @@ import {
 import { contentHash } from "@chronorift/json-artifacts";
 import { describe, expect, it } from "vitest";
 
-import { buildSandboxProcessPlan } from "./bubblewrap-command.js";
+import {
+  buildSandboxProcessPlan,
+  type SandboxProcessPlan,
+} from "./bubblewrap-command.js";
 import type {
   ObservedResourceUsageV1,
   SandboxExecutionRequestV1,
@@ -38,6 +41,7 @@ import {
   createSandboxPolicyV2,
 } from "./sandbox-policy.js";
 import { createManagedGodotRuntimeV1 } from "./managed-godot-runtime.js";
+import { createManagedGodotLifecycleRuntimeV1 } from "./managed-godot-lifecycle-runtime.js";
 import type { SandboxToolchainBindingV1 } from "./sandbox-toolchain.js";
 import type {
   SandboxBootstrapLaunchPlan,
@@ -201,7 +205,23 @@ const managedRuntime = createManagedGodotRuntimeV1({
     { relativePath: "plugin.cfg", bytes: Buffer.from("[plugin]\n") },
   ],
 });
-const managedRuntimeId = managedRuntime.capability.managedRuntimeId;
+const managedLifecycleRuntime = createManagedGodotLifecycleRuntimeV1({
+  doctorVersion: "4.7.1.stable.official.a13da4feb",
+  nodeTarget: "/opt/chronorift/bin/node",
+  godotTarget: "/opt/chronorift/bin/godot",
+  toolchain: {
+    capability: managedRuntimeCapability,
+    binding: managedRuntimeBinding,
+  },
+  vanillaSidecarSource: "trusted vanilla sidecar source",
+  lifecycleSidecarSource: "trusted lifecycle sidecar source",
+  addonFiles: [
+    {
+      relativePath: "lifecycle_probe.gd",
+      bytes: Buffer.from("extends Node\n"),
+    },
+  ],
+});
 const validRequest: SandboxExecutionRequestV1 = {
   schemaVersion: 1,
   operationId: "operation_fixture",
@@ -225,16 +245,20 @@ interface HarnessOptions {
   readonly trustFails?: boolean;
   readonly toolchain?: boolean;
   readonly managedRuntime?: boolean;
+  readonly managedLifecycleRuntime?: boolean;
   readonly managedShellPath?: string;
   readonly legacyManagedPolicy?: boolean;
   readonly storageBindingDrift?: boolean;
   readonly storageObservationFails?: boolean;
+  readonly storageCleanupObservationFailsOnce?: boolean;
   readonly scratchCleanupFailsOnce?: boolean;
   readonly missingRemountCapability?: boolean;
   readonly scopeRemoveFails?: boolean;
   readonly scratchCreationCleanupFails?: boolean;
   readonly invalidBoundResources?: boolean;
   readonly bootstrapCleanupUnproven?: boolean;
+  readonly mutateProcessPlan?:
+    ((plan: SandboxProcessPlan) => SandboxProcessPlan) | undefined;
 }
 
 class FakeScope implements ExecutionCgroupScope {
@@ -439,6 +463,12 @@ class FakeBootstrapSession implements SandboxBootstrapSession {
 }
 
 function createFakeBrokerHarness(options: HarnessOptions = {}) {
+  const activeManagedRuntime =
+    options.managedLifecycleRuntime === true
+      ? managedLifecycleRuntime
+      : options.managedRuntime === true
+        ? managedRuntime
+        : undefined;
   const log: string[] = [];
   const securityEvents: unknown[] = [];
   const diagnostics: unknown[] = [];
@@ -461,6 +491,7 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
   let scratchCloseAttempts = 0;
   let bootstrapCleanupAttempts = 0;
   let bootstrapCleanupProven = false;
+  let storageCleanupObservationFailures = 0;
   const scratchPaths: string[] = [];
   const activeScratchPaths = new Set<string>();
   const inspectedLayoutPaths: (readonly string[])[] = [];
@@ -478,7 +509,7 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
           ]
         : [],
     managedRuntimeFiles:
-      options.managedRuntime === true
+      activeManagedRuntime !== undefined
         ? [
             { fd: 46, target: "/bin/sh" },
             { fd: 47, target: "/lib/libc.so.6" },
@@ -491,21 +522,29 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
             { fd: 51, target: "/usr/bin/xdg-user-dir" },
           ]
         : [],
-    ...(options.managedRuntime === true
+    ...(activeManagedRuntime !== undefined
       ? {
           managedFontconfig: {
             fd: 52,
-            target: managedRuntime.capability.fontconfigTarget,
+            target: activeManagedRuntime.capability.fontconfigTarget,
           },
         }
       : {}),
-    ...(options.managedRuntime === true
+    ...(activeManagedRuntime !== undefined
       ? {
           managedAddon: {
             parentFd: 53,
-            parentTarget: managedRuntime.capability.addonParentTarget,
+            parentTarget: activeManagedRuntime.capability.addonParentTarget,
             fd: 54,
-            target: managedRuntime.capability.addonTarget,
+            target: activeManagedRuntime.capability.addonTarget,
+          },
+        }
+      : {}),
+    ...(options.managedLifecycleRuntime === true
+      ? {
+          managedOverlay: {
+            fd: 55,
+            target: managedLifecycleRuntime.capability.overlayTarget,
           },
         }
       : {}),
@@ -539,6 +578,14 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
       }
       if (options.storageObservationFails === true && processStarts > 0) {
         throw new Error("task storage observation failed");
+      }
+      if (
+        options.storageCleanupObservationFailsOnce === true &&
+        bindingCloses > 0 &&
+        storageCleanupObservationFailures === 0
+      ) {
+        storageCleanupObservationFailures += 1;
+        throw new Error("final task storage observation failed once");
       }
       return { usedBytes: 2_097_152, usedInodes: 24 };
     },
@@ -611,7 +658,10 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
       }
       return session;
     },
-    buildProcessPlan: buildSandboxProcessPlan,
+    buildProcessPlan: (input) => {
+      const plan = buildSandboxProcessPlan(input);
+      return options.mutateProcessPlan?.(plan) ?? plan;
+    },
     sleep: async (milliseconds) => {
       log.push(`sleep:${milliseconds}`);
     },
@@ -628,15 +678,16 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
     {
       taskId,
       capability:
-        options.managedRuntime === true
+        activeManagedRuntime !== undefined
           ? options.missingRemountCapability === true
             ? { ...m3SandboxCapability, bwrap: capability.bwrap }
             : m3SandboxCapability
           : capability,
       hostBinding:
-        options.managedRuntime === true ? m3HostBinding : hostBinding,
+        activeManagedRuntime !== undefined ? m3HostBinding : hostBinding,
       policy:
-        options.managedRuntime === true && options.legacyManagedPolicy !== true
+        activeManagedRuntime !== undefined &&
+        options.legacyManagedPolicy !== true
           ? createSandboxPolicyV2(digest, {
               coding: {
                 toolchainId: toolchainCapability.toolchainId,
@@ -644,12 +695,16 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
               },
               godot: {
                 toolchainId: managedRuntimeCapability.toolchainId,
-                managedRuntimeId,
+                managedRuntimeId:
+                  activeManagedRuntime.capability.managedRuntimeId,
                 targets: [
                   ...managedRuntimeCapability.files.map((file) => file.target),
-                  managedRuntime.capability.fontconfigTarget,
-                  managedRuntime.capability.addonParentTarget,
-                  managedRuntime.capability.addonTarget,
+                  activeManagedRuntime.capability.fontconfigTarget,
+                  activeManagedRuntime.capability.addonParentTarget,
+                  activeManagedRuntime.capability.addonTarget,
+                  ...(options.managedLifecycleRuntime === true
+                    ? [managedLifecycleRuntime.capability.overlayTarget]
+                    : []),
                 ],
               },
             })
@@ -667,14 +722,14 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
             },
           }
         : {}),
-      ...(options.managedRuntime === true
+      ...(activeManagedRuntime !== undefined
         ? {
-            managedRuntime: {
-              capability: managedRuntime.capability,
-              binding:
-                options.managedShellPath === undefined
-                  ? managedRuntime.binding
-                  : {
+            managedRuntime:
+              options.managedRuntime === true &&
+              options.managedShellPath !== undefined
+                ? {
+                    capability: managedRuntime.capability,
+                    binding: {
                       ...managedRuntime.binding,
                       toolchain: {
                         ...managedRuntime.binding.toolchain,
@@ -690,7 +745,8 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
                         ),
                       },
                     },
-            },
+                  }
+                : activeManagedRuntime,
           }
         : {}),
       layout,
@@ -1088,6 +1144,14 @@ describe("Task-bound sandbox broker", () => {
     expect(completion).toMatchObject({
       kind: "executed",
       receipt: {
+        mountAdmission: {
+          evidenceBasis: "validated-process-plan",
+          profile: "godot-headless",
+          workspaceAccess: "read-only",
+          taskSharedWritableTargets: ["/tmp", "/artifacts"],
+          operationPrivateWritableTargets: ["/run/chronorift"],
+          credentialTargetCount: 0,
+        },
         realizedMechanisms: {
           aggregateStorage: "dedicated-capacity-bounded-filesystem-v1",
           unavailable: [],
@@ -1099,6 +1163,216 @@ describe("Task-bound sandbox broker", () => {
     });
     expect(harness.activeScratchPaths).toEqual(new Set());
     expect(harness.scratchCloseAttempts).toBe(1);
+    await broker.cleanup();
+  });
+
+  it("rejects a process plan that makes the Godot workspace writable", async () => {
+    const harness = createFakeBrokerHarness({
+      toolchain: true,
+      managedRuntime: true,
+      mutateProcessPlan: (plan) => {
+        const args = [...plan.args];
+        const workspaceTarget = args.findIndex(
+          (argument, index) =>
+            argument === "/workspace" && args[index - 2] === "--ro-bind-fd",
+        );
+        if (workspaceTarget < 2) throw new Error("missing workspace mount");
+        args[workspaceTarget - 2] = "--bind-fd";
+        return { ...plan, args };
+      },
+    });
+    const broker = await harness.brokerPromise;
+    const result = await broker.execute({
+      ...validRequest,
+      profile: "godot-headless",
+      argv: ["/opt/chronorift/bin/node", "--version"],
+    });
+    expect(result).toMatchObject({
+      kind: "executed",
+      receipt: { status: "launch_failed" },
+    });
+    if (result.kind !== "executed") throw new Error("expected execution");
+    expect(result.receipt.mountAdmission).toBeUndefined();
+    expect(harness.processStarts).toBe(0);
+    await broker.cleanup();
+  });
+
+  it("rejects an unexpected credential target in the process plan", async () => {
+    const harness = createFakeBrokerHarness({
+      toolchain: true,
+      managedRuntime: true,
+      mutateProcessPlan: (plan) => {
+        const args = [...plan.args];
+        const remountRoot = args.indexOf("--remount-ro");
+        if (remountRoot < 0) throw new Error("missing root remount");
+        args.splice(
+          remountRoot,
+          0,
+          "--ro-bind-fd",
+          "9",
+          "/root/.pi/agent/auth.json",
+        );
+        return { ...plan, args };
+      },
+    });
+    const broker = await harness.brokerPromise;
+    const result = await broker.execute({
+      ...validRequest,
+      profile: "godot-headless",
+      argv: ["/opt/chronorift/bin/node", "--version"],
+    });
+    expect(result).toMatchObject({
+      kind: "executed",
+      receipt: { status: "launch_failed" },
+    });
+    if (result.kind !== "executed") throw new Error("expected execution");
+    expect(result.receipt.mountAdmission).toBeUndefined();
+    expect(harness.processStarts).toBe(0);
+    await broker.cleanup();
+  });
+
+  it("pins lifecycle addon and overlay mounts while preserving denial and cleanup boundaries", async () => {
+    const harness = createFakeBrokerHarness({
+      hanging: true,
+      toolchain: true,
+      managedLifecycleRuntime: true,
+    });
+    const broker = await harness.brokerPromise;
+
+    await expect(
+      broker.execute({
+        ...validRequest,
+        argv: ["/opt/chronorift/bin/node", "--version"],
+      }),
+    ).resolves.toMatchObject({
+      kind: "denied",
+      securityEvent: { sideEffectStarted: false },
+    });
+    const opened = await broker.openDuplex({
+      ...validRequest,
+      profile: "godot-headless",
+      argv: ["/opt/chronorift/bin/node", "--version"],
+    });
+    if (opened.kind !== "opened") throw new Error("expected duplex handle");
+    const serializedPlan = harness.session.launchPlan?.args.join("\0") ?? "";
+    for (const [fd, target] of [
+      ["17", managedLifecycleRuntime.capability.addonParentTarget],
+      ["18", managedLifecycleRuntime.capability.addonTarget],
+      ["19", managedLifecycleRuntime.capability.overlayTarget],
+    ] as const) {
+      expect(serializedPlan).toContain(["--ro-bind-fd", fd, target].join("\0"));
+    }
+    expect(harness.bootstrapInheritedFds).toEqual([
+      [40, 41, 42, 61, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55],
+    ]);
+
+    await opened.handle.terminate();
+    await expect(opened.handle.completion).resolves.toMatchObject({
+      kind: "executed",
+      receipt: {
+        status: "cancelled",
+        cleanup: { processGroupTerminated: true, scopeRemoved: true },
+      },
+    });
+    await expect(broker.cleanup()).resolves.toMatchObject({
+      processGroupTerminated: true,
+      cgroupPopulated: false,
+      scopeRemoved: true,
+      storageReconciled: true,
+    });
+  });
+
+  it("does not claim Task storage reconciliation when final inspection is unavailable", async () => {
+    const harness = createFakeBrokerHarness({
+      toolchain: true,
+      managedLifecycleRuntime: true,
+      storageObservationFails: true,
+    });
+    const broker = await harness.brokerPromise;
+    await expect(
+      broker.execute({
+        ...validRequest,
+        profile: "godot-headless",
+        argv: ["/opt/chronorift/bin/node", "--version"],
+      }),
+    ).resolves.toMatchObject({
+      kind: "executed",
+      receipt: { status: "succeeded" },
+    });
+    await expect(broker.cleanup()).resolves.toMatchObject({
+      processGroupTerminated: true,
+      cgroupPopulated: false,
+      scopeRemoved: true,
+      storageReconciled: false,
+    });
+    expect(
+      harness.diagnostics.some(
+        (diagnostic) =>
+          diagnostic instanceof Error &&
+          diagnostic.message === "task storage observation failed",
+      ),
+    ).toBe(true);
+  });
+
+  it("retries rather than caching a cleanup whose storage inspection was unproven", async () => {
+    const harness = createFakeBrokerHarness({
+      toolchain: true,
+      managedLifecycleRuntime: true,
+      storageCleanupObservationFailsOnce: true,
+    });
+    const broker = await harness.brokerPromise;
+    await expect(broker.cleanup()).resolves.toMatchObject({
+      processGroupTerminated: true,
+      cgroupPopulated: false,
+      scopeRemoved: true,
+      storageReconciled: false,
+    });
+    const recovered = await broker.cleanup();
+    expect(recovered).toMatchObject({
+      processGroupTerminated: true,
+      cgroupPopulated: false,
+      scopeRemoved: true,
+      storageReconciled: true,
+    });
+    await expect(broker.cleanup()).resolves.toEqual(recovered);
+    expect(harness.bindingCloses).toBe(2);
+  });
+
+  it("keeps lifecycle addon and overlay mounts out of vanilla one-shot operations", async () => {
+    const harness = createFakeBrokerHarness({
+      toolchain: true,
+      managedLifecycleRuntime: true,
+    });
+    const broker = await harness.brokerPromise;
+
+    await expect(
+      broker.execute({
+        ...validRequest,
+        profile: "godot-headless",
+        argv: ["/opt/chronorift/bin/node", "--version"],
+      }),
+    ).resolves.toMatchObject({
+      kind: "executed",
+      receipt: { status: "succeeded" },
+    });
+    const serializedPlan = harness.session.launchPlan?.args.join("\0") ?? "";
+    expect(serializedPlan).toContain(
+      [
+        "--ro-bind-fd",
+        "16",
+        managedLifecycleRuntime.capability.fontconfigTarget,
+      ].join("\0"),
+    );
+    for (const target of [
+      managedLifecycleRuntime.capability.addonParentTarget,
+      managedLifecycleRuntime.capability.addonTarget,
+      managedLifecycleRuntime.capability.overlayTarget,
+    ]) {
+      expect(serializedPlan).not.toContain(target);
+    }
+    expect(harness.bootstrapInheritedFds).toEqual([
+      [40, 41, 42, 61, 43, 46, 47, 48, 49, 50, 51, 52],
+    ]);
     await broker.cleanup();
   });
 

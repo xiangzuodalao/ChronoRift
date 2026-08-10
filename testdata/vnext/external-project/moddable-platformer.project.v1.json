@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "descriptorKind": "chronorift-godot-external-project",
+  "declaredSourceUrl": "https://github.com/endlessm/moddable-platformer",
+  "projectFile": "project.godot",
+  "runtime": {
+    "engineVersion": "4.7.1-stable (official)",
+    "scripting": "gdscript",
+    "renderer": "gl_compatibility",
+    "executionMode": "headless"
+  },
+  "launch": {
+    "scene": "project-main-scene"
+  },
+  "cache": {
+    "ignoredPaths": [".godot"]
+  },
+  "bridge": {
+    "mode": "managed-runtime-overlay",
+    "protocolVersion": 1
+  }
+}

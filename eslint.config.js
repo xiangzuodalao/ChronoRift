@@ -22,6 +22,7 @@ export default tseslint.config(
             "vitest.godot.config.ts",
             "vitest.sandbox.config.ts",
             "vitest.godot-sandbox.config.ts",
+            "vitest.external-project.config.ts",
             "vitest.vnext-live.config.ts",
           ],
         },
@@ -31,6 +32,10 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",
     },
+  },
+  {
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
+    ...tseslint.configs.disableTypeChecked,
   },
   {
     files: [

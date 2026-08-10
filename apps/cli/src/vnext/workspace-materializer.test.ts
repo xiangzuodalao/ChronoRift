@@ -16,9 +16,16 @@ import { promisify } from "node:util";
 import { asTaskId } from "@chronorift/domain";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { WorkspaceMaterializationReceiptV1Schema } from "./contracts.js";
+import {
+  WorkspaceMaterializationReceiptV1Schema,
+  WorkspaceMaterializationReceiptV2Schema,
+} from "./contracts.js";
+import { readGodotProjectDescriptorSnapshotV1 } from "./godot-project-descriptor.js";
 import { NodeHostGitPort } from "./host-git.js";
-import { preflightCleanGitSubtree } from "./source-preflight.js";
+import {
+  preflightCleanExternalGodotProject,
+  preflightCleanGitSubtree,
+} from "./source-preflight.js";
 import { createTaskDirectoryLayout } from "./task-paths.js";
 import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
 
@@ -102,6 +109,74 @@ afterEach(async () => {
 });
 
 describe("materializePrivateTaskWorkspace", () => {
+  it("materializes an external project while keeping descriptor and source checkout outside the candidate", async () => {
+    const container = await mkdtemp(
+      join(tmpdir(), "chronorift-external-materializer-test-"),
+    );
+    temporaryRoots.push(container);
+    const root = join(container, "repository");
+    const runtimeRoot = join(container, "runtime");
+    await Promise.all([mkdir(root), mkdir(runtimeRoot)]);
+    await writeFile(
+      join(root, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(root, "main.tscn"), "[gd_scene format=3]\n");
+    await git(root, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(root, "external project");
+    const descriptorPath = join(container, "project.json");
+    await writeFile(
+      descriptorPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        descriptorKind: "chronorift-godot-external-project",
+        declaredSourceUrl: "https://github.com/example/project",
+        projectFile: "project.godot",
+        runtime: {
+          engineVersion: "4.7.1-stable (official)",
+          scripting: "gdscript",
+          renderer: "gl_compatibility",
+          executionMode: "headless",
+        },
+        launch: { scene: "project-main-scene" },
+        cache: { ignoredPaths: [".godot"] },
+        bridge: { mode: "managed-runtime-overlay", protocolVersion: 1 },
+      })}\n`,
+    );
+    const source = await preflightCleanExternalGodotProject({
+      projectPath: root,
+      descriptorSnapshot:
+        await readGodotProjectDescriptorSnapshotV1(descriptorPath),
+      sourceRepositoryExclusionRoots: [runtimeRoot],
+    });
+    const taskId = asTaskId("task_materialize_external");
+    const layout = await createTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot: root,
+      taskId,
+    });
+
+    const materialized = await materializePrivateTaskWorkspace({
+      taskId,
+      source,
+      layout,
+    });
+
+    expect(
+      WorkspaceMaterializationReceiptV2Schema.parse(materialized.receipt),
+    ).toEqual(materialized.receipt);
+    expect(materialized.receipt.sourcePostflight).toMatchObject({
+      observedHeadCommit: source.headCommit,
+      observedSelectedTreeSha256: source.selectedTreeSha256,
+      stagingWorktreeRegistered: false,
+    });
+    await expect(
+      access(join(layout.workspaceDirectory, "project.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await git(root, ["status", "--porcelain"])).toBe("");
+    expect(materialized.projectCapability).toEqual(source.projectCapability);
+  });
+
   it("streams raw objects without filters and restores Host worktree metadata", async () => {
     const markerContainer = await mkdtemp(
       join(tmpdir(), "chronorift-hostile-filter-marker-"),

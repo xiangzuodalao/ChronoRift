@@ -557,6 +557,12 @@ M3 的 V1 catalog 固定为 16 个原子工具；这些名称与 strict input/ou
 `game_capture_configure` 的 schema 预留 trigger 表达，但 M3 runtime 对非空 trigger 明确返回 unsupported；当前
 实现的 retention 操作只有手动 `game_capture_pin`。这不改变长期目标中的自动 freeze/trigger 设计。
 
+M4 使用独立的 `chronorift-godot-lifecycle-v1` capability/profile，只发布四个 Discovery/Lifecycle 工具：
+`game_capabilities`、`game_launch`、`game_status` 和 `game_stop`。M3 catalog 的其余十二个名字不会作为 M4
+Agent tool definition 暴露；对内部 protocol/coordinator 请求则返回结构化 `unsupported_capability`。这个窄
+catalog 是 external-project onboarding 的能力边界，不把目标架构中的 capture/checkpoint/fork/replay/query/
+compare 降级成 optional 空壳。
+
 工具契约必须：
 
 - 使用 strict、versioned input/output schema；
@@ -629,12 +635,36 @@ mount 放入 `/run/chronorift/project/addons/chronorift`；候选源码的整个
 stdio 控制和读取诊断；diagnostic overflow/truncation 必须形成 error/loss record，不能丢掉底层 cleanup
 receipt。没有可验证的 cleanup receipt 就不能 seal Execution。
 
+M4 复用已经实现并测试的 sandbox、bounded storage、process/cgroup cleanup 和 Host framing 基础，但新增
+独立 lifecycle-only wire profile，而不放宽 Protocol v2。受管 Addon 位于
+`godot/addons/chronorift_lifecycle`，Autoload 名为 `ChronoRiftLifecycle`；它只协商 engine/build/scene identity、
+process frame、physics tick、status、bounded diagnostics 和 shutdown。Host 通过独立
+`CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT` 冻结该输入，不能与 M3 Addon capability 串线或共用 identity。
+
+首次 M4 launch 在 bounded operation scratch 中依次执行 import、无 overlay 的 vanilla smoke、再注入 hashed
+overlay 并握手。Godot import 可能执行项目 tool script/plugin，因此也属于不可信项目执行，必须留在同一
+无网络、无 credential、只读 Task `/workspace` 和有界 cleanup 边界中；Host source checkout 不挂入 sandbox，
+也不能在其上预跑。
+Godot 实际执行 bounded scratch 中的 writable staged copy；实现会在 import、vanilla stop 和 managed stop
+endpoint 重验 selected-tree，并在隔离 PID namespace 中拒绝 phase 后残留进程，但不能排除同一 Godot 进程
+在窗口内 mutate/load/restore。因此 source identity 是 admission 与 endpoint fact，不是 continuous immutable
+execution attestation。vanilla 与 overlay 结果分别记录；一方失败不能由另一方成功掩盖，也不能被 Harness
+解释成兼容性或根因 verdict。
+
+M4 的 phase 与 process-output 可能在对应 operation 完成后才进入 raw ledger。此类 retrospective event 的
+顶层 engine clock 只能引用写入前最近一次真实 sample，并以 `last_sample_before_ingest` 标记；payload 另外
+保留 phase/operation 的 Host monotonic envelope。该 envelope 不是逐 chunk occurrence time，不能用于伪造
+逐帧日志对齐。
+
 bwrap 在完成所有子挂载后，会把自动构造的空根文件系统和 `/dev` 非递归重挂为只读；
 `/dev/null` 等既有设备仍可使用，但候选不能在 `/` 或 `/dev` 创建未计量文件。Godot 的
 `/run/chronorift` 不再是匿名 tmpfs；每个 operation 都从 bounded Task filesystem 上的 Host-only
 parent 获得独立 scratch 目录 FD。该目录不会从其他 sandbox 的 `/tmp` 可见，且只有
 Bootstrap 退出、cgroup 为空和 scope 删除三项同时得证后才删除。回收失败会保留 retry owner
-并令 cleanup receipt 不完整，不能被 seal 路径解释为已清理。
+并令 cleanup receipt 不完整，不能被 seal 路径解释为已清理。`/tmp` 与 `/artifacts` 仍是 Task-global、
+跨 operation 共用的 writable view；mount-admission receipt 必须把它们标成 shared，而不能把顺序运行误述为
+拥有独立临时目录或 artifact 起点。只有 `/run/chronorift` stage 是 operation-private；shared view 中的残留
+状态属于需要公开的潜在 confounder。
 
 Godot 4.7.1 的 headless 启动仍会动态加载 fontconfig，并通过 `xdg-user-dir` 查询系统目录。M3 因此把 Host
 `fc-match` 仅作为 preflight 的动态依赖 inspection anchor，冻结其 loader/fontconfig 闭包而不把该命令本体
@@ -725,7 +755,9 @@ Task workspace 与 execution sandbox 是首个切片的真实生命周期边界�
 Pi、Godot `Node`/`Variant`、JSON 文件布局、Git/container 实现不得泄漏进 domain。各 package 通过公开
 `src/index.ts` 导入，不 deep-import 私有实现。
 
-## 20. 首个 vNext 垂直切片（实验性 M3）
+## 20. vNext 垂直切片 rollout
+
+### 20.1 首个切片：实验性 M3
 
 唯一迁移 Fixture 是现有 `fixtures/godot-frame-input-window`。它模拟角色离开平台后的跳跃输入窗口错误，
 包含适合语义 snapshot 的 `jumping`、`window_open`、`leftFrame` 等状态。M3 源码已经把本节各层接成一个
@@ -803,10 +835,49 @@ assistant prose、临时路径、原始 provider request 或 credential。该 su
 
 其他三个 Godot Fixture 只保持历史兼容，不同时迁移。
 
+### 20.2 下一切片：实验性 M4 external-project lifecycle-only onboarding
+
+M4 只增加一个主要不确定性维度：让冻结的真实第三方 Godot 项目贯穿既有 Task/workspace/sandbox/patch
+lifecycle。它不同时证明 gameplay 修复、深层 runtime 原语、跨项目泛化或相对产品优势。
+
+实现边界如下：
+
+1. Operator 提供本地 clean Git root checkout 和 strict `GodotProjectDescriptorV1`；descriptor 只声明 HTTPS
+   source metadata、root `project.godot`、精确 Godot 4.7.1/GDScript/GL Compatibility/headless、main scene、
+   `.godot` cache 与 managed overlay protocol。它不能声明任意 argv、environment、Host path、mount、network
+   或 credential。
+2. source preflight 复用 Git raw-object、selected-tree、clean/hidden-index、symlink/submodule/LFS、size 和路径
+   防线，但不要求外部仓库包含 `chronorift.fixture.json`。source URL 是 Operator 声明，不触发 clone/fetch；
+   实际 HEAD 和 selected-tree bytes 才是 execution 输入事实。
+3. M4 写独立 Task profile/capability，Agent 只获得 §15 的四个 lifecycle tools。M3 `FixtureManifestV1`、完整
+   V1 catalog、Protocol v2、runtime resources 和外部 13 场景 evaluator 保持原语义。
+4. Godot import、vanilla main-scene smoke 和 managed lifecycle overlay 都在 §17 的 task sandbox 内执行。
+   source、descriptor、overlay、Addon、runtime、build 与 requested/realized clock identity 分开记录；import
+   cache、overlay 与 Addon 不进入候选 patch。
+5. Task 继续使用 `start/continue/show/export/discard`。continue 只重新 strict validation Task 内持久化的
+   descriptor/profile bytes，并验证当前 sandbox/toolchain/runtime capability，不重读 Operator 的 Host descriptor；
+   show 是 path-free read；export 仍须 binary/full-index
+   round-trip；discard 仍受 records/runtime/process/cgroup ownership 约束。
+6. 默认离线测试用生成式项目、fake process/clock/Pi；真实 Host Gate 由 Operator/CI 预置 frozen checkout 后，
+   在只有 loopback 的 private network namespace 中运行，不允许 test command 联网或因 Host 条件缺失而 skip。
+
+首个 test-only conformance target 是 `endlessm/moddable-platformer` commit
+`3e793f53598a131c53fb82555191cc14b8db07ff`。Gate 要求 import exit 0、vanilla 至少按 Host monotonic clock稳定
+2 秒、overlay handshake 后至少观察 120 process frames 和 120 physics ticks，并由 deterministic driver 新增
+`CHRONORIFT_ONBOARDING_SMOKE.md`、重启 candidate、export/round-trip、证明 Host source 不变并完成 cleanup。
+这些冻结值只存在于 test/CI spec，不能进入产品 source 分支或变成 supported-project registry。
+
+required command 是 `corepack pnpm test:vnext:external-project`。它成功后只输出/上传通过 test-only strict
+schema 的 path-free sanitized evidence summary；schema 只允许冻结 identity、数值、hash 和 cleanup facts。
+summary 与 content hash 不是签名、GitHub provenance attestation 或产品 verdict。没有该命令针对当前实现的
+实际成功输出，只能声称 M4 路径和 Gate 已实现，不能声称目标项目已经成功接入。clock/probe receipt 只覆盖
+lifecycle endpoint sampling，并保留未采样位置和未知 observer effect；不得把它提升为逐帧完整 coverage。
+
 ## 21. 当前实现映射
 
-本节把 2026-08-07 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3 是源码中的实验性、单一
-Fixture vNext slice，不因为代码或测试入口存在就自动成为 release。
+本节把 2026-08-10 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3 与 M4 都是源码中的实验性
+vNext slice，不因为代码、测试入口或 CI job 存在就自动成为 release，也不能把尚无实际输出的 Gate 写成已
+通过。
 
 | 能力            | 当前公开 v0.4                                            | 实验性 M3 vNext slice                                                                      | 未覆盖或后续方向                                |
 | --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
@@ -825,6 +896,15 @@ Fixture vNext slice，不因为代码或测试入口存在就自动成为 releas
 | Product result  | Proposal → Harness Verdict                               | assistant result、diff、实际 tool/runtime/lineage records 分离                             | acceptance 归用户、CI、review 或独立 Eval       |
 | Release/Eval    | v0.4 与冻结的 legacy benchmark                           | 外部 13 场景 release-only evaluator 已实现；不是 Task verdict 或默认 CI                    | 实际 Gate 证据、后续独立且优先开源的 Eval Suite |
 
+M4 相对上述 M3 映射只增加以下实现面：
+
+| 能力           | 实验性 M4 lifecycle-only path                                                        | 明确未覆盖                                                    |
+| -------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Source/profile | strict external descriptor、clean Git root、冻结 HEAD/selected-tree、声明性 URL      | 任意 Godot 项目、subtree、LFS/submodule/symlink、source fetch |
+| Agent/runtime  | 四个 lifecycle tools、独立 lifecycle wire/Addon、import/vanilla/overlay receipts     | input/query/capture/checkpoint/fork/replay/compare            |
+| Task/patch     | 统一 start/continue/show/export/discard、source 不变、round-trip checked patch       | gameplay acceptance、自动 apply/commit/push                   |
+| Conformance    | pinned `moddable-platformer` Host Gate、private-network fake-Pi deterministic driver | provider表现、修复正确性、跨项目泛化、产品优势                |
+
 默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 coding sandbox boundary 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、
 `pids` controller 的 delegated cgroup v2 root。仓库脚本 `.github/scripts/run-sandbox-conformance.sh` 建立和
@@ -840,6 +920,19 @@ sandbox conformance 通过。该 M3 Gate 还要求 `CHRONORIFT_TEST_TASK_STORAGE
 和外部 13 场景 evaluator；它需要明确的 provider/network/Host runtime 授权，不属于默认 CI，不产生产品
 verdict，也不证明候选机制、根因、跨项目泛化或产品优势。本文只定义这些 Gate，不声称当前 checkout 已经
 运行或通过它们。
+
+M4 另由 `corepack pnpm test:vnext:external-project` 和
+`.github/scripts/run-vnext-external-project-conformance.sh` 验证。CI 的 provisioning 可以在进入 Gate 前取得
+frozen checkout；Gate 本身运行在 `PrivateNetwork=yes` 的 systemd namespace，只有 loopback，并要求独立
+`CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT`、fresh bounded mount、delegated cgroup 与精确 toolchain。成功 job
+上传 sanitized evidence，失败或 cleanup 未证明时不得产生可发布的成功 claim。
+
+M4 当前 cleanup reconciliation 只在同一 Host command 仍持有 coordinator 时成立：Task sandbox 的最终
+cleanup receipt 只有在进程/cgroup/scope cleanup 与 fresh bounded Task-storage inspection 都明确成功时才可
+收束 start-unknown operation；storage observation 缺失或失败时 Execution 必须保持 unsealed。Host 在
+reconciliation 前突然退出时，raw Execution
+ledger 保持 unsealed，尚无跨 command 的 durable cleanup owner。后续 `continue` 不得据新 sandbox 的干净
+状态追认旧 execution 已清理；实现该恢复协议属于后续 slice。
 
 当前 v0.4 仍实现并测试 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
 `DiagnosisProposalV4`、`DiagnosisVerdictV3`、固定 replay/intervention flow 和 write-once verdict artifact。

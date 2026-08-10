@@ -33,14 +33,16 @@ export type VNextTaskJsonSlot =
   | "task.json"
   | "workspace.json"
   | "fixture-capability.json"
+  | "project-capability.json"
   | "sandbox-capability.json"
   | "sandbox-toolchain.json"
   | "managed-runtime.json"
+  | "managed-lifecycle-runtime.json"
   | "sandbox-policy.json"
   | "agent-task.json"
   | "patch.json";
 
-export type VNextTaskBytesSlot = "patch.diff";
+export type VNextTaskBytesSlot = "patch.diff" | "project-descriptor.json";
 
 export type VNextTaskLedgerSlot =
   | "task-events.jsonl"
@@ -111,14 +113,23 @@ const JSON_SLOTS: readonly VNextTaskJsonSlot[] = [
   "task.json",
   "workspace.json",
   "fixture-capability.json",
+  "project-capability.json",
   "sandbox-capability.json",
   "sandbox-toolchain.json",
   "managed-runtime.json",
+  "managed-lifecycle-runtime.json",
   "sandbox-policy.json",
   "agent-task.json",
   "patch.json",
 ];
-const BYTES_SLOTS: readonly VNextTaskBytesSlot[] = ["patch.diff"];
+const BYTES_SLOTS: readonly VNextTaskBytesSlot[] = [
+  "patch.diff",
+  "project-descriptor.json",
+];
+const BYTES_SLOT_LIMITS: Readonly<Record<VNextTaskBytesSlot, number>> = {
+  "patch.diff": 512 * 1024 * 1024,
+  "project-descriptor.json": 64 * 1024,
+};
 const LEDGER_SLOTS: readonly VNextTaskLedgerSlot[] = [
   "task-events.jsonl",
   "sandbox-preflight.jsonl",
@@ -421,6 +432,9 @@ export class VNextTaskStore {
       if (!(bytes instanceof Uint8Array)) {
         throw new TypeError("Task store bytes must be a Uint8Array");
       }
+      if (bytes.byteLength > BYTES_SLOT_LIMITS[slot]) {
+        throw new TypeError("Task store bytes exceed the slot byte limit");
+      }
       const ownedBytes = Buffer.from(bytes);
       const context = await this.requireContext(taskId);
       await this.writeImmutableBytes(
@@ -440,6 +454,7 @@ export class VNextTaskStore {
     const bytes = await this.readRegularFile(
       context,
       join(context.recordsPath, slot),
+      BYTES_SLOT_LIMITS[slot],
     );
     return Uint8Array.from(bytes);
   }
@@ -902,6 +917,7 @@ export class VNextTaskStore {
   private async readRegularFile(
     context: TaskStoreContext,
     path: string,
+    maximumBytes = Number.MAX_SAFE_INTEGER,
   ): Promise<Buffer> {
     await this.assertContext(context);
     let handle: Awaited<ReturnType<typeof open>> | undefined;
@@ -913,6 +929,12 @@ export class VNextTaskStore {
           "record is not a regular file",
         );
       }
+      if (before.size > maximumBytes) {
+        throw new ArtifactCorruptionError(
+          path,
+          new Error("record exceeds its byte limit"),
+        );
+      }
       handle = await open(
         path,
         constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
@@ -920,7 +942,9 @@ export class VNextTaskStore {
       const opened = await handle.stat();
       if (
         !opened.isFile() ||
-        !sameIdentity(identityOf(before), identityOf(opened))
+        !sameIdentity(identityOf(before), identityOf(opened)) ||
+        opened.size !== before.size ||
+        opened.size > maximumBytes
       ) {
         throw new ArtifactPathSecurityError(
           path,
@@ -933,7 +957,9 @@ export class VNextTaskStore {
       if (
         after.isSymbolicLink() ||
         !after.isFile() ||
-        !sameIdentity(identityOf(after), identityOf(opened))
+        !sameIdentity(identityOf(after), identityOf(opened)) ||
+        after.size !== opened.size ||
+        bytes.byteLength !== opened.size
       ) {
         throw new ArtifactPathSecurityError(
           path,

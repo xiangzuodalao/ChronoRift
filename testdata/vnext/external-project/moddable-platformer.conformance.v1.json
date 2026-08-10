@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "profile": "chronorift-m4-external-project-conformance",
+  "descriptorSha256": "534dcd8aa14aeea74685059f8d66e44e5bebe21742b7a702ee7d78e91e1a955e",
+  "source": {
+    "declaredUrl": "https://github.com/endlessm/moddable-platformer",
+    "headCommit": "3e793f53598a131c53fb82555191cc14b8db07ff",
+    "gitTreeObjectId": "a013bd677c712dbf354e8e2f6e8ff7c53d5684c6",
+    "selectedTreeSha256": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+    "entryCount": 543,
+    "declaredByteLength": 1380343
+  },
+  "candidatePatch": {
+    "relativePath": "CHRONORIFT_ONBOARDING_SMOKE.md",
+    "mode": "100644",
+    "contentUtf8": "ChronoRift external-project onboarding conformance.\n",
+    "selectedTreeSha256": "8aa71e3ea1839fb4a56940b25a3b61bc747bf712ec7a7221cdb42ecaaeeb2336"
+  },
+  "runtimeExpectations": {
+    "vanillaStableMinimumMs": 2000,
+    "minimumProcessFrames": 120,
+    "minimumPhysicsTicks": 120
+  }
+}

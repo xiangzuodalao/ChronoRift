@@ -26,7 +26,10 @@ import {
   type TaskId,
 } from "@chronorift/domain";
 import {
+  DEFAULT_LIFECYCLE_SIDECAR_TARGETS,
   DEFAULT_RUNTIME_SIDECAR_TARGETS,
+  createLifecycleRuntimeSidecarSource,
+  createLifecycleVanillaSmokeSidecarSource,
   createRuntimeSidecarSource,
 } from "@chronorift/godot-adapter";
 import {
@@ -63,10 +66,13 @@ import {
   getM1TaskHostContext,
   getM1TaskDuplexSandboxPort,
   getM1TaskGameRuntimeContext,
+  getM1TaskExternalGodotRuntimeContext,
   prepareM1TaskEnvironment,
   resumeM1TaskEnvironment,
   suspendM1Task,
 } from "./m1-task-environment.js";
+import { createManagedGodotLifecycleRuntimeV1 } from "./managed-godot-lifecycle-runtime.js";
+import { readGodotProjectDescriptorSnapshotV1 } from "./godot-project-descriptor.js";
 import {
   ManagedGodotRuntimeCapabilityV1Schema,
   createManagedGodotRuntimeV1,
@@ -226,6 +232,42 @@ const managedRuntimeInput = {
   addonRoot: "/trusted/project/addons/chronorift",
   sidecarSource: productionSidecarSource,
 } as const;
+const lifecycleSidecarOptions = {
+  godotExecutable: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.godotExecutable,
+  workspaceRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.workspaceRoot,
+  runtimeRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.runtimeRoot,
+} as const;
+const lifecycleVanillaSidecarSource = createLifecycleVanillaSmokeSidecarSource(
+  lifecycleSidecarOptions,
+);
+const lifecycleRuntimeSidecarSource = createLifecycleRuntimeSidecarSource(
+  lifecycleSidecarOptions,
+);
+const managedLifecycleRuntime = createManagedGodotLifecycleRuntimeV1({
+  doctorVersion: "4.7.1.stable.official.a13da4feb",
+  nodeTarget: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.nodeExecutable,
+  godotTarget: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.godotExecutable,
+  toolchain: {
+    capability: managedToolchainCapability,
+    binding: managedRuntime.binding.toolchain,
+  },
+  vanillaSidecarSource: lifecycleVanillaSidecarSource,
+  lifecycleSidecarSource: lifecycleRuntimeSidecarSource,
+  addonFiles: [
+    {
+      relativePath: "lifecycle_probe.gd",
+      bytes: Buffer.from("extends Node\n", "utf8"),
+    },
+  ],
+});
+const managedLifecycleRuntimeInput = {
+  nodePath: "/trusted/node",
+  godotPath: "/trusted/godot",
+  lddPath: "/trusted/ldd",
+  addonRoot: "/trusted/addons/chronorift_lifecycle",
+  vanillaSidecarSource: lifecycleVanillaSidecarSource,
+  lifecycleSidecarSource: lifecycleRuntimeSidecarSource,
+} as const;
 
 interface TestRuntimeRecord {
   readonly schemaVersion: 1;
@@ -365,6 +407,41 @@ const createCleanFixtureRepository = async (root: string): Promise<string> => {
   await git(project, ["add", "--all"]);
   await git(project, ["commit", "--quiet", "-m", "fixture"]);
   return project;
+};
+
+const createCleanExternalRepository = async (
+  root: string,
+): Promise<{
+  readonly project: string;
+  readonly descriptorPath: string;
+}> => {
+  const project = join(root, "source");
+  await mkdir(project);
+  await cp(trustedFixtureRoot, project, { recursive: true });
+  await unlink(join(project, "chronorift.fixture.json"));
+  await git(project, ["init", "--quiet", "--initial-branch=main"]);
+  await git(project, ["add", "--all"]);
+  await git(project, ["commit", "--quiet", "-m", "external"]);
+  const descriptorPath = join(root, "external-project.json");
+  await writeFile(
+    descriptorPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      descriptorKind: "chronorift-godot-external-project",
+      declaredSourceUrl: "https://github.com/endlessm/moddable-platformer",
+      projectFile: "project.godot",
+      runtime: {
+        engineVersion: "4.7.1-stable (official)",
+        scripting: "gdscript",
+        renderer: "gl_compatibility",
+        executionMode: "headless",
+      },
+      launch: { scene: "project-main-scene" },
+      cache: { ignoredPaths: [".godot"] },
+      bridge: { mode: "managed-runtime-overlay", protocolVersion: 1 },
+    })}\n`,
+  );
+  return { project, descriptorPath };
 };
 
 const supportedPreflight = () =>
@@ -680,7 +757,129 @@ const prepareManagedReadyEnvironment = async (input: {
   return { environment, project, runtimeRoot, taskRoot };
 };
 
+const prepareExternalReadyEnvironment = async (input: {
+  readonly root: string;
+  readonly taskId: TaskId;
+}) => {
+  const { project, descriptorPath } = await createCleanExternalRepository(
+    input.root,
+  );
+  const descriptorSnapshot =
+    await readGodotProjectDescriptorSnapshotV1(descriptorPath);
+  const runtimeRoot = join(input.root, "runtime");
+  await mkdir(runtimeRoot);
+  const environment = await prepareM1TaskEnvironment(
+    {
+      taskId: input.taskId,
+      projectPath: project,
+      externalProjectDescriptor: descriptorSnapshot,
+      runtimeRoot,
+      sandboxHost: {
+        delegatedCgroupRoot: "/test/cgroup",
+        bwrapPath: "/test/bwrap",
+        prlimitPath: "/test/prlimit",
+        busyboxPath: "/test/busybox",
+        taskStorageRoot: input.root,
+      },
+      sandboxToolchain: {
+        lddPath: "/usr/bin/ldd",
+        commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+      },
+      managedGodotLifecycleRuntime: managedLifecycleRuntimeInput,
+    },
+    {
+      ...managedEnvironmentOverrides(),
+      preflightManagedLifecycleRuntime: async () => managedLifecycleRuntime,
+    },
+  );
+  const taskRoot = join(
+    runtimeRoot,
+    "tasks",
+    taskNamespaceDigestV1(input.taskId),
+  );
+  return {
+    descriptorPath,
+    descriptorSnapshot,
+    environment,
+    project,
+    runtimeRoot,
+    taskRoot,
+  };
+};
+
 describe("internal M1 Task environment", () => {
+  it("persists and resumes an external lifecycle Task without rereading the Host descriptor", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_external_lifecycle");
+    const prepared = await prepareExternalReadyEnvironment({ root, taskId });
+    if (prepared.environment.sourceKind !== "godot-external-lifecycle-v1") {
+      throw new Error("expected an external Godot Task environment");
+    }
+    expect(prepared.environment.workspace.schemaVersion).toBe(2);
+    expect(
+      prepared.environment.managedLifecycleRuntimeCapability.managedRuntimeId,
+    ).toBe(managedLifecycleRuntime.capability.managedRuntimeId);
+    const context = getM1TaskExternalGodotRuntimeContext(prepared.environment);
+    expect(context.projectCapability.capabilitySha256).toBe(
+      prepared.environment.projectCapability.capabilitySha256,
+    );
+    expect(context.sidecarPort).toBeDefined();
+
+    const store = new VNextTaskStore(prepared.runtimeRoot);
+    await expect(
+      store.readBytes(taskId, "project-descriptor.json"),
+    ).resolves.toEqual(prepared.descriptorSnapshot.bytes);
+    await expect(
+      store.readJson(
+        taskId,
+        "managed-lifecycle-runtime.json",
+        (value) => value,
+      ),
+    ).resolves.toMatchObject({
+      managedRuntimeId: managedLifecycleRuntime.capability.managedRuntimeId,
+    });
+
+    await writeFile(
+      join(context.workspaceDirectory, "CHRONORIFT_ONBOARDING_SMOKE.md"),
+      "external candidate\n",
+    );
+    const extracted = await extractAndPersistM1Patch(prepared.environment);
+    expect(Buffer.from(extracted.patchBytes).toString("utf8")).toContain(
+      "CHRONORIFT_ONBOARDING_SMOKE.md",
+    );
+    expect(await git(prepared.project, ["status", "--porcelain"])).toBe("");
+
+    await suspendM1Task(prepared.environment);
+    await unlink(prepared.descriptorPath);
+    const resumed = await resumeM1TaskEnvironment(
+      {
+        taskId,
+        runtimeRoot: prepared.runtimeRoot,
+        sandboxHost: {
+          delegatedCgroupRoot: "/test/cgroup",
+          bwrapPath: "/test/bwrap",
+          prlimitPath: "/test/prlimit",
+          busyboxPath: "/test/busybox",
+          taskStorageRoot: root,
+        },
+        sandboxToolchain: {
+          lddPath: "/usr/bin/ldd",
+          commands: [{ target: "/bin/bash", hostPath: "/bin/bash" }],
+        },
+        managedGodotLifecycleRuntime: managedLifecycleRuntimeInput,
+      },
+      {
+        ...managedEnvironmentOverrides(),
+        preflightManagedLifecycleRuntime: async () => managedLifecycleRuntime,
+      },
+    );
+    expect(resumed.sourceKind).toBe("godot-external-lifecycle-v1");
+    expect(
+      getM1TaskExternalGodotRuntimeContext(resumed).baselineSourceHash,
+    ).toBe(prepared.environment.workspace.selectedTreeSha256);
+    await discardM1Task(resumed);
+  });
+
   it("fails M3 closed before source inspection without an in-bounds storage root", async () => {
     const root = await createHarnessRoot();
     const project = await createCleanFixtureRepository(root);
@@ -2251,6 +2450,37 @@ describe("internal M1 Task environment", () => {
     await expect(discardM1Task(environment)).resolves.toMatchObject({
       cgroupPopulated: false,
       scopeRemoved: true,
+    });
+    expect(cleanupAttempts).toBe(2);
+    await expect(access(taskRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("retries Task cleanup when storage reconciliation is explicitly unproven", async () => {
+    const root = await createHarnessRoot();
+    const taskId = asTaskId("task_storage_cleanup_unproven");
+    let cleanupAttempts = 0;
+    const { environment, taskRoot } = await prepareReadyEnvironment({
+      root,
+      taskId,
+      cleanup: async () => {
+        cleanupAttempts += 1;
+        return {
+          processGroupTerminated: true,
+          cgroupPopulated: false,
+          termSent: false,
+          killSent: false,
+          scopeRemoved: true,
+          storageReconciled: cleanupAttempts > 1,
+        };
+      },
+    });
+    await expect(discardM1Task(environment)).rejects.toMatchObject({
+      code: "artifact_write_failed",
+    });
+    expect(await readdir(taskRoot)).toContain("records");
+    await expect(discardM1Task(environment)).resolves.toMatchObject({
+      scopeRemoved: true,
+      storageReconciled: true,
     });
     expect(cleanupAttempts).toBe(2);
     await expect(access(taskRoot)).rejects.toMatchObject({ code: "ENOENT" });

@@ -504,26 +504,34 @@ const createCapture = (phase, stream, launch) => {
   let totalBytes = 0;
   let retainedBytes = 0;
   let accepting = true;
+  let pending = Buffer.alloc(0);
+  const maxRaw = Math.max(1, Math.floor((launch.diagnosticFrameMaxBytes - 512) * 3 / 4));
+  const flush = (includePartial) => {
+    while (accepting && (pending.byteLength >= maxRaw || (includePartial && pending.byteLength > 0))) {
+      const length = Math.min(maxRaw, pending.byteLength);
+      const retained = pending.subarray(0, length);
+      if (!diagnostic({ kind: "process_output", phase, stream, offset: retainedBytes, bytesBase64: retained.toString("base64") })) {
+        accepting = false;
+        pending = Buffer.alloc(0);
+        return;
+      }
+      retainedBytes += retained.byteLength;
+      pending = pending.subarray(length);
+    }
+  };
   return {
     push(chunk) {
       const bytes = Buffer.from(chunk);
       hash.update(bytes);
       totalBytes += bytes.byteLength;
-      if (!accepting || retainedBytes >= launch.outputCaptureMaxBytes) return;
-      const maxRaw = Math.max(1, Math.floor((launch.diagnosticFrameMaxBytes - 512) * 3 / 4));
-      let offset = 0;
-      while (offset < bytes.byteLength && retainedBytes < launch.outputCaptureMaxBytes) {
-        const length = Math.min(maxRaw, bytes.byteLength - offset, launch.outputCaptureMaxBytes - retainedBytes);
-        const retained = bytes.subarray(offset, offset + length);
-        if (!diagnostic({ kind: "process_output", phase, stream, offset: retainedBytes, bytesBase64: retained.toString("base64") })) {
-          accepting = false;
-          return;
-        }
-        retainedBytes += retained.byteLength;
-        offset += retained.byteLength;
-      }
+      const remaining = launch.outputCaptureMaxBytes - retainedBytes - pending.byteLength;
+      if (!accepting || remaining <= 0) return;
+      const retained = bytes.subarray(0, Math.min(bytes.byteLength, remaining));
+      pending = pending.byteLength === 0 ? Buffer.from(retained) : Buffer.concat([pending, retained]);
+      flush(false);
     },
     receipt() {
+      flush(true);
       return { totalBytes, sha256: hash.digest("hex"), retainedBytes, truncated: retainedBytes < totalBytes };
     }
   };
@@ -645,7 +653,7 @@ const runVanillaSmoke = async (launch, stage, remainder) => {
   }
   try {
     await verifyStagedCandidate(stage);
-    diagnostic({ kind: "source_verified", phase: "import", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength });
+    diagnostic({ kind: "source_verified", phase: "import", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
   } catch (error) {
     error.phase = "import"; error.smokeStage = stage; error.importReceipt = importRun.receipt; error.vanillaReceipt = null;
     throw error;
@@ -667,7 +675,7 @@ const runVanillaSmoke = async (launch, stage, remainder) => {
   }
   try {
     await verifyStagedCandidate(stage);
-    diagnostic({ kind: "source_verified", phase: "vanilla", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength });
+    diagnostic({ kind: "source_verified", phase: "vanilla", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
   } catch (error) {
     error.phase = "vanilla"; error.smokeStage = stage; error.importReceipt = importRun.receipt; error.vanillaReceipt = vanillaRun.receipt;
     throw error;
@@ -716,7 +724,7 @@ const startManagedRuntime = async (launch, stage, remainder) => {
     kind: "managed_import_result",
     outcome: importSucceeded ? "succeeded" : "failed",
     receipt: importRun.receipt
-  }, !importSucceeded);
+  }, true);
   if (!importSucceeded) {
     const failure = new Error("managed Godot import did not exit successfully");
     failure.phase = "managed_import";
@@ -732,7 +740,7 @@ const startManagedRuntime = async (launch, stage, remainder) => {
       candidateSourceHash: stage.candidateSourceHash,
       fileCount: stage.fileCount,
       byteLength: stage.byteLength
-    });
+    }, true);
   } catch (error) {
     error.phase = "managed_import";
     throw error;

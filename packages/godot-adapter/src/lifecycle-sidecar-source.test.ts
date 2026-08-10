@@ -137,12 +137,17 @@ describe("Godot lifecycle sidecar sources", () => {
         'const projectRoot = process.argv[process.argv.indexOf("--path") + 1];',
         'if (process.argv.includes("--import")) {',
         '  if ((fs.statSync(path.join(projectRoot, "tool.sh")).mode & 0o111) === 0) process.exit(9);',
-        '  process.stdout.write("import complete\\n");',
-        "  process.exit(0);",
+        "  let writes = 0;",
+        "  const emit = () => {",
+        "    if (writes >= 32) { process.exit(0); return; }",
+        '    writes += 1; process.stdout.write("import output\\n"); setTimeout(emit, 1);',
+        "  };",
+        "  emit();",
+        "} else {",
+        "  process.stdout.write(Buffer.alloc(4096, 0x76));",
+        '  process.on("SIGTERM", () => process.exit(0));',
+        "  setInterval(() => {}, 1000);",
         "}",
-        "process.stdout.write(Buffer.alloc(4096, 0x76));",
-        'process.on("SIGTERM", () => process.exit(0));',
-        "setInterval(() => {}, 1000);",
       ].join("\n"),
     );
     const source = createLifecycleVanillaSmokeSidecarSource({
@@ -173,6 +178,7 @@ describe("Godot lifecycle sidecar sources", () => {
     ]);
     const launch = GodotLifecycleVanillaSmokeLaunchV1Schema.parse({
       ...commonLaunch(candidateSourceHash),
+      diagnosticMaxCount: 16,
       operation: "vanilla_smoke",
       importTimeoutMs: 5_000,
       vanillaTimeoutMs: 5_000,
@@ -193,7 +199,12 @@ describe("Godot lifecycle sidecar sources", () => {
     expect(complete).toMatchObject({
       kind: "smoke_complete",
       candidateSourceHash,
-      import: { exitCode: 0, signal: null, timedOut: false },
+      import: {
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        stdout: { retainedBytes: 448, truncated: false },
+      },
       vanilla: {
         exitCode: 0,
         signal: null,

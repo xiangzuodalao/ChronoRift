@@ -124,7 +124,7 @@
     "schemaPath": "testdata/vnext/external-project/e2-evaluator-interface.schema.v1.json",
     "schemaRawSha256": "92ba865ae04fd2776ad67da13edf1d278194bef54d489b2afb3e9640e6f8d77f",
     "messageValidatorPath": ".github/scripts/validate-vnext-e2-evaluator-ledger.mjs",
-    "messageValidatorRawSha256": "33e3380dfd85bf7a4fd7feda66beca06f0b0219d62758c1ee1a928ee186077c7",
+    "messageValidatorRawSha256": "077776a7397e3855e9fd0079ee820e04da351c397d9a4f7a196b4c9961aeaf05",
     "contentHashAlgorithm": "canonical-json-omit-own-content-hash-sha256-v1",
     "artifactBundleRequired": true,
     "executionArtifactValidationRequired": true,

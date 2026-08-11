@@ -302,7 +302,7 @@ exact(
 exact(
   record.freezeAnchor,
   {
-    tagName: "vnext-e2-public-exposed-conformance-r1-freeze",
+    tagName: "vnext-e2-public-exposed-conformance-r2-freeze",
     requiredObjectType: "tag",
     targetKind: "freeze_record_commit",
     productSubjectMustBeAncestor: true,
@@ -322,7 +322,7 @@ exact(
   },
   {
     workflowSha256:
-      "105b211b4ab87f16788ae68a651070dfeefabf980680e631f946f3de79df8b51",
+      "96e95bef50f4b6a3c198b60334ea72f6160679b89be2df9acd474a9ec23922e2",
     hostWrapperSha256:
       "08305f46413b348abc62b709ef4f829b66328ee15bd93241fbdad2315ee383a5",
   },
@@ -842,7 +842,7 @@ exact(
   {
     path: "testdata/vnext/external-project/moddable-platformer.e2-evaluation-contract.v1.json",
     rawSha256:
-      "7e7d872e424977db6cd1a74517996449835eb428e76b40f35c0ea4891f332a42",
+      "709aecadc1de9026fcf44ac616623da22f4cb291060441d44f4f9cb48d032f45",
     interfaceSchemaPath:
       "testdata/vnext/external-project/e2-evaluator-interface.schema.v1.json",
     interfaceSchemaRawSha256:
@@ -850,7 +850,7 @@ exact(
     messageValidatorPath:
       ".github/scripts/validate-vnext-e2-evaluator-ledger.mjs",
     messageValidatorRawSha256:
-      "33e3380dfd85bf7a4fd7feda66beca06f0b0219d62758c1ee1a928ee186077c7",
+      "077776a7397e3855e9fd0079ee820e04da351c397d9a4f7a196b4c9961aeaf05",
     holdoutSelectionStatus: "unselected",
     evaluatorImplementationStatus: "not_implemented",
   },

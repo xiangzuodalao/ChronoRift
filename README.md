@@ -219,6 +219,10 @@ post-Gate r1 freeze 将通过 Host Gate 的产品 subject 固定为
 `docs/evidence/vnext-e2-public-exposed-r1/` 保存 Operator 从 run `31416348238` artifact 下载、并在归档时与下载
 副本逐字节核对的两份 sanitized inner bytes。仓库可重算内层文件 hash，但离线 validator 无法重建即将过期的
 ZIP，也不能独立证明 ZIP 到这两份 inner bytes 的来源链路。
+首次发布的 `vnext-e2-public-exposed-conformance-r1-freeze` tag 保持不可变；其 tag CI 因
+`actions/checkout` 将本地 annotated-tag ref 覆盖为 commit ref 而 fail-closed。后继
+`vnext-e2-public-exposed-conformance-r2-freeze` 只修复 checkout 后的 tag-object 恢复与验证，不改变 product
+subject、归档 evidence、evaluator 状态或能力主张。
 `moddable-platformer.e2-evaluation-contract.v1.json` 另冻结 runtime、Agent 与 evaluator 预算、只允许 infrastructure
 failure 对同一 candidate 在零场景、零 oracle、零 Execution 进度且 cleanup-proven 后重试一次的规则，以及不向
 产品 Task 写 verdict 的 strict V1 evaluator artifact/ledger interface。validator 要求唯一 Agent 终态（包括 provider

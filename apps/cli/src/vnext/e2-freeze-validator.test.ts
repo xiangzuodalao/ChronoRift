@@ -30,7 +30,7 @@ const m4Path = resolve(
 const e2Path = resolve(
   "docs/evidence/vnext-e2-public-exposed-r1/chronorift-e2-external-semantic-evidence.json",
 );
-const freezeTagName = "vnext-e2-public-exposed-conformance-r1-freeze";
+const freezeTagName = "vnext-e2-public-exposed-conformance-r2-freeze";
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
@@ -43,6 +43,15 @@ afterEach(async () => {
     ),
   );
 });
+
+const validatorEnvironment = (): NodeJS.ProcessEnv => {
+  const environment = { ...process.env };
+  delete environment["GITHUB_EVENT_NAME"];
+  delete environment["GITHUB_REF"];
+  delete environment["GITHUB_REF_NAME"];
+  delete environment["GITHUB_REF_TYPE"];
+  return environment;
+};
 
 const run = async (
   overrides: {
@@ -68,7 +77,7 @@ const run = async (
     {
       cwd: overrides.cwd ?? process.cwd(),
       encoding: "utf8",
-      env: { ...process.env, ...overrides.environment },
+      env: { ...validatorEnvironment(), ...overrides.environment },
     },
   );
 

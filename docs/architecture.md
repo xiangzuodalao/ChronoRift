@@ -991,7 +991,9 @@ E2 另由 `corepack pnpm test:vnext:external-semantic` 验证；CI wrapper 在�
 `f8ccb183eb7db21c1737b60a9f4970dce5ff17f0` 取得通过证据；Operator 下载并逐字节核对后归档的 inner bytes、
 hash 和 claim boundary 保存在 `docs/evidence/vnext-e2-public-exposed-r1/`。离线验证不独立证明 GitHub artifact
 archive 与这些 inner bytes 的来源链路。这只改变“当前是否已有 Gate 输出”的实现映射，不扩大该输出支持的产品
-主张。
+主张。首次 `vnext-e2-public-exposed-conformance-r1-freeze` tag 的 CI 因 checkout 将本地 annotated-tag ref
+覆盖为 commit ref 而 fail-closed；该 tag 保持不动，后继
+`vnext-e2-public-exposed-conformance-r2-freeze` 只修复 tag-object 恢复与验证。
 
 M4 当前 cleanup reconciliation 只在同一 Host command 仍持有 coordinator 时成立：Task sandbox 的最终
 cleanup receipt 只有在进程/cgroup/scope cleanup 与 fresh bounded Task-storage inspection 都明确成功时才可

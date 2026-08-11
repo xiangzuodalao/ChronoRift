@@ -63,7 +63,7 @@ const MAX_EVENT_LEDGER_BYTES = 64 * 1024 * 1024;
 // an over-budget assignment remains representable in the denominator.
 const MAX_RETAINED_STORAGE_BYTES = 8 * 1024 * 1024 * 1024;
 const MAX_RETAINED_STORAGE_INODES = 1_048_576;
-const TARGET_TAG = "vnext-e2-public-exposed-conformance-r1-freeze";
+const TARGET_TAG = "vnext-e2-public-exposed-conformance-r2-freeze";
 const RECORD_REPOSITORY_PATH =
   "docs/evidence/vnext-e2-public-exposed-r1/freeze-record.v1.json";
 const CONTRACT_REPOSITORY_PATH =

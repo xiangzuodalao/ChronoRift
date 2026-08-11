@@ -4,16 +4,16 @@
   "recordTiming": "post_gate",
   "classification": "public_exposed_plumbing_conformance",
   "freezeAnchor": {
-    "tagName": "vnext-e2-public-exposed-conformance-r1-freeze",
+    "tagName": "vnext-e2-public-exposed-conformance-r2-freeze",
     "requiredObjectType": "tag",
     "targetKind": "freeze_record_commit",
     "productSubjectMustBeAncestor": true,
     "validationMode": "required_on_tag_push"
   },
   "freezeValidationPlumbing": {
-    "workflowSha256": "105b211b4ab87f16788ae68a651070dfeefabf980680e631f946f3de79df8b51",
+    "workflowSha256": "96e95bef50f4b6a3c198b60334ea72f6160679b89be2df9acd474a9ec23922e2",
     "hostWrapperSha256": "08305f46413b348abc62b709ef4f829b66328ee15bd93241fbdad2315ee383a5",
-    "freezeValidatorSha256": "b57149cb65df1052e671aecf615961e0f09fd954913a8b4fd643d2123b3120cd"
+    "freezeValidatorSha256": "68d19dd2caf55a4f6ea992a15943f7855b919cebea570284b8bcb5a018313b9b"
   },
   "productSubject": {
     "repositoryCommit": "f8ccb183eb7db21c1737b60a9f4970dce5ff17f0",
@@ -87,11 +87,11 @@
   },
   "evaluationContract": {
     "path": "testdata/vnext/external-project/moddable-platformer.e2-evaluation-contract.v1.json",
-    "rawSha256": "7e7d872e424977db6cd1a74517996449835eb428e76b40f35c0ea4891f332a42",
+    "rawSha256": "709aecadc1de9026fcf44ac616623da22f4cb291060441d44f4f9cb48d032f45",
     "interfaceSchemaPath": "testdata/vnext/external-project/e2-evaluator-interface.schema.v1.json",
     "interfaceSchemaRawSha256": "92ba865ae04fd2776ad67da13edf1d278194bef54d489b2afb3e9640e6f8d77f",
     "messageValidatorPath": ".github/scripts/validate-vnext-e2-evaluator-ledger.mjs",
-    "messageValidatorRawSha256": "33e3380dfd85bf7a4fd7feda66beca06f0b0219d62758c1ee1a928ee186077c7",
+    "messageValidatorRawSha256": "077776a7397e3855e9fd0079ee820e04da351c397d9a4f7a196b4c9961aeaf05",
     "holdoutSelectionStatus": "unselected",
     "evaluatorImplementationStatus": "not_implemented"
   },

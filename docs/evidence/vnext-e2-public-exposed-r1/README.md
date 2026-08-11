@@ -1,4 +1,4 @@
-# vNext E2 public-exposed r1 freeze
+# vNext E2 public-exposed r1 evidence and r2 freeze
 
 This directory preserves the sanitized M4 and E2 inner-file bytes that the operator downloaded from the artifact of
 GitHub Actions run `31416348238` for product subject commit
@@ -27,3 +27,9 @@ candidate-admission rejection receipt rather than merely label itself invalid. T
 cleanup measurements, are produced by the future Host/evaluator: their hashes validate contents and bindings, not
 origin or measurement truth. Cross-assignment denominator uniqueness still requires the absent create-only store,
 so one valid ledger cannot establish a complete campaign denominator or rule out omitted/replaced assignments.
+
+The immutable `vnext-e2-public-exposed-conformance-r1-freeze` tag remains as a failed freeze attempt: its tag CI
+correctly rejected the local lightweight ref that `actions/checkout` produced after fetching the annotated tag. The
+`vnext-e2-public-exposed-conformance-r2-freeze` anchor restores and verifies the exact remote annotated tag object
+after checkout. This r2 change repairs freeze-validation plumbing only; it does not change the product subject,
+archived evidence, evaluator status, or claim boundary above.

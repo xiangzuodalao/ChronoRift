@@ -1354,7 +1354,7 @@ const buildFixture = async (
     "tag",
     "--force",
     "--annotate",
-    "vnext-e2-public-exposed-conformance-r1-freeze",
+    "vnext-e2-public-exposed-conformance-r2-freeze",
     "--message",
     "test-only freeze anchor",
   ]);

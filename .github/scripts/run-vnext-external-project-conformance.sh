@@ -127,6 +127,14 @@ godot_version="$("${CHRONORIFT_TEST_GODOT_BIN}" --version)"
 [[ "${godot_version}" == "4.7.1.stable.official.a13da4feb" ]] ||
   fail "managed Godot must be the exact official 4.7.1 stable build"
 
+"${CHRONORIFT_TEST_NODE_BIN}" \
+  .github/scripts/validate-vnext-e2-freeze.mjs \
+  docs/evidence/vnext-e2-public-exposed-r1/freeze-record.v1.json \
+  testdata/vnext/external-project/moddable-platformer.e2-evaluation-contract.v1.json \
+  testdata/vnext/external-project/e2-evaluator-interface.schema.v1.json \
+  docs/evidence/vnext-e2-public-exposed-r1/chronorift-m4-external-project-evidence.json \
+  docs/evidence/vnext-e2-public-exposed-r1/chronorift-e2-external-semantic-evidence.json
+
 assert_canonical_path "external project checkout" "${CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT}"
 [[ -d "${CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT}" ]] ||
   fail "external project checkout must be a directory"

@@ -35,3 +35,6 @@ docs/benchmarks/v0.3.2-luna-r4/benchmark-report.v3.json
 docs/benchmarks/v0.3.2-luna-r4/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3.2-luna-r4/results.md
 docs/benchmarks/v0.3.2-luna-r4/canary-*.json
+
+# Preserve exact sanitized CI evidence bytes bound by the E2 freeze record.
+docs/evidence/vnext-e2-public-exposed-r1/chronorift-*.json

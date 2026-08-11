@@ -899,6 +899,29 @@ checkpoint lineage、seal/cleanup 和 sanitized evidence plumbing；证据必须
 任务 acceptance 必须在产品和 adapter freeze 后由隔离 curator/evaluator 提供 holdout，并预注册预算、重试与
 全部结果。
 
+run `31416348238` 已在 commit `f8ccb183eb7db21c1737b60a9f4970dce5ff17f0` 上通过 required Host
+conformance；仓库保存 Operator 从该 run artifact 下载、归档时与下载副本逐字节核对的 sanitized M4/E2 inner
+bytes，并用 strict post-Gate freeze record 绑定产品 subject、semantic Addon/profile 与实际 Gate interface。仓库
+可重算 inner-file hash；离线 validator 不能重建即将过期的 ZIP，也不能独立证明 archive-to-inner linkage。
+独立的 test/eval-only V1 contract 与 artifact-aware validator 定义一个确定性 single-assignment bundle：Agent 的
+provider failure、abort、timeout、无候选及 budget 终态也必须封入 ledger；有候选时 evaluator 结果必须按冻结
+顺序覆盖全部 scenario，只有零场景、零 oracle、零 Execution 进度且 cleanup/source identity 得到 receipt 的
+infrastructure failure 可原 candidate 重试一次。validator 会重算 selected tree、exact patch round-trip、runtime
+resource envelope、raw event hash chain 和 physical seal；assignment/evaluation ID 固定来自 canonical assignment
+basis，scenario ID 固定来自 definition 原始 bytes，artifact/message/receipt 则分别按声明的 raw 或 omit-own-hash
+算法重算。ledger 还必须引用一个绑定冻结 product commit/tree/interface 清单的 checkout receipt；
+`invalid_candidate` 必须引用绑定同一 candidate/evaluator identity 的 admission-rejection receipt，不能只靠 outcome
+字段自报。
+
+Agent、evaluator、runtime 和 evaluation artifact 共用一个 1 GiB/131072 inode aggregate Task storage budget，
+不是每个阶段分别拥有该额度。Pi Agent auto retry（每 cycle 最多 2、单 Agent attempt 观测总数 eligibility 最多
+8）与配置为每 model call 0 次的 provider SDK retry 是两种不同计数，也都不同于 evaluator 的一次
+infrastructure retry。usage、cleanup、product checkout 和 invalid-candidate receipt 的来源与测量真实性仍依赖尚未
+实现的 Host/evaluator；content hash 只验证确定性内容、绑定和内部一致性。该 contract 明确保持 holdout
+`unselected`、evaluator implementation `not_implemented`、跨 assignment create-only denominator store
+`not_implemented`，所以单份 ledger 无法证明不存在被替换/遗漏的 assignment，也没有把已公开 conformance test
+冒充独立 evaluator，或把 post-Gate freeze 冒充 preregistration、完整 campaign denominator、可靠性或泛化证据。
+
 ## 21. 当前实现映射
 
 本节把 2026-08-11 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3、M4 与 E2 都是源码中的实验性
@@ -964,7 +987,11 @@ frozen checkout；Gate 本身运行在 `PrivateNetwork=yes` 的 systemd namespac
 
 E2 另由 `corepack pnpm test:vnext:external-semantic` 验证；CI wrapper 在同一 private-network Host boundary 中、
 完成 M4 cleanup 并确认 bounded storage 为空后再运行它。语义 Addon/profile 有独立冻结 identity，成功 evidence
-有独立 strict validator，并强制列出不支持的 claim。命令存在不代表当前 checkout 已取得通过证据。
+有独立 strict validator，并强制列出不支持的 claim。run `31416348238` 已为冻结 product subject
+`f8ccb183eb7db21c1737b60a9f4970dce5ff17f0` 取得通过证据；Operator 下载并逐字节核对后归档的 inner bytes、
+hash 和 claim boundary 保存在 `docs/evidence/vnext-e2-public-exposed-r1/`。离线验证不独立证明 GitHub artifact
+archive 与这些 inner bytes 的来源链路。这只改变“当前是否已有 Gate 输出”的实现映射，不扩大该输出支持的产品
+主张。
 
 M4 当前 cleanup reconciliation 只在同一 Host command 仍持有 coordinator 时成立：Task sandbox 的最终
 cleanup receipt 只有在进程/cgroup/scope cleanup 与 fresh bounded Task-storage inspection 都明确成功时才可

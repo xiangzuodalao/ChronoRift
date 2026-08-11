@@ -214,6 +214,33 @@ corepack pnpm task -- start \
 所以它只能证明 11-tool/sandbox/lineage 管线，不是模型诊断能力证据，也不是独立 acceptance。真正的能力主张
 仍需要产品与 adapter freeze 之后选取的隔离 holdout、独立 evaluator、预注册预算与全部失败结果。
 
+post-Gate r1 freeze 将通过 Host Gate 的产品 subject 固定为
+`f8ccb183eb7db21c1737b60a9f4970dce5ff17f0`，并在
+`docs/evidence/vnext-e2-public-exposed-r1/` 保存 Operator 从 run `31416348238` artifact 下载、并在归档时与下载
+副本逐字节核对的两份 sanitized inner bytes。仓库可重算内层文件 hash，但离线 validator 无法重建即将过期的
+ZIP，也不能独立证明 ZIP 到这两份 inner bytes 的来源链路。
+`moddable-platformer.e2-evaluation-contract.v1.json` 另冻结 runtime、Agent 与 evaluator 预算、只允许 infrastructure
+failure 对同一 candidate 在零场景、零 oracle、零 Execution 进度且 cleanup-proven 后重试一次的规则，以及不向
+产品 Task 写 verdict 的 strict V1 evaluator artifact/ledger interface。validator 要求唯一 Agent 终态（包括 provider
+失败、超时和无候选）进入单 assignment ledger，结果完整覆盖冻结的有序 scenario plan，并对所引用的 build、
+runtime、raw event ledger 与 physical seal 原始文件重算身份和 hash chain；candidate 还必须从 baseline 用 exact
+binary/full-index patch round-trip 到目标 selected tree。assignment/evaluation ID 来自同一份 canonical assignment
+basis，scenario ID 来自 evaluator bundle 中 definition 的原始 bytes，消息自身 hash 则排除自己的 content-hash
+字段；这些是确定性 identity/checksum 算法，不是签名。ledger 还必须带一个绑定冻结 commit/tree/interface 清单的
+product-subject checkout receipt；`invalid_candidate` 只有在保留并绑定 candidate admission rejection receipt 时才
+成立，不能由结果字段自行宣称。
+
+1 GiB/131072 inode 是 Agent、evaluator、runtime 和 evaluation artifact 共用的单 Task aggregate 上限，不是每个
+阶段各一份额度。Pi Agent auto retry 是 Loop Engine 每个 retry cycle 最多 2 次、全 Agent attempt 观测总数最多
+8 次的 eligibility 计数；provider SDK 每个 model call 的配置上限是 0，两者也都不同于 evaluator 对同一 candidate
+的一次 infrastructure retry。usage、cleanup、product-subject 与 invalid-candidate receipt 仍由未来 Host/evaluator
+产生并保留；validator 只能验证内容、绑定和相互一致性，不能独立证明 receipt 来源或测量真实性。工具、retry 和
+storage 观测上限是 evaluator 的事后 eligibility，产品 subject 只强制已有的 timeout、sandbox、storage 与 runtime
+profile 上限。
+holdout 仍未选择，外部 evaluator 实现和跨 assignment 的 create-only denominator store 仍不存在；这个 V1 只描述
+一个确定性 single-assignment bundle，不能证明没有另一份 assignment 被替换，也不是独立 preregistration、签名、
+acceptance、完整 denominator、成功率或泛化证据。
+
 Linux Host 必须先提供受委派的 cgroup v2 root，以及由当前用户拥有、mode `0700` 的独立 Task storage
 mount；mount 只接受精确识别的 `tmpfs`、`ext4` 或 `xfs`，总容量不得超过 1 GiB、总 inode 不得超过 131072。
 `task start` 会在该 mount 下创建缺失的 `runtimeRoot`；创建后它必须是 mount 的 canonical

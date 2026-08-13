@@ -102,6 +102,12 @@ import {
   type ManagedGodotProjectEnvironmentRuntimeBindingV1,
   type ManagedGodotProjectEnvironmentRuntimeCapabilityV1,
 } from "./managed-godot-project-environment-runtime.js";
+import {
+  ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema,
+  assertManagedGodotProjectEnvironmentRuntimeBindingV2,
+  type ManagedGodotProjectEnvironmentRuntimeBindingV2,
+  type ManagedGodotProjectEnvironmentRuntimeCapabilityV2,
+} from "./managed-godot-project-environment-runtime-v2.js";
 
 export type SandboxManagedGodotRuntimeV1 =
   | {
@@ -119,12 +125,17 @@ export type SandboxManagedGodotRuntimeV1 =
   | {
       readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
       readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
     };
 type SandboxManagedGodotRuntimeBindingV1 =
   | ManagedGodotRuntimeBindingV1
   | ManagedGodotLifecycleRuntimeBindingV1
   | ManagedGodotSemanticRuntimeBindingV1
-  | ManagedGodotProjectEnvironmentRuntimeBindingV1;
+  | ManagedGodotProjectEnvironmentRuntimeBindingV1
+  | ManagedGodotProjectEnvironmentRuntimeBindingV2;
 
 const isLifecycleManagedRuntime = (
   runtime: SandboxManagedGodotRuntimeV1,
@@ -154,6 +165,30 @@ const isProjectEnvironmentManagedRuntime = (
   runtime.capability.runtimeProfile ===
     "chronorift-managed-godot-project-environment-v1";
 
+const isProjectEnvironmentManagedRuntimeV2 = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is {
+  readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+  readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
+} =>
+  "runtimeProfile" in runtime.capability &&
+  runtime.capability.runtimeProfile ===
+    "chronorift-managed-godot-project-environment-v2";
+
+const isAnyProjectEnvironmentManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
+    } =>
+  isProjectEnvironmentManagedRuntime(runtime) ||
+  isProjectEnvironmentManagedRuntimeV2(runtime);
+
 const isOverlayManagedRuntime = (
   runtime: SandboxManagedGodotRuntimeV1,
 ): runtime is
@@ -168,10 +203,15 @@ const isOverlayManagedRuntime = (
   | {
       readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
       readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
     } =>
   isLifecycleManagedRuntime(runtime) ||
   isSemanticManagedRuntime(runtime) ||
-  isProjectEnvironmentManagedRuntime(runtime);
+  isProjectEnvironmentManagedRuntime(runtime) ||
+  isProjectEnvironmentManagedRuntimeV2(runtime);
 
 const assertSandboxManagedRuntimeBinding = (
   runtime: SandboxManagedGodotRuntimeV1,
@@ -188,6 +228,11 @@ const assertSandboxManagedRuntimeBinding = (
     );
   } else if (isProjectEnvironmentManagedRuntime(runtime)) {
     assertManagedGodotProjectEnvironmentRuntimeBinding(
+      runtime.capability,
+      runtime.binding,
+    );
+  } else if (isProjectEnvironmentManagedRuntimeV2(runtime)) {
+    assertManagedGodotProjectEnvironmentRuntimeBindingV2(
       runtime.capability,
       runtime.binding,
     );
@@ -1055,7 +1100,7 @@ async function bindDefaultResources(input: {
           target: input.managedRuntime.capability.overlayTarget,
         };
       }
-      if (isProjectEnvironmentManagedRuntime(input.managedRuntime)) {
+      if (isAnyProjectEnvironmentManagedRuntime(input.managedRuntime)) {
         const adapterParentDirectory = await mkdtemp(
           join(
             input.layout.hostOperationTemporaryDirectory,
@@ -1273,6 +1318,7 @@ function assertLayoutWithinTaskStorage(
     | ManagedGodotLifecycleRuntimeCapabilityV1
     | ManagedGodotSemanticRuntimeCapabilityV1
     | ManagedGodotProjectEnvironmentRuntimeCapabilityV1
+    | ManagedGodotProjectEnvironmentRuntimeCapabilityV2
     | undefined,
 ): void {
   if (
@@ -2017,7 +2063,7 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
           request.profile === "godot-headless" &&
           this.resources.managedAdapter !== undefined &&
           this.managedRuntime !== undefined &&
-          isProjectEnvironmentManagedRuntime(this.managedRuntime) &&
+          isAnyProjectEnvironmentManagedRuntime(this.managedRuntime) &&
           duplex;
         const runtimeStart =
           SANDBOX_FDS.runtimeStart +
@@ -2569,12 +2615,20 @@ export async function createDuplexBwrapCgroupTaskSandbox(
                 ),
               binding: options.managedRuntime.binding,
             }
-          : {
-              capability: ManagedGodotRuntimeCapabilityV1Schema.parse(
-                options.managedRuntime.capability,
-              ),
-              binding: options.managedRuntime.binding,
-            };
+          : isProjectEnvironmentManagedRuntimeV2(options.managedRuntime)
+            ? {
+                capability:
+                  ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema.parse(
+                    options.managedRuntime.capability,
+                  ),
+                binding: options.managedRuntime.binding,
+              }
+            : {
+                capability: ManagedGodotRuntimeCapabilityV1Schema.parse(
+                  options.managedRuntime.capability,
+                ),
+                binding: options.managedRuntime.binding,
+              };
   }
   assertHostBinding(capability, options.hostBinding);
   const hostBinding = Object.freeze({ ...options.hostBinding });
@@ -2639,7 +2693,7 @@ export async function createDuplexBwrapCgroupTaskSandbox(
           ...(isOverlayManagedRuntime(managedRuntime)
             ? [managedRuntime.capability.overlayTarget]
             : []),
-          ...(isProjectEnvironmentManagedRuntime(managedRuntime)
+          ...(isAnyProjectEnvironmentManagedRuntime(managedRuntime)
             ? [
                 managedRuntime.capability.adapterParentTarget,
                 managedRuntime.capability.adapterTarget,
@@ -2718,7 +2772,7 @@ export async function createDuplexBwrapCgroupTaskSandbox(
         isOverlayManagedRuntime(managedRuntime)) !==
         (resources.managedOverlay !== undefined) ||
       (managedRuntime !== undefined &&
-        isProjectEnvironmentManagedRuntime(managedRuntime)) !==
+        isAnyProjectEnvironmentManagedRuntime(managedRuntime)) !==
         (resources.managedAdapter !== undefined) ||
       (managedRuntime !== undefined &&
         (resources.managedAddon?.target !==
@@ -2730,7 +2784,7 @@ export async function createDuplexBwrapCgroupTaskSandbox(
           (isOverlayManagedRuntime(managedRuntime) &&
             resources.managedOverlay?.target !==
               managedRuntime.capability.overlayTarget) ||
-          (isProjectEnvironmentManagedRuntime(managedRuntime) &&
+          (isAnyProjectEnvironmentManagedRuntime(managedRuntime) &&
             (resources.managedAdapter?.target !==
               managedRuntime.capability.adapterTarget ||
               resources.managedAdapter.parentTarget !==

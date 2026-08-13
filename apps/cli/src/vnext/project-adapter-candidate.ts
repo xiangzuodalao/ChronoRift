@@ -8,6 +8,7 @@ import {
   opendir,
   readFile,
   realpath,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -22,12 +23,16 @@ import {
   type Sha256DigestV1,
   type TaskId,
 } from "@chronorift/domain";
-import { PROJECT_ADAPTER_SDK_FILES_V1 } from "@chronorift/godot-adapter";
+import {
+  PROJECT_ADAPTER_SDK_FILES_V1,
+  PROJECT_ADAPTER_SDK_FILES_V2,
+} from "@chronorift/godot-adapter";
 import { contentHash } from "@chronorift/json-artifacts";
 
 import { M1Error } from "./errors.js";
 import { NodeHostGitPort, type HostGitPort } from "./host-git.js";
 import { createProjectAdapterReferenceTemplateFilesV1 } from "./project-adapter-reference-template.js";
+import { createProjectAdapterReferenceTemplateFilesV2 } from "./project-adapter-reference-template-v2.js";
 
 export const PROJECT_ADAPTER_CANDIDATE_RELATIVE_ROOT =
   ".chronorift/adapter-candidate" as const;
@@ -35,6 +40,8 @@ export const PROJECT_ADAPTER_CANDIDATE_MARKER =
   ".chronorift-project-adapter-candidate-v1.json" as const;
 export const PROJECT_ADAPTER_REFERENCE_RELATIVE_ROOT =
   ".chronorift/adapter-sdk-v1" as const;
+export const PROJECT_ADAPTER_REFERENCE_RELATIVE_ROOT_V2 =
+  ".chronorift/adapter-sdk-v2" as const;
 export const PROJECT_ADAPTER_CANDIDATE_MAX_FILES = 256;
 export const PROJECT_ADAPTER_CANDIDATE_MAX_BYTES = 8 * 1024 * 1024;
 export const PROJECT_ADAPTER_CANDIDATE_MAX_FILE_BYTES = 1024 * 1024;
@@ -262,6 +269,43 @@ export async function initializeProjectAdapterCandidateWorkspaceV1(input: {
     });
   }
   return Object.freeze({ candidateDirectory });
+}
+
+export async function initializeProjectAdapterCandidateWorkspaceV2(input: {
+  readonly workspaceDirectory: string;
+  readonly taskId: TaskId;
+  readonly projectSourceIdentity: Sha256DigestV1;
+  readonly adapterId: AdapterId;
+  readonly mainScene: string;
+}): Promise<{ readonly candidateDirectory: string }> {
+  const result = await initializeProjectAdapterCandidateWorkspaceV1(input);
+  const v1Reference = join(
+    resolve(input.workspaceDirectory),
+    PROJECT_ADAPTER_REFERENCE_RELATIVE_ROOT,
+  );
+  const v2Reference = join(
+    resolve(input.workspaceDirectory),
+    PROJECT_ADAPTER_REFERENCE_RELATIVE_ROOT_V2,
+  );
+  await mkdir(v2Reference, { mode: 0o700 });
+  await assertCanonicalDirectory(
+    v2Reference,
+    resolve(input.workspaceDirectory),
+  );
+  for (const file of PROJECT_ADAPTER_SDK_FILES_V2)
+    await writeReferenceFile(v2Reference, file.relativePath, file.bytes);
+  for (const file of createProjectAdapterReferenceTemplateFilesV2(input))
+    await writeReferenceFile(v2Reference, file.relativePath, file.bytes);
+  await writeReferenceFile(
+    v2Reference,
+    "CONTRACT.md",
+    Buffer.from(
+      "# ProjectAdapter V2 reference\n\nUse manifest/schemaVersion 2 and SDK 2. Emit all dynamic observations through ChronoRiftObservationContextV2. Entity-scoped state and events require the exact active EntityRefV2. A publishable candidate must replace all dynamic-placeholder identifiers and demonstrate appeared, initial state, declared event, changed state, disappeared, and the same stable entity ID at exactly the next incarnation. Harness does not infer node names, Signal names, properties, or causality.\n",
+      "utf8",
+    ),
+  );
+  await rm(v1Reference, { recursive: true });
+  return result;
 }
 
 const validCandidateRelativePath = (relativePath: string): boolean =>

@@ -16,6 +16,7 @@ export * from "./json.js";
 export * from "./manifest.js";
 export * from "./proposal.js";
 export * from "./project-environment.js";
+export * from "./project-environment-v2.js";
 export * from "./project-environment-characterization.js";
 export * from "./runtime.js";
 export * from "./task.js";

@@ -134,5 +134,30 @@ describe("M1 sandbox policy", () => {
     });
 
     expect(SandboxPolicyV2Schema.parse(policy)).toEqual(policy);
+
+    const v2 = createSandboxPolicyV2(asSha256DigestV1("a".repeat(64)), {
+      coding: {
+        toolchainId: `sandbox-toolchain:v1:${"b".repeat(64)}`,
+        targets: ["/bin/bash"],
+      },
+      godot: {
+        toolchainId: `sandbox-toolchain:v1:${"c".repeat(64)}`,
+        managedRuntimeId: `managed-godot-project-environment:v2:${"d".repeat(64)}`,
+        targets: ["/opt/chronorift/bin/godot"],
+      },
+    });
+    expect(SandboxPolicyV2Schema.parse(v2)).toEqual(v2);
+    expect(() =>
+      SandboxPolicyV2Schema.parse({
+        ...v2,
+        profileBindings: {
+          ...v2.profileBindings,
+          "godot-headless": {
+            ...v2.profileBindings["godot-headless"],
+            managedRuntimeId: `managed-godot-project-environment:v3:${"d".repeat(64)}`,
+          },
+        },
+      }),
+    ).toThrow();
   });
 });

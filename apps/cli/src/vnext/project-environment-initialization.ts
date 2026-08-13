@@ -1,5 +1,6 @@
 import {
   AdapterConformanceReceiptV1Schema,
+  AdapterConformanceReceiptV2Schema,
   EnvironmentBindingEpochV1Schema,
   EnvironmentPublicationIntentV1Schema,
   EnvironmentPublicationReceiptV1Schema,
@@ -11,6 +12,7 @@ import {
   ProjectTurnBudgetV1Schema,
   foldProjectInitializationAttemptV1,
   type AdapterConformanceReceiptV1,
+  type AdapterConformanceReceiptV2,
   type AdapterId,
   type EnvironmentBindingEpochId,
   type EnvironmentBindingEpochV1,
@@ -65,6 +67,19 @@ export const composeProjectEnvironmentInitializationPromptV1 = (input: {
     `Required managed Godot version: ${input.requestedGodotVersion}`,
   ].join("\n");
 };
+
+export const composeProjectEnvironmentInitializationPromptV2 = (input: {
+  readonly adapterId: AdapterId;
+  readonly mainScene: string;
+  readonly requestedGodotVersion: "4.7.1";
+  readonly sourceIdentity: string;
+}): string =>
+  composeProjectEnvironmentInitializationPromptV1(input)
+    .replace("adapter-sdk-v1", "adapter-sdk-v2")
+    .replace("loaded project-adapter skill", "loaded project-adapter-v2 skill")
+    .concat(
+      "\nAuthor a manifest/SDK/observation V2 adapter. Ready requires one lossless declared dynamic trace with entity-bound state and event observations across exactly consecutive incarnations.",
+    );
 
 interface ProjectEnvironmentPiTurnResultFieldsV1 {
   readonly status: "completed" | "failed" | "cancelled";
@@ -177,7 +192,8 @@ export const projectEnvironmentTurnTimeoutMsV1 = (
 
 export interface ProjectEnvironmentAuthoritativeValidationV1 {
   readonly candidate: ProjectAdapterCandidateReferenceV1;
-  readonly conformance: AdapterConformanceReceiptV1;
+  readonly conformance:
+    AdapterConformanceReceiptV1 | AdapterConformanceReceiptV2;
   readonly adapterRevision: ProjectAdapterRevisionV1;
   readonly environmentRevision: ProjectEnvironmentRevisionV1;
   readonly publicationIntent: EnvironmentPublicationIntentV1;
@@ -239,6 +255,7 @@ export interface InitializeProjectEnvironmentV1Request {
   readonly thinkingLevel: string;
   readonly budget: ProjectTurnBudgetV1;
   readonly queuedGoal: string | null;
+  readonly adapterContractVersion?: 1 | 2 | undefined;
   readonly ids: ProjectEnvironmentInitializationIdsV1;
 }
 
@@ -392,7 +409,10 @@ const assertValidationBindings = (
 ): ProjectEnvironmentAuthoritativeValidationV1 => {
   const validation = Object.freeze({
     candidate: ProjectAdapterCandidateReferenceV1Schema.parse(raw.candidate),
-    conformance: AdapterConformanceReceiptV1Schema.parse(raw.conformance),
+    conformance:
+      raw.conformance.schemaVersion === 2
+        ? AdapterConformanceReceiptV2Schema.parse(raw.conformance)
+        : AdapterConformanceReceiptV1Schema.parse(raw.conformance),
     adapterRevision: ProjectAdapterRevisionV1Schema.parse(raw.adapterRevision),
     environmentRevision: ProjectEnvironmentRevisionV1Schema.parse(
       raw.environmentRevision,
@@ -456,7 +476,10 @@ export async function initializeProjectEnvironmentV1(
   cleanText(request.providerId, "providerId", 256);
   cleanText(request.modelId, "modelId", 256);
   cleanText(request.thinkingLevel, "thinkingLevel", 256);
-  const prompt = composeProjectEnvironmentInitializationPromptV1(request);
+  const prompt =
+    request.adapterContractVersion === 2
+      ? composeProjectEnvironmentInitializationPromptV2(request)
+      : composeProjectEnvironmentInitializationPromptV1(request);
   const events: ProjectInitializationAttemptEventV1[] = [];
   const append = async (
     fields: Readonly<Record<string, unknown>>,

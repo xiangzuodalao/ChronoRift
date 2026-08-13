@@ -12,19 +12,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { asAdapterId } from "@chronorift/domain";
 import type {
   RunVNextPiSdkTurnOptions,
   VNextPiTurnResult,
 } from "@chronorift/pi-harness";
+import {
+  asAdapterId,
+  asBuildId,
+  asProjectEnvironmentId,
+  asProjectEnvironmentRuntimeObservationReceiptId,
+  asProjectEnvironmentTaskId,
+} from "@chronorift/domain";
+import { loadProjectAdapterPackageFilesV2 } from "@chronorift/godot-adapter";
+import {
+  ProjectEnvironmentStoreV1,
+  ProjectEnvironmentTaskStoreV1,
+} from "@chronorift/json-artifacts";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createProjectAdapterReferenceTemplateFilesV1 } from "./project-adapter-reference-template.js";
 import { ProjectEnvironmentHostConfigV1Schema } from "./project-environment-host-config.js";
+import { buildProjectEnvironmentPeBEvidenceV2 } from "./project-environment-pe-b-evidence.js";
 import {
   runProjectEnvironmentPreviewV1,
   type ProjectEnvironmentPreviewDependenciesV1,
 } from "./project-environment-preview.js";
+import { inspectReusableProjectEnvironmentRevisionV2 } from "./project-environment-reuse-v2.js";
+import { preflightCleanProjectEnvironmentV1 } from "./source-preflight.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryRoots = new Set<string>();
@@ -41,7 +54,7 @@ afterEach(async () => {
 const requiredEnvironment = (name: string): string => {
   const value = process.env[name];
   if (value === undefined || value.trim().length === 0) {
-    throw new Error(`${name} is required for the PE-A Preview Host Gate`);
+    throw new Error(`${name} is required for the PE-B Preview Host Gate`);
   }
   return value;
 };
@@ -117,101 +130,36 @@ const exactPromptValue = (prompt: string, label: string): string => {
   return match[1];
 };
 
-const authoredAdapterFiles = (prompt: string) => {
-  const adapterId = asAdapterId(
-    exactPromptValue(prompt, "The manifest adapterId must be exactly"),
+const authoredAdapterFiles = async (prompt: string) => {
+  const adapterId = exactPromptValue(
+    prompt,
+    "The manifest adapterId must be exactly",
   );
   const mainScene = exactPromptValue(prompt, "Realized default main scene");
-  const reference = new Map(
-    createProjectAdapterReferenceTemplateFilesV1({ adapterId, mainScene })
-      .filter((file) => file.relativePath.startsWith("templates/minimal/"))
-      .map((file) => [
-        file.relativePath.slice("templates/minimal/".length),
-        Buffer.from(file.bytes).toString("utf8"),
-      ]),
+  if (mainScene !== "res://main.tscn")
+    throw new Error("PE-B fixture main scene drifted");
+  const root = join(
+    process.cwd(),
+    "testdata/vnext/project-environment/pe-b-dynamic-adapter",
   );
-  const entityPath = "schemas/entity.scene-root.json";
-  const statePath = "schemas/state.project.json";
-  const entitySchema = JSON.parse(reference.get(entityPath)!) as Record<
+  const paths = [
+    "manifest.json",
+    "src/project_adapter.gd",
+    "schemas/entity.dynamic_actor.json",
+    "schemas/event.level_changed.json",
+    "schemas/launch.params.json",
+    "schemas/state.dynamic_actor.json",
+  ];
+  const files = new Map<string, string>();
+  for (const path of paths)
+    files.set(path, await readFile(join(root, path), "utf8"));
+  const manifest = JSON.parse(files.get("manifest.json")!) as Record<
     string,
     unknown
   >;
-  entitySchema.schemaId = "entity.main-root";
-  const stateSchema = JSON.parse(reference.get(statePath)!) as Record<
-    string,
-    unknown
-  >;
-  stateSchema.schemaId = "state.main";
-  stateSchema.root = {
-    type: "object",
-    properties: { counter: { type: "integer", minimum: 0 } },
-    required: ["counter"],
-    additionalProperties: false,
-  };
-  const entityBytes = `${JSON.stringify(entitySchema, null, 2)}\n`;
-  const stateBytes = `${JSON.stringify(stateSchema, null, 2)}\n`;
-  const manifest = JSON.parse(reference.get("manifest.json")!) as {
-    schemas: { schemaId: string; path: string; sha256: string }[];
-    entityTypes: { entityTypeId: string; schemaId: string }[];
-    stateDomains: { stateDomainId: string; schemaId: string }[];
-    smoke: { requiredStateDomainIds: string[] };
-  };
-  for (const schema of manifest.schemas) {
-    if (schema.path === entityPath) {
-      schema.schemaId = "entity.main-root";
-      schema.sha256 = sha256(Buffer.from(entityBytes));
-    }
-    if (schema.path === statePath) {
-      schema.schemaId = "state.main";
-      schema.sha256 = sha256(Buffer.from(stateBytes));
-    }
-  }
-  manifest.entityTypes[0]!.entityTypeId = "main-root";
-  manifest.entityTypes[0]!.schemaId = "entity.main-root";
-  manifest.stateDomains[0]!.stateDomainId = "main-state";
-  manifest.stateDomains[0]!.schemaId = "state.main";
-  manifest.smoke.requiredStateDomainIds = ["main-state"];
-  const entry = `extends ChronoRiftProjectAdapterV1
-
-class EntityProjection extends ChronoRiftEntityProjectionV1:
-\tfunc sample(current_scene: Node) -> Array:
-\t\treturn [{
-\t\t\t"entityId": "main",
-\t\t\t"entityTypeId": "main-root",
-\t\t\t"incarnation": 1,
-\t\t\t"identityScope": "execution_local",
-\t\t\t"projection": {"name": str(current_scene.name)},
-\t\t}]
-
-class StateProjection extends ChronoRiftStateProjectionV1:
-\tfunc sample(current_scene: Node) -> Array:
-\t\treturn [{
-\t\t\t"stateDomainId": "main-state",
-\t\t\t"value": {"counter": int(current_scene.counter)},
-\t\t\t"semanticCoverage": "declared",
-\t\t}]
-
-class EventProjection extends ChronoRiftEventProjectionV1:
-\tfunc drain(_current_scene: Node) -> Array:
-\t\treturn []
-
-func create_modules() -> Dictionary:
-\treturn {
-\t\t"entity_projection": EntityProjection.new(),
-\t\t"state_projection": StateProjection.new(),
-\t\t"event_projection": EventProjection.new(),
-\t}
-`;
-  return new Map<string, string>([
-    ["manifest.json", `${JSON.stringify(manifest, null, 2)}\n`],
-    ["src/project_adapter.gd", entry],
-    [entityPath, entityBytes],
-    [statePath, stateBytes],
-    [
-      "schemas/launch.params.json",
-      reference.get("schemas/launch.params.json")!,
-    ],
-  ]);
+  manifest.adapterId = adapterId;
+  files.set("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
+  return files;
 };
 
 const createFakePiDependencies =
@@ -240,7 +188,9 @@ const createFakePiDependencies =
         "Initialize this Godot project environment",
       );
       if (initializing) {
-        for (const [path, content] of authoredAdapterFiles(options.prompt)) {
+        for (const [path, content] of await authoredAdapterFiles(
+          options.prompt,
+        )) {
           await invoke("write", {
             path: `.chronorift/adapter-candidate/${path}`,
             content,
@@ -249,14 +199,6 @@ const createFakePiDependencies =
       } else {
         const binding = options.additionalEnvironmentInstructions ?? "";
         const taskId = exactPromptValue(binding, "- taskId");
-        if (options.prompt.includes("EDIT_COUNTER_TO_TWO")) {
-          await invoke("edit", {
-            path: "main.gd",
-            edits: [
-              { oldText: "var counter := 1", newText: "var counter := 2" },
-            ],
-          });
-        }
         const capabilities = gameOutput(
           await invoke("game_capabilities", { schemaVersion: 1, taskId }),
         );
@@ -307,13 +249,24 @@ const createFakePiDependencies =
             limit: 20,
           }),
         );
+        const events = gameOutput(
+          await invoke("game_query", {
+            schemaVersion: 1,
+            taskId,
+            executionId,
+            select: "events",
+            limit: 20,
+          }),
+        );
         if (
           !Array.isArray(entities.rows) ||
           entities.rows.length === 0 ||
           !Array.isArray(state.rows) ||
-          state.rows.length === 0
+          state.rows.length === 0 ||
+          !Array.isArray(events.rows) ||
+          events.rows.length === 0
         ) {
-          throw new Error("fake Pi did not observe entity and state rows");
+          throw new Error("fake Pi did not observe the PE-B dynamic rows");
         }
         await invoke("game_capture_pin", {
           schemaVersion: 1,
@@ -385,27 +338,26 @@ const createFakePiDependencies =
     return Object.freeze({ runPiTurn });
   };
 
-describe("PE-A complete Preview Host integration", () => {
+describe("PE-B complete Preview Host integration", () => {
   it("initializes, publishes, runs one same-Session goal, and reuses in a new Session", async () => {
     const taskStorageRoot = requiredEnvironment(
       "CHRONORIFT_TEST_TASK_STORAGE_ROOT",
     );
     const godotPath = requiredEnvironment("CHRONORIFT_TEST_GODOT_BIN");
-    const root = await mkdtemp(join(tmpdir(), "chronorift-pe-a-preview-host-"));
+    const root = await mkdtemp(join(tmpdir(), "chronorift-pe-b-preview-host-"));
     const projectRoot = join(root, "project");
     const runtimeRoot = await mkdtemp(
-      join(taskStorageRoot, "chronorift-pe-a-preview-runtime-"),
+      join(taskStorageRoot, "chronorift-pe-b-preview-runtime-"),
     );
     temporaryRoots.add(root);
     temporaryRoots.add(runtimeRoot);
     await mkdir(projectRoot);
     const fixtureRoot = join(
       process.cwd(),
-      "fixtures/godot-project-environment-pe-a-live",
+      "fixtures/godot-project-environment-dynamic",
     );
     for (const path of [
       ".godot-version",
-      "README.md",
       "main.gd",
       "main.gd.uid",
       "main.tscn",
@@ -456,6 +408,10 @@ describe("PE-A complete Preview Host integration", () => {
     const hostConfigPath = join(root, "host-config.json");
     await writeFile(hostConfigPath, `${JSON.stringify(hostConfig)}\n`);
     const dependencies = createFakePiDependencies();
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: projectRoot,
+      sourceRepositoryExclusionRoots: [taskStorageRoot],
+    });
 
     const first = await runProjectEnvironmentPreviewV1(
       {
@@ -463,7 +419,7 @@ describe("PE-A complete Preview Host integration", () => {
         provider: "fake-provider",
         model: "fake-model",
         thinkingLevel: "off",
-        goal: "EDIT_COUNTER_TO_TWO",
+        goal: "OBSERVE_DYNAMIC_PROJECTION",
         hostConfigPath,
       },
       dependencies,
@@ -475,7 +431,7 @@ describe("PE-A complete Preview Host integration", () => {
       status: "ready",
       reused: false,
       goalDelivered: true,
-      candidateSourceChanged: true,
+      candidateSourceChanged: false,
     });
     expect(first.environmentRevisionId).not.toBeNull();
     expect(first.adapterRevisionId).not.toBeNull();
@@ -506,5 +462,174 @@ describe("PE-A complete Preview Host integration", () => {
     expect(second.sessionId).not.toBe(first.sessionId);
     expect(second.buildId).not.toBeNull();
     expect(second.runtimeObservationReceiptId).not.toBeNull();
+
+    const openTaskStore = async (result: typeof first) => {
+      const store = new ProjectEnvironmentTaskStoreV1({
+        storeRoot: join(result.taskDirectory, "project-environment-records"),
+        taskId: asProjectEnvironmentTaskId(result.taskId),
+      });
+      await store.open();
+      return store;
+    };
+    const firstStore = await openTaskStore(first);
+    const secondStore = await openTaskStore(second);
+    const [firstBindings, secondBindings, firstTurns, secondTurns] =
+      await Promise.all([
+        firstStore.readBindingEpochs(),
+        secondStore.readBindingEpochs(),
+        firstStore.readTurns(),
+        secondStore.readTurns(),
+      ]);
+    const firstBinding = firstBindings[0];
+    const secondBinding = secondBindings[0];
+    if (firstBinding?.state !== "bound" || secondBinding?.state !== "reused")
+      throw new Error("PE-B Host evidence omitted exact binding epochs");
+    const [attemptEvents, publication, reuseReceipt] = await Promise.all([
+      firstStore.readAttemptEvents(),
+      firstStore.readPublicationReceipt(firstBinding.publicationReceiptId),
+      secondStore.readReuseReceipt(secondBinding.reuseReceiptId),
+    ]);
+    const created = attemptEvents[0];
+    if (created?.eventKind !== "created")
+      throw new Error("PE-B Host evidence omitted initialization creation");
+    const attempt = await firstStore.readInitializationAttempt(
+      created.attemptId,
+    );
+    if (
+      first.buildId === null ||
+      second.buildId === null ||
+      first.runtimeObservationReceiptId === null ||
+      second.runtimeObservationReceiptId === null
+    )
+      throw new Error("PE-B Host evidence omitted runtime/build identities");
+    const [firstBuildBinding, secondBuildBinding, firstRuntime, secondRuntime] =
+      await Promise.all([
+        firstStore.readBuildBinding(asBuildId(first.buildId)),
+        secondStore.readBuildBinding(asBuildId(second.buildId)),
+        firstStore.readRuntimeObservationReceiptV2(
+          asProjectEnvironmentRuntimeObservationReceiptId(
+            first.runtimeObservationReceiptId,
+          ),
+        ),
+        secondStore.readRuntimeObservationReceiptV2(
+          asProjectEnvironmentRuntimeObservationReceiptId(
+            second.runtimeObservationReceiptId,
+          ),
+        ),
+      ]);
+    if (
+      firstBuildBinding.compatibilityReceiptId === null ||
+      secondBuildBinding.compatibilityReceiptId === null ||
+      firstRuntime.captureWindowIds[0] === undefined ||
+      secondRuntime.captureWindowIds[0] === undefined
+    )
+      throw new Error("PE-B Host evidence omitted compatibility/capture IDs");
+    const [
+      firstCompatibility,
+      secondCompatibility,
+      firstCapture,
+      secondCapture,
+    ] = await Promise.all([
+      firstStore.readCompatibilityReceiptV2(
+        firstBuildBinding.compatibilityReceiptId,
+      ),
+      secondStore.readCompatibilityReceiptV2(
+        secondBuildBinding.compatibilityReceiptId,
+      ),
+      firstStore.readPinnedCapture(firstRuntime.captureWindowIds[0]),
+      secondStore.readPinnedCapture(secondRuntime.captureWindowIds[0]),
+    ]);
+    const projectStore = new ProjectEnvironmentStoreV1({
+      namespaceRoot: first.projectNamespace,
+      environmentId: asProjectEnvironmentId(first.environmentId),
+    });
+    await projectStore.open();
+    const current = await projectStore.readCurrent();
+    if (current === null)
+      throw new Error("PE-B Host evidence omitted current revision");
+    const revision = await projectStore.readRevision(
+      current.environmentRevisionId,
+      current.publicationOperationId,
+    );
+    const adapterFiles = revision.files
+      .filter((file) => file.path.startsWith("adapter/"))
+      .map((file) => ({ path: file.path.slice(8), bytes: file.bytes }));
+    const loadedAdapter = loadProjectAdapterPackageFilesV2(adapterFiles, {
+      requireSingleLaunchTarget: true,
+      expectedMainScene: source.mainScene,
+      requireEmptyLaunchParameters: true,
+    });
+    inspectReusableProjectEnvironmentRevisionV2({
+      revision: revision.payload,
+      files: revision.files,
+      expectedSourceId: revision.payload.sourceId,
+      expectedToolchainReceiptId: revision.payload.toolchainReceiptId,
+      expectedAdapterId: asAdapterId(loadedAdapter.manifest.adapterId),
+      expectedMainScene: source.mainScene,
+    });
+    const toolchain = await firstStore.readToolchainReceipt(
+      revision.payload.toolchainReceiptId,
+    );
+    const evidence = buildProjectEnvironmentPeBEvidenceV2({
+      source,
+      loadedAdapter,
+      environmentRevision: revision.payload,
+      revisionFiles: revision.files,
+      revisionPayloadHash: revision.payloadHash,
+      revisionPackageHash: revision.packageHash,
+      revisionPackageSeal: revision.packageSeal,
+      publication,
+      initializationAttempt: attempt,
+      toolchain,
+      first: {
+        taskId: first.taskId,
+        sessionId: first.sessionId,
+        binding: firstBinding,
+        compatibility: firstCompatibility,
+        runtime: firstRuntime,
+        pinnedCapture: firstCapture,
+        turns: firstTurns,
+        goalDelivered: first.goalDelivered,
+      },
+      reuse: {
+        taskId: second.taskId,
+        sessionId: second.sessionId,
+        binding: secondBinding,
+        compatibility: secondCompatibility,
+        runtime: secondRuntime,
+        pinnedCapture: secondCapture,
+        turns: secondTurns,
+        goalDelivered: second.goalDelivered,
+        reuseReceipt,
+      },
+    });
+    const evidencePath = join(root, "pe-b-evidence.v2.json");
+    await writeFile(evidencePath, `${JSON.stringify(evidence)}\n`, {
+      flag: "wx",
+      mode: 0o600,
+    });
+    const validated = await execFileAsync(
+      process.execPath,
+      [
+        join(
+          process.cwd(),
+          ".github/scripts/validate-project-environment-pe-b-evidence.mjs",
+        ),
+        join(
+          process.cwd(),
+          "testdata/vnext/project-environment/pe-b-evidence-bundle.schema.v2.json",
+        ),
+        evidencePath,
+      ],
+      { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+    );
+    expect(validated.stderr).toBe("");
+    expect(JSON.parse(validated.stdout)).toMatchObject({
+      schemaVersion: 2,
+      bundleContentHash: evidence.bundleContentHash,
+      environmentRevisionId: first.environmentRevisionId,
+      firstExecutionId: firstRuntime.executionId,
+      reuseExecutionId: secondRuntime.executionId,
+    });
   });
 });

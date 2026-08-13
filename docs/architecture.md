@@ -9,8 +9,8 @@
 > descriptive compare 与外部 release acceptance 实现。M3 不是新的公开 release，也不能描述成任意 Godot
 > 项目能力或修复正确性证明；本文不声称尚未实际运行的 Gate 或 live acceptance 已通过。
 >
-> **Project Environment V1 / PE-A Preview 当前是 implementation present + local Gate passed；下一实现切片是 PE-B Dynamic
-> Projection（planned，尚未实现）**。PE-A 已实现显式 Preview、ProjectAdapter SDK/wire/loader、初始化、
+> **Project Environment V1 / PE-B Dynamic Projection 当前是 implementation present；精确 product baseline 的
+> Luna/max local Gate 尚未运行。** PE-A 已实现显式 Preview、ProjectAdapter SDK/wire/loader、初始化、
 > authoritative conformance、crash-safe publication/binding、post-edit exact Build、new-Session reuse、durable runtime
 > evidence 与独立 validator。默认离线、真实 Godot、下层 Linux Host 与 deterministic fake-Pi Gate 已通过；冻结
 > product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 的本地 Luna/max one-shot 也已产生 create-new bundle，
@@ -976,7 +976,7 @@ infrastructure retry。usage、cleanup、product checkout 和 invalid-candidate 
 `not_implemented`，所以单份 ledger 无法证明不存在被替换/遗漏的 assignment，也没有把已公开 conformance test
 冒充独立 evaluator，或把 post-Gate freeze 冒充 preregistration、完整 campaign denominator、可靠性或泛化证据。
 
-### 20.4 当前下一产品切片：Project Environment V1 / PE-B Dynamic Projection（planned）
+### 20.4 当前产品切片：Project Environment V1 / PE-B Dynamic Projection（implementation present）
 
 Project Environment V1 取代“为每个外部项目新增冻结 profile”的产品方向。在 Godot 4.7 GDScript project root
 启动 Preview 时，同一个可见 Pi Session 首次生成唯一 ProjectAdapter；初始化 turn 正常返回且 authoritative
@@ -992,7 +992,7 @@ unchanged-source new-Session reuse；durable observation/pinned capture；以及
 characterization fixture。PE-A store baseline 是 `project-environment-v1` physical format 的首次冻结；更早开发目录
 不做静默迁移，冻结后的不兼容变更必须使用新 namespace/marker。
 
-下一切片 PE-B 只增加 dynamic identity propagation。它保持 PE-A 的 source、launch、Host、network 与 toolchain
+PE-B 只增加 dynamic identity propagation。它保持 PE-A 的 source、launch、Host、network 与 toolchain
 边界不变，用动态节点与 declared custom Signal 验证：entity create 先于引用它的 state/event；destroy 封闭当前
 `(entityId, incarnation)`；同一稳定语义 ID 的 recreate 必须使用更大的 incarnation；历史 query 不污染当前
 Execution 的 lifecycle state。offline、真实 Godot Host、rolling capture/pin 与独立 raw-chain validator 都必须
@@ -1044,16 +1044,16 @@ E2 再增加以下独立实现面：
 | State/lineage      | Timer + spawned entity projection、raw observation chain、physical seal | private state、engine internals、等价起点或因果结论 |
 | Public conformance | pinned exposed spawner task、strict sanitized evidence                  | 智能诊断、独立 acceptance、泛化或相对产品优势       |
 
-Project Environment V1 是当前产品主线；下一实现切片是 PE-B Dynamic Projection，Source/Import closure 是 PE-C：
+Project Environment V1 是当前产品主线；PE-B Dynamic Projection implementation 已落地，Source/Import closure 是 PE-C：
 
 | 维度                | 已冻结目标                                                                | 当前实现或缺口                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | 用户入口            | 项目目录内交互 Session；首次可见初始化，ready 后处理排队目标              | 显式 `pnpm project preview`、同 Session goal 与 new-Session reuse 已实现；尚无默认 `chronorift [goal]`               |
 | Project Environment | project-local immutable revisions、bounded attempts、publication/binding  | PE-A DTO/store、initial publication 与跨命令 crash reconciliation 已实现；通用 resume 与 multi-writer lease/CAS 后续 |
 | Source              | dirty snapshot、显式 untracked、materialized multi-source closure         | PE-A 只接受 clean single-root；Source/Import closure 属于 PE-C                                                       |
-| ProjectAdapter      | Agent 生成 manifest + GDScript package、固定 tools、module negotiation    | PE-A SDK/loader/wire/固定工具已实现；dynamic identity projection 属于 PE-B，migration 属于后续 slice                 |
-| Ready               | lifecycle + clock/error + entity/state/event projection + rolling capture | 三阶段 conformance、post-edit exact Build、durable observation/pinned capture 与 snapshot characterization 已实现    |
-| Release Gate        | 三类结构矩阵、至少两个真实 Agent 初始化、Host/sandbox 与独立 validator    | PE-A 精确 baseline 的单 fixture local r1 已冻结；PE-B/PE-C 矩阵、第二真实项目与 protected artifact 尚未完成          |
+| ProjectAdapter      | Agent 生成 manifest + GDScript package、固定 tools、module negotiation    | V1 与 PE-A revision 保持；V2 dynamic identity SDK/wire/loader 已实现，迁移仍属后续 slice                             |
+| Ready               | lifecycle + clock/error + entity/state/event projection + rolling capture | PE-B event-driven dynamic trace、连续 validated ring、lossless raw conformance/pin 已实现                            |
+| Release Gate        | 三类结构矩阵、至少两个真实 Agent 初始化、Host/sandbox 与独立 validator    | PE-A local r1 已冻结；PE-B offline/Godot/Host implementation Gate 已通过，精确 Luna/max archive 尚待运行             |
 
 默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 coding sandbox boundary 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、

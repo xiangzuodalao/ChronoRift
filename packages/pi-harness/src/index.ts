@@ -68,7 +68,10 @@ export type * from "./v04-types.js";
 export {
   PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
   PROJECT_ADAPTER_SKILL_V1_NAME,
+  PROJECT_ADAPTER_SKILL_V2_DIRECTORY,
+  PROJECT_ADAPTER_SKILL_V2_NAME,
   projectAdapterSkillResourceOptionsV1,
+  projectAdapterSkillResourceOptionsV2,
   type ProjectAdapterSkillResourceOptionsV1,
 } from "./project-adapter-skill.js";
 export {

@@ -945,7 +945,7 @@ const SandboxToolchainIdV1Schema = z
 const ManagedGodotRuntimeIdV1Schema = z
   .string()
   .regex(
-    /^managed-godot(?:(?:-semantic)?-runtime|-project-environment):v1:[a-f0-9]{64}$/u,
+    /^managed-godot(?:(?:-semantic)?-runtime:v1|-project-environment:v[12]):[a-f0-9]{64}$/u,
   );
 export const SandboxPolicyIdSchema = z
   .string()

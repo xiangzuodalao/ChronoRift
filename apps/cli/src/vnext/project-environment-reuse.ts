@@ -11,6 +11,7 @@ import {
   type ObserverEffectReceiptV1,
   type ProjectAdapterRevisionV1,
   type AdapterCompatibilityReceiptV1,
+  type AdapterCompatibilityReceiptV2,
   type EnvironmentBindingEpochId,
   type EnvironmentBindingEpochV1,
   type ProjectEnvironmentRevisionV1,
@@ -223,7 +224,8 @@ export async function bindReusableProjectEnvironmentRevisionV1(input: {
   readonly bindingEpochId: EnvironmentBindingEpochId;
   readonly revision: ProjectEnvironmentRevisionV1;
   readonly observedCurrentRevisionId: ProjectEnvironmentRevisionV1["environmentRevisionId"];
-  readonly compatibility: AdapterCompatibilityReceiptV1;
+  readonly compatibility:
+    AdapterCompatibilityReceiptV1 | AdapterCompatibilityReceiptV2;
   readonly createdAt: string;
   readonly boundAt: string;
 }): Promise<{

@@ -3,7 +3,9 @@ import { join, resolve } from "node:path";
 
 import {
   AdapterCompatibilityReceiptV1Schema,
+  AdapterCompatibilityReceiptV2Schema,
   AdapterConformanceReceiptV1Schema,
+  AdapterConformanceReceiptV2Schema,
   CaptureWindowIdSchema,
   EnvironmentBindingEpochV1Schema,
   EnvironmentPublicationIntentV1Schema,
@@ -13,9 +15,11 @@ import {
   ProjectAdapterCandidateReferenceV1Schema,
   ProjectEnvironmentBuildBindingV1Schema,
   ProjectEnvironmentPinnedCaptureV1Schema,
+  ProjectEnvironmentPinnedCaptureV2Schema,
   ProjectEnvironmentOperationIdSchema,
   ProjectEnvironmentReuseReceiptV1Schema,
   ProjectEnvironmentRuntimeObservationReceiptV1Schema,
+  ProjectEnvironmentRuntimeObservationReceiptV2Schema,
   ProjectEnvironmentTaskIdSchema,
   ProjectEnvironmentTurnV1Schema,
   ProjectInitializationAttemptEventV1Schema,
@@ -24,7 +28,9 @@ import {
   VNextBuildV1Schema,
   foldProjectInitializationAttemptV1,
   type AdapterCompatibilityReceiptV1,
+  type AdapterCompatibilityReceiptV2,
   type AdapterConformanceReceiptV1,
+  type AdapterConformanceReceiptV2,
   type CaptureWindowId,
   type EnvironmentBindingEpochV1,
   type EnvironmentPublicationIntentV1,
@@ -35,8 +41,10 @@ import {
   type ProjectAdapterCandidateReferenceV1,
   type ProjectEnvironmentBuildBindingV1,
   type ProjectEnvironmentPinnedCaptureV1,
+  type ProjectEnvironmentPinnedCaptureV2,
   type ProjectEnvironmentReuseReceiptV1,
   type ProjectEnvironmentRuntimeObservationReceiptV1,
+  type ProjectEnvironmentRuntimeObservationReceiptV2,
   type ProjectEnvironmentOperationId,
   type ProjectEnvironmentTurnV1,
   type ProjectInitializationAttemptEventV1,
@@ -154,7 +162,8 @@ export interface ProjectEnvironmentTaskEvidenceInventoryV1 {
 }
 
 export interface StoredProjectEnvironmentPinnedCaptureV1 {
-  readonly payload: ProjectEnvironmentPinnedCaptureV1;
+  readonly payload:
+    ProjectEnvironmentPinnedCaptureV1 | ProjectEnvironmentPinnedCaptureV2;
   readonly records: readonly JsonValue[];
   readonly recordsBytes: Uint8Array;
   readonly payloadHash: string;
@@ -187,10 +196,13 @@ type TaskRecordPayload =
   | EnvironmentPublicationReceiptV1
   | ProjectToolchainReceiptV1
   | AdapterConformanceReceiptV1
+  | AdapterConformanceReceiptV2
   | ObserverEffectReceiptV1
   | AdapterCompatibilityReceiptV1
+  | AdapterCompatibilityReceiptV2
   | ProjectEnvironmentReuseReceiptV1
   | ProjectEnvironmentRuntimeObservationReceiptV1
+  | ProjectEnvironmentRuntimeObservationReceiptV2
   | VNextBuildV1
   | ProjectEnvironmentBuildBindingV1;
 
@@ -245,8 +257,12 @@ const parseCandidateReference = (
   ProjectAdapterCandidateReferenceV1Schema.parse(input);
 const parsePinnedCapture = (
   input: unknown,
-): ProjectEnvironmentPinnedCaptureV1 =>
-  ProjectEnvironmentPinnedCaptureV1Schema.parse(input);
+): ProjectEnvironmentPinnedCaptureV1 | ProjectEnvironmentPinnedCaptureV2 => {
+  const version = isObject(input) ? input.schemaVersion : undefined;
+  return version === 2
+    ? ProjectEnvironmentPinnedCaptureV2Schema.parse(input)
+    : ProjectEnvironmentPinnedCaptureV1Schema.parse(input);
+};
 const parseInitializationAttempt = (
   input: unknown,
 ): ProjectInitializationAttemptV1 =>
@@ -261,20 +277,30 @@ const parsePublicationReceipt = (
   EnvironmentPublicationReceiptV1Schema.parse(input);
 const parseToolchainReceipt = (input: unknown): ProjectToolchainReceiptV1 =>
   ProjectToolchainReceiptV1Schema.parse(input);
-const parseConformanceReceipt = (input: unknown): AdapterConformanceReceiptV1 =>
-  AdapterConformanceReceiptV1Schema.parse(input);
+const parseConformanceReceipt = (
+  input: unknown,
+): AdapterConformanceReceiptV1 | AdapterConformanceReceiptV2 =>
+  isObject(input) && input.schemaVersion === 2
+    ? AdapterConformanceReceiptV2Schema.parse(input)
+    : AdapterConformanceReceiptV1Schema.parse(input);
 const parseObserverEffectReceipt = (input: unknown): ObserverEffectReceiptV1 =>
   ObserverEffectReceiptV1Schema.parse(input);
 const parseCompatibilityReceipt = (
   input: unknown,
-): AdapterCompatibilityReceiptV1 =>
-  AdapterCompatibilityReceiptV1Schema.parse(input);
+): AdapterCompatibilityReceiptV1 | AdapterCompatibilityReceiptV2 =>
+  isObject(input) && input.schemaVersion === 2
+    ? AdapterCompatibilityReceiptV2Schema.parse(input)
+    : AdapterCompatibilityReceiptV1Schema.parse(input);
 const parseReuseReceipt = (input: unknown): ProjectEnvironmentReuseReceiptV1 =>
   ProjectEnvironmentReuseReceiptV1Schema.parse(input);
 const parseRuntimeObservationReceipt = (
   input: unknown,
-): ProjectEnvironmentRuntimeObservationReceiptV1 =>
-  ProjectEnvironmentRuntimeObservationReceiptV1Schema.parse(input);
+):
+  | ProjectEnvironmentRuntimeObservationReceiptV1
+  | ProjectEnvironmentRuntimeObservationReceiptV2 =>
+  isObject(input) && input.schemaVersion === 2
+    ? ProjectEnvironmentRuntimeObservationReceiptV2Schema.parse(input)
+    : ProjectEnvironmentRuntimeObservationReceiptV1Schema.parse(input);
 const parseBuild = (input: unknown): VNextBuildV1 =>
   VNextBuildV1Schema.parse(input);
 const parseBuildBinding = (input: unknown): ProjectEnvironmentBuildBindingV1 =>
@@ -377,15 +403,15 @@ function parsePayload(
     case "toolchain-receipt":
       return ProjectToolchainReceiptV1Schema.parse(input);
     case "conformance-receipt":
-      return AdapterConformanceReceiptV1Schema.parse(input);
+      return parseConformanceReceipt(input);
     case "observer-effect-receipt":
       return ObserverEffectReceiptV1Schema.parse(input);
     case "compatibility-receipt":
-      return AdapterCompatibilityReceiptV1Schema.parse(input);
+      return parseCompatibilityReceipt(input);
     case "reuse-receipt":
       return ProjectEnvironmentReuseReceiptV1Schema.parse(input);
     case "runtime-observation-receipt":
-      return ProjectEnvironmentRuntimeObservationReceiptV1Schema.parse(input);
+      return parseRuntimeObservationReceipt(input);
     case "build":
       return VNextBuildV1Schema.parse(input);
     case "build-binding":
@@ -741,6 +767,42 @@ export class ProjectEnvironmentTaskStoreV1 {
     );
   }
 
+  public async putPinnedCaptureV2Once(
+    value: ProjectEnvironmentPinnedCaptureV2,
+    records: readonly JsonValue[],
+  ): Promise<ImmutablePackageSealV1> {
+    const parsed = ProjectEnvironmentPinnedCaptureV2Schema.parse(value);
+    this.assertTaskOwned(parsed.taskId, "V2 pinned capture");
+    const parsedRecords = records.map((record) =>
+      JsonValueSchema.parse(record),
+    );
+    const files = [
+      {
+        path: PINNED_CAPTURE_RECORDS,
+        bytes: canonicalBytes(asJsonValue(parsedRecords)),
+      },
+    ] as const;
+    if (
+      parsed.recordCount !== parsedRecords.length ||
+      parsed.contentDigest !== projectEnvironmentPackageContentDigestV1(files)
+    )
+      throw new TypeError("V2 pinned capture does not match records.json");
+    return this.enqueue(`capture-window:${parsed.captureWindowId}`, () =>
+      materializeImmutablePackage({
+        collection: this.requireCaptureWindows(),
+        storeKind: "chronorift-project-environment-pinned-capture-v1",
+        ownerId: this.taskId,
+        resourceId: parsed.captureWindowId,
+        operationId: null,
+        payload: parsed,
+        parse: parsePinnedCapture,
+        files,
+        quota: this.quota,
+        storeRoot: this.requireRoot(),
+      }),
+    );
+  }
+
   public async readPinnedCapture(
     captureWindowId: CaptureWindowId,
   ): Promise<StoredProjectEnvironmentPinnedCaptureV1> {
@@ -982,10 +1044,27 @@ export class ProjectEnvironmentTaskStoreV1 {
   public readConformanceReceipt(
     receiptId: AdapterConformanceReceiptV1["receiptId"],
   ): Promise<AdapterConformanceReceiptV1> {
-    return this.readRecord(
+    return this.readRecord("conformance-receipt", receiptId, (input) =>
+      AdapterConformanceReceiptV1Schema.parse(input),
+    );
+  }
+
+  public putConformanceReceiptV2Once(
+    value: AdapterConformanceReceiptV2,
+  ): Promise<void> {
+    return this.putRecord(
       "conformance-receipt",
-      receiptId,
-      parseConformanceReceipt,
+      value.receiptId,
+      value,
+      (input) => AdapterConformanceReceiptV2Schema.parse(input),
+    );
+  }
+
+  public readConformanceReceiptV2(
+    receiptId: AdapterConformanceReceiptV2["receiptId"],
+  ): Promise<AdapterConformanceReceiptV2> {
+    return this.readRecord("conformance-receipt", receiptId, (input) =>
+      AdapterConformanceReceiptV2Schema.parse(input),
     );
   }
 
@@ -1024,10 +1103,27 @@ export class ProjectEnvironmentTaskStoreV1 {
   public readCompatibilityReceipt(
     receiptId: AdapterCompatibilityReceiptV1["receiptId"],
   ): Promise<AdapterCompatibilityReceiptV1> {
-    return this.readRecord(
+    return this.readRecord("compatibility-receipt", receiptId, (input) =>
+      AdapterCompatibilityReceiptV1Schema.parse(input),
+    );
+  }
+
+  public putCompatibilityReceiptV2Once(
+    value: AdapterCompatibilityReceiptV2,
+  ): Promise<void> {
+    return this.putRecord(
       "compatibility-receipt",
-      receiptId,
-      parseCompatibilityReceipt,
+      value.receiptId,
+      value,
+      (input) => AdapterCompatibilityReceiptV2Schema.parse(input),
+    );
+  }
+
+  public readCompatibilityReceiptV2(
+    receiptId: AdapterCompatibilityReceiptV2["receiptId"],
+  ): Promise<AdapterCompatibilityReceiptV2> {
+    return this.readRecord("compatibility-receipt", receiptId, (input) =>
+      AdapterCompatibilityReceiptV2Schema.parse(input),
     );
   }
 
@@ -1062,10 +1158,28 @@ export class ProjectEnvironmentTaskStoreV1 {
   public readRuntimeObservationReceipt(
     receiptId: ProjectEnvironmentRuntimeObservationReceiptV1["receiptId"],
   ): Promise<ProjectEnvironmentRuntimeObservationReceiptV1> {
-    return this.readRecord(
+    return this.readRecord("runtime-observation-receipt", receiptId, (input) =>
+      ProjectEnvironmentRuntimeObservationReceiptV1Schema.parse(input),
+    );
+  }
+
+  public putRuntimeObservationReceiptV2Once(
+    value: ProjectEnvironmentRuntimeObservationReceiptV2,
+  ): Promise<void> {
+    return this.putRecord(
       "runtime-observation-receipt",
-      receiptId,
-      parseRuntimeObservationReceipt,
+      value.receiptId,
+      value,
+      (input) =>
+        ProjectEnvironmentRuntimeObservationReceiptV2Schema.parse(input),
+    );
+  }
+
+  public readRuntimeObservationReceiptV2(
+    receiptId: ProjectEnvironmentRuntimeObservationReceiptV2["receiptId"],
+  ): Promise<ProjectEnvironmentRuntimeObservationReceiptV2> {
+    return this.readRecord("runtime-observation-receipt", receiptId, (input) =>
+      ProjectEnvironmentRuntimeObservationReceiptV2Schema.parse(input),
     );
   }
 

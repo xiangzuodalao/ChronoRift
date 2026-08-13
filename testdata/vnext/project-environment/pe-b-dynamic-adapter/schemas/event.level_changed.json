@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "dialect": "chronorift://schemas/project-adapter-payload/v2",
+  "schemaId": "event.level_changed",
+  "root": {
+    "type": "object",
+    "properties": {
+      "level": { "type": "integer", "minimum": 1, "maximum": 1000 }
+    },
+    "required": ["level"],
+    "additionalProperties": false
+  }
+}

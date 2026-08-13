@@ -58,6 +58,7 @@ export interface LifecycleSidecarSourceOptions {
         readonly reservedAutoload: "ChronoRiftSemantic";
         readonly adapterProfileHash: true;
         readonly projectEnvironment?: false | undefined;
+        readonly launchSchemaVersion?: 1 | undefined;
       }
     | {
         readonly runtimeProfile: "chronorift-managed-godot-project-environment-v1";
@@ -66,6 +67,16 @@ export interface LifecycleSidecarSourceOptions {
         readonly reservedAutoload: "ChronoRiftProjectEnvironment";
         readonly adapterProfileHash: false;
         readonly projectEnvironment: true;
+        readonly launchSchemaVersion?: 1 | undefined;
+      }
+    | {
+        readonly runtimeProfile: "chronorift-managed-godot-project-environment-v2";
+        readonly protocolProfile: "chronorift-godot-project-environment-v2";
+        readonly addonDirectory: "chronorift_project_environment";
+        readonly reservedAutoload: "ChronoRiftProjectEnvironment";
+        readonly adapterProfileHash: false;
+        readonly projectEnvironment: true;
+        readonly launchSchemaVersion: 2;
       }
     | undefined;
 }
@@ -95,6 +106,7 @@ const createLifecycleSidecarSource = (
     reservedAutoload: "ChronoRiftLifecycle" as const,
     adapterProfileHash: false as const,
     projectEnvironment: false as const,
+    launchSchemaVersion: 1 as const,
   };
   if (
     argsPrefix.length > 16 ||
@@ -122,9 +134,13 @@ const ADDON_DIRECTORY = ${JSON.stringify(managedProfile.addonDirectory)};
 const RESERVED_AUTOLOAD = ${JSON.stringify(managedProfile.reservedAutoload)};
 const REQUIRES_ADAPTER_PROFILE_HASH = ${JSON.stringify(managedProfile.adapterProfileHash)};
 const PROJECT_ENVIRONMENT = ${JSON.stringify(managedProfile.projectEnvironment === true)};
+const LAUNCH_SCHEMA_VERSION = ${JSON.stringify(managedProfile.launchSchemaVersion ?? 1)};
 const MANAGED_RUNTIME_ID = ${
     managedProfile.projectEnvironment === true
-      ? "/^managed-godot-project-environment:v1:[a-f0-9]{64}$/u"
+      ? managedProfile.runtimeProfile ===
+        "chronorift-managed-godot-project-environment-v2"
+        ? "/^managed-godot-project-environment:v2:[a-f0-9]{64}$/u"
+        : "/^managed-godot-project-environment:v1:[a-f0-9]{64}$/u"
       : managedProfile.adapterProfileHash
         ? "/^managed-godot-semantic-runtime:v1:[a-f0-9]{64}$/u"
         : "/^managed-godot-runtime:v1:[a-f0-9]{64}$/u"
@@ -229,7 +245,7 @@ const parseLaunch = (json) => {
   const operationKeys = OPERATION === "vanilla_smoke"
     ? ["importTimeoutMs", "vanillaTimeoutMs", "stabilityWindowMs"]
     : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "importTimeoutMs", "startupTimeoutMs", "executionTimeoutMs", ...projectEnvironmentKeys, ...(REQUIRES_ADAPTER_PROFILE_HASH ? ["adapterProfileSha256"] : [])];
-  if (!exactKeys(value, [...common, ...operationKeys]) || value.schemaVersion !== 1 ||
+  if (!exactKeys(value, [...common, ...operationKeys]) || value.schemaVersion !== LAUNCH_SCHEMA_VERSION ||
       value.runtimeProfile !== RUNTIME_PROFILE || value.operation !== OPERATION) {
     throw new Error("launch prelude has an unsupported lifecycle shape or profile");
   }
@@ -246,7 +262,7 @@ const parseLaunch = (json) => {
         value.stabilityWindowMs !== 2000 || value.vanillaTimeoutMs <= value.stabilityWindowMs) {
       throw new Error("vanilla smoke time bounds are invalid");
     }
-  } else if (value.protocolProfile !== PROTOCOL_PROFILE || value.protocolVersion !== 1 ||
+  } else if (value.protocolProfile !== PROTOCOL_PROFILE || value.protocolVersion !== LAUNCH_SCHEMA_VERSION ||
       typeof value.token !== "string" || !HASH.test(value.token) ||
       typeof value.overlayHash !== "string" || !HASH.test(value.overlayHash) ||
       typeof value.addonHash !== "string" || !HASH.test(value.addonHash) ||
@@ -365,7 +381,7 @@ const prepareProjectRoot = async () => {
   const expectedProjectEntries = PROJECT_ENVIRONMENT ? [".chronorift", "addons", "override.cfg"] : ["addons", "override.cfg"];
   if (JSON.stringify(projectEntries) !== JSON.stringify(expectedProjectEntries) ||
       JSON.stringify(addonEntries) !== JSON.stringify([ADDON_DIRECTORY])) {
-    const collision = new Error("managed lifecycle project root contains an unexpected entry");
+    const collision = new Error("managed lifecycle project root contains an unexpected entry: root=" + JSON.stringify(projectEntries) + "; addons=" + JSON.stringify(addonEntries));
     collision.code = "MANAGED_RUNTIME_COLLISION";
     throw collision;
   }
@@ -986,4 +1002,30 @@ export const createProjectEnvironmentVanillaSmokeSidecarSource = (
   createLifecycleSidecarSource("vanilla_smoke", {
     ...options,
     managedProfile: PROJECT_ENVIRONMENT_MANAGED_PROFILE,
+  });
+
+const PROJECT_ENVIRONMENT_MANAGED_PROFILE_V2 = Object.freeze({
+  runtimeProfile: "chronorift-managed-godot-project-environment-v2" as const,
+  protocolProfile: "chronorift-godot-project-environment-v2" as const,
+  addonDirectory: "chronorift_project_environment" as const,
+  reservedAutoload: "ChronoRiftProjectEnvironment" as const,
+  adapterProfileHash: false as const,
+  projectEnvironment: true as const,
+  launchSchemaVersion: 2 as const,
+});
+
+export const createProjectEnvironmentRuntimeSidecarSourceV2 = (
+  options: Omit<LifecycleSidecarSourceOptions, "managedProfile">,
+): string =>
+  createLifecycleSidecarSource("managed_lifecycle", {
+    ...options,
+    managedProfile: PROJECT_ENVIRONMENT_MANAGED_PROFILE_V2,
+  });
+
+export const createProjectEnvironmentVanillaSmokeSidecarSourceV2 = (
+  options: Omit<LifecycleSidecarSourceOptions, "managedProfile">,
+): string =>
+  createLifecycleSidecarSource("vanilla_smoke", {
+    ...options,
+    managedProfile: PROJECT_ENVIRONMENT_MANAGED_PROFILE_V2,
   });

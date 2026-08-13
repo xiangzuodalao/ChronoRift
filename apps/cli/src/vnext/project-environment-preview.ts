@@ -27,7 +27,11 @@ import {
   type ProjectTurnBudgetV1,
   type ProjectTurnUsageV1,
 } from "@chronorift/domain";
-import { loadProjectAdapterPackageV1 } from "@chronorift/godot-adapter";
+import {
+  loadProjectAdapterPackageV2,
+  type LoadedProjectAdapterPackageV1,
+  type LoadedProjectAdapterPackageV2,
+} from "@chronorift/godot-adapter";
 import {
   ProjectEnvironmentStoreV1,
   ProjectEnvironmentTaskStoreV1,
@@ -47,15 +51,20 @@ import { prepareProjectEnvironmentGodotBuildV1 } from "./candidate-godot-build.j
 import type { SecurityEventV1 } from "./contracts.js";
 import {
   freezeProjectAdapterCandidateV1,
-  initializeProjectAdapterCandidateWorkspaceV1,
+  initializeProjectAdapterCandidateWorkspaceV2,
 } from "./project-adapter-candidate.js";
-import { validateProjectAdapterCandidateV1 } from "./project-environment-conformance.js";
-import { createProjectEnvironmentConformanceDriverV1 } from "./project-environment-conformance-driver.js";
+import { validateProjectAdapterCandidateV2 } from "./project-environment-conformance-v2.js";
+import { createProjectEnvironmentConformanceDriverV2 } from "./project-environment-conformance-driver-v2.js";
 import {
   ProjectEnvironmentGameRuntimeV1,
   type ProjectEnvironmentRuntimeBuildV1,
 } from "./project-environment-game-runtime.js";
 import { composeProjectEnvironmentCompatibleRuntimeV1 } from "./project-environment-runtime-composition.js";
+import {
+  ProjectEnvironmentGameRuntimeV2,
+  type ProjectEnvironmentRuntimeBuildV2,
+} from "./project-environment-game-runtime-v2.js";
+import { composeProjectEnvironmentCompatibleRuntimeV2 } from "./project-environment-runtime-composition-v2.js";
 import {
   defaultProjectEnvironmentHostConfigPath,
   readProjectEnvironmentHostConfigV1,
@@ -84,6 +93,12 @@ import {
 } from "./project-environment-reuse.js";
 import { GodotProjectEnvironmentSidecarPortV1 } from "./project-environment-sidecar-port.js";
 import { preflightManagedGodotProjectEnvironmentRuntimeV1 } from "./managed-godot-project-environment-runtime-preflight.js";
+import { GodotProjectEnvironmentSidecarPortV2 } from "./project-environment-sidecar-port-v2.js";
+import { preflightManagedGodotProjectEnvironmentRuntimeV2 } from "./managed-godot-project-environment-runtime-v2-preflight.js";
+import {
+  inspectReusableProjectEnvironmentRevisionV2,
+  type InspectedReusableProjectEnvironmentV2,
+} from "./project-environment-reuse-v2.js";
 import {
   createDuplexBwrapCgroupTaskSandbox,
   type DuplexTaskSandboxBrokerV1,
@@ -379,12 +394,22 @@ export async function runProjectEnvironmentPreviewV1(
         ReturnType<typeof preflightManagedGodotProjectEnvironmentRuntimeV1>
       >
     | undefined;
+  let validationRuntimeV2:
+    | Awaited<
+        ReturnType<typeof preflightManagedGodotProjectEnvironmentRuntimeV2>
+      >
+    | undefined;
   let authoritative: ProjectEnvironmentAuthoritativeValidationV1 | undefined;
-  let gameRuntime: ProjectEnvironmentGameRuntimeV1 | undefined;
-  let activeBuild: ProjectEnvironmentRuntimeBuildV1 | undefined;
+  let gameRuntime:
+    | ProjectEnvironmentGameRuntimeV1
+    | ProjectEnvironmentGameRuntimeV2
+    | undefined;
+  let activeBuild:
+    | ProjectEnvironmentRuntimeBuildV1
+    | ProjectEnvironmentRuntimeBuildV2
+    | undefined;
   let runtimeObservationReceiptId: string | undefined;
-  let validatedAdapterPackage:
-    Awaited<ReturnType<typeof loadProjectAdapterPackageV1>> | undefined;
+  let validatedAdapterPackageV2: LoadedProjectAdapterPackageV2 | undefined;
   let boundEnvironmentRevision: ProjectEnvironmentRevisionV1 | undefined;
   let boundAdapterRevision: ProjectAdapterRevisionV1 | undefined;
 
@@ -474,6 +499,59 @@ export async function runProjectEnvironmentPreviewV1(
     return managedPolicy;
   };
 
+  const activateManagedRuntimeV2 = async (
+    adapterFiles: readonly {
+      readonly relativePath: string;
+      readonly bytes: Uint8Array;
+    }[],
+  ) => {
+    const codingCleanup = await broker.cleanup();
+    if (
+      !codingCleanup.processGroupTerminated ||
+      codingCleanup.cgroupPopulated ||
+      !codingCleanup.scopeRemoved ||
+      (sandbox.capability.taskStorage !== undefined &&
+        codingCleanup.storageReconciled !== true)
+    )
+      throw new Error(
+        "Project Environment coding sandbox cleanup was incomplete before V2 activation",
+      );
+    validationRuntimeV2 =
+      await preflightManagedGodotProjectEnvironmentRuntimeV2({
+        hostConfig,
+        godot,
+        adapterFiles,
+      });
+    const managedPolicy = createSandboxPolicyV2(
+      sandbox.capability.runtimeIdentity,
+      {
+        coding: {
+          toolchainId: codingToolchain.capability.toolchainId,
+          targets: codingToolchain.capability.files.map((file) => file.target),
+        },
+        godot: {
+          toolchainId: validationRuntimeV2.capability.toolchain.toolchainId,
+          managedRuntimeId: validationRuntimeV2.capability.managedRuntimeId,
+          targets: managedRuntimeTargets(validationRuntimeV2),
+        },
+      },
+    );
+    broker = await createDuplexBwrapCgroupTaskSandbox({
+      taskId,
+      capability: sandbox.capability,
+      hostBinding: sandbox.binding,
+      policy: managedPolicy,
+      toolchain: codingToolchain,
+      managedRuntime: validationRuntimeV2,
+      layout,
+      securityEvents: (event) => {
+        securityEvents.push(event);
+        return Promise.resolve();
+      },
+    });
+    return managedPolicy;
+  };
+
   const currentPointer = await projectStore.readCurrent();
   const currentRevision =
     currentPointer === null
@@ -482,8 +560,23 @@ export async function runProjectEnvironmentPreviewV1(
           currentPointer.environmentRevisionId,
           currentPointer.publicationOperationId,
         );
+  const currentIsV2 =
+    currentRevision?.files.some(
+      (file) => file.path === "records/conformance-receipt.v2.json",
+    ) ?? false;
+  const reusableV2: InspectedReusableProjectEnvironmentV2 | null =
+    currentRevision === null || !currentIsV2
+      ? null
+      : inspectReusableProjectEnvironmentRevisionV2({
+          revision: currentRevision.payload,
+          files: currentRevision.files,
+          expectedSourceId: sourceId,
+          expectedToolchainReceiptId: toolchainReceipt.receiptId,
+          expectedAdapterId: adapterId,
+          expectedMainScene: source.mainScene,
+        });
   const reusable =
-    currentRevision === null
+    currentRevision === null || currentIsV2
       ? null
       : inspectReusableProjectEnvironmentRevisionV1({
           revision: currentRevision.payload,
@@ -493,8 +586,12 @@ export async function runProjectEnvironmentPreviewV1(
           expectedAdapterId: adapterId,
           expectedMainScene: source.mainScene,
         });
-  if (reusable === null) {
-    await initializeProjectAdapterCandidateWorkspaceV1({
+  if (currentRevision !== null && reusable === null && reusableV2 === null)
+    throw new Error(
+      "review_required: current adapter protocol version or evidence layout is unsupported",
+    );
+  if (reusable === null && reusableV2 === null) {
+    await initializeProjectAdapterCandidateWorkspaceV2({
       workspaceDirectory: layout.workspaceDirectory,
       taskId,
       projectSourceIdentity: source.projectSourceIdentity,
@@ -506,9 +603,7 @@ export async function runProjectEnvironmentPreviewV1(
   const createCompatibleGameRuntime = async (input: {
     readonly revision: ProjectEnvironmentRevisionV1;
     readonly adapterRevision: ProjectAdapterRevisionV1;
-    readonly adapterPackage: Awaited<
-      ReturnType<typeof loadProjectAdapterPackageV1>
-    >;
+    readonly adapterPackage: LoadedProjectAdapterPackageV1;
     readonly bindingEpochId: ReturnType<typeof asEnvironmentBindingEpochId>;
     readonly policyProfileDigest: ReturnType<typeof asSha256DigestV1>;
   }): Promise<{
@@ -630,6 +725,121 @@ export async function runProjectEnvironmentPreviewV1(
     return composition.resolve();
   };
 
+  const createCompatibleGameRuntimeV2 = async (input: {
+    readonly revision: ProjectEnvironmentRevisionV1;
+    readonly adapterRevision: ProjectAdapterRevisionV1;
+    readonly adapterPackage: LoadedProjectAdapterPackageV2;
+    readonly bindingEpochId: ReturnType<typeof asEnvironmentBindingEpochId>;
+    readonly policyProfileDigest: ReturnType<typeof asSha256DigestV1>;
+  }): Promise<{
+    readonly build: ProjectEnvironmentRuntimeBuildV2;
+    readonly runtime: ProjectEnvironmentGameRuntimeV2;
+  }> => {
+    const managedRuntime = validationRuntimeV2;
+    if (managedRuntime === undefined)
+      throw new Error(
+        "managed Project Environment V2 runtime was not retained",
+      );
+    const target = input.adapterPackage.manifest.launchTargets.find(
+      (candidate) => candidate.default,
+    );
+    if (target === undefined)
+      throw new Error("validated V2 adapter lost its default target");
+    const prepareBuild = () =>
+      prepareProjectEnvironmentGodotBuildV1({
+        taskId,
+        workspaceId: asWorkspaceId(`workspace.v1.${taskId}`),
+        workspaceDirectory: layout.workspaceDirectory,
+        baselineSourceHash: source.selectedTreeSha256,
+        bindingEpochId: input.bindingEpochId,
+        environment: {
+          schemaVersion: 1,
+          environmentId,
+          environmentRevisionId: input.revision.environmentRevisionId,
+          sourceId: input.revision.sourceId,
+          adapterRevisionId: input.revision.adapterRevisionId,
+          sdkDigest: input.revision.sdkDigest,
+          bridgeDigest: input.revision.bridgeDigest,
+          toolchainReceiptId: input.revision.toolchainReceiptId,
+          conformanceReceiptId: input.revision.conformanceReceiptId,
+          observerEffectReceiptId: input.revision.observerEffectReceiptId,
+          policyProfileDigest: input.revision.policyProfileDigest,
+          contentDigest: input.revision.contentDigest,
+        },
+        adapter: input.adapterRevision,
+        toolchainArtifactDigest: godot.receipt.executableSha256,
+        policyProfileDigest: input.policyProfileDigest,
+        now: new Date().toISOString(),
+      });
+    const makeRuntime = (
+      build: ProjectEnvironmentRuntimeBuildV2,
+      resolveCompatibleBuild?: () => Promise<ProjectEnvironmentRuntimeBuildV2>,
+    ) =>
+      new ProjectEnvironmentGameRuntimeV2({
+        taskId,
+        environmentRevisionId: input.revision.environmentRevisionId,
+        adapterRevisionId: input.adapterRevision.adapterRevisionId,
+        adapterPackage: input.adapterPackage,
+        capabilitySet: input.adapterRevision.capabilitySet,
+        managedRuntime: managedRuntime.capability,
+        sidecar: new GodotProjectEnvironmentSidecarPortV2({
+          broker,
+          managedRuntime,
+        }),
+        adapterManifestSha256: input.adapterPackage.manifestSha256,
+        sdkSha256: managedRuntime.sdkDigest,
+        bridgeSha256: managedRuntime.bridgeDigest,
+        toolchainSha256: godot.receipt.executableSha256,
+        engineVersion: managedRuntime.capability.engineVersion,
+        resolveBuild: resolveCompatibleBuild ?? (() => Promise.resolve(build)),
+        persistPinnedCapture: async (capture, records) => {
+          if (
+            capture.taskId !== taskId ||
+            capture.environmentRevisionId !==
+              input.revision.environmentRevisionId ||
+            capture.adapterRevisionId !==
+              input.adapterRevision.adapterRevisionId ||
+            (resolveCompatibleBuild !== undefined &&
+              capture.buildId !== activeBuild?.buildId)
+          )
+            throw new Error(
+              "V2 pinned capture crossed the final active Build binding",
+            );
+          await taskStore.putPinnedCaptureV2Once(capture, records);
+        },
+        persistRuntimeObservation: async (receipt) => {
+          if (
+            receipt.taskId !== taskId ||
+            receipt.environmentRevisionId !==
+              input.revision.environmentRevisionId ||
+            receipt.adapterRevisionId !==
+              input.adapterRevision.adapterRevisionId ||
+            (resolveCompatibleBuild !== undefined &&
+              receipt.buildId !== activeBuild?.buildId)
+          )
+            throw new Error(
+              "V2 runtime observation crossed the final active Build binding",
+            );
+          await taskStore.putRuntimeObservationReceiptV2Once(receipt);
+          if (resolveCompatibleBuild !== undefined)
+            runtimeObservationReceiptId = receipt.receiptId;
+        },
+      });
+    return composeProjectEnvironmentCompatibleRuntimeV2({
+      taskStore,
+      taskId,
+      revision: input.revision,
+      adapterRevision: input.adapterRevision,
+      toolchainReceiptId: toolchainReceipt.receiptId,
+      launchTargetId: target.targetId,
+      prepareBuild,
+      createRuntime: makeRuntime,
+      onResolved: (build) => {
+        activeBuild = build;
+      },
+    }).resolve();
+  };
+
   const runTurn: ProjectEnvironmentInitializationPortV1["runTurn"] = async (
     turn,
   ) => {
@@ -674,7 +884,7 @@ export async function runProjectEnvironmentPreviewV1(
           request.timeoutMs,
           turn.budget,
         ),
-        loadProjectAdapterSkillV1:
+        loadProjectAdapterSkillV2:
           turn.purpose === "environment_initialization",
         additionalEnvironmentInstructions:
           turn.purpose === "user_goal" &&
@@ -792,7 +1002,7 @@ export async function runProjectEnvironmentPreviewV1(
         path: file.path,
         bytes: file.bytes,
       }));
-      const loaded = await loadProjectAdapterPackageV1(
+      const loaded = await loadProjectAdapterPackageV2(
         `${layout.workspaceDirectory}/.chronorift/adapter-candidate`,
         {
           requireSingleLaunchTarget: true,
@@ -800,23 +1010,25 @@ export async function runProjectEnvironmentPreviewV1(
           requireEmptyLaunchParameters: true,
         },
       );
-      validatedAdapterPackage = loaded;
-      const managedPolicy = await activateManagedRuntime(
+      validatedAdapterPackageV2 = loaded;
+      const managedPolicy = await activateManagedRuntimeV2(
         candidateFiles.map((file) => ({
           relativePath: file.path,
           bytes: file.bytes,
         })),
       );
-      if (validationRuntime === undefined) {
-        throw new Error("managed Project Environment runtime was not realized");
+      if (validationRuntimeV2 === undefined) {
+        throw new Error(
+          "managed Project Environment V2 runtime was not realized",
+        );
       }
-      const sidecar = new GodotProjectEnvironmentSidecarPortV1({
+      const sidecar = new GodotProjectEnvironmentSidecarPortV2({
         broker,
-        managedRuntime: validationRuntime,
+        managedRuntime: validationRuntimeV2,
       });
-      const driver = createProjectEnvironmentConformanceDriverV1({
+      const driver = createProjectEnvironmentConformanceDriverV2({
         sidecar,
-        managedRuntime: validationRuntime.capability,
+        managedRuntime: validationRuntimeV2.capability,
         taskId,
         sourceClosureId: sourceId,
         environmentRevisionId: `environment-candidate:v1:${candidate.contentDigest}`,
@@ -825,12 +1037,12 @@ export async function runProjectEnvironmentPreviewV1(
         candidateSourceHash: source.selectedTreeSha256,
         expectedMainScene: source.mainScene,
         adapterManifestSha256: loaded.manifestSha256,
-        sdkSha256: validationRuntime.sdkDigest,
-        bridgeSha256: validationRuntime.bridgeDigest,
+        sdkSha256: validationRuntimeV2.sdkDigest,
+        bridgeSha256: validationRuntimeV2.bridgeDigest,
         toolchainSha256: godot.receipt.executableSha256,
-        engineVersion: validationRuntime.capability.engineVersion,
+        engineVersion: validationRuntimeV2.capability.engineVersion,
       });
-      const validated = await validateProjectAdapterCandidateV1(
+      const validated = await validateProjectAdapterCandidateV2(
         {
           candidateDirectory: `${layout.workspaceDirectory}/.chronorift/adapter-candidate`,
           candidateFiles,
@@ -840,8 +1052,8 @@ export async function runProjectEnvironmentPreviewV1(
           publicationOperationId: operationId,
           toolchainReceiptId: toolchainReceipt.receiptId,
           expectedMainScene: source.mainScene,
-          sdkDigest: validationRuntime.sdkDigest,
-          bridgeDigest: validationRuntime.bridgeDigest,
+          sdkDigest: validationRuntimeV2.sdkDigest,
+          bridgeDigest: validationRuntimeV2.bridgeDigest,
           policyProfileDigest: asSha256DigestV1(
             contentHash(managedPolicy as never),
           ),
@@ -851,7 +1063,7 @@ export async function runProjectEnvironmentPreviewV1(
       const completedAt = validated.conformance.completedAt;
       validationCapabilitySet = validated.adapterRevision.capabilitySet;
       await Promise.all([
-        taskStore.putConformanceReceiptOnce(validated.conformance),
+        taskStore.putConformanceReceiptV2Once(validated.conformance),
         taskStore.putObserverEffectReceiptOnce(validated.observerEffect),
       ]);
       const publicationIntent = EnvironmentPublicationIntentV1Schema.parse({
@@ -892,15 +1104,15 @@ export async function runProjectEnvironmentPreviewV1(
         now: () => new Date().toISOString(),
       }),
     bind: async ({ validation, publication, bindingEpochId }) => {
-      if (validatedAdapterPackage === undefined) {
+      if (validatedAdapterPackageV2 === undefined) {
         throw new Error(
           "Project Environment validation runtime was not retained for compatibility",
         );
       }
-      const compatible = await createCompatibleGameRuntime({
+      const compatible = await createCompatibleGameRuntimeV2({
         revision: validation.environmentRevision,
         adapterRevision: validation.adapterRevision,
-        adapterPackage: validatedAdapterPackage,
+        adapterPackage: validatedAdapterPackageV2,
         bindingEpochId,
         policyProfileDigest: validation.environmentRevision.policyProfileDigest,
       });
@@ -967,7 +1179,7 @@ export async function runProjectEnvironmentPreviewV1(
     }
   };
   try {
-    if (reusable === null) {
+    if (reusable === null && reusableV2 === null) {
       const result = await initializeProjectEnvironmentV1(
         {
           taskId,
@@ -982,6 +1194,7 @@ export async function runProjectEnvironmentPreviewV1(
           thinkingLevel: request.thinkingLevel,
           budget: request.budget ?? DEFAULT_BUDGET,
           queuedGoal: request.goal,
+          adapterContractVersion: 2,
           ids: {
             attemptId,
             initializationTurnId: asProjectEnvironmentTurnId(
@@ -1007,7 +1220,90 @@ export async function runProjectEnvironmentPreviewV1(
         failureCode = result.goalTurn.terminalCode;
         failureMessage = result.goalTurn.terminalMessage;
       }
-    } else {
+    } else if (reusableV2 !== null) {
+      const managedPolicy = await activateManagedRuntimeV2(
+        reusableV2.adapterFiles,
+      );
+      if (validationRuntimeV2 === undefined)
+        throw new Error(
+          "managed Project Environment V2 runtime was not realized",
+        );
+      const policyProfileDigest = asSha256DigestV1(
+        contentHash(managedPolicy as never),
+      );
+      if (
+        validationRuntimeV2.sdkDigest !== reusableV2.revision.sdkDigest ||
+        validationRuntimeV2.bridgeDigest !== reusableV2.revision.bridgeDigest ||
+        policyProfileDigest !== reusableV2.revision.policyProfileDigest
+      )
+        throw new Error(
+          "review_required: V2 SDK, bridge, or sandbox policy changed",
+        );
+      validatedAdapterPackageV2 = reusableV2.adapterPackage;
+      validationCapabilitySet = reusableV2.adapterRevision.capabilitySet;
+      const compatible = await createCompatibleGameRuntimeV2({
+        revision: reusableV2.revision,
+        adapterRevision: reusableV2.adapterRevision,
+        adapterPackage: reusableV2.adapterPackage,
+        bindingEpochId,
+        policyProfileDigest,
+      });
+      const buildBinding = await taskStore.readBuildBinding(
+        asBuildId(compatible.build.buildId),
+      );
+      if (
+        buildBinding.compatibilityStatus !== "compatible" ||
+        buildBinding.compatibilityReceiptId === null
+      )
+        throw new Error(
+          "V2 compatible Build resolver did not persist its binding",
+        );
+      const compatibility = await taskStore.readCompatibilityReceiptV2(
+        buildBinding.compatibilityReceiptId,
+      );
+      const observedCurrent = await projectStore.readCurrent();
+      if (
+        observedCurrent?.environmentRevisionId !==
+          reusableV2.revision.environmentRevisionId ||
+        observedCurrent.publicationOperationId !==
+          reusableV2.revision.publicationOperationId
+      )
+        throw new Error(
+          "Project Environment current revision changed during V2 reuse smoke",
+        );
+      await bindReusableProjectEnvironmentRevisionV1({
+        taskStore,
+        taskId,
+        sessionId,
+        bindingEpochId,
+        revision: reusableV2.revision,
+        observedCurrentRevisionId: observedCurrent.environmentRevisionId,
+        compatibility,
+        createdAt: compatibility.observedAt,
+        boundAt: new Date().toISOString(),
+      });
+      activeBuild = compatible.build;
+      gameRuntime = compatible.runtime;
+      boundEnvironmentRevision = reusableV2.revision;
+      boundAdapterRevision = reusableV2.adapterRevision;
+      const reuseGoal = await runReusedProjectEnvironmentGoalV1({
+        taskId,
+        sessionId,
+        bindingEpochId,
+        turnId: asProjectEnvironmentTurnId(`turn.goal.${randomUUID()}`),
+        goal: request.goal,
+        budget: request.budget ?? DEFAULT_BUDGET,
+        runTurn: (turn) => runTurn(turn),
+        putTurn: (turn) => taskStore.appendTurn(turn).then(() => undefined),
+      });
+      ready = true;
+      reused = true;
+      goalDelivered = reuseGoal.goalDelivered;
+      if (!goalDelivered && reuseGoal.turn !== null) {
+        failureCode = reuseGoal.turn.terminalCode;
+        failureMessage = reuseGoal.turn.terminalMessage;
+      }
+    } else if (reusable !== null) {
       const managedPolicy = await activateManagedRuntime(reusable.adapterFiles);
       if (validationRuntime === undefined) {
         throw new Error("managed Project Environment runtime was not realized");
@@ -1024,7 +1320,6 @@ export async function runProjectEnvironmentPreviewV1(
           "current Project Environment revision requires review because SDK, bridge, or sandbox policy changed",
         );
       }
-      validatedAdapterPackage = reusable.adapterPackage;
       validationCapabilitySet = reusable.adapterRevision.capabilitySet;
       const compatible = await createCompatibleGameRuntime({
         revision: reusable.revision,
@@ -1189,7 +1484,8 @@ export async function runProjectEnvironmentPreviewV1(
     model: request.model,
     thinkingLevel: request.thinkingLevel,
     limitations: Object.freeze([
-      "PE-A Preview currently accepts only clean repository-root Godot 4.7.1 GDScript projects with one default launch target.",
+      "PE-B Preview currently accepts only clean repository-root Godot 4.7.1 GDScript projects with one default launch target.",
+      "Dynamic traces prove observation order and entity binding, not Signal causality or adapter semantic correctness.",
       "A changed workspace becomes launchable only after game_capabilities or game_launch freezes the exact candidate Build and its Adapter compatibility smoke succeeds.",
       ...(securityEvents.length === 0
         ? []

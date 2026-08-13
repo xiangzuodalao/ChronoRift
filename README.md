@@ -22,8 +22,8 @@ checkpoint、fork、replay、query 和 compare 原语。
 > trace/replay/compare。所有状态操作都明确是 `descriptive_only`；public exposed task Gate 只验证 plumbing，
 > 不证明智能诊断、等价恢复、修复正确性、独立验收或泛化。
 >
-> **Project Environment V1 / PE-A Preview 已达到 implementation present + local Gate passed；当前下一实现切片是 PE-B Dynamic
-> Projection（planned，尚未实现）**。PE-A 在 Godot 4.7 GDScript 项目目录启动 ChronoRift，由同一个可见 Pi
+> **Project Environment V1 / PE-B Dynamic Projection 当前是 implementation present；精确 product baseline 的
+> Luna/max local Gate 尚未运行。** PE-A 在 Godot 4.7 GDScript 项目目录启动 ChronoRift，由同一个可见 Pi
 > Session 生成、验证并发布唯一 ProjectAdapter，然后进入独立用户目标 turn。Harness 提供 bridge、协议、Adapter
 > SDK、sandbox、loader、validator 和 publication broker；项目 entity/state/event/capture 语义由 Agent 生成。
 > 显式 `project preview` 路由、三阶段 conformance、crash reconciliation、post-edit exact Build、new-Session
@@ -33,6 +33,8 @@ checkpoint、fork、replay、query 和 compare 原语。
 > `ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`，并由 standalone validator 复验和
 > [local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md) 冻结。它不是 protected-ref
 > artifact、签名或外部 attestation，仍不证明通用外部项目支持或默认入口已经切换。
+> PE-B 在此闭环上新增 manifest/SDK/observation protocol V2、event-driven observation context、Execution-bound
+> EntityRef、连续验证 ring 和 create/state/event/change/destroy/recreate trace；V1 bytes 与既有 PE-A revision 不迁移。
 
 ## 产品契约（vNext 目标）
 
@@ -144,7 +146,7 @@ vNext 入口还包括后文列出的实验性 `pnpm task -- start/continue/show/
 `DiagnosisProposalV4`、`DiagnosisVerdictV3` 和固定 replay/intervention flow 是 legacy 可执行事实，不是
 vNext 产品 API。
 
-### 下一产品切片：Project Environment V1 / PE-B Dynamic Projection
+### 当前产品切片：Project Environment V1 / PE-B Dynamic Projection
 
 Project Environment V1 不再为每个外部项目新增 lifecycle/semantic product profile。目标模型是：
 
@@ -167,6 +169,14 @@ reuse、durable runtime evidence、snapshot characterization、独立 validator�
 runtime tools。精确 baseline product tree 已取得 create-new real-Pi bundle并由 standalone validator 复验，状态是
 `implementation present + local Gate passed`；该 local archive 不是 protected-ref conformance 或默认入口晋升。
 
+PE-B 的 implementation 已增加严格 V2 adapter contract。每条动态 observation 绑定 Execution，entity/state/event
+通过 `{executionId, entityId, incarnation}` 关联；Bridge 将 adapter 的 register/update/unregister/state/event 调用写入
+同一个有序队列，Host 连续验证后才 ACK 并写入 query/pin ring。identity、scope、schema、sequence、clock、coverage
+任一失败都会 sticky-poison Execution，后续合法记录不能洗掉。一个无 ChronoRift addon/autoload 的冻结 Godot 项目、
+真实 Godot 测试、完整特权 Preview Host 流程及不导入产品 TypeScript 的 raw-chain validator 已通过；精确 product
+commit 上的 Luna/max create-new Gate 尚未运行，因此当前只能写 `PE-B implementation present`，不能写 local Gate passed。
+下一切片仍是 PE-C Source/Import Closure。
+
 初始化 workspace 中的 minimal package 只是结构参考；权威 validator 要求 candidate 至少声明一个非
 `scene-root` placeholder 的项目 entity type 和一个非 `project` placeholder 的状态域。原样复制模板、只改
 README 或只增加未引用文件都不能发布为 ready revision。
@@ -186,8 +196,8 @@ standalone validator 的实现和离线回归也已通过。2026-08-13 针对精
 505.21 秒：初始化 Agent turn 为 348.638 秒，含 authoritative conformance/publication 的 attempt ready 为
 363.322 秒；随后完成同 Session goal 与新 Session reuse。证据见
 [local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md)。仍未完成的是 protected-ref 长期
-证据 artifact、更多结构类别，以及 PE-B 的动态节点、自定义 Signal 与状态变化投影。Dirty/untracked、
-materialized dependency、addon/import 和 multi-target source closure 属于后续 PE-C，不混入 PE-B。
+证据 artifact、更多结构类别，以及 PE-B 精确 baseline 的真实模型冻结输出。Dirty/untracked、materialized dependency、
+addon/import 和 multi-target source closure 属于后续 PE-C，不混入 PE-B。
 
 ### 实验性 M3 vNext 入口
 

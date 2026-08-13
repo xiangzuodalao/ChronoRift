@@ -1,6 +1,6 @@
 # Project Environment V1 RFC
 
-> 状态：**设计冻结；PE-A Preview implementation present + local Gate passed；完整晋升 Gate 未通过**
+> 状态：**设计冻结；PE-B Dynamic Projection implementation present；精确 baseline local Gate 与完整晋升 Gate 未通过**
 > 决策日期：2026-08-12
 > 目标入口：Project Environment Preview；通过晋升 Gate 后成为默认 `chronorift [goal]` 入口
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
@@ -16,6 +16,12 @@ deterministic fake-Pi 驱动的完整 Preview Host integration 均已通过。�
 create-new、standalone-validator 复验的 local-only bundle，并归档为 local r1。因此状态是
 `PE-A implementation present + local Gate passed`；该输出只覆盖一个冻结 clean/single-root fixture，不是
 protected-ref artifact、签名或外部 attestation，不能描述成外部项目普遍受支持或默认入口已经切换。
+
+PE-B implementation 进一步增加内部 manifest/SDK/observation protocol V2，但产品与 store 仍是 Project Environment
+V1。V1 bridge/SDK bytes 和已发布 PE-A revision 原样保留；新初始化默认生成 V2 adapter，未知版本或 digest
+`review_required`，不自动迁移。V2 使用 Execution-bound EntityRef、event-driven ordered queue、Host continuous
+validated ring、raw conformance chain 与两次 durable capture replay；精确 product baseline 的 Luna/max local Gate 尚未
+运行，因此当前不称 PE-B local Gate passed。
 
 M3、M4 与 E2 的 schema、wire、证据和原语义保持不变。Project Environment V1 使用独立 namespace，
 只复用已经有真实依赖和生命周期边界的 workspace、sandbox、Pi Session、Godot sidecar、runtime store 与 patch
@@ -631,6 +637,13 @@ PE-B 至 PE-H 以及 PE-P 分别为其 §10.2 单一边界增加 offline、Host 
 的证据越过。尤其：PE-B 检查动态 entity/event identity；PE-C 检查多源/secret/symlink admission；PE-E 检查
 successor resume 和 drift refusal；PE-F 只新增 multi-writer lease/CAS contention 与 pinning；PE-G 检查 conflict-safe
 refresh/apply；PE-H 检查 bundle 全量重验；PE-P 检查空 template deny、DNS/target drift 与新主体授权拒绝。
+
+PE-B 的 frozen dynamic profile 是：`appeared(ref1) → initial state(ref1) → declared event(ref1) → changed state(ref1)
+→ disappeared(ref1) → appeared(ref2) → initial state(ref2) → declared event(ref2) → changed state(ref2)`，其中
+`ref2.entityId == ref1.entityId` 且 `ref2.incarnation == ref1.incarnation + 1`。state/event 的 project scope 必须使用
+null reference，entity scope 必须引用当前 active incarnation；payload 中的 `entity-ref/v2` 也服从相同规则。
+duplicate/unknown lifecycle、stale incarnation、scope/schema mismatch、跨 Execution、sequence/clock 回退、loss/overwrite
+都会 fail closed 并 sticky-poison Execution。该 trace 只证明 observation 顺序与绑定，不证明 Signal 导致状态变化。
 
 ### 11.3 Release Candidate 默认离线与 Host Gate
 

@@ -157,9 +157,17 @@ export class ProjectEnvironmentValidatedRingV2 {
         this.wake();
       } catch (error) {
         if (
+          !this.#stopped &&
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "COMMAND_TIMEOUT"
+        )
+          continue;
+        if (
           this.#stopped &&
           error instanceof Error &&
-          /closed|ended|timeout/iu.test(error.message)
+          (/closed|ended|timeout/iu.test(error.message) ||
+            ("code" in error && error.code === "COMMAND_TIMEOUT"))
         )
           break;
         this.#poison =

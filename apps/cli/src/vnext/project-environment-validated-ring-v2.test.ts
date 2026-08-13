@@ -125,6 +125,41 @@ describe("ProjectEnvironmentValidatedRingV2", () => {
     expect(ring.poisoned).toBe(false);
   });
 
+  it("treats bounded empty-poll timeouts as idle and accepts a later batch", async () => {
+    let polls = 0;
+    const acknowledged: number[] = [];
+    const ring = new ProjectEnvironmentValidatedRingV2(loaded, executionId);
+    ring.start({
+      nextObservationBatch: async () => {
+        polls += 1;
+        if (polls < 3)
+          throw Object.assign(new Error("no observations in this poll"), {
+            code: "COMMAND_TIMEOUT",
+          });
+        if (polls === 3) return batch(0, "appeared");
+        return new Promise<never>((_resolve, reject) => {
+          setTimeout(
+            () =>
+              reject(
+                Object.assign(new Error("no observations in this poll"), {
+                  code: "COMMAND_TIMEOUT",
+                }),
+              ),
+            10,
+          );
+        });
+      },
+      acknowledgeObservationBatch: async (value) => {
+        acknowledged.push(value.lastRecordSequence);
+      },
+    });
+    await ring.waitFor((records) => records.length === 1, 1_000);
+    expect(acknowledged).toEqual([0]);
+    expect(ring.poisoned).toBe(false);
+    await ring.stop();
+    expect(ring.poisoned).toBe(false);
+  });
+
   it("poisons on a later duplicate and never ACKs it", async () => {
     const batches = [batch(0, "appeared"), batch(1, "appeared")];
     const acknowledged: number[] = [];

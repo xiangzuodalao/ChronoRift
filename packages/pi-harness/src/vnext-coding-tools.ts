@@ -210,7 +210,28 @@ const finalizeProjectAdapterManifestV2 = async (
     throw new Error(
       "ProjectAdapter V2 manifest must be an object with schemaVersion 2 and a schemas array",
     );
-  const declarations = Reflect.get(parsed, "schemas") as unknown[];
+  const manifest = parsed as Record<string, unknown>;
+  const sdk = manifest["sdk"];
+  const engine = manifest["engine"];
+  if (
+    typeof sdk !== "object" ||
+    sdk === null ||
+    Array.isArray(sdk) ||
+    typeof engine !== "object" ||
+    engine === null ||
+    Array.isArray(engine)
+  )
+    throw new Error(
+      "ProjectAdapter V2 manifest must retain its SDK and engine structural objects",
+    );
+  const sdkRecord = sdk as Record<string, unknown>;
+  const engineRecord = engine as Record<string, unknown>;
+  sdkRecord["id"] = "chronorift-project-adapter-sdk";
+  sdkRecord["version"] = 2;
+  engineRecord["id"] = "godot";
+  engineRecord["versionRequirement"] = "4.7.x";
+  engineRecord["language"] = "gdscript";
+  const declarations = manifest["schemas"] as unknown[];
   if (declarations.length === 0 || declarations.length > 64)
     throw new Error(
       "ProjectAdapter V2 manifest must declare from 1 to 64 schemas",
@@ -245,7 +266,7 @@ const finalizeProjectAdapterManifestV2 = async (
   if (writeFailure !== undefined) return writeFailure;
   return {
     content: text(
-      `Updated ${declarations.length} exact schema SHA-256 declaration(s) in ${manifestPath}. Host validation still determines whether the candidate conforms.`,
+      `Updated ${declarations.length} exact schema SHA-256 declaration(s) and restored the fixed SDK 2 / Godot 4.7.x protocol fields in ${manifestPath}. Host validation still determines whether the candidate conforms.`,
     ),
     details: { receipt: write.receipt },
   };

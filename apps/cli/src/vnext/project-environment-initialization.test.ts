@@ -713,6 +713,7 @@ describe("PE-A initialization sequencing", () => {
     expect(prompt).toContain("Edit the pre-created ProjectAdapter scaffold");
     expect(prompt).toContain("replace every dynamic-placeholder identifier");
     expect(prompt).toContain("call project_adapter_finalize_v2 exactly once");
+    expect(prompt).toContain("protocol literal 4.7.x");
     expect(prompt).toContain(
       "Do not run Godot or perform conformance yourself",
     );

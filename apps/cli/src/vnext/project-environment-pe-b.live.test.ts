@@ -25,7 +25,10 @@ import {
   ProjectEnvironmentStoreV1,
   ProjectEnvironmentTaskStoreV1,
 } from "@chronorift/json-artifacts";
-import type { PiThinkingLevel } from "@chronorift/pi-harness";
+import {
+  runVNextPiTurnWithSdk,
+  type PiThinkingLevel,
+} from "@chronorift/pi-harness";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -56,6 +59,39 @@ const thinkingLevels = new Set<PiThinkingLevel>([
   "xhigh",
   "max",
 ]);
+
+const runPiTurnWithProgress: typeof runVNextPiTurnWithSdk = async (options) => {
+  const startedAt = Date.now();
+  const phase = options.loadProjectAdapterSkillV2 ? "initialization" : "goal";
+  const progress = (event: {
+    readonly type: string;
+    readonly toolName?: string;
+    readonly isError?: boolean;
+  }): void => {
+    if (
+      event.type !== "tool_execution_start" &&
+      event.type !== "tool_execution_end" &&
+      event.type !== "turn_start" &&
+      event.type !== "turn_end" &&
+      event.type !== "auto_retry_start" &&
+      event.type !== "auto_retry_end" &&
+      event.type !== "compaction_start" &&
+      event.type !== "compaction_end"
+    )
+      return;
+    process.stderr.write(
+      `${JSON.stringify({
+        gate: "project-environment-pe-b-live",
+        phase,
+        elapsedMs: Date.now() - startedAt,
+        event: event.type,
+        ...(event.toolName === undefined ? {} : { tool: event.toolName }),
+        ...(event.isError === undefined ? {} : { isError: event.isError }),
+      })}\n`,
+    );
+  };
+  return runVNextPiTurnWithSdk({ ...options, onEvent: progress });
+};
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -205,12 +241,16 @@ describe("PE-B real Pi dynamic Project Environment Gate", () => {
         agentDir,
         timeoutMs: TURN_TIMEOUT_MS,
       } as const;
-      const first = await runProjectEnvironmentPreviewV1(request);
+      const first = await runProjectEnvironmentPreviewV1(request, {
+        runPiTurn: runPiTurnWithProgress,
+      });
       if (first.status !== "ready")
         throw new Error(
           `PE-B first Preview failed: ${first.failureCode}: ${first.failureMessage}`,
         );
-      const second = await runProjectEnvironmentPreviewV1(request);
+      const second = await runProjectEnvironmentPreviewV1(request, {
+        runPiTurn: runPiTurnWithProgress,
+      });
       if (second.status !== "ready")
         throw new Error(
           `PE-B reuse Preview failed: ${second.failureCode}: ${second.failureMessage}`,

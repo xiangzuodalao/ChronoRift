@@ -77,8 +77,12 @@ export const composeProjectEnvironmentInitializationPromptV2 = (input: {
   composeProjectEnvironmentInitializationPromptV1(input)
     .replace("adapter-sdk-v1", "adapter-sdk-v2")
     .replace("loaded project-adapter skill", "loaded project-adapter-v2 skill")
+    .replace(
+      "Create the one ProjectAdapter candidate below /workspace/.chronorift/adapter-candidate.",
+      "Edit the pre-created ProjectAdapter scaffold at /workspace/.chronorift/adapter-candidate in place; do not copy the reference package.",
+    )
     .concat(
-      "\nAuthor a manifest/SDK/observation V2 adapter. Ready requires one lossless declared dynamic trace with entity-bound state and event observations across exactly consecutive incarnations.",
+      "\nAuthor a manifest/SDK/observation V2 adapter. Inspect project source first, replace every dynamic-placeholder identifier, implement only source-derived node and Signal semantics, and update the exact schema hashes. Ready requires one lossless declared dynamic trace with entity-bound state and event observations across exactly consecutive incarnations. Do not run Godot or perform conformance yourself; finish once the coherent candidate is written because the Host performs authoritative validation after this turn.",
     );
 
 interface ProjectEnvironmentPiTurnResultFieldsV1 {

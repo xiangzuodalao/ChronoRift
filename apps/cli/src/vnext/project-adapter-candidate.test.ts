@@ -14,14 +14,19 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { asAdapterId, asSha256DigestV1, asTaskId } from "@chronorift/domain";
-import { loadProjectAdapterPackageV1 } from "@chronorift/godot-adapter";
+import {
+  loadProjectAdapterPackageV1,
+  loadProjectAdapterPackageV2,
+} from "@chronorift/godot-adapter";
 
 import {
   PROJECT_ADAPTER_CANDIDATE_MARKER,
   PROJECT_ADAPTER_REFERENCE_RELATIVE_ROOT,
+  PROJECT_ADAPTER_REFERENCE_RELATIVE_ROOT_V2,
   assertProjectEnvironmentInitializationSourceUnchangedV1,
   freezeProjectAdapterCandidateV1,
   initializeProjectAdapterCandidateWorkspaceV1,
+  initializeProjectAdapterCandidateWorkspaceV2,
 } from "./project-adapter-candidate.js";
 
 const roots: string[] = [];
@@ -73,6 +78,56 @@ afterEach(async () => {
 });
 
 describe("ProjectAdapter candidate workspace", () => {
+  it("materializes an editable V2 scaffold that remains non-publishable until authored", async () => {
+    const context = await setup();
+    await import("node:fs/promises").then(({ rm }) =>
+      rm(join(context.workspace, ".chronorift"), {
+        recursive: true,
+        force: true,
+      }),
+    );
+    const initialized = await initializeProjectAdapterCandidateWorkspaceV2({
+      workspaceDirectory: context.workspace,
+      taskId: context.taskId,
+      projectSourceIdentity: context.projectSourceIdentity,
+      adapterId: context.adapterId,
+      mainScene: context.mainScene,
+    });
+    const [candidate, reference] = await Promise.all([
+      loadProjectAdapterPackageV2(initialized.candidateDirectory, {
+        requireSingleLaunchTarget: true,
+        expectedMainScene: context.mainScene,
+        requireEmptyLaunchParameters: true,
+      }),
+      loadProjectAdapterPackageV2(
+        join(
+          context.workspace,
+          PROJECT_ADAPTER_REFERENCE_RELATIVE_ROOT_V2,
+          "templates/minimal",
+        ),
+        {
+          requireSingleLaunchTarget: true,
+          expectedMainScene: context.mainScene,
+          requireEmptyLaunchParameters: true,
+        },
+      ),
+    ]);
+    expect(candidate.manifestSha256).toBe(reference.manifestSha256);
+    expect(candidate.manifest.smoke.requiredDynamicTraces[0]).toMatchObject({
+      entityTypeId: "dynamic-placeholder",
+      minimumIncarnations: 2,
+    });
+    await expect(
+      readFile(join(initialized.candidateDirectory, "src/project_adapter.gd"), {
+        encoding: "utf8",
+      }),
+    ).resolves.toContain("register_entity");
+    expect(
+      (await lstat(join(initialized.candidateDirectory, "manifest.json")))
+        .mode & 0o777,
+    ).toBe(0o600);
+  });
+
   it("is editable by normal workspace tools but excluded from the game Git diff", async () => {
     const context = await setup();
     await writeFile(

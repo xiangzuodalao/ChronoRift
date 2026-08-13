@@ -58,20 +58,42 @@ const moduleState = (
 const ENTRY = `extends ChronoRiftProjectAdapterV2
 
 # Structural starting point only. Replace placeholder matching and identifiers
-# with project-specific semantics discovered from the source.
+# with project-specific semantics discovered from the source. This scaffold is
+# intentionally rejected until every dynamic-placeholder declaration is gone.
 var _context: ChronoRiftObservationContextV2
+
+var _references := {}
 
 func start(context: ChronoRiftObservationContextV2, current_scene: Node) -> Error:
 \t_context = context
 \tcurrent_scene.get_tree().node_added.connect(_node_added)
-\t# Inspect existing nodes and connect only explicitly understood Signals.
+\t_walk(current_scene)
 \treturn OK
 
 func stop() -> void:
 \tpass
 
-func _node_added(_node: Node) -> void:
-\tpass
+func _walk(node: Node) -> void:
+\t_consider(node)
+\tfor child in node.get_children():
+\t\t_walk(child)
+
+func _node_added(node: Node) -> void:
+\t# Deferral lets a newly added node finish its own initialization first.
+\tcall_deferred("_consider", node)
+
+func _consider(node: Node) -> void:
+\t# Replace this no-op with a source-derived semantic predicate. Then call:
+\t# var ref = _context.register_entity(stable_id, entity_type_id,
+\t#     "spawn_lineage", node, projection)
+\t# _context.emit_state(state_domain_id, ref, state_value)
+\t# Connect only a Signal explicitly declared by the project and emit it with:
+\t# _context.emit_event(event_type_id, ref, event_value)
+\t# _context.emit_state(state_domain_id, ref, changed_state_value)
+\t# Node tree exit automatically emits disappeared; the same stable_id is then
+\t# assigned exactly the next incarnation by the managed context.
+\tif not is_instance_valid(node):
+\t\treturn
 `;
 
 export const createProjectAdapterReferenceTemplateFilesV2 = (input: {
@@ -236,7 +258,7 @@ export const createProjectAdapterReferenceTemplateFilesV2 = (input: {
     {
       relativePath: "templates/minimal/README.md",
       bytes: Buffer.from(
-        "# V2 starting point\n\nCopy into the candidate, replace all placeholder semantics, explicitly connect understood project Signals, and update exact schema hashes.\n",
+        "# V2 editable starting point\n\nThis scaffold is already materialized in the candidate. Replace all placeholder semantics, explicitly connect understood project Signals, and update exact schema hashes. The Host rejects every remaining placeholder.\n",
         "utf8",
       ),
     },

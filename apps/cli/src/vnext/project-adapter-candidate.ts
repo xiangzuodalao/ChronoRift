@@ -174,6 +174,29 @@ const writeReferenceFile = async (
   }
 };
 
+const writeCandidateScaffoldFile = async (
+  root: string,
+  relativePath: string,
+  bytes: Uint8Array,
+): Promise<void> => {
+  const target = join(root, ...relativePath.split("/"));
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  const handle = await open(
+    target,
+    constants.O_WRONLY |
+      constants.O_CREAT |
+      constants.O_EXCL |
+      constants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    await handle.writeFile(bytes);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+};
+
 export async function initializeProjectAdapterCandidateWorkspaceV1(input: {
   readonly workspaceDirectory: string;
   readonly taskId: TaskId;
@@ -294,7 +317,8 @@ export async function initializeProjectAdapterCandidateWorkspaceV2(input: {
   );
   for (const file of PROJECT_ADAPTER_SDK_FILES_V2)
     await writeReferenceFile(v2Reference, file.relativePath, file.bytes);
-  for (const file of createProjectAdapterReferenceTemplateFilesV2(input))
+  const templateFiles = createProjectAdapterReferenceTemplateFilesV2(input);
+  for (const file of templateFiles)
     await writeReferenceFile(v2Reference, file.relativePath, file.bytes);
   await writeReferenceFile(
     v2Reference,
@@ -304,6 +328,26 @@ export async function initializeProjectAdapterCandidateWorkspaceV2(input: {
       "utf8",
     ),
   );
+  // V2 starts as an editable, deliberately non-publishable scaffold. The
+  // placeholder identifiers are rejected by authoritative conformance, so
+  // this removes copy/setup ceremony without making Harness the author of
+  // project semantics.
+  for (const file of templateFiles) {
+    const relativePath = file.relativePath.replace(
+      /^templates\/minimal\//u,
+      "",
+    );
+    if (relativePath === file.relativePath)
+      throw new M1Error(
+        "artifact_write_failed",
+        "ProjectAdapter V2 scaffold escaped its managed template root",
+      );
+    await writeCandidateScaffoldFile(
+      result.candidateDirectory,
+      relativePath,
+      file.bytes,
+    );
+  }
   await rm(v1Reference, { recursive: true });
   return result;
 }

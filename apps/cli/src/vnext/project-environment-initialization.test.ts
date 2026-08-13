@@ -36,6 +36,7 @@ import {
 
 import {
   composeProjectEnvironmentInitializationPromptV1,
+  composeProjectEnvironmentInitializationPromptV2,
   enforceProjectEnvironmentTurnBudgetV1,
   initializeProjectEnvironmentV1,
   projectEnvironmentTurnTimeoutMsV1,
@@ -700,5 +701,20 @@ describe("PE-A initialization sequencing", () => {
     });
     expect(prompt).toContain("no required tool order");
     expect(prompt).not.toMatch(/submit|phase 1|step 1/iu);
+  });
+
+  it("tells V2 authors to edit the scaffold and leave conformance to Host", () => {
+    const prompt = composeProjectEnvironmentInitializationPromptV2({
+      adapterId: ids.adapterId,
+      mainScene: "res://main.tscn",
+      requestedGodotVersion: "4.7.1",
+      sourceIdentity: digest("5"),
+    });
+    expect(prompt).toContain("Edit the pre-created ProjectAdapter scaffold");
+    expect(prompt).toContain("replace every dynamic-placeholder identifier");
+    expect(prompt).toContain(
+      "Do not run Godot or perform conformance yourself",
+    );
+    expect(prompt).not.toContain("Create the one ProjectAdapter candidate");
   });
 });

@@ -33,6 +33,7 @@ import type {
   SandboxedGodotProjectEnvironmentSidecarV2,
 } from "./project-environment-sidecar-port-v2.js";
 import { ProjectEnvironmentValidatedRingV2 } from "./project-environment-validated-ring-v2.js";
+import { projectEnvironmentRuntimeStopMissingEvidenceV2 } from "./project-environment-runtime-stop-readiness-v2.js";
 import type {
   ProjectEnvironmentGameToolPort,
   ProjectEnvironmentGameToolPortRequestV1,
@@ -595,7 +596,28 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
   }
 
   private async stop(input: Record<string, unknown>) {
-    return this.finalize(this.requireRuntime(input.runtimeId));
+    const active = this.requireRuntime(input.runtimeId);
+    let dynamicTraceCount = 0;
+    try {
+      dynamicTraceCount = active.ring.dynamicTraces(
+        this.options.adapterPackage,
+      ).length;
+    } catch {
+      // The exact recognizer failure is retained by authoritative finalization;
+      // stop remains recoverable while the execution is still running.
+    }
+    const missing = projectEnvironmentRuntimeStopMissingEvidenceV2({
+      dynamicTraceCount,
+      entityRows: active.entityRows,
+      stateRows: active.stateRows,
+      eventRows: active.eventRows,
+      captureWindowCount: active.captureWindowIds.length,
+    });
+    if (missing.length > 0)
+      throw new Error(
+        `runtime evidence is incomplete; keep this runtime running and add: ${missing.join(", ")}`,
+      );
+    return this.finalize(active);
   }
   private async finalize(active: ActiveV2) {
     if (active.phase !== "running") throw new Error("runtime is not running");

@@ -64,7 +64,10 @@ import {
   ProjectEnvironmentGameRuntimeV2,
   type ProjectEnvironmentRuntimeBuildV2,
 } from "./project-environment-game-runtime-v2.js";
-import { composeProjectEnvironmentCompatibleRuntimeV2 } from "./project-environment-runtime-composition-v2.js";
+import {
+  composeProjectEnvironmentCompatibleRuntimeV2,
+  type ProjectEnvironmentRuntimeRoleV2,
+} from "./project-environment-runtime-composition-v2.js";
 import { selectDeliveredRuntimeObservationReceiptId } from "./project-environment-runtime-evidence-selection.js";
 import {
   defaultProjectEnvironmentHostConfigPath,
@@ -778,6 +781,7 @@ export async function runProjectEnvironmentPreviewV1(
       });
     const makeRuntime = (
       build: ProjectEnvironmentRuntimeBuildV2,
+      role: ProjectEnvironmentRuntimeRoleV2,
       resolveCompatibleBuild?: () => Promise<ProjectEnvironmentRuntimeBuildV2>,
     ) =>
       new ProjectEnvironmentGameRuntimeV2({
@@ -804,8 +808,7 @@ export async function runProjectEnvironmentPreviewV1(
               input.revision.environmentRevisionId ||
             capture.adapterRevisionId !==
               input.adapterRevision.adapterRevisionId ||
-            (resolveCompatibleBuild !== undefined &&
-              capture.buildId !== activeBuild?.buildId)
+            (role === "ordinary" && capture.buildId !== activeBuild?.buildId)
           )
             throw new Error(
               "V2 pinned capture crossed the final active Build binding",
@@ -819,14 +822,13 @@ export async function runProjectEnvironmentPreviewV1(
               input.revision.environmentRevisionId ||
             receipt.adapterRevisionId !==
               input.adapterRevision.adapterRevisionId ||
-            (resolveCompatibleBuild !== undefined &&
-              receipt.buildId !== activeBuild?.buildId)
+            (role === "ordinary" && receipt.buildId !== activeBuild?.buildId)
           )
             throw new Error(
               "V2 runtime observation crossed the final active Build binding",
             );
           await taskStore.putRuntimeObservationReceiptV2Once(receipt);
-          if (resolveCompatibleBuild !== undefined)
+          if (role === "ordinary")
             runtimeObservationReceiptId =
               selectDeliveredRuntimeObservationReceiptId(
                 runtimeObservationReceiptId,

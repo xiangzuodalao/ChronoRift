@@ -17,6 +17,9 @@ import type {
   ProjectEnvironmentRuntimeBuildV2,
 } from "./project-environment-game-runtime-v2.js";
 
+export type ProjectEnvironmentRuntimeRoleV2 =
+  "compatibility_smoke" | "ordinary";
+
 const descriptor = (
   prepared: PreparedProjectEnvironmentGodotBuildV1,
 ): ProjectEnvironmentRuntimeBuildV2 => ({
@@ -40,6 +43,7 @@ export function composeProjectEnvironmentCompatibleRuntimeV2(options: {
   readonly prepareBuild: () => Promise<PreparedProjectEnvironmentGodotBuildV1>;
   readonly createRuntime: (
     build: ProjectEnvironmentRuntimeBuildV2,
+    role: ProjectEnvironmentRuntimeRoleV2,
     resolve?: () => Promise<ProjectEnvironmentRuntimeBuildV2>,
   ) => ProjectEnvironmentGameRuntimeV2;
   readonly onResolved?: (
@@ -85,7 +89,10 @@ export function composeProjectEnvironmentCompatibleRuntimeV2(options: {
       } catch (error) {
         if (!missing(error)) throw error;
         await options.taskStore.putBuildOnce(prepared.build);
-        const runtime = options.createRuntime(descriptor(prepared));
+        const runtime = options.createRuntime(
+          descriptor(prepared),
+          "compatibility_smoke",
+        );
         let receipt;
         try {
           receipt = await runProjectEnvironmentCompatibilitySmokeV2({
@@ -128,7 +135,7 @@ export function composeProjectEnvironmentCompatibleRuntimeV2(options: {
       const build = await resolve();
       return Object.freeze({
         build,
-        runtime: options.createRuntime(build, resolve),
+        runtime: options.createRuntime(build, "ordinary", resolve),
       });
     },
   });

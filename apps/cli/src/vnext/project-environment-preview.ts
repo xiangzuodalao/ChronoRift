@@ -65,6 +65,7 @@ import {
   type ProjectEnvironmentRuntimeBuildV2,
 } from "./project-environment-game-runtime-v2.js";
 import { composeProjectEnvironmentCompatibleRuntimeV2 } from "./project-environment-runtime-composition-v2.js";
+import { selectDeliveredRuntimeObservationReceiptId } from "./project-environment-runtime-evidence-selection.js";
 import {
   defaultProjectEnvironmentHostConfigPath,
   readProjectEnvironmentHostConfigV1,
@@ -705,7 +706,11 @@ export async function runProjectEnvironmentPreviewV1(
                   );
                 }
                 await taskStore.putRuntimeObservationReceiptOnce(receipt);
-                runtimeObservationReceiptId = receipt.receiptId;
+                runtimeObservationReceiptId =
+                  selectDeliveredRuntimeObservationReceiptId(
+                    runtimeObservationReceiptId,
+                    receipt,
+                  );
               },
             }),
       });
@@ -822,7 +827,11 @@ export async function runProjectEnvironmentPreviewV1(
             );
           await taskStore.putRuntimeObservationReceiptV2Once(receipt);
           if (resolveCompatibleBuild !== undefined)
-            runtimeObservationReceiptId = receipt.receiptId;
+            runtimeObservationReceiptId =
+              selectDeliveredRuntimeObservationReceiptId(
+                runtimeObservationReceiptId,
+                receipt,
+              );
         },
       });
     return composeProjectEnvironmentCompatibleRuntimeV2({

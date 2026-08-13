@@ -197,6 +197,34 @@ const openTaskStore = async (result: ProjectEnvironmentPreviewResultV1) => {
   return store;
 };
 
+const runtimeFailureSummary = async (
+  store: ProjectEnvironmentTaskStoreV1,
+): Promise<readonly unknown[]> => {
+  const inventory = await store.freezeEvidenceInventory();
+  return inventory.records
+    .filter((record) => record.recordKind === "runtime-observation-receipt")
+    .map((record) => {
+      const payload = record.payload;
+      if (
+        typeof payload !== "object" ||
+        payload === null ||
+        Array.isArray(payload)
+      )
+        return { malformed: true };
+      const value = payload as Record<string, unknown>;
+      return {
+        outcome: value["outcome"],
+        queryObservations: value["queryObservations"],
+        eventQueryCount: value["eventQueryCount"],
+        eventRows: value["eventRows"],
+        captureCount: value["captureCount"],
+        validatedRecordCount: value["validatedRecordCount"],
+        stickyPoisoned: value["stickyPoisoned"],
+        failures: value["failures"],
+      };
+    });
+};
+
 describe("PE-B real Pi dynamic Project Environment Gate", () => {
   it.skipIf(!ENABLED)(
     "authors V2, observes one dynamic trace, then reuses it in a new Session",
@@ -306,7 +334,14 @@ describe("PE-B real Pi dynamic Project Environment Gate", () => {
         first.runtimeObservationReceiptId === null ||
         second.runtimeObservationReceiptId === null
       )
-        throw new Error("PE-B live Gate omitted Build/runtime IDs");
+        throw new Error(
+          `PE-B live Gate omitted Build/runtime IDs: ${JSON.stringify({
+            firstId: first.runtimeObservationReceiptId,
+            secondId: second.runtimeObservationReceiptId,
+            firstReceipts: await runtimeFailureSummary(firstStore),
+            secondReceipts: await runtimeFailureSummary(secondStore),
+          })}`,
+        );
       const [
         firstBuildBinding,
         secondBuildBinding,

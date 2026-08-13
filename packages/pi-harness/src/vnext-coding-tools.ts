@@ -260,6 +260,35 @@ const finalizeProjectAdapterManifestV2 = async (
       createHash("sha256").update(result.stdout).digest("hex"),
     );
   }
+  const discovered = await port.find(
+    {
+      pattern: "*.json",
+      path: ".chronorift/adapter-candidate/schemas",
+      limit: 65,
+    },
+    signal,
+  );
+  const findFailure = executionFailure(discovered, "adapter schema inventory");
+  if (findFailure !== undefined) return findFailure;
+  const declaredFiles = new Set(
+    [...seen].map((path) => `.chronorift/adapter-candidate/${path}`),
+  );
+  const physicalFiles = new Set(
+    decode(discovered.stdout)
+      .split("\n")
+      .map((path) => path.trim())
+      .filter((path) => path.length > 0),
+  );
+  const undeclared = [...physicalFiles]
+    .filter((path) => !declaredFiles.has(path))
+    .sort();
+  const missing = [...declaredFiles]
+    .filter((path) => !physicalFiles.has(path))
+    .sort();
+  if (undeclared.length > 0 || missing.length > 0)
+    throw new Error(
+      `ProjectAdapter V2 schema inventory differs from manifest; remove undeclared files [${undeclared.join(", ")}] and restore missing files [${missing.join(", ")}] before finalizing`,
+    );
   const bytes = Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   const write = await port.write(manifestPath, bytes, signal);
   const writeFailure = executionFailure(write, "adapter manifest write");

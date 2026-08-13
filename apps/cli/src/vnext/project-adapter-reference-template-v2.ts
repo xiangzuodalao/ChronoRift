@@ -106,36 +106,24 @@ export const createProjectAdapterReferenceTemplateFilesV2 = (input: {
     required: [],
     additionalProperties: false,
   });
-  const entity = schema(
-    "schemas/entity.dynamic-placeholder.json",
-    "entity.dynamic-placeholder",
-    {
-      type: "object",
-      properties: { value: { type: "integer" } },
-      required: ["value"],
-      additionalProperties: false,
-    },
-  );
-  const state = schema(
-    "schemas/state.dynamic-placeholder.json",
-    "state.dynamic-placeholder",
-    {
-      type: "object",
-      properties: { value: { type: "integer" } },
-      required: ["value"],
-      additionalProperties: false,
-    },
-  );
-  const event = schema(
-    "schemas/event.dynamic-placeholder.json",
-    "event.dynamic-placeholder",
-    {
-      type: "object",
-      properties: { value: { type: "integer" } },
-      required: ["value"],
-      additionalProperties: false,
-    },
-  );
+  const entity = schema("schemas/entity.json", "entity.dynamic-placeholder", {
+    type: "object",
+    properties: { value: { type: "integer" } },
+    required: ["value"],
+    additionalProperties: false,
+  });
+  const state = schema("schemas/state.json", "state.dynamic-placeholder", {
+    type: "object",
+    properties: { value: { type: "integer" } },
+    required: ["value"],
+    additionalProperties: false,
+  });
+  const event = schema("schemas/event.json", "event.dynamic-placeholder", {
+    type: "object",
+    properties: { value: { type: "integer" } },
+    required: ["value"],
+    additionalProperties: false,
+  });
   const schemas = [launch, entity, state, event];
   const required = new Set([
     "lifecycle",

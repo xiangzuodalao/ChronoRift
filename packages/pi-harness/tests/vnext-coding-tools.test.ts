@@ -59,6 +59,21 @@ class MemoryPort implements VNextCodingToolPort {
     request: Parameters<VNextCodingToolPort["find"]>[0],
   ): Promise<BrokerToolResult> {
     this.calls.push(`find:${request.path}:${request.limit}`);
+    if (request.path === ".chronorift/adapter-candidate/schemas") {
+      return Promise.resolve(
+        ok(
+          [...this.files.keys()]
+            .filter(
+              (path) =>
+                path.startsWith(`${request.path}/`) &&
+                path.endsWith(request.pattern.slice(1)),
+            )
+            .sort()
+            .map((path) => `${path}\n`)
+            .join(""),
+        ),
+      );
+    }
     return Promise.resolve(ok("src/a.ts\n"));
   }
   public ls(
@@ -173,8 +188,51 @@ describe("vNext broker-only Pi coding tools", () => {
     expect(port.calls).toEqual([
       "read:.chronorift/adapter-candidate/manifest.json",
       `read:${schemaPath}`,
+      "find:.chronorift/adapter-candidate/schemas:65",
       "write:.chronorift/adapter-candidate/manifest.json",
     ]);
+  });
+
+  it("refuses to finalize a candidate with an undeclared schema file", async () => {
+    const port = new MemoryPort();
+    port.files.set(
+      ".chronorift/adapter-candidate/schemas/state.json",
+      Buffer.from("{}\n"),
+    );
+    port.files.set(
+      ".chronorift/adapter-candidate/schemas/stale.json",
+      Buffer.from("{}\n"),
+    );
+    port.files.set(
+      ".chronorift/adapter-candidate/manifest.json",
+      Buffer.from(
+        JSON.stringify({
+          schemaVersion: 2,
+          sdk: { id: "chronorift-project-adapter-sdk", version: 2 },
+          engine: {
+            id: "godot",
+            versionRequirement: "4.7.x",
+            language: "gdscript",
+          },
+          schemas: [
+            {
+              path: "schemas/state.json",
+              sha256: "0".repeat(64),
+            },
+          ],
+        }),
+      ),
+    );
+    const finalize = createVNextCodingToolDefinitions(port, {
+      projectAdapterFinalizeV2: true,
+    }).find((tool) => tool.name === "project_adapter_finalize_v2");
+    if (finalize === undefined) throw new Error("missing V2 finalizer");
+    await expect(
+      finalize.execute("call:finalize", {}, undefined, undefined, {} as never),
+    ).rejects.toThrow(/remove undeclared files.*stale\.json/u);
+    expect(port.calls).not.toContain(
+      "write:.chronorift/adapter-candidate/manifest.json",
+    );
   });
 
   it("rejects the first over-budget coding call before reaching the broker", async () => {

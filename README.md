@@ -22,15 +22,17 @@ checkpoint、fork、replay、query 和 compare 原语。
 > trace/replay/compare。所有状态操作都明确是 `descriptive_only`；public exposed task Gate 只验证 plumbing，
 > 不证明智能诊断、等价恢复、修复正确性、独立验收或泛化。
 >
-> **Project Environment V1 / PE-A Preview 已达到 implementation present；当前下一实现切片是 PE-B Dynamic
+> **Project Environment V1 / PE-A Preview 已达到 implementation present + local Gate passed；当前下一实现切片是 PE-B Dynamic
 > Projection（planned，尚未实现）**。PE-A 在 Godot 4.7 GDScript 项目目录启动 ChronoRift，由同一个可见 Pi
 > Session 生成、验证并发布唯一 ProjectAdapter，然后进入独立用户目标 turn。Harness 提供 bridge、协议、Adapter
 > SDK、sandbox、loader、validator 和 publication broker；项目 entity/state/event/capture 语义由 Agent 生成。
 > 显式 `project preview` 路由、三阶段 conformance、crash reconciliation、post-edit exact Build、new-Session
 > reuse、durable runtime evidence、snapshot characterization 与独立 validator 已实现。默认离线、真实 Godot、
-> 下层 Linux Host 与 deterministic fake-Pi Gate 已通过。开发候选已有一次本地 Luna/max 输出，但它不绑定本次
-> baseline commit；只有针对冻结 product tree 重新取得并独立复验 create-new bundle 后，才升级为
-> `PE-A implementation present + local Gate passed`。它仍不证明通用外部项目支持或默认入口已经切换。
+> 下层 Linux Host 与 deterministic fake-Pi Gate 已通过。冻结 product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b`
+> 又通过本地 `openai-codex/gpt-5.6-luna/max` one-shot，create-new bundle content hash 为
+> `ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`，并由 standalone validator 复验和
+> [local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md) 冻结。它不是 protected-ref
+> artifact、签名或外部 attestation，仍不证明通用外部项目支持或默认入口已经切换。
 
 ## 产品契约（vNext 目标）
 
@@ -162,8 +164,8 @@ Project Environment V1 不再为每个外部项目新增 lifecycle/semantic prod
 [Project Environment V1 RFC](docs/project-environment-v1.md)。当前源码已有 PE-A 的 DTO、SDK、loader、wire、
 bounded stores、初始化协调、三阶段 conformance、publication/binding、broker-only 跨命令 publication reconciliation、post-edit exact Build compatibility、new-Session
 reuse、durable runtime evidence、snapshot characterization、独立 validator、显式 CLI、官方 Pi TUI 与 Task-bound core
-runtime tools。此前开发候选已有本地 real-Pi Gate 成功输出，但它不绑定本次 baseline product tree；精确基线的
-create-new Gate 与独立复验完成前，PE-A 状态仍是 `implementation present`，不是 protected-ref conformance 或默认入口。
+runtime tools。精确 baseline product tree 已取得 create-new real-Pi bundle并由 standalone validator 复验，状态是
+`implementation present + local Gate passed`；该 local archive 不是 protected-ref conformance 或默认入口晋升。
 
 初始化 workspace 中的 minimal package 只是结构参考；权威 validator 要求 candidate 至少声明一个非
 `scene-root` placeholder 的项目 entity type 和一个非 `project` placeholder 的状态域。原样复制模板、只改
@@ -180,9 +182,11 @@ smoke，并只让后续 runtime 使用该 Build；新 Task/Session 对 unchanged
 不会伪造本 Task publication。冻结 characterization fixture 也已完成 snapshot → mutation → restore → read-back。
 下层 Linux sandbox/Godot Host conformance 与 deterministic fake-Pi 完整 Preview Host integration 已在本地隔离容器
 实际通过；双 Session、published receipt、raw pinned capture、Task ledger/inventory、physical seal 与 byte-pinned
-standalone validator 的实现和离线回归也已通过。此前 2026-08-13 的 Luna/max 输出只属于开发候选，必须针对本次精确
-baseline product tree 重新运行 create-new Gate 后才能作为冻结证据。仍未完成的是 protected-ref 长期证据 artifact、
-更多结构类别，以及 PE-B 的动态节点、自定义 Signal 与状态变化投影。Dirty/untracked、
+standalone validator 的实现和离线回归也已通过。2026-08-13 针对精确 baseline product tree 的 Luna/max Gate 用时
+505.21 秒：初始化 Agent turn 为 348.638 秒，含 authoritative conformance/publication 的 attempt ready 为
+363.322 秒；随后完成同 Session goal 与新 Session reuse。证据见
+[local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md)。仍未完成的是 protected-ref 长期
+证据 artifact、更多结构类别，以及 PE-B 的动态节点、自定义 Signal 与状态变化投影。Dirty/untracked、
 materialized dependency、addon/import 和 multi-target source closure 属于后续 PE-C，不混入 PE-B。
 
 ### 实验性 M3 vNext 入口
@@ -570,8 +574,8 @@ fixtures/godot-*                 四个受支持的真实 Godot Fixture
 
 - Project Environment V1 的 PE-A Preview 已有显式项目目录初始化、Agent-generated ProjectAdapter、环境
   revision/CAS publication、通用 entity/state/event/capture SDK、交互 Session、post-edit exact Build、new-Session reuse、
-  snapshot characterization 与 durable runtime evidence。此前开发候选的本地 real-Pi 输出不绑定本次 baseline；精确
-  baseline 的 create-new Gate 与独立复验仍待重跑。尚无 PE-B dynamic projection、PE-C source/import closure 或
+  snapshot characterization 与 durable runtime evidence。精确 baseline 已有一个冻结 clean/single-root fixture 的
+  local-only real-Pi r1 archive；尚无 protected-ref artifact、PE-B dynamic projection、PE-C source/import closure 或
   Host refresh/apply。`chronorift [goal]`
   仍不是当前可执行入口。
 - v0.4 是四个小型、显式插桩 Fixture 的诊断 workflow，不支持任意外部 Godot 项目。

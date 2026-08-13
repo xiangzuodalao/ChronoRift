@@ -9,13 +9,13 @@
 > descriptive compare 与外部 release acceptance 实现。M3 不是新的公开 release，也不能描述成任意 Godot
 > 项目能力或修复正确性证明；本文不声称尚未实际运行的 Gate 或 live acceptance 已通过。
 >
-> **Project Environment V1 / PE-A Preview 当前是 implementation present；下一实现切片是 PE-B Dynamic
+> **Project Environment V1 / PE-A Preview 当前是 implementation present + local Gate passed；下一实现切片是 PE-B Dynamic
 > Projection（planned，尚未实现）**。PE-A 已实现显式 Preview、ProjectAdapter SDK/wire/loader、初始化、
 > authoritative conformance、crash-safe publication/binding、post-edit exact Build、new-Session reuse、durable runtime
-> evidence 与独立 validator。默认离线、真实 Godot、下层 Linux Host 与 deterministic fake-Pi Gate 已通过；
-> 开发候选已有一次本地 Luna/max 输出，但它不绑定本次 baseline commit。针对冻结 product tree 重新取得并复验
-> create-new bundle 后，状态才升级为 `implementation present + local Gate passed`。该范围只覆盖一个冻结
-> clean/single-root fixture，不代表通用外部项目支持或默认入口晋升。
+> evidence 与独立 validator。默认离线、真实 Godot、下层 Linux Host 与 deterministic fake-Pi Gate 已通过；冻结
+> product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 的本地 Luna/max one-shot 也已产生 create-new bundle，
+> 经 standalone validator 复验并归档为 local r1。该 archive 不是 protected artifact、签名或外部 attestation；它只
+> 覆盖一个冻结 clean/single-root fixture，不代表通用外部项目支持或默认入口晋升。
 >
 > v0.1–v0.4 schema、artifact、benchmark spec、ledger、报告与冻结 tag 保持不可变。新路径不会静默迁移、
 > 覆盖或重新解释历史结果。
@@ -1006,8 +1006,8 @@ Dirty/untracked、materialized dependency、LFS/submodule/symlink、addon/import
 ## 21. 当前实现映射
 
 本节把 2026-08-13 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3、M4、E2 与 Project
-Environment 都是实验性 vNext slice。PE-A 已达到 implementation present；针对精确 baseline product tree 的
-real-Pi create-new Gate 与 freeze record 完成前，不能把开发候选的本地输出写成该 baseline 的通过证据。
+Environment 都是实验性 vNext slice。PE-A 已达到 implementation present + local Gate passed；精确 baseline product
+tree 的 real-Pi create-new bundle、standalone validation 与 local r1 freeze record 已归档，但不是 protected artifact。
 
 | 能力            | 当前公开 v0.4                                            | 实验性 M3 vNext slice                                                                      | 未覆盖或后续方向                                |
 | --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
@@ -1046,14 +1046,14 @@ E2 再增加以下独立实现面：
 
 Project Environment V1 是当前产品主线；下一实现切片是 PE-B Dynamic Projection，Source/Import closure 是 PE-C：
 
-| 维度                | 已冻结目标                                                                | 当前实现或缺口                                                                                                            |
-| ------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 用户入口            | 项目目录内交互 Session；首次可见初始化，ready 后处理排队目标              | 显式 `pnpm project preview`、同 Session goal 与 new-Session reuse 已实现；尚无默认 `chronorift [goal]`                    |
-| Project Environment | project-local immutable revisions、bounded attempts、publication/binding  | PE-A DTO/store、initial publication 与跨命令 crash reconciliation 已实现；通用 resume 与 multi-writer lease/CAS 后续      |
-| Source              | dirty snapshot、显式 untracked、materialized multi-source closure         | PE-A 只接受 clean single-root；Source/Import closure 属于 PE-C                                                            |
-| ProjectAdapter      | Agent 生成 manifest + GDScript package、固定 tools、module negotiation    | PE-A SDK/loader/wire/固定工具已实现；dynamic identity projection 属于 PE-B，migration 属于后续 slice                      |
-| Ready               | lifecycle + clock/error + entity/state/event projection + rolling capture | 三阶段 conformance、post-edit exact Build、durable observation/pinned capture 与 snapshot characterization 已实现         |
-| Release Gate        | 三类结构矩阵、至少两个真实 Agent 初始化、Host/sandbox 与独立 validator    | PE-A 开发候选曾有单 fixture local 输出；精确 baseline refresh、PE-B/PE-C 矩阵、第二真实项目与 protected artifact 尚未冻结 |
+| 维度                | 已冻结目标                                                                | 当前实现或缺口                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 用户入口            | 项目目录内交互 Session；首次可见初始化，ready 后处理排队目标              | 显式 `pnpm project preview`、同 Session goal 与 new-Session reuse 已实现；尚无默认 `chronorift [goal]`               |
+| Project Environment | project-local immutable revisions、bounded attempts、publication/binding  | PE-A DTO/store、initial publication 与跨命令 crash reconciliation 已实现；通用 resume 与 multi-writer lease/CAS 后续 |
+| Source              | dirty snapshot、显式 untracked、materialized multi-source closure         | PE-A 只接受 clean single-root；Source/Import closure 属于 PE-C                                                       |
+| ProjectAdapter      | Agent 生成 manifest + GDScript package、固定 tools、module negotiation    | PE-A SDK/loader/wire/固定工具已实现；dynamic identity projection 属于 PE-B，migration 属于后续 slice                 |
+| Ready               | lifecycle + clock/error + entity/state/event projection + rolling capture | 三阶段 conformance、post-edit exact Build、durable observation/pinned capture 与 snapshot characterization 已实现    |
+| Release Gate        | 三类结构矩阵、至少两个真实 Agent 初始化、Host/sandbox 与独立 validator    | PE-A 精确 baseline 的单 fixture local r1 已冻结；PE-B/PE-C 矩阵、第二真实项目与 protected artifact 尚未完成          |
 
 默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 coding sandbox boundary 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、
@@ -1091,7 +1091,10 @@ PE-A 另由 `test:vnext:project-environment-pe-a-live` 验证。该 Gate 固定
 `openai-codex/gpt-5.6-luna/max`、Godot 4.7.1、显式 Host config 与 evidence output，要求初始化、publication、
 same-Session goal、exact candidate Build runtime observation/pinned capture，以及新 Task/Session reuse。success bundle
 必须 create-new 并由不导入产品 TypeScript 的 standalone validator 复验；本地输出不是 protected-ref artifact、
-签名、Host attestation、adapter 语义正确性或任意项目泛化证明。
+签名、Host attestation、adapter 语义正确性或任意项目泛化证明。2026-08-13 的 local r1 绑定 product subject
+`5d98857a0c5423d050615b93d6fa0dfd6f109a5b`，bundle content hash 为
+`ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`；可复验 bytes、freeze record 与 claim boundary
+保存在 [`docs/evidence/vnext-project-environment-pe-a-local-r1/`](evidence/vnext-project-environment-pe-a-local-r1/README.md)。
 
 M4 当前 cleanup reconciliation 只在同一 Host command 仍持有 coordinator 时成立：Task sandbox 的最终
 cleanup receipt 只有在进程/cgroup/scope cleanup 与 fresh bounded Task-storage inspection 都明确成功时才可

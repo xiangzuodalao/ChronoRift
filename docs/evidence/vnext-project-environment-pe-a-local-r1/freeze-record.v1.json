@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "chronorift-project-environment-pe-a-local-post-gate-freeze",
+  "recordTiming": "post_gate",
+  "classification": "project_environment_pe_a_single_fixture_local_gate",
+  "archiveStatus": "local_unprotected_operator_archive",
+  "recordedAt": "2026-08-13T03:37:36.000Z",
+  "freezeAnchor": {
+    "tagName": "vnext-project-environment-pe-a-local-gate-r1-freeze",
+    "requiredObjectType": "tag",
+    "targetKind": "freeze_record_commit",
+    "productSubjectMustBeAncestor": true,
+    "statusAtRecordCreation": "planned_pending_archive_commit"
+  },
+  "productSubject": {
+    "repositoryCommit": "5d98857a0c5423d050615b93d6fa0dfd6f109a5b",
+    "repositoryTree": "bad52d21f3f3a315ad1e5c5e57785da9c6183d6a",
+    "gitObjectFormat": "sha1",
+    "commitAndTreeVerifiedAtFreeze": true,
+    "trackedWorktreeCleanAfterGate": true,
+    "indexCleanAfterGate": true,
+    "trackedWorktreeCleanBeforeGate": true,
+    "preGateCleanObservationSource": "operator_gate_record",
+    "ordinaryUntrackedEntriesAfterGate": [".tools"],
+    "declaredExternalToolchainEntry": {
+      "path": ".tools",
+      "kind": "symlink",
+      "targetPathArchived": false,
+      "realizedGodotBinaryBoundBySha256": true
+    },
+    "productGitBundleArchived": false,
+    "completeProductTreeArchived": false
+  },
+  "gate": {
+    "runLabel": "local-exact-product-r1",
+    "conclusion": "success",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "initializationTurnDurationMs": 348638,
+    "initializationAttemptReadyDurationMs": 363322,
+    "liveTestDurationMs": 505210,
+    "node": {
+      "version": "v22.23.1",
+      "binarySha256": "93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068"
+    },
+    "godot": {
+      "version": "4.7.1.stable.official.a13da4feb",
+      "binarySha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+      "platform": "linux-x86_64",
+      "features": ["gdscript", "headless"],
+      "renderer": "gl_compatibility"
+    },
+    "container": {
+      "oneShotPrivilegedDocker": true,
+      "imageReference": "chronorift-m3-gate:hostdeps",
+      "imageId": "sha256:74c53485c186bb3e904ea970248a271306e83e4be78b705f7be9314cd1a66ad2",
+      "repoDigests": [
+        "chronorift-m3-gate@sha256:74c53485c186bb3e904ea970248a271306e83e4be78b705f7be9314cd1a66ad2"
+      ],
+      "imageBytesArchived": false
+    },
+    "outerRunner": {
+      "productRelativePath": ".chronorift/pe-a-live/run.sh",
+      "sha256": "6df9fe246718b6879e5b9f7adb981df531577d60f19c33ee7013ab07e79b5f04",
+      "archived": false,
+      "archiveExclusionReason": "operator_specific_absolute_host_path"
+    },
+    "evidenceOutput": {
+      "configuredContainerDirectory": "/evidence",
+      "fixedFileName": "pe-a-evidence.v1.json",
+      "explicitCanonicalOutputDirectoryRequired": true,
+      "outerExistingFileRefusal": true,
+      "producerCreateNewMode": "node_writeFile_wx",
+      "temporaryOutputClaimedAsArchive": false
+    }
+  },
+  "productInterfaces": [
+    {
+      "path": "apps/cli/src/vnext/project-environment-pe-a.live.test.ts",
+      "byteLength": 41034,
+      "sha256": "715ffa4b2931af8e38a9fffc14000aae5a03ab0a2378fcd8b8698117e5450a1b",
+      "archivedSeparately": false,
+      "boundByProductTree": true
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-pe-a-evidence.ts",
+      "byteLength": 72709,
+      "sha256": "a1d0eb57a53b5cad2e4ad884984a5d19030828d29bf5e0452db2edd6d3837d6e",
+      "archivedSeparately": false,
+      "boundByProductTree": true
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "README.md",
+      "byteLength": 2936,
+      "sha256": "6c5c1bc474cf6da707188331b46431c126b9d34b161989f8b596d549c1383008",
+      "role": "human_revalidation_and_claim_boundary"
+    },
+    {
+      "path": "evidence/pe-a-evidence.v1.json",
+      "byteLength": 130988,
+      "sha256": "93bde03db2d71cff53a63c55c0b04cddca7423657b2da4a78b54e44f66226590",
+      "role": "authoritative_gate_evidence"
+    },
+    {
+      "path": "schema/pe-a-evidence-bundle.schema.v1.json",
+      "byteLength": 51823,
+      "sha256": "80701e52594f8924356a136b1d37fdde21f7d34647e4e6c4eb187bb928223b42",
+      "role": "byte_pinned_evidence_schema"
+    },
+    {
+      "path": "validator/validate-project-environment-pe-a-evidence.mjs",
+      "byteLength": 118133,
+      "sha256": "a9a018a2349f6ca374d0f66323f7030b4d1bb45b252faa03a8ed218da7b32309",
+      "role": "standalone_evidence_validator"
+    },
+    {
+      "path": "validator/validator-result.v1.json",
+      "byteLength": 923,
+      "sha256": "cf891c9ac7747a48a581b8ce95d704e1aef83b0df46811416509670fad163acc",
+      "role": "post_archive_validator_stdout"
+    },
+    {
+      "path": "gate/container-entrypoint.sh",
+      "byteLength": 1870,
+      "sha256": "000fbf067cfc8f8f36421db146334437d0bc0bbe8dedd51f35de9b588529adcc",
+      "role": "container_gate_entrypoint"
+    },
+    {
+      "path": "gate/host-config.v1.json",
+      "byteLength": 1123,
+      "sha256": "df1acb63a04b5dab15e4edbb3f8452669a918ca073b463f081bc8922af3acadb",
+      "role": "gate_host_configuration"
+    }
+  ],
+  "evidence": {
+    "evidenceKind": "chronorift-project-environment-pe-a-evidence",
+    "evidenceProfile": "author-validate-publish-use-reuse-v1",
+    "rawSha256": "93bde03db2d71cff53a63c55c0b04cddca7423657b2da4a78b54e44f66226590",
+    "rawByteLength": 130988,
+    "bundleContentHash": "ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f",
+    "environmentRevisionId": "environment-revision:v1:0603013b19a7684b8dfdd30459a5068735f4ae092d18cd9cfb0a45eec446eaf1",
+    "first": {
+      "taskId": "ee47b7c5-8cfc-4cbe-a774-7f0ad77ec8ff",
+      "sessionId": "ea14fdda-9415-4f9a-8ab3-09cfeec0da78",
+      "buildId": "build:d388e2b6fa140113a5cc4a8009eb6930a9ff9565f4a25fe3dae7d5f92299dc3f",
+      "compatibilityReceiptId": "compatibility:v1:c16a73b646a447e7749f599d6369f17398970a046eb933fcb576a71131b262e2",
+      "runtimeObservationReceiptId": "runtime-observation-receipt.v1.86bad3e3-f15c-43b0-a39d-44519e65dc89"
+    },
+    "reuse": {
+      "taskId": "a64c9ce6-97ff-46e7-8857-f7f0b99bab81",
+      "sessionId": "aa97f578-431d-40ad-87e7-2647d17343dc",
+      "reuseReceiptId": "reuse:v1:a89915a7ff2ef82428fc1cb95fadd02595ccdb5b8ac595510c3db168907c8c7e",
+      "buildId": "build:04c2a41ea52fc0eacced7f7f5b56f899d3a1bfea1959820e2a9903fecd178cba",
+      "compatibilityReceiptId": "compatibility:v1:1cf104dfbdb4d4d078a8b49d28b1efc6fb49a30425071ade242c0720de872be7",
+      "runtimeObservationReceiptId": "runtime-observation-receipt.v1.aca3c39a-6e90-4a00-995d-a25ccdd6bddb"
+    }
+  },
+  "validation": {
+    "standaloneValidatorPassedFromArchivedBytes": true,
+    "validatorImportsProductTypeScript": false,
+    "schemaRawSha256PinnedByValidator": true,
+    "validatorResultRawSha256": "cf891c9ac7747a48a581b8ce95d704e1aef83b0df46811416509670fad163acc",
+    "validatorResultComparedByteForByte": true
+  },
+  "sensitiveScan": {
+    "policyIds": [
+      "bounded-custom-exact-credential-v1",
+      "generic-path-base64-v1"
+    ],
+    "credentialStoreReadInMemoryByCustomScanner": true,
+    "credentialMaterialPersisted": false,
+    "credentialHashesPersisted": false,
+    "knownCredentialExactValueScanPerformed": true,
+    "credentialFieldCountComparedInMemory": 2,
+    "exactCredentialMatchCount": 0,
+    "entropyScanPerformed": false,
+    "specialistSecretScannerUsed": false,
+    "customScanner": {
+      "archived": false,
+      "byteLength": 3740,
+      "sha256": "42ce94acab805d2d15a4f093b5f2daec491e6262df02a10e77e15fdb3b09ed21",
+      "resultSource": "operator_provided_post_gate_scan"
+    },
+    "evidenceRegularFileCount": 1,
+    "payloadAndInterfaceFileCount": 6,
+    "jsonStringAndKeyTraversal": true,
+    "evidenceStringValueCount": 1530,
+    "decodedBase64FieldNames": ["canonicalBase64", "recordsCanonicalBase64"],
+    "decodedBase64FieldCount": 12,
+    "decodedBase64ByteLength": 19648,
+    "genericSecretPatternMatchCount": 0,
+    "evidenceHostPathMatchCount": 0,
+    "archivedRunnerDeclaredPathCategories": [
+      "home",
+      "pi-agent",
+      "task-storage",
+      "workspace"
+    ],
+    "outerRunnerExcludedBeforeFinalScan": true,
+    "finalArchiveGenericRescanPassed": true,
+    "limitations": [
+      "no_entropy_scan",
+      "no_specialist_secret_scanner",
+      "scanner_implementation_not_archived",
+      "exact_credential_comparison_scoped_to_evidence_strings_and_declared_base64",
+      "compressed_or_encoded_formats_other_than_declared_base64_not_expanded"
+    ]
+  },
+  "archiveInventory": {
+    "fixedAllowlist": [
+      "README.md",
+      "SHA256SUMS",
+      "evidence/pe-a-evidence.v1.json",
+      "freeze-record.v1.json",
+      "gate/container-entrypoint.sh",
+      "gate/host-config.v1.json",
+      "schema/pe-a-evidence-bundle.schema.v1.json",
+      "validator/validate-project-environment-pe-a-evidence.mjs",
+      "validator/validator-result.v1.json"
+    ],
+    "regularFileCount": 9,
+    "symlinkCount": 0,
+    "nonRegularEntryCount": 0,
+    "sha256SumsCoversEveryFileExceptItself": true
+  },
+  "trustBoundary": {
+    "protectedWorkflowArtifact": false,
+    "hashesAreSignatures": false,
+    "runToProductCommitExternallyAttested": false,
+    "independentAcceptance": false,
+    "completeProjectEnvironmentV1Conformance": false,
+    "modelWeightIdentityAttested": false,
+    "claimsExcluded": [
+      "arbitrary_project_support",
+      "adapter_semantic_correctness",
+      "snapshot_equivalence",
+      "fix_correctness",
+      "causality",
+      "generalization",
+      "reliability",
+      "success_rate",
+      "relative_advantage",
+      "independent_acceptance",
+      "external_attestation"
+    ]
+  }
+}

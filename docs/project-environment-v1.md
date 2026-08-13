@@ -1,6 +1,6 @@
 # Project Environment V1 RFC
 
-> 状态：**设计冻结；PE-A Preview implementation present；精确 baseline local Gate 待重跑；完整晋升 Gate 未通过**
+> 状态：**设计冻结；PE-A Preview implementation present + local Gate passed；完整晋升 Gate 未通过**
 > 决策日期：2026-08-12
 > 目标入口：Project Environment Preview；通过晋升 Gate 后成为默认 `chronorift [goal]` 入口
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
@@ -11,11 +11,11 @@ PE-A 的 strict DTO、Project Environment stores、ProjectAdapter SDK/wire/loade
 initial publication/binding、跨命令 publication crash reconciliation、post-edit exact Build compatibility、同 Session goal turn、new-Session reuse、durable runtime
 evidence、snapshot characterization、独立 evidence validator、官方 Pi TUI 与 Task-bound runtime tools。本地默认离线
 Gate、真实 Godot 4.7.1 bridge/SDK/observation/snapshot 测试、下层 Linux sandbox/Godot Host conformance，以及
-deterministic fake-Pi 驱动的完整 Preview Host integration 均已通过。此前开发候选的本地真实
-`openai-codex/gpt-5.6-luna/max` one-shot Gate 产生过 create-new、standalone-validator 复验的 local-only bundle，
-但它不绑定本次 baseline product tree。精确基线重新取得并复验 bundle 前只能称 `PE-A implementation present`；
-即使 Gate 通过，也只覆盖一个冻结 clean/single-root fixture，不是 protected-ref artifact，不能描述成外部项目普遍
-受支持或默认入口已经切换。
+deterministic fake-Pi 驱动的完整 Preview Host integration 均已通过。冻结 product subject
+`5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 的本地真实 `openai-codex/gpt-5.6-luna/max` one-shot Gate 也产生了
+create-new、standalone-validator 复验的 local-only bundle，并归档为 local r1。因此状态是
+`PE-A implementation present + local Gate passed`；该输出只覆盖一个冻结 clean/single-root fixture，不是
+protected-ref artifact、签名或外部 attestation，不能描述成外部项目普遍受支持或默认入口已经切换。
 
 M3、M4 与 E2 的 schema、wire、证据和原语义保持不变。Project Environment V1 使用独立 namespace，
 只复用已经有真实依赖和生命周期边界的 workspace、sandbox、Pi Session、Godot sidecar、runtime store 与 patch
@@ -613,13 +613,17 @@ process/cgroup/scope/scratch cleanup success/failure，以及 §6.1 四个 publi
 mismatch/missing/first divergence。一个 opt-in real Pi project 必须产生 init turn → publication → same-Session goal
 turn；该 goal 形成非空 candidate source change、对精确 Build 取得 compatibility receipt，并至少运行一次 candidate
 game observation。随后新 Session quick-smoke reuse且不重生成 adapter。没有实际输出时只能称
-`PE-A implementation present`。此前开发候选的单 fixture 输出不绑定本次 baseline product tree；必须对精确基线
-重新运行 create-new Gate 并由 standalone validator 复验后，才可升级为
-`PE-A implementation present + local Gate passed`，且仍不是完整 V1 conformance。
+`PE-A implementation present`。当前精确 baseline product tree 已重新运行 create-new Gate 并由 standalone
+validator 复验，因此状态是 `PE-A implementation present + local Gate passed`，但仍不是完整 V1 conformance。
 
 real-Pi Gate 的 success bundle 必须写入显式、canonical 的
 `CHRONORIFT_TEST_PE_A_EVIDENCE_OUTPUT_DIR`，使用固定文件名与 create-new 语义；临时测试目录、覆盖旧 bundle 或只在
 内存中通过 validator 都不算可保留 Gate 输出。
+
+2026-08-13 的 local r1 绑定 product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b`，bundle content hash 为
+`ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`。初始化 Agent turn 实测
+348.638 秒，authoritative conformance/publication 完成并 ready 为 363.322 秒；完整双 Session case 为 505.21 秒。
+归档见 [`docs/evidence/vnext-project-environment-pe-a-local-r1/`](evidence/vnext-project-environment-pe-a-local-r1/README.md)。
 
 ### 11.2 各切片 Gate
 

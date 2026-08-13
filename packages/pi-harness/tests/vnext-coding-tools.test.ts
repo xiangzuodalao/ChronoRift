@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -104,6 +106,59 @@ describe("vNext broker-only Pi coding tools", () => {
       "grep",
       "find",
       "ls",
+    ]);
+  });
+
+  it("finalizes only explicitly enabled V2 adapter schema hashes", async () => {
+    const port = new MemoryPort();
+    const schemaPath = ".chronorift/adapter-candidate/schemas/state.actor.json";
+    const schemaBytes = Buffer.from('{"schemaVersion":2}\n');
+    port.files.set(schemaPath, schemaBytes);
+    port.files.set(
+      ".chronorift/adapter-candidate/manifest.json",
+      Buffer.from(
+        JSON.stringify({
+          schemaVersion: 2,
+          schemas: [
+            {
+              schemaVersion: 2,
+              schemaId: "state.actor",
+              path: "schemas/state.actor.json",
+              sha256: "0".repeat(64),
+            },
+          ],
+        }),
+      ),
+    );
+    const tools = createVNextCodingToolDefinitions(port, {
+      projectAdapterFinalizeV2: true,
+    });
+    expect(tools.map((tool) => tool.name)).toContain(
+      "project_adapter_finalize_v2",
+    );
+    const finalize = tools.find(
+      (tool) => tool.name === "project_adapter_finalize_v2",
+    );
+    if (finalize === undefined) throw new Error("missing V2 finalizer");
+    await finalize.execute(
+      "call:finalize",
+      {},
+      undefined,
+      undefined,
+      {} as never,
+    );
+    const manifest = JSON.parse(
+      Buffer.from(
+        port.files.get(".chronorift/adapter-candidate/manifest.json")!,
+      ).toString("utf8"),
+    ) as { schemas: { sha256: string }[] };
+    expect(manifest.schemas[0]?.sha256).toBe(
+      createHash("sha256").update(schemaBytes).digest("hex"),
+    );
+    expect(port.calls).toEqual([
+      "read:.chronorift/adapter-candidate/manifest.json",
+      `read:${schemaPath}`,
+      "write:.chronorift/adapter-candidate/manifest.json",
     ]);
   });
 

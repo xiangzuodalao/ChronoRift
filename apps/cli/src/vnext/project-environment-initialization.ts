@@ -82,7 +82,7 @@ export const composeProjectEnvironmentInitializationPromptV2 = (input: {
       "Edit the pre-created ProjectAdapter scaffold at /workspace/.chronorift/adapter-candidate in place; do not copy the reference package.",
     )
     .concat(
-      "\nAuthor a manifest/SDK/observation V2 adapter. Inspect project source first, replace every dynamic-placeholder identifier, implement only source-derived node and Signal semantics, and update the exact schema hashes. Ready requires one lossless declared dynamic trace with entity-bound state and event observations across exactly consecutive incarnations. Do not run Godot or perform conformance yourself; finish once the coherent candidate is written because the Host performs authoritative validation after this turn.",
+      "\nAuthor a manifest/SDK/observation V2 adapter. Inspect project source first, replace every dynamic-placeholder identifier, and implement only source-derived node and Signal semantics. Preserve the scaffold's small payload schemas when they honestly represent the project; do not invent extra fields. After the files are coherent, call project_adapter_finalize_v2 exactly once to update schema hashes, then finish. Ready requires one lossless declared dynamic trace with entity-bound state and event observations across exactly consecutive incarnations. Do not run Godot or perform conformance yourself because the Host performs authoritative validation after this turn.",
     );
 
 interface ProjectEnvironmentPiTurnResultFieldsV1 {

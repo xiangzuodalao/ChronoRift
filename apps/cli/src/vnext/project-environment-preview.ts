@@ -848,7 +848,10 @@ export async function runProjectEnvironmentPreviewV1(
     );
     const codingTools = createVNextCodingToolDefinitions(
       new SandboxPiCodingToolPort(broker),
-      { toolCallAdmission },
+      {
+        toolCallAdmission,
+        projectAdapterFinalizeV2: turn.purpose === "environment_initialization",
+      },
     );
     const gameTools =
       turn.purpose === "user_goal" && validationCapabilitySet !== undefined

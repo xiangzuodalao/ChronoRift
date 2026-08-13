@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -83,6 +85,7 @@ export interface BrokerToolDetails {
 export interface VNextCodingToolDefinitionsOptionsV1 {
   readonly toolCallAdmission?:
     ProjectEnvironmentToolCallAdmissionV1 | undefined;
+  readonly projectAdapterFinalizeV2?: boolean | undefined;
 }
 
 const pathSchema = Type.String({
@@ -122,6 +125,7 @@ const lsSchema = Type.Object({
   path: Type.Optional(pathSchema),
   limit: Type.Optional(Type.Number()),
 });
+const finalizeProjectAdapterV2Schema = Type.Object({});
 
 const text = (value: string) => [{ type: "text" as const, text: value }];
 const decode = (bytes: Uint8Array): string =>
@@ -166,6 +170,86 @@ function executionFailure(result: BrokerToolResult, operation: string) {
     details: { receipt: result.receipt },
   };
 }
+
+const projectAdapterSchemaPathV2 = (value: unknown): string => {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("schemas/") ||
+    !value.endsWith(".json")
+  )
+    throw new Error(
+      "Every ProjectAdapter V2 schema path must be below schemas/ and end in .json",
+    );
+  workspacePath(value);
+  return value;
+};
+
+const finalizeProjectAdapterManifestV2 = async (
+  port: VNextCodingToolPort,
+  signal?: AbortSignal,
+) => {
+  const manifestPath = ".chronorift/adapter-candidate/manifest.json";
+  const manifestRead = await port.read(manifestPath, signal);
+  const readFailure = executionFailure(manifestRead, "adapter manifest read");
+  if (readFailure !== undefined) return readFailure;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(decode(manifestRead.stdout));
+  } catch (error) {
+    throw new Error("ProjectAdapter V2 manifest is not valid JSON", {
+      cause: error,
+    });
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    Reflect.get(parsed, "schemaVersion") !== 2 ||
+    !Array.isArray(Reflect.get(parsed, "schemas"))
+  )
+    throw new Error(
+      "ProjectAdapter V2 manifest must be an object with schemaVersion 2 and a schemas array",
+    );
+  const declarations = Reflect.get(parsed, "schemas") as unknown[];
+  if (declarations.length === 0 || declarations.length > 64)
+    throw new Error(
+      "ProjectAdapter V2 manifest must declare from 1 to 64 schemas",
+    );
+  const seen = new Set<string>();
+  for (const declaration of declarations) {
+    if (
+      typeof declaration !== "object" ||
+      declaration === null ||
+      Array.isArray(declaration)
+    )
+      throw new Error("ProjectAdapter V2 schema declaration is not an object");
+    const path = projectAdapterSchemaPathV2(Reflect.get(declaration, "path"));
+    if (seen.has(path))
+      throw new Error(`ProjectAdapter V2 schema path is duplicated: ${path}`);
+    seen.add(path);
+    const result = await port.read(
+      `.chronorift/adapter-candidate/${path}`,
+      signal,
+    );
+    const failure = executionFailure(result, `adapter schema read (${path})`);
+    if (failure !== undefined) return failure;
+    Reflect.set(
+      declaration,
+      "sha256",
+      createHash("sha256").update(result.stdout).digest("hex"),
+    );
+  }
+  const bytes = Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  const write = await port.write(manifestPath, bytes, signal);
+  const writeFailure = executionFailure(write, "adapter manifest write");
+  if (writeFailure !== undefined) return writeFailure;
+  return {
+    content: text(
+      `Updated ${declarations.length} exact schema SHA-256 declaration(s) in ${manifestPath}. Host validation still determines whether the candidate conforms.`,
+    ),
+    details: { receipt: write.receipt },
+  };
+};
 
 const mutationTails = new Map<string, Promise<void>>();
 async function serializeMutation<T>(
@@ -475,5 +559,30 @@ export function createVNextCodingToolDefinitions(
       };
     },
   });
-  return Object.freeze([read, bash, edit, write, grep, find, ls]);
+  const projectAdapterFinalizeV2 = defineTool({
+    name: "project_adapter_finalize_v2",
+    label: "project_adapter_finalize_v2",
+    description:
+      "Recompute exact SHA-256 declarations for the schemas already authored in the editable ProjectAdapter V2 candidate manifest. This does not generate semantics or run conformance.",
+    promptSnippet: "Finalize ProjectAdapter V2 schema hashes",
+    parameters: finalizeProjectAdapterV2Schema,
+    executionMode: "sequential",
+    async execute(_id, _input, signal) {
+      assertAdmitted("project_adapter_finalize_v2");
+      return serializeMutation(
+        ".chronorift/adapter-candidate/manifest.json",
+        () => finalizeProjectAdapterManifestV2(port, signal),
+      );
+    },
+  });
+  return Object.freeze([
+    read,
+    bash,
+    edit,
+    write,
+    grep,
+    find,
+    ls,
+    ...(options.projectAdapterFinalizeV2 ? [projectAdapterFinalizeV2] : []),
+  ]);
 }

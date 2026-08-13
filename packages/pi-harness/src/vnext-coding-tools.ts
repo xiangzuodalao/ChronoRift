@@ -282,6 +282,7 @@ const projectAdapterManifestSemanticReferencesV2 = (
 const finalizeProjectAdapterManifestV2 = async (
   port: VNextCodingToolPort,
   binding: { readonly adapterId: string; readonly mainScene: string },
+  onFinalized: () => void,
   signal?: AbortSignal,
 ) => {
   const manifestPath = ".chronorift/adapter-candidate/manifest.json";
@@ -408,9 +409,10 @@ const finalizeProjectAdapterManifestV2 = async (
   const write = await port.write(manifestPath, bytes, signal);
   const writeFailure = executionFailure(write, "adapter manifest write");
   if (writeFailure !== undefined) return writeFailure;
+  onFinalized();
   return {
     content: text(
-      `Updated ${declarations.length} exact schema SHA-256 declaration(s) and restored the Host-bound adapter ID, launch scene, SDK 2 and Godot 4.7.x protocol fields in ${manifestPath}. Host validation still determines whether the candidate conforms.`,
+      `Updated ${declarations.length} exact schema SHA-256 declaration(s), restored the Host-bound fields, and froze the ProjectAdapter V2 candidate for the remainder of this turn. Only read, grep, find, and ls remain available for review. Host validation still determines whether the candidate conforms.`,
     ),
     details: { receipt: write.receipt },
   };
@@ -487,6 +489,7 @@ export function createVNextCodingToolDefinitions(
   port: VNextCodingToolPort,
   options: VNextCodingToolDefinitionsOptionsV1 = {},
 ): readonly ToolDefinition[] {
+  let projectAdapterFinalizedV2 = false;
   const assertAdmitted = (toolName: string): void => {
     const admission = options.toolCallAdmission;
     if (admission !== undefined && !admission.tryAdmit(toolName)) {
@@ -494,6 +497,18 @@ export function createVNextCodingToolDefinitions(
         admission.limit,
       );
     }
+  };
+  const assertCandidateMutable = (toolName: string): void => {
+    if (
+      options.projectAdapterFinalizeV2 !== undefined &&
+      projectAdapterFinalizedV2
+    )
+      throw Object.assign(
+        new Error(
+          `candidate_frozen: ${toolName} is unavailable after project_adapter_finalize_v2; finish the initialization turn without further mutation`,
+        ),
+        { code: "candidate_frozen" },
+      );
   };
   const read = defineTool({
     name: "read",
@@ -533,6 +548,7 @@ export function createVNextCodingToolDefinitions(
     parameters: bashSchema,
     async execute(_id, input, signal, onUpdate) {
       assertAdmitted("bash");
+      assertCandidateMutable("bash");
       const timeoutMs =
         input.timeout === undefined
           ? undefined
@@ -575,6 +591,7 @@ export function createVNextCodingToolDefinitions(
     executionMode: "sequential",
     async execute(_id, input, signal) {
       assertAdmitted("write");
+      assertCandidateMutable("write");
       const path = workspacePath(input.path);
       return serializeMutation(path, async () => {
         const result = await port.write(
@@ -603,6 +620,7 @@ export function createVNextCodingToolDefinitions(
     executionMode: "sequential",
     async execute(_id, input, signal) {
       assertAdmitted("edit");
+      assertCandidateMutable("edit");
       const path = workspacePath(input.path);
       return serializeMutation(path, async () => {
         const before = await port.read(path, signal);
@@ -734,12 +752,16 @@ export function createVNextCodingToolDefinitions(
     executionMode: "sequential",
     async execute(_id, _input, signal) {
       assertAdmitted("project_adapter_finalize_v2");
+      assertCandidateMutable("project_adapter_finalize_v2");
       return serializeMutation(
         ".chronorift/adapter-candidate/manifest.json",
         () =>
           finalizeProjectAdapterManifestV2(
             port,
             options.projectAdapterFinalizeV2!,
+            () => {
+              projectAdapterFinalizedV2 = true;
+            },
             signal,
           ),
       );

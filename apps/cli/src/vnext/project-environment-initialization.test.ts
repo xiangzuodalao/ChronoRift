@@ -714,8 +714,10 @@ describe("PE-A initialization sequencing", () => {
     expect(prompt).toContain("replace every dynamic-placeholder identifier");
     expect(prompt).toContain("call project_adapter_finalize_v2 once");
     expect(prompt).toContain("rebuilds the manifest schema inventory");
+    expect(prompt).toContain("freezes the candidate for the rest of this turn");
     expect(prompt).toContain("restores Host-bound adapter, launch, SDK");
     expect(prompt).toContain("do not manually repair hashes or schema");
+    expect(prompt).toContain("finish immediately");
     expect(prompt).toContain(
       "Do not run Godot or perform conformance yourself",
     );

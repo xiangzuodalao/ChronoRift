@@ -223,6 +223,69 @@ describe("vNext broker-only Pi coding tools", () => {
       `read:${schemaPath}`,
       "write:.chronorift/adapter-candidate/manifest.json",
     ]);
+
+    const edit = tools.find((tool) => tool.name === "edit");
+    const write = tools.find((tool) => tool.name === "write");
+    const bash = tools.find((tool) => tool.name === "bash");
+    const read = tools.find((tool) => tool.name === "read");
+    if (
+      edit === undefined ||
+      write === undefined ||
+      bash === undefined ||
+      read === undefined
+    )
+      throw new Error("missing coding tools after V2 finalization");
+    await expect(
+      edit.execute(
+        "call:late-edit",
+        { path: "src/a.ts", edits: [{ oldText: "one", newText: "late" }] },
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    ).rejects.toMatchObject({ code: "candidate_frozen" });
+    await expect(
+      write.execute(
+        "call:late-write",
+        { path: "src/late.ts", content: "late" },
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    ).rejects.toMatchObject({ code: "candidate_frozen" });
+    await expect(
+      bash.execute(
+        "call:late-bash",
+        { command: "true" },
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    ).rejects.toMatchObject({ code: "candidate_frozen" });
+    await expect(
+      finalize.execute(
+        "call:late-finalize",
+        {},
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    ).rejects.toMatchObject({ code: "candidate_frozen" });
+    const postFinalizeRead = await read.execute(
+      "call:post-finalize-read",
+      { path: "src/a.ts" },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(JSON.stringify(postFinalizeRead.content)).toContain("one");
+    expect(port.calls).toEqual([
+      "read:.chronorift/adapter-candidate/manifest.json",
+      "find:.chronorift/adapter-candidate/schemas:65",
+      `read:${schemaPath}`,
+      "write:.chronorift/adapter-candidate/manifest.json",
+      "read:src/a.ts",
+    ]);
   });
 
   it("rebuilds declarations from the exact physical schema inventory", async () => {

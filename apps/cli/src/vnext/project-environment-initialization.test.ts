@@ -712,11 +712,10 @@ describe("PE-A initialization sequencing", () => {
     });
     expect(prompt).toContain("Edit the pre-created ProjectAdapter scaffold");
     expect(prompt).toContain("replace every dynamic-placeholder identifier");
-    expect(prompt).toContain(
-      "call project_adapter_finalize_v2 until it succeeds once",
-    );
-    expect(prompt).toContain("protocol literal 4.7.x");
-    expect(prompt).toContain("do not rename them or leave extra schema files");
+    expect(prompt).toContain("call project_adapter_finalize_v2 once");
+    expect(prompt).toContain("rebuilds the manifest schema inventory");
+    expect(prompt).toContain("restores Host-bound adapter, launch, SDK");
+    expect(prompt).toContain("do not manually repair hashes or schema");
     expect(prompt).toContain(
       "Do not run Godot or perform conformance yourself",
     );

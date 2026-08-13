@@ -127,7 +127,9 @@ describe("vNext broker-only Pi coding tools", () => {
   it("finalizes only explicitly enabled V2 adapter schema hashes", async () => {
     const port = new MemoryPort();
     const schemaPath = ".chronorift/adapter-candidate/schemas/state.actor.json";
-    const schemaBytes = Buffer.from('{"schemaVersion":2}\n');
+    const schemaBytes = Buffer.from(
+      '{"schemaVersion":2,"dialect":"chronorift://schemas/project-adapter-payload/v2","schemaId":"state.actor","root":{"type":"object","properties":{},"required":[],"additionalProperties":false}}\n',
+    );
     port.files.set(schemaPath, schemaBytes);
     port.files.set(
       ".chronorift/adapter-candidate/manifest.json",
@@ -142,8 +144,19 @@ describe("vNext broker-only Pi coding tools", () => {
             language: "gdscript",
           },
           launchTargets: [
-            { scene: "res://changed.tscn", default: false, renderer: "other" },
+            {
+              targetId: "main",
+              scene: "res://changed.tscn",
+              default: false,
+              renderer: "other",
+              parametersSchemaId: "state.actor",
+            },
           ],
+          entityTypes: [{ entityTypeId: "actor", schemaId: "state.actor" }],
+          stateDomains: [
+            { stateDomainId: "actor-state", schemaId: "state.actor" },
+          ],
+          eventTypes: [{ eventTypeId: "changed", schemaId: "state.actor" }],
           schemas: [
             {
               schemaVersion: 2,
@@ -194,8 +207,10 @@ describe("vNext broker-only Pi coding tools", () => {
     expect(manifest.engine.versionRequirement).toBe("4.7.x");
     expect(manifest.launchTargets).toEqual([
       {
+        targetId: "main",
         scene: "res://main.tscn",
         default: true,
+        parametersSchemaId: "state.actor",
         renderer: "headless",
       },
     ]);
@@ -204,21 +219,25 @@ describe("vNext broker-only Pi coding tools", () => {
     );
     expect(port.calls).toEqual([
       "read:.chronorift/adapter-candidate/manifest.json",
-      `read:${schemaPath}`,
       "find:.chronorift/adapter-candidate/schemas:65",
+      `read:${schemaPath}`,
       "write:.chronorift/adapter-candidate/manifest.json",
     ]);
   });
 
-  it("refuses to finalize a candidate with an undeclared schema file", async () => {
+  it("rebuilds declarations from the exact physical schema inventory", async () => {
     const port = new MemoryPort();
     port.files.set(
       ".chronorift/adapter-candidate/schemas/state.json",
-      Buffer.from("{}\n"),
+      Buffer.from(
+        '{"schemaVersion":2,"dialect":"chronorift://schemas/project-adapter-payload/v2","schemaId":"state.actor","root":{"type":"object","properties":{},"required":[],"additionalProperties":false}}\n',
+      ),
     );
     port.files.set(
       ".chronorift/adapter-candidate/schemas/stale.json",
-      Buffer.from("{}\n"),
+      Buffer.from(
+        '{"schemaVersion":2,"dialect":"chronorift://schemas/project-adapter-payload/v2","schemaId":"event.actor","root":{"type":"object","properties":{},"required":[],"additionalProperties":false}}\n',
+      ),
     );
     port.files.set(
       ".chronorift/adapter-candidate/manifest.json",
@@ -233,8 +252,19 @@ describe("vNext broker-only Pi coding tools", () => {
             language: "gdscript",
           },
           launchTargets: [
-            { scene: "res://changed.tscn", default: false, renderer: "other" },
+            {
+              targetId: "main",
+              scene: "res://changed.tscn",
+              default: false,
+              renderer: "other",
+              parametersSchemaId: "state.actor",
+            },
           ],
+          entityTypes: [{ entityTypeId: "actor", schemaId: "state.actor" }],
+          stateDomains: [
+            { stateDomainId: "actor-state", schemaId: "state.actor" },
+          ],
+          eventTypes: [{ eventTypeId: "changed", schemaId: "event.actor" }],
           schemas: [
             {
               path: "schemas/state.json",
@@ -251,12 +281,28 @@ describe("vNext broker-only Pi coding tools", () => {
       },
     }).find((tool) => tool.name === "project_adapter_finalize_v2");
     if (finalize === undefined) throw new Error("missing V2 finalizer");
-    await expect(
-      finalize.execute("call:finalize", {}, undefined, undefined, {} as never),
-    ).rejects.toThrow(/remove undeclared files.*stale\.json/u);
-    expect(port.calls).not.toContain(
-      "write:.chronorift/adapter-candidate/manifest.json",
+    await finalize.execute(
+      "call:finalize",
+      {},
+      undefined,
+      undefined,
+      {} as never,
     );
+    const manifest = JSON.parse(
+      Buffer.from(
+        port.files.get(".chronorift/adapter-candidate/manifest.json")!,
+      ).toString("utf8"),
+    ) as { schemas: { schemaId: string; path: string }[] };
+    expect(manifest.schemas).toEqual([
+      expect.objectContaining({
+        schemaId: "event.actor",
+        path: "schemas/stale.json",
+      }),
+      expect.objectContaining({
+        schemaId: "state.actor",
+        path: "schemas/state.json",
+      }),
+    ]);
   });
 
   it("rejects the first over-budget coding call before reaching the broker", async () => {

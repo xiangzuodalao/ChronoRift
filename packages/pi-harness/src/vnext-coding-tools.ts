@@ -187,6 +187,98 @@ const projectAdapterSchemaPathV2 = (value: unknown): string => {
   return normalized;
 };
 
+const projectAdapterSchemaDocumentV2 = (
+  bytes: Uint8Array,
+  path: string,
+): { readonly schemaId: string; readonly sha256: string } => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(decode(bytes));
+  } catch (error) {
+    throw new Error(`ProjectAdapter V2 schema is not valid JSON: ${path}`, {
+      cause: error,
+    });
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    Reflect.get(parsed, "schemaVersion") !== 2 ||
+    Reflect.get(parsed, "dialect") !==
+      "chronorift://schemas/project-adapter-payload/v2"
+  )
+    throw new Error(
+      `ProjectAdapter V2 schema must retain schemaVersion 2 and the V2 dialect: ${path}`,
+    );
+  const schemaId: unknown = Reflect.get(parsed, "schemaId");
+  if (
+    typeof schemaId !== "string" ||
+    schemaId.length === 0 ||
+    schemaId.length > 128 ||
+    !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u.test(schemaId)
+  )
+    throw new Error(
+      `ProjectAdapter V2 schema has an invalid stable schemaId: ${path}`,
+    );
+  return Object.freeze({
+    schemaId,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  });
+};
+
+const projectAdapterManifestSemanticReferencesV2 = (
+  manifest: Record<string, unknown>,
+  schemaIds: ReadonlySet<string>,
+): void => {
+  const requireArray = (name: string): unknown[] => {
+    const value = manifest[name];
+    if (!Array.isArray(value) || value.length === 0)
+      throw new Error(
+        `ProjectAdapter V2 manifest must retain a non-empty ${name} array`,
+      );
+    return value;
+  };
+  const objects = (name: string): Record<string, unknown>[] =>
+    requireArray(name).map((value) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value))
+        throw new Error(`ProjectAdapter V2 ${name} entry is not an object`);
+      return value as Record<string, unknown>;
+    });
+  const entityTypes = objects("entityTypes");
+  const stateDomains = objects("stateDomains");
+  const eventTypes = objects("eventTypes");
+  const references = [
+    ...objects("launchTargets").map((value) => ({
+      owner: `launch target ${String(value["targetId"])}`,
+      schemaId: value["parametersSchemaId"],
+    })),
+    ...entityTypes.map((value) => ({
+      owner: `entity type ${String(value["entityTypeId"])}`,
+      schemaId: value["schemaId"],
+    })),
+    ...stateDomains.map((value) => ({
+      owner: `state domain ${String(value["stateDomainId"])}`,
+      schemaId: value["schemaId"],
+    })),
+    ...eventTypes.map((value) => ({
+      owner: `event type ${String(value["eventTypeId"])}`,
+      schemaId: value["schemaId"],
+    })),
+  ];
+  for (const reference of references)
+    if (
+      typeof reference.schemaId !== "string" ||
+      !schemaIds.has(reference.schemaId)
+    )
+      throw new Error(
+        `ProjectAdapter V2 ${reference.owner} references missing schemaId ${String(reference.schemaId)}; align the semantic declaration with a schema document`,
+      );
+  if (JSON.stringify(manifest).includes("dynamic-placeholder"))
+    throw new Error(
+      "ProjectAdapter V2 manifest still contains dynamic-placeholder semantics; replace them with source-derived stable identifiers",
+    );
+};
+
 const finalizeProjectAdapterManifestV2 = async (
   port: VNextCodingToolPort,
   binding: { readonly adapterId: string; readonly mainScene: string },
@@ -252,36 +344,6 @@ const finalizeProjectAdapterManifestV2 = async (
   launchRecord["scene"] = binding.mainScene;
   launchRecord["default"] = true;
   launchRecord["renderer"] = "headless";
-  const declarations = manifest["schemas"] as unknown[];
-  if (declarations.length === 0 || declarations.length > 64)
-    throw new Error(
-      "ProjectAdapter V2 manifest must declare from 1 to 64 schemas",
-    );
-  const seen = new Set<string>();
-  for (const declaration of declarations) {
-    if (
-      typeof declaration !== "object" ||
-      declaration === null ||
-      Array.isArray(declaration)
-    )
-      throw new Error("ProjectAdapter V2 schema declaration is not an object");
-    const path = projectAdapterSchemaPathV2(Reflect.get(declaration, "path"));
-    Reflect.set(declaration, "path", path);
-    if (seen.has(path))
-      throw new Error(`ProjectAdapter V2 schema path is duplicated: ${path}`);
-    seen.add(path);
-    const result = await port.read(
-      `.chronorift/adapter-candidate/${path}`,
-      signal,
-    );
-    const failure = executionFailure(result, `adapter schema read (${path})`);
-    if (failure !== undefined) return failure;
-    Reflect.set(
-      declaration,
-      "sha256",
-      createHash("sha256").update(result.stdout).digest("hex"),
-    );
-  }
   const discovered = await port.find(
     {
       pattern: "*.json",
@@ -292,25 +354,56 @@ const finalizeProjectAdapterManifestV2 = async (
   );
   const findFailure = executionFailure(discovered, "adapter schema inventory");
   if (findFailure !== undefined) return findFailure;
-  const declaredFiles = new Set(
-    [...seen].map((path) => `.chronorift/adapter-candidate/${path}`),
-  );
-  const physicalFiles = new Set(
-    decode(discovered.stdout)
-      .split("\n")
-      .map((path) => path.trim())
-      .filter((path) => path.length > 0),
-  );
-  const undeclared = [...physicalFiles]
-    .filter((path) => !declaredFiles.has(path))
-    .sort();
-  const missing = [...declaredFiles]
-    .filter((path) => !physicalFiles.has(path))
-    .sort();
-  if (undeclared.length > 0 || missing.length > 0)
+  if (discovered.resultLimitReached !== undefined)
+    throw new Error("ProjectAdapter V2 schema inventory exceeded 64 files");
+  const physicalFiles = [
+    ...new Set(
+      decode(discovered.stdout)
+        .split("\n")
+        .map((path) => path.trim())
+        .filter((path) => path.length > 0),
+    ),
+  ].sort();
+  if (physicalFiles.length === 0 || physicalFiles.length > 64)
     throw new Error(
-      `ProjectAdapter V2 schema inventory differs from manifest; remove undeclared files [${undeclared.join(", ")}] and restore missing files [${missing.join(", ")}] before finalizing`,
+      "ProjectAdapter V2 candidate must contain from 1 to 64 schema files",
     );
+  const declarations: {
+    schemaVersion: 2;
+    schemaId: string;
+    path: string;
+    sha256: string;
+  }[] = [];
+  const schemaIds = new Set<string>();
+  for (const physicalPath of physicalFiles) {
+    const relativePath = projectAdapterSchemaPathV2(physicalPath);
+    const result = await port.read(
+      `.chronorift/adapter-candidate/${relativePath}`,
+      signal,
+    );
+    const failure = executionFailure(
+      result,
+      `adapter schema read (${relativePath})`,
+    );
+    if (failure !== undefined) return failure;
+    const document = projectAdapterSchemaDocumentV2(
+      result.stdout,
+      relativePath,
+    );
+    if (schemaIds.has(document.schemaId))
+      throw new Error(
+        `ProjectAdapter V2 schemaId is duplicated: ${document.schemaId}`,
+      );
+    schemaIds.add(document.schemaId);
+    declarations.push({
+      schemaVersion: 2,
+      schemaId: document.schemaId,
+      path: relativePath,
+      sha256: document.sha256,
+    });
+  }
+  manifest["schemas"] = declarations;
+  projectAdapterManifestSemanticReferencesV2(manifest, schemaIds);
   const bytes = Buffer.from(`${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   const write = await port.write(manifestPath, bytes, signal);
   const writeFailure = executionFailure(write, "adapter manifest write");

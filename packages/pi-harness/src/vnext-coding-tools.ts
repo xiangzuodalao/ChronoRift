@@ -85,7 +85,8 @@ export interface BrokerToolDetails {
 export interface VNextCodingToolDefinitionsOptionsV1 {
   readonly toolCallAdmission?:
     ProjectEnvironmentToolCallAdmissionV1 | undefined;
-  readonly projectAdapterFinalizeV2?: boolean | undefined;
+  readonly projectAdapterFinalizeV2?:
+    { readonly adapterId: string; readonly mainScene: string } | undefined;
 }
 
 const pathSchema = Type.String({
@@ -172,20 +173,23 @@ function executionFailure(result: BrokerToolResult, operation: string) {
 }
 
 const projectAdapterSchemaPathV2 = (value: unknown): string => {
-  if (
-    typeof value !== "string" ||
-    !value.startsWith("schemas/") ||
-    !value.endsWith(".json")
-  )
+  if (typeof value !== "string")
+    throw new Error("Every ProjectAdapter V2 schema path must be a string");
+  const normalized = value
+    .replace(/^\.\//u, "")
+    .replace(/^\.chronorift\/adapter-candidate\//u, "")
+    .replace(/^\/workspace\/\.chronorift\/adapter-candidate\//u, "");
+  if (!normalized.startsWith("schemas/") || !normalized.endsWith(".json"))
     throw new Error(
       "Every ProjectAdapter V2 schema path must be below schemas/ and end in .json",
     );
-  workspacePath(value);
-  return value;
+  workspacePath(normalized);
+  return normalized;
 };
 
 const finalizeProjectAdapterManifestV2 = async (
   port: VNextCodingToolPort,
+  binding: { readonly adapterId: string; readonly mainScene: string },
   signal?: AbortSignal,
 ) => {
   const manifestPath = ".chronorift/adapter-candidate/manifest.json";
@@ -211,6 +215,7 @@ const finalizeProjectAdapterManifestV2 = async (
       "ProjectAdapter V2 manifest must be an object with schemaVersion 2 and a schemas array",
     );
   const manifest = parsed as Record<string, unknown>;
+  manifest["adapterId"] = binding.adapterId;
   const sdk = manifest["sdk"];
   const engine = manifest["engine"];
   if (
@@ -231,6 +236,22 @@ const finalizeProjectAdapterManifestV2 = async (
   engineRecord["id"] = "godot";
   engineRecord["versionRequirement"] = "4.7.x";
   engineRecord["language"] = "gdscript";
+  const launchTargets: unknown = manifest["launchTargets"];
+  if (!Array.isArray(launchTargets) || launchTargets.length !== 1)
+    throw new Error(
+      "ProjectAdapter V2 manifest must retain exactly one launch target",
+    );
+  const launchTarget: unknown = launchTargets[0];
+  if (
+    typeof launchTarget !== "object" ||
+    launchTarget === null ||
+    Array.isArray(launchTarget)
+  )
+    throw new Error("ProjectAdapter V2 launch target is not an object");
+  const launchRecord = launchTarget as Record<string, unknown>;
+  launchRecord["scene"] = binding.mainScene;
+  launchRecord["default"] = true;
+  launchRecord["renderer"] = "headless";
   const declarations = manifest["schemas"] as unknown[];
   if (declarations.length === 0 || declarations.length > 64)
     throw new Error(
@@ -245,6 +266,7 @@ const finalizeProjectAdapterManifestV2 = async (
     )
       throw new Error("ProjectAdapter V2 schema declaration is not an object");
     const path = projectAdapterSchemaPathV2(Reflect.get(declaration, "path"));
+    Reflect.set(declaration, "path", path);
     if (seen.has(path))
       throw new Error(`ProjectAdapter V2 schema path is duplicated: ${path}`);
     seen.add(path);
@@ -295,7 +317,7 @@ const finalizeProjectAdapterManifestV2 = async (
   if (writeFailure !== undefined) return writeFailure;
   return {
     content: text(
-      `Updated ${declarations.length} exact schema SHA-256 declaration(s) and restored the fixed SDK 2 / Godot 4.7.x protocol fields in ${manifestPath}. Host validation still determines whether the candidate conforms.`,
+      `Updated ${declarations.length} exact schema SHA-256 declaration(s) and restored the Host-bound adapter ID, launch scene, SDK 2 and Godot 4.7.x protocol fields in ${manifestPath}. Host validation still determines whether the candidate conforms.`,
     ),
     details: { receipt: write.receipt },
   };
@@ -621,7 +643,12 @@ export function createVNextCodingToolDefinitions(
       assertAdmitted("project_adapter_finalize_v2");
       return serializeMutation(
         ".chronorift/adapter-candidate/manifest.json",
-        () => finalizeProjectAdapterManifestV2(port, signal),
+        () =>
+          finalizeProjectAdapterManifestV2(
+            port,
+            options.projectAdapterFinalizeV2!,
+            signal,
+          ),
       );
     },
   });
@@ -633,6 +660,8 @@ export function createVNextCodingToolDefinitions(
     grep,
     find,
     ls,
-    ...(options.projectAdapterFinalizeV2 ? [projectAdapterFinalizeV2] : []),
+    ...(options.projectAdapterFinalizeV2 === undefined
+      ? []
+      : [projectAdapterFinalizeV2]),
   ]);
 }

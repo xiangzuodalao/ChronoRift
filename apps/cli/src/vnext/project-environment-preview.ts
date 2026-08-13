@@ -850,7 +850,10 @@ export async function runProjectEnvironmentPreviewV1(
       new SandboxPiCodingToolPort(broker),
       {
         toolCallAdmission,
-        projectAdapterFinalizeV2: turn.purpose === "environment_initialization",
+        projectAdapterFinalizeV2:
+          turn.purpose === "environment_initialization"
+            ? { adapterId, mainScene: source.mainScene }
+            : undefined,
       },
     );
     const gameTools =

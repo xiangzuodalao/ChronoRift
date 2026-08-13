@@ -134,12 +134,16 @@ describe("vNext broker-only Pi coding tools", () => {
       Buffer.from(
         JSON.stringify({
           schemaVersion: 2,
+          adapterId: "changed",
           sdk: { id: "changed", version: 99 },
           engine: {
             id: "godot",
             versionRequirement: "4.7.1",
             language: "gdscript",
           },
+          launchTargets: [
+            { scene: "res://changed.tscn", default: false, renderer: "other" },
+          ],
           schemas: [
             {
               schemaVersion: 2,
@@ -152,7 +156,10 @@ describe("vNext broker-only Pi coding tools", () => {
       ),
     );
     const tools = createVNextCodingToolDefinitions(port, {
-      projectAdapterFinalizeV2: true,
+      projectAdapterFinalizeV2: {
+        adapterId: "adapter.bound",
+        mainScene: "res://main.tscn",
+      },
     });
     expect(tools.map((tool) => tool.name)).toContain(
       "project_adapter_finalize_v2",
@@ -173,15 +180,25 @@ describe("vNext broker-only Pi coding tools", () => {
         port.files.get(".chronorift/adapter-candidate/manifest.json")!,
       ).toString("utf8"),
     ) as {
+      adapterId: string;
       sdk: { id: string; version: number };
       engine: { versionRequirement: string };
+      launchTargets: { scene: string; default: boolean; renderer: string }[];
       schemas: { sha256: string }[];
     };
+    expect(manifest.adapterId).toBe("adapter.bound");
     expect(manifest.sdk).toEqual({
       id: "chronorift-project-adapter-sdk",
       version: 2,
     });
     expect(manifest.engine.versionRequirement).toBe("4.7.x");
+    expect(manifest.launchTargets).toEqual([
+      {
+        scene: "res://main.tscn",
+        default: true,
+        renderer: "headless",
+      },
+    ]);
     expect(manifest.schemas[0]?.sha256).toBe(
       createHash("sha256").update(schemaBytes).digest("hex"),
     );
@@ -208,12 +225,16 @@ describe("vNext broker-only Pi coding tools", () => {
       Buffer.from(
         JSON.stringify({
           schemaVersion: 2,
+          adapterId: "changed",
           sdk: { id: "chronorift-project-adapter-sdk", version: 2 },
           engine: {
             id: "godot",
             versionRequirement: "4.7.x",
             language: "gdscript",
           },
+          launchTargets: [
+            { scene: "res://changed.tscn", default: false, renderer: "other" },
+          ],
           schemas: [
             {
               path: "schemas/state.json",
@@ -224,7 +245,10 @@ describe("vNext broker-only Pi coding tools", () => {
       ),
     );
     const finalize = createVNextCodingToolDefinitions(port, {
-      projectAdapterFinalizeV2: true,
+      projectAdapterFinalizeV2: {
+        adapterId: "adapter.bound",
+        mainScene: "res://main.tscn",
+      },
     }).find((tool) => tool.name === "project_adapter_finalize_v2");
     if (finalize === undefined) throw new Error("missing V2 finalizer");
     await expect(

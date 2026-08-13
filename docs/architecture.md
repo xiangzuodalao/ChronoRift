@@ -9,13 +9,16 @@
 > descriptive compare 与外部 release acceptance 实现。M3 不是新的公开 release，也不能描述成任意 Godot
 > 项目能力或修复正确性证明；本文不声称尚未实际运行的 Gate 或 live acceptance 已通过。
 >
-> **Project Environment V1 / PE-B Dynamic Projection 当前是 implementation present；精确 product baseline 的
-> Luna/max local Gate 尚未运行。** PE-A 已实现显式 Preview、ProjectAdapter SDK/wire/loader、初始化、
+> **Project Environment V1 / PE-B Dynamic Projection 当前是 implementation present + local Gate passed。**
+> PE-A 已实现显式 Preview、ProjectAdapter SDK/wire/loader、初始化、
 > authoritative conformance、crash-safe publication/binding、post-edit exact Build、new-Session reuse、durable runtime
 > evidence 与独立 validator。默认离线、真实 Godot、下层 Linux Host 与 deterministic fake-Pi Gate 已通过；冻结
 > product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 的本地 Luna/max one-shot 也已产生 create-new bundle，
 > 经 standalone validator 复验并归档为 local r1。该 archive 不是 protected artifact、签名或外部 attestation；它只
 > 覆盖一个冻结 clean/single-root fixture，不代表通用外部项目支持或默认入口晋升。
+> PE-B product subject `0731eb13b0c103dbcb61bd0e2d967962838324a4` 也已通过默认、Godot、特权 Host 与
+> Luna/max 双 Session local Gate；raw-chain bundle content hash 为
+> `df1388507271901602fb8371d50087ddc17c528270459f73d6493bbc6a981bf1`，归档为 PE-B local r1。
 >
 > v0.1–v0.4 schema、artifact、benchmark spec、ledger、报告与冻结 tag 保持不可变。新路径不会静默迁移、
 > 覆盖或重新解释历史结果。
@@ -976,7 +979,7 @@ infrastructure retry。usage、cleanup、product checkout 和 invalid-candidate 
 `not_implemented`，所以单份 ledger 无法证明不存在被替换/遗漏的 assignment，也没有把已公开 conformance test
 冒充独立 evaluator，或把 post-Gate freeze 冒充 preregistration、完整 campaign denominator、可靠性或泛化证据。
 
-### 20.4 当前产品切片：Project Environment V1 / PE-B Dynamic Projection（implementation present）
+### 20.4 当前产品切片：Project Environment V1 / PE-B Dynamic Projection（implementation present + local Gate passed）
 
 Project Environment V1 取代“为每个外部项目新增冻结 profile”的产品方向。在 Godot 4.7 GDScript project root
 启动 Preview 时，同一个可见 Pi Session 首次生成唯一 ProjectAdapter；初始化 turn 正常返回且 authoritative
@@ -1006,8 +1009,8 @@ Dirty/untracked、materialized dependency、LFS/submodule/symlink、addon/import
 ## 21. 当前实现映射
 
 本节把 2026-08-13 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3、M4、E2 与 Project
-Environment 都是实验性 vNext slice。PE-A 已达到 implementation present + local Gate passed；精确 baseline product
-tree 的 real-Pi create-new bundle、standalone validation 与 local r1 freeze record 已归档，但不是 protected artifact。
+Environment 都是实验性 vNext slice。PE-A 与 PE-B 均达到 implementation present + local Gate passed；精确 baseline
+product tree 的 real-Pi create-new bundle、standalone validation 与 local r1 freeze record 已归档，但不是 protected artifact。
 
 | 能力            | 当前公开 v0.4                                            | 实验性 M3 vNext slice                                                                      | 未覆盖或后续方向                                |
 | --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
@@ -1053,7 +1056,7 @@ Project Environment V1 是当前产品主线；PE-B Dynamic Projection implement
 | Source              | dirty snapshot、显式 untracked、materialized multi-source closure         | PE-A 只接受 clean single-root；Source/Import closure 属于 PE-C                                                       |
 | ProjectAdapter      | Agent 生成 manifest + GDScript package、固定 tools、module negotiation    | V1 与 PE-A revision 保持；V2 dynamic identity SDK/wire/loader 已实现，迁移仍属后续 slice                             |
 | Ready               | lifecycle + clock/error + entity/state/event projection + rolling capture | PE-B event-driven dynamic trace、连续 validated ring、lossless raw conformance/pin 已实现                            |
-| Release Gate        | 三类结构矩阵、至少两个真实 Agent 初始化、Host/sandbox 与独立 validator    | PE-A local r1 已冻结；PE-B offline/Godot/Host implementation Gate 已通过，精确 Luna/max archive 尚待运行             |
+| Release Gate        | 三类结构矩阵、至少两个真实 Agent 初始化、Host/sandbox 与独立 validator    | PE-A 与 PE-B local r1 已冻结；PE-B 只证明一个动态结构类别，完整矩阵及默认入口仍待后续 slice                          |
 
 默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 coding sandbox boundary 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、

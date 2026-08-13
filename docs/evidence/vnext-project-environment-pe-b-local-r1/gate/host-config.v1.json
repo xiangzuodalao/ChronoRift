@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "configKind": "chronorift-project-environment-host",
+  "taskStorageRoot": "/task-storage",
+  "runtimeRoot": "/task-storage/chronorift-pe-b-live-config-placeholder",
+  "delegatedCgroupRoot": "/sys/fs/cgroup/driver/chronorift-vnext-godot",
+  "bwrapPath": "/usr/bin/bwrap",
+  "prlimitPath": "/usr/bin/prlimit",
+  "busyboxPath": "/usr/bin/busybox",
+  "fontconfigProbePath": "/usr/bin/fc-match",
+  "xdgUserDirPath": "/usr/bin/xdg-user-dir",
+  "nodePath": "/usr/lib/chronorift-ci/bin/node-22.23.1",
+  "bashPath": "/usr/bin/bash",
+  "rgPath": "/usr/bin/rg",
+  "findPath": "/usr/bin/find",
+  "lsPath": "/usr/bin/ls",
+  "lddPath": "/usr/bin/ldd",
+  "godotToolchains": [
+    {
+      "schemaVersion": 1,
+      "key": "godot-4.7.1-linux-x86_64-official",
+      "version": "4.7.1",
+      "platform": "linux-x86_64",
+      "channel": "stable-official",
+      "executablePath": "/usr/lib/chronorift-ci/bin/godot-4.7.1",
+      "executableSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+      "buildFeatures": ["gdscript", "headless"],
+      "renderer": "gl_compatibility"
+    }
+  ]
+}

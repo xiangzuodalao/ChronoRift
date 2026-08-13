@@ -1,6 +1,6 @@
 # Project Environment V1 RFC
 
-> 状态：**设计冻结；PE-B Dynamic Projection implementation present；精确 baseline local Gate 与完整晋升 Gate 未通过**
+> 状态：**设计冻结；PE-B Dynamic Projection implementation present + local Gate passed；完整晋升 Gate 未通过**
 > 决策日期：2026-08-12
 > 目标入口：Project Environment Preview；通过晋升 Gate 后成为默认 `chronorift [goal]` 入口
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
@@ -20,8 +20,11 @@ protected-ref artifact、签名或外部 attestation，不能描述成外部项�
 PE-B implementation 进一步增加内部 manifest/SDK/observation protocol V2，但产品与 store 仍是 Project Environment
 V1。V1 bridge/SDK bytes 和已发布 PE-A revision 原样保留；新初始化默认生成 V2 adapter，未知版本或 digest
 `review_required`，不自动迁移。V2 使用 Execution-bound EntityRef、event-driven ordered queue、Host continuous
-validated ring、raw conformance chain 与两次 durable capture replay；精确 product baseline 的 Luna/max local Gate 尚未
-运行，因此当前不称 PE-B local Gate passed。
+validated ring、raw conformance chain 与两次 durable capture replay。精确 product subject
+`0731eb13b0c103dbcb61bd0e2d967962838324a4` 已运行默认、Godot 4.7.1、特权 Host 及本地
+`openai-codex/gpt-5.6-luna/max` 双 Session Gate；create-new bundle content hash 为
+`df1388507271901602fb8371d50087ddc17c528270459f73d6493bbc6a981bf1`，并由 standalone validator
+复验。因此当前状态是 `PE-B implementation present + local Gate passed`，仍不是完整 V1 conformance 或默认入口晋升。
 
 M3、M4 与 E2 的 schema、wire、证据和原语义保持不变。Project Environment V1 使用独立 namespace，
 只复用已经有真实依赖和生命周期边界的 workspace、sandbox、Pi Session、Godot sidecar、runtime store 与 patch
@@ -644,6 +647,13 @@ PE-B 的 frozen dynamic profile 是：`appeared(ref1) → initial state(ref1) �
 null reference，entity scope 必须引用当前 active incarnation；payload 中的 `entity-ref/v2` 也服从相同规则。
 duplicate/unknown lifecycle、stale incarnation、scope/schema mismatch、跨 Execution、sequence/clock 回退、loss/overwrite
 都会 fail closed 并 sticky-poison Execution。该 trace 只证明 observation 顺序与绑定，不证明 Signal 导致状态变化。
+
+2026-08-13 的 PE-B local r1 绑定上述 product subject。adapter finalizer 实测 254.393 秒，初始化 Agent turn
+260.037 秒，完整双 Session case 387.718 秒；默认离线 Gate 为 162 files/1252 tests，Godot Gate 为
+11 files/27 tests，特权 Preview Host 与真实模型 Gate 均为 1/1。归档见
+[`docs/evidence/vnext-project-environment-pe-b-local-r1/`](evidence/vnext-project-environment-pe-b-local-r1/README.md)。
+该 local archive 不是 protected artifact、签名、外部 attestation 或通用 Godot 支持证明；下一切片是 PE-C
+Source/Import Closure。
 
 ### 11.3 Release Candidate 默认离线与 Host Gate
 

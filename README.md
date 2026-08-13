@@ -22,8 +22,8 @@ checkpoint、fork、replay、query 和 compare 原语。
 > trace/replay/compare。所有状态操作都明确是 `descriptive_only`；public exposed task Gate 只验证 plumbing，
 > 不证明智能诊断、等价恢复、修复正确性、独立验收或泛化。
 >
-> **Project Environment V1 / PE-B Dynamic Projection 当前是 implementation present；精确 product baseline 的
-> Luna/max local Gate 尚未运行。** PE-A 在 Godot 4.7 GDScript 项目目录启动 ChronoRift，由同一个可见 Pi
+> **Project Environment V1 / PE-B Dynamic Projection 当前是 implementation present + local Gate passed。**
+> PE-A 在 Godot 4.7 GDScript 项目目录启动 ChronoRift，由同一个可见 Pi
 > Session 生成、验证并发布唯一 ProjectAdapter，然后进入独立用户目标 turn。Harness 提供 bridge、协议、Adapter
 > SDK、sandbox、loader、validator 和 publication broker；项目 entity/state/event/capture 语义由 Agent 生成。
 > 显式 `project preview` 路由、三阶段 conformance、crash reconciliation、post-edit exact Build、new-Session
@@ -35,6 +35,11 @@ checkpoint、fork、replay、query 和 compare 原语。
 > artifact、签名或外部 attestation，仍不证明通用外部项目支持或默认入口已经切换。
 > PE-B 在此闭环上新增 manifest/SDK/observation protocol V2、event-driven observation context、Execution-bound
 > EntityRef、连续验证 ring 和 create/state/event/change/destroy/recreate trace；V1 bytes 与既有 PE-A revision 不迁移。
+> 精确 product subject `0731eb13b0c103dbcb61bd0e2d967962838324a4` 已通过默认、Godot 4.7.1、特权 Host
+> 及 `openai-codex/gpt-5.6-luna/max` 双 Session local Gate；create-new bundle content hash 为
+> `df1388507271901602fb8371d50087ddc17c528270459f73d6493bbc6a981bf1`，并由 standalone validator
+> 复验和 [PE-B local r1 archive](docs/evidence/vnext-project-environment-pe-b-local-r1/README.md) 冻结。
+> 该本地 archive 不是签名、protected artifact 或外部 attestation，也不晋升默认入口。
 
 ## 产品契约（vNext 目标）
 
@@ -174,8 +179,8 @@ PE-B 的 implementation 已增加严格 V2 adapter contract。每条动态 obser
 同一个有序队列，Host 连续验证后才 ACK 并写入 query/pin ring。identity、scope、schema、sequence、clock、coverage
 任一失败都会 sticky-poison Execution，后续合法记录不能洗掉。一个无 ChronoRift addon/autoload 的冻结 Godot 项目、
 真实 Godot 测试、完整特权 Preview Host 流程及不导入产品 TypeScript 的 raw-chain validator 已通过；精确 product
-commit 上的 Luna/max create-new Gate 尚未运行，因此当前只能写 `PE-B implementation present`，不能写 local Gate passed。
-下一切片仍是 PE-C Source/Import Closure。
+commit 上的 Luna/max create-new Gate 已运行并由 standalone validator 从 conformance raw chain 与两次 pinned capture
+重算通过，因此状态是 `PE-B implementation present + local Gate passed`。下一切片仍是 PE-C Source/Import Closure。
 
 初始化 workspace 中的 minimal package 只是结构参考；权威 validator 要求 candidate 至少声明一个非
 `scene-root` placeholder 的项目 entity type 和一个非 `project` placeholder 的状态域。原样复制模板、只改
@@ -196,7 +201,9 @@ standalone validator 的实现和离线回归也已通过。2026-08-13 针对精
 505.21 秒：初始化 Agent turn 为 348.638 秒，含 authoritative conformance/publication 的 attempt ready 为
 363.322 秒；随后完成同 Session goal 与新 Session reuse。证据见
 [local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md)。仍未完成的是 protected-ref 长期
-证据 artifact、更多结构类别，以及 PE-B 精确 baseline 的真实模型冻结输出。Dirty/untracked、materialized dependency、
+证据 artifact、更多结构类别。PE-B 精确 baseline 的真实模型冻结输出见
+[PE-B local r1 archive](docs/evidence/vnext-project-environment-pe-b-local-r1/README.md)：adapter finalize 为
+254.393 秒，初始化 turn 为 260.037 秒，完整双 Session case 为 387.718 秒。Dirty/untracked、materialized dependency、
 addon/import 和 multi-target source closure 属于后续 PE-C，不混入 PE-B。
 
 ### 实验性 M3 vNext 入口

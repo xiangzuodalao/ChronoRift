@@ -87,7 +87,10 @@ describe("ProjectEnvironmentValidatedRingV2", () => {
     const ring = new ProjectEnvironmentValidatedRingV2(loaded, executionId);
     ring.start({
       nextObservationBatch: async () =>
-        batches.shift() ?? new Promise<never>(() => undefined),
+        batches.shift() ??
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(() => reject(new Error("poll timeout")), 10);
+        }),
       acknowledgeObservationBatch: async (value) => {
         acknowledged.push(value.lastRecordSequence);
       },
@@ -96,6 +99,30 @@ describe("ProjectEnvironmentValidatedRingV2", () => {
     expect(acknowledged).toEqual([0, 1]);
     expect(ring.query("entities", 10)).toHaveLength(2);
     await ring.stop();
+    expect(ring.poisoned).toBe(false);
+  });
+
+  it("drains an outstanding bounded poll before shutdown without poisoning", async () => {
+    let releasePoll: (() => void) | undefined;
+    const ring = new ProjectEnvironmentValidatedRingV2(loaded, executionId);
+    ring.start({
+      nextObservationBatch: () =>
+        new Promise<never>((_resolve, reject) => {
+          releasePoll = () => reject(new Error("poll timeout"));
+        }),
+      acknowledgeObservationBatch: async () => undefined,
+    });
+    while (releasePoll === undefined) await Promise.resolve();
+    const stopping = ring.stop();
+    let stopped = false;
+    void stopping.then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    releasePoll();
+    await stopping;
+    expect(ring.poisoned).toBe(false);
   });
 
   it("poisons on a later duplicate and never ACKs it", async () => {

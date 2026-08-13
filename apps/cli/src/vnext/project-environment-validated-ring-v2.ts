@@ -51,10 +51,14 @@ export class ProjectEnvironmentValidatedRingV2 {
     void this.#pump.catch(() => undefined);
   }
 
-  public stop(): Promise<void> {
+  public async stop(): Promise<void> {
     this.#stopped = true;
     this.wake();
-    return Promise.resolve();
+    // nextObservationBatch has a bounded two-second poll. Drain that poll
+    // before the caller shuts down the shared wire transport; otherwise the
+    // expected transport close races the pump and falsely sticky-poisons an
+    // otherwise complete Execution.
+    await this.#pump;
   }
 
   public async waitFor(

@@ -63,6 +63,16 @@ const coverage = (observed: number) => ({
   overwrittenRecords: 0,
   limitations: [] as string[],
 });
+const sanitizedSidecarDiagnostics = (
+  sidecar: SandboxedGodotProjectEnvironmentSidecarV2,
+): string => {
+  const values = sidecar
+    .diagnostics()
+    .filter((entry) => entry.kind !== "process_output")
+    .slice(-8)
+    .map((entry) => JSON.stringify(entry));
+  return values.length === 0 ? "none" : values.join(" | ");
+};
 
 export interface ProjectEnvironmentRuntimeBuildV2 {
   readonly schemaVersion: 1;
@@ -346,9 +356,22 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
         handshakeTimeoutMs: 30_000,
       });
     } catch (error) {
+      const diagnostics = sanitizedSidecarDiagnostics(opened.sidecar);
       await opened.sidecar.terminate().catch(() => undefined);
       await opened.sidecar.completion.catch(() => undefined);
-      throw error;
+      const cause = error instanceof Error ? error : new Error(String(error));
+      throw Object.assign(
+        new Error(
+          `V2 runtime handshake failed: ${cause.message}; diagnostics=${diagnostics}`,
+          { cause },
+        ),
+        {
+          code:
+            "code" in cause && typeof cause.code === "string"
+              ? cause.code
+              : "runtime_handshake_failed",
+        },
+      );
     }
     const ring = new ProjectEnvironmentValidatedRingV2(
       this.options.adapterPackage,

@@ -271,10 +271,24 @@ export const connectGodotProjectEnvironmentRuntimeV2 = async (
   );
   const peer = new GodotProjectEnvironmentWireClientV2(transport);
   try {
-    const hello = await peer.waitFor(
-      (message) => message.kind === "hello",
-      request.handshakeTimeoutMs,
-    );
+    let hello: GodotProjectEnvironmentWireMessageV2;
+    try {
+      hello = await peer.waitFor(
+        (message) => message.kind === "hello",
+        request.handshakeTimeoutMs,
+      );
+    } catch (error) {
+      if (
+        error instanceof GodotAdapterError &&
+        error.code === "COMMAND_TIMEOUT"
+      )
+        throw new GodotAdapterError(
+          "CONNECTION_TIMEOUT",
+          "V2 hello_timeout: Godot did not send the initial bridge hello",
+          { cause: error },
+        );
+      throw error;
+    }
     if (hello.kind !== "hello" || hello.payload.token !== request.token)
       throw new GodotAdapterError("PROTOCOL_ERROR", "V2 authentication failed");
     const fingerprint = GodotProjectEnvironmentFingerprintV2Schema.parse(
@@ -303,15 +317,29 @@ export const connectGodotProjectEnvironmentRuntimeV2 = async (
         "PROTOCOL_ERROR",
         `V2 fingerprint mismatch: ${mismatches.join(",")}`,
       );
-    const ready = await peer.request(
-      "hello_accept",
-      {
-        adapterManifestSha256: request.expectedAdapterManifestSha256,
-        observationWindowBatches: request.observationWindowBatches ?? 8,
-      },
-      "ready",
-      request.handshakeTimeoutMs,
-    );
+    let ready: GodotProjectEnvironmentWireMessageV2;
+    try {
+      ready = await peer.request(
+        "hello_accept",
+        {
+          adapterManifestSha256: request.expectedAdapterManifestSha256,
+          observationWindowBatches: request.observationWindowBatches ?? 8,
+        },
+        "ready",
+        request.handshakeTimeoutMs,
+      );
+    } catch (error) {
+      if (
+        error instanceof GodotAdapterError &&
+        error.code === "COMMAND_TIMEOUT"
+      )
+        throw new GodotAdapterError(
+          "COMMAND_TIMEOUT",
+          "V2 ready_timeout: bridge hello succeeded but runtime readiness did not arrive",
+          { cause: error },
+        );
+      throw error;
+    }
     if (
       ready.kind !== "ready" ||
       !ready.payload.running ||

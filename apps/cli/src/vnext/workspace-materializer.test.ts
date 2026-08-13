@@ -25,9 +25,16 @@ import { NodeHostGitPort } from "./host-git.js";
 import {
   preflightCleanExternalGodotProject,
   preflightCleanGitSubtree,
+  preflightCleanProjectEnvironmentV1,
 } from "./source-preflight.js";
-import { createTaskDirectoryLayout } from "./task-paths.js";
-import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
+import {
+  createProjectEnvironmentTaskDirectoryLayout,
+  createTaskDirectoryLayout,
+} from "./task-paths.js";
+import {
+  ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema,
+  materializePrivateTaskWorkspace,
+} from "./workspace-materializer.js";
 
 const execFileAsync = promisify(execFile);
 const trustedFixtureRoot = fileURLToPath(
@@ -109,6 +116,53 @@ afterEach(async () => {
 });
 
 describe("materializePrivateTaskWorkspace", () => {
+  it("materializes PE-A source with a path-free receipt in its versioned Task layout", async () => {
+    const container = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-materializer-"),
+    );
+    temporaryRoots.push(container);
+    const root = join(container, "repository");
+    const runtimeRoot = join(container, "runtime");
+    await Promise.all([mkdir(root), mkdir(runtimeRoot)]);
+    await writeFile(
+      join(root, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(root, "main.tscn"), "[gd_scene format=3]\n");
+    await git(root, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(root, "PE-A project");
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: root,
+      sourceRepositoryExclusionRoots: [runtimeRoot],
+    });
+    const taskId = asTaskId("task_materialize_project_environment");
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot: root,
+      taskId,
+    });
+
+    const materialized = await materializePrivateTaskWorkspace({
+      taskId,
+      source,
+      layout,
+    });
+
+    expect(materialized.sourceKind).toBe("project-environment-v1-clean-git");
+    expect(
+      ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema.parse(
+        materialized.receipt,
+      ),
+    ).toEqual(materialized.receipt);
+    expect(JSON.stringify(materialized.receipt)).not.toContain(root);
+    expect(materialized.projectSourceIdentity).toBe(
+      source.projectSourceIdentity,
+    );
+    expect(
+      await git(layout.workspaceDirectory, ["status", "--porcelain"]),
+    ).toBe("");
+  });
+
   it("materializes an external project while keeping descriptor and source checkout outside the candidate", async () => {
     const container = await mkdtemp(
       join(tmpdir(), "chronorift-external-materializer-test-"),

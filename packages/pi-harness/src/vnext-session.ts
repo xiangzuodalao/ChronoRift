@@ -16,6 +16,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiThinkingLevel } from "./types.js";
+import {
+  PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
+  PROJECT_ADAPTER_SKILL_V1_NAME,
+  projectAdapterSkillResourceOptionsV1,
+} from "./project-adapter-skill.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
 
 export const VNEXT_PI_WORKSPACE_CWD = "/workspace";
@@ -32,6 +37,8 @@ export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
 export interface RunVNextPiTurnOptions {
   readonly resourceWorkspaceDirectory: string;
   readonly sessionDirectory: string;
+  /** Host-selected ID for a new durable Session; forbidden when resuming. */
+  readonly newSessionId?: string | undefined;
   readonly resumeSessionFile?: string | undefined;
   readonly agentDir?: string | undefined;
   readonly modelRuntime: ModelRuntime;
@@ -42,6 +49,7 @@ export interface RunVNextPiTurnOptions {
   readonly timeoutMs?: number | undefined;
   readonly signal?: AbortSignal | undefined;
   readonly additionalEnvironmentInstructions?: string | undefined;
+  readonly loadProjectAdapterSkillV1?: boolean | undefined;
   readonly onEvent?: ((event: AgentSessionEvent) => void) | undefined;
 }
 
@@ -188,6 +196,9 @@ export async function runVNextPiTurn(
       ? []
       : [options.additionalEnvironmentInstructions]),
   ];
+  const projectAdapterSkill = options.loadProjectAdapterSkillV1
+    ? projectAdapterSkillResourceOptionsV1()
+    : undefined;
   const resourceLoader = new DefaultResourceLoader({
     cwd: resourceWorkspaceDirectory,
     agentDir,
@@ -195,16 +206,48 @@ export async function runVNextPiTurn(
     noExtensions: true,
     noThemes: true,
     appendSystemPrompt,
+    ...(projectAdapterSkill === undefined
+      ? {}
+      : {
+          additionalSkillPaths: [...projectAdapterSkill.additionalSkillPaths],
+        }),
   });
   await resourceLoader.reload();
+  if (projectAdapterSkill !== undefined) {
+    const loaded = resourceLoader
+      .getSkills()
+      .skills.filter((skill) => skill.name === PROJECT_ADAPTER_SKILL_V1_NAME);
+    const expectedFile = resolve(
+      PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
+      "SKILL.md",
+    );
+    if (
+      loaded.length !== 1 ||
+      resolve(loaded[0]?.filePath ?? "") !== expectedFile
+    ) {
+      throw new Error(
+        "Pi did not load the pinned Project Adapter V1 skill from the managed package",
+      );
+    }
+  }
   const sessionManager =
     options.resumeSessionFile === undefined
-      ? SessionManager.create(VNEXT_PI_WORKSPACE_CWD, sessionDirectory)
+      ? SessionManager.create(VNEXT_PI_WORKSPACE_CWD, sessionDirectory, {
+          ...(options.newSessionId === undefined
+            ? {}
+            : { id: options.newSessionId }),
+        })
       : SessionManager.open(
           resolve(options.resumeSessionFile),
           sessionDirectory,
           VNEXT_PI_WORKSPACE_CWD,
         );
+  if (
+    options.resumeSessionFile !== undefined &&
+    options.newSessionId !== undefined
+  ) {
+    throw new Error("newSessionId cannot be supplied when resuming a Session");
+  }
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
   const created = await dependencies.createSession({
     cwd: VNEXT_PI_WORKSPACE_CWD,
@@ -261,28 +304,27 @@ export async function runVNextPiTurn(
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    if (!signalAborted) {
-      await Promise.race([
-        session.prompt(options.prompt, { expandPromptTemplates: true }),
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            requestAbort();
-            reject(new Error(`Pi turn timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
-        }),
-      ]);
+    try {
+      if (!signalAborted) {
+        await Promise.race([
+          session.prompt(options.prompt, { expandPromptTemplates: true }),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => {
+              timedOut = true;
+              requestAbort();
+              reject(new Error(`Pi turn timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+          }),
+        ]);
+      }
+    } catch (error) {
+      if (!timedOut && !signalAborted) throw error;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
+      if (abortPromise !== undefined) await abortPromise.catch(() => undefined);
+      unsubscribe();
     }
-  } catch (error) {
-    if (!timedOut && !signalAborted) throw error;
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-    options.signal?.removeEventListener("abort", onAbort);
-    if (abortPromise !== undefined) await abortPromise.catch(() => undefined);
-    unsubscribe();
-  }
-
-  try {
     const sessionFile = session.sessionFile;
     if (sessionFile === undefined) {
       throw new Error("Pi did not persist the vNext session");
@@ -345,6 +387,9 @@ export async function runVNextPiTurnWithSdk(
   return runVNextPiTurn({
     resourceWorkspaceDirectory: options.resourceWorkspaceDirectory,
     sessionDirectory: options.sessionDirectory,
+    ...(options.newSessionId === undefined
+      ? {}
+      : { newSessionId: options.newSessionId }),
     ...(options.resumeSessionFile === undefined
       ? {}
       : { resumeSessionFile: options.resumeSessionFile }),
@@ -364,6 +409,9 @@ export async function runVNextPiTurnWithSdk(
           additionalEnvironmentInstructions:
             options.additionalEnvironmentInstructions,
         }),
+    ...(options.loadProjectAdapterSkillV1 === undefined
+      ? {}
+      : { loadProjectAdapterSkillV1: options.loadProjectAdapterSkillV1 }),
     ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
   });
 }

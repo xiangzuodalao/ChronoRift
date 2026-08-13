@@ -10,6 +10,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
+import {
+  ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
+  type ProjectEnvironmentToolCallAdmissionV1,
+} from "./project-environment-tool-call-budget.js";
+
 export interface BrokerToolResult {
   readonly stdout: Uint8Array;
   readonly stderr: Uint8Array;
@@ -73,6 +78,11 @@ export interface BrokerToolDetails {
   readonly diff?: string | undefined;
   readonly firstChangedLine?: number | undefined;
   readonly resultLimitReached?: number | undefined;
+}
+
+export interface VNextCodingToolDefinitionsOptionsV1 {
+  readonly toolCallAdmission?:
+    ProjectEnvironmentToolCallAdmissionV1 | undefined;
 }
 
 const pathSchema = Type.String({
@@ -226,7 +236,16 @@ function applyExactEdits(
 
 export function createVNextCodingToolDefinitions(
   port: VNextCodingToolPort,
+  options: VNextCodingToolDefinitionsOptionsV1 = {},
 ): readonly ToolDefinition[] {
+  const assertAdmitted = (toolName: string): void => {
+    const admission = options.toolCallAdmission;
+    if (admission !== undefined && !admission.tryAdmit(toolName)) {
+      throw new ProjectEnvironmentToolCallBudgetExhaustedErrorV1(
+        admission.limit,
+      );
+    }
+  };
   const read = defineTool({
     name: "read",
     label: "read",
@@ -234,6 +253,7 @@ export function createVNextCodingToolDefinitions(
     promptSnippet: "Read file contents",
     parameters: readSchema,
     async execute(_id, input, signal) {
+      assertAdmitted("read");
       const path = workspacePath(input.path);
       const result = await port.read(path, signal);
       const failure = executionFailure(result, "read");
@@ -263,6 +283,7 @@ export function createVNextCodingToolDefinitions(
     promptSnippet: "Run shell commands",
     parameters: bashSchema,
     async execute(_id, input, signal, onUpdate) {
+      assertAdmitted("bash");
       const timeoutMs =
         input.timeout === undefined
           ? undefined
@@ -304,6 +325,7 @@ export function createVNextCodingToolDefinitions(
     parameters: writeSchema,
     executionMode: "sequential",
     async execute(_id, input, signal) {
+      assertAdmitted("write");
       const path = workspacePath(input.path);
       return serializeMutation(path, async () => {
         const result = await port.write(
@@ -331,6 +353,7 @@ export function createVNextCodingToolDefinitions(
     parameters: editSchema,
     executionMode: "sequential",
     async execute(_id, input, signal) {
+      assertAdmitted("edit");
       const path = workspacePath(input.path);
       return serializeMutation(path, async () => {
         const before = await port.read(path, signal);
@@ -369,6 +392,7 @@ export function createVNextCodingToolDefinitions(
     promptSnippet: "Search file contents",
     parameters: grepSchema,
     async execute(_id, input, signal) {
+      assertAdmitted("grep");
       const limit = positiveInteger(input.limit, 100, "limit");
       const result = await port.grep(
         {
@@ -402,6 +426,7 @@ export function createVNextCodingToolDefinitions(
     promptSnippet: "Find files by name",
     parameters: findSchema,
     async execute(_id, input, signal) {
+      assertAdmitted("find");
       const limit = positiveInteger(input.limit, 1000, "limit");
       const result = await port.find(
         {
@@ -431,6 +456,7 @@ export function createVNextCodingToolDefinitions(
     promptSnippet: "List directory contents",
     parameters: lsSchema,
     async execute(_id, input, signal) {
+      assertAdmitted("ls");
       const limit = positiveInteger(input.limit, 500, "limit");
       const result = await port.ls(
         { path: workspacePath(input.path ?? ".", true), limit },

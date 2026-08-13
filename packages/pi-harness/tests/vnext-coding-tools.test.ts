@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createProjectEnvironmentToolCallAdmissionV1,
   createVNextCodingToolDefinitions,
+  ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
   type BrokerToolResult,
   type VNextCodingToolPort,
 } from "../src/index.js";
@@ -103,6 +105,47 @@ describe("vNext broker-only Pi coding tools", () => {
       "find",
       "ls",
     ]);
+  });
+
+  it("rejects the first over-budget coding call before reaching the broker", async () => {
+    const port = new MemoryPort();
+    const admission = createProjectEnvironmentToolCallAdmissionV1(1);
+    const tools = createVNextCodingToolDefinitions(port, {
+      toolCallAdmission: admission,
+    });
+    const read = tools.find((tool) => tool.name === "read");
+    const bash = tools.find((tool) => tool.name === "bash");
+    if (read === undefined || bash === undefined) {
+      throw new Error("missing budget test tools");
+    }
+
+    await read.execute(
+      "call:read",
+      { path: "src/a.ts" },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    await expect(
+      bash.execute(
+        "call:bash",
+        { command: "must-not-run" },
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    ).rejects.toMatchObject({
+      code: "budget_exhausted",
+      limit: 1,
+      name: ProjectEnvironmentToolCallBudgetExhaustedErrorV1.name,
+    });
+    expect(port.calls).toEqual(["read:src/a.ts"]);
+    expect(admission).toMatchObject({
+      admitted: 1,
+      rejected: 1,
+      attempted: 2,
+      exhausted: true,
+    });
   });
 
   it("reads with Pi-compatible one-based offsets and rejects Host paths before the port", async () => {

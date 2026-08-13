@@ -10,10 +10,15 @@ import {
 import { resolve } from "node:path";
 
 import {
+  ProjectEnvironmentBuildBindingV1Schema,
   VNextBuildV1Schema,
   asBuildId,
   asSha256DigestV1,
   asSourceId,
+  type EnvironmentBindingEpochId,
+  type ProjectAdapterRevisionV1,
+  type ProjectEnvironmentBuildBindingV1,
+  type ProjectEnvironmentRevisionReferenceV1,
   type Sha256DigestV1,
   type TaskId,
   type VNextBuildV1,
@@ -32,6 +37,10 @@ import {
   isExternalGodotNativeSourcePathV1,
   isExternalGodotReservedSourcePathV1,
 } from "./external-godot-source-policy.js";
+import {
+  hasProjectEnvironmentDeferredGdscriptFeatureV1,
+  isProjectEnvironmentSensitivePathV1,
+} from "./project-environment-source-policy.js";
 import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
 import {
   selectedTreeSha256,
@@ -78,6 +87,15 @@ export interface PreparedExternalGodotSemanticBuildV1 {
   readonly byteLength: number;
 }
 
+export interface PreparedProjectEnvironmentGodotBuildV1 {
+  readonly build: VNextBuildV1;
+  readonly binding: ProjectEnvironmentBuildBindingV1;
+  readonly configuredMainScene: string;
+  readonly projectHash: Sha256DigestV1;
+  readonly fileCount: number;
+  readonly byteLength: number;
+}
+
 const inspectExternalProjectConfiguration = (
   entry: SelectedTreeEntryV1,
 ): { readonly configuredMainScene: string } => {
@@ -97,6 +115,11 @@ const inspectExternalProjectConfiguration = (
   if (/^\s*ChronoRiftSemantic\s*=/mu.test(source)) {
     throw new TypeError(
       "candidate project.godot defines the reserved ChronoRiftSemantic autoload",
+    );
+  }
+  if (/^\s*ChronoRiftProjectEnvironment\s*=/mu.test(source)) {
+    throw new TypeError(
+      "candidate project.godot defines the reserved ChronoRiftProjectEnvironment autoload",
     );
   }
   const scenes = [
@@ -171,7 +194,8 @@ const openPinnedEntry = async (
 
 const collectCandidate = async (
   workspaceDirectory: string,
-  policy: "m3-fixture" | "external-lifecycle" = "m3-fixture",
+  policy:
+    "m3-fixture" | "external-lifecycle" | "project-environment" = "m3-fixture",
 ): Promise<readonly SelectedTreeEntryV1[]> => {
   const root = resolve(workspaceDirectory);
   const inspectedRoot = await lstat(root, { bigint: true });
@@ -208,8 +232,23 @@ const collectCandidate = async (
       Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
     );
     for (const name of names) {
-      if (prefix === "" && (name === ".git" || name === ".godot")) continue;
+      if (
+        prefix === "" &&
+        (name === ".git" ||
+          name === ".godot" ||
+          (policy === "project-environment" && name === ".chronorift"))
+      ) {
+        continue;
+      }
       const relativePath = prefix === "" ? name : `${prefix}/${name}`;
+      if (
+        policy === "project-environment" &&
+        isProjectEnvironmentSensitivePathV1(relativePath)
+      ) {
+        throw new TypeError(
+          `Project Environment candidate contains a credential-like path: ${relativePath}`,
+        );
+      }
       if (
         policy === "external-lifecycle" &&
         isExternalGodotReservedSourcePathV1(relativePath)
@@ -219,11 +258,16 @@ const collectCandidate = async (
         );
       }
       if (
-        policy === "external-lifecycle" &&
+        (policy === "external-lifecycle" || policy === "project-environment") &&
         isExternalGodotNativeSourcePathV1(relativePath)
       ) {
         throw new TypeError(
           `external Godot lifecycle candidate contains a native or non-GDScript path: ${relativePath}`,
+        );
+      }
+      if (policy === "project-environment" && relativePath === "override.cfg") {
+        throw new TypeError(
+          "Project Environment candidate collides with the managed override",
         );
       }
       if (relativePath === "addons" || relativePath.startsWith("addons/")) {
@@ -262,6 +306,33 @@ const collectCandidate = async (
           throw new TypeError(
             "candidate source exceeds its bounded build profile",
           );
+        }
+        if (
+          policy === "project-environment" &&
+          (relativePath === ".godot-version" || relativePath.endsWith(".gd"))
+        ) {
+          let text: string;
+          try {
+            text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          } catch (error) {
+            throw new TypeError(
+              `Project Environment candidate file must be valid UTF-8: ${relativePath}`,
+              { cause: error },
+            );
+          }
+          if (relativePath === ".godot-version" && text.trim() !== "4.7.1") {
+            throw new TypeError(
+              "Project Environment candidate must keep exact Godot 4.7.1",
+            );
+          }
+          if (
+            relativePath.endsWith(".gd") &&
+            hasProjectEnvironmentDeferredGdscriptFeatureV1(text)
+          ) {
+            throw new TypeError(
+              `Project Environment candidate defers @tool and EditorPlugin scripts: ${relativePath}`,
+            );
+          }
         }
         files.push({
           relativePath,
@@ -304,7 +375,7 @@ const collectCandidate = async (
 
 export const collectCandidateGodotSourceV1 = (
   workspaceDirectory: string,
-  profile: "m3-fixture" | "external-lifecycle",
+  profile: "m3-fixture" | "external-lifecycle" | "project-environment",
 ): Promise<readonly SelectedTreeEntryV1[]> =>
   collectCandidate(workspaceDirectory, profile);
 
@@ -619,6 +690,133 @@ export const prepareExternalGodotSemanticBuildV1 = async (input: {
     addonHash,
     vanillaSidecarHash,
     semanticSidecarHash,
+    fileCount: files.length,
+    byteLength: files.reduce(
+      (total, file) => total + file.content.byteLength,
+      0,
+    ),
+  });
+};
+
+/**
+ * Freezes a PE-A candidate Build while keeping the published adapter and
+ * environment identities separate from the ordinary game source identity.
+ * Compatibility remains pending until an actual fresh runtime smoke succeeds.
+ */
+export const prepareProjectEnvironmentGodotBuildV1 = async (input: {
+  readonly taskId: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceDirectory: string;
+  readonly baselineSourceHash: Sha256DigestV1;
+  readonly bindingEpochId: EnvironmentBindingEpochId;
+  readonly environment: ProjectEnvironmentRevisionReferenceV1;
+  readonly adapter: ProjectAdapterRevisionV1;
+  readonly toolchainArtifactDigest: Sha256DigestV1;
+  readonly policyProfileDigest: Sha256DigestV1;
+  readonly now: string;
+}): Promise<PreparedProjectEnvironmentGodotBuildV1> => {
+  const files = await collectCandidate(
+    input.workspaceDirectory,
+    "project-environment",
+  );
+  const projectFile = files.find(
+    (entry) => entry.relativePath === "project.godot",
+  );
+  if (projectFile === undefined) {
+    throw new TypeError(
+      "Project Environment candidate is missing project.godot",
+    );
+  }
+  const { configuredMainScene } =
+    inspectExternalProjectConfiguration(projectFile);
+  if (
+    input.adapter.adapterRevisionId !== input.environment.adapterRevisionId ||
+    input.adapter.sourceId !== input.environment.sourceId ||
+    input.adapter.sdkDigest !== input.environment.sdkDigest ||
+    input.adapter.bridgeDigest !== input.environment.bridgeDigest ||
+    input.environment.policyProfileDigest !== input.policyProfileDigest
+  ) {
+    throw new TypeError(
+      "Project Environment Build inputs do not match the pinned revision",
+    );
+  }
+
+  const sourceHash = selectedTreeSha256(files);
+  const sourceId = asSourceId(`source:${sourceHash}`);
+  const workspaceDiffHash = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      baselineSourceHash: input.baselineSourceHash,
+      candidateSourceHash: sourceHash,
+    }),
+  );
+  const buildConfigurationHash = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      runtimeProfile: "project-environment-v1",
+      environmentRevisionId: input.environment.environmentRevisionId,
+      adapterRevisionId: input.adapter.adapterRevisionId,
+      adapterPackageDigest: input.adapter.packageDigest,
+      adapterManifestDigest: input.adapter.manifestDigest,
+      payloadSchemaDigest: input.adapter.payloadSchemaDigest,
+      sdkDigest: input.environment.sdkDigest,
+      bridgeDigest: input.environment.bridgeDigest,
+      toolchainReceiptId: input.environment.toolchainReceiptId,
+      toolchainArtifactDigest: input.toolchainArtifactDigest,
+      policyProfileDigest: input.policyProfileDigest,
+      configuredMainScene,
+    }),
+  );
+  const projectHash = asSha256DigestV1(
+    createHash("sha256")
+      .update("chronorift-project-environment-build-v1\0")
+      .update(sourceHash)
+      .update("\0")
+      .update(buildConfigurationHash)
+      .digest("hex"),
+  );
+  const buildId = asBuildId(
+    `build:${contentHash({
+      schemaVersion: 1,
+      projectHash,
+      buildConfigurationHash,
+      outputHash: projectHash,
+    })}`,
+  );
+  const build = VNextBuildV1Schema.parse({
+    schemaVersion: 1,
+    taskId: input.taskId,
+    workspaceId: input.workspaceId,
+    sourceId,
+    buildId,
+    sourceHash,
+    workspaceDiffHash,
+    buildConfigurationHash,
+    outputHash: projectHash,
+    createdAt: input.now,
+  });
+  const binding = ProjectEnvironmentBuildBindingV1Schema.parse({
+    schemaVersion: 1,
+    taskId: input.taskId,
+    workspaceId: input.workspaceId,
+    sourceId,
+    buildId,
+    bindingEpochId: input.bindingEpochId,
+    environmentRevisionId: input.environment.environmentRevisionId,
+    adapterRevisionId: input.adapter.adapterRevisionId,
+    payloadSchemaDigest: input.adapter.payloadSchemaDigest,
+    sdkDigest: input.environment.sdkDigest,
+    bridgeDigest: input.environment.bridgeDigest,
+    toolchainReceiptId: input.environment.toolchainReceiptId,
+    compatibilityStatus: "pending",
+    compatibilityReceiptId: null,
+    createdAt: input.now,
+  });
+  return Object.freeze({
+    build,
+    binding,
+    configuredMainScene,
+    projectHash,
     fileCount: files.length,
     byteLength: files.reduce(
       (total, file) => total + file.content.byteLength,

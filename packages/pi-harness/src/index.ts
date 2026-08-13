@@ -66,9 +66,42 @@ export { V03_AGENT_BUDGETS } from "./v03-types.js";
 export type * from "./v03-types.js";
 export type * from "./v04-types.js";
 export {
+  PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
+  PROJECT_ADAPTER_SKILL_V1_NAME,
+  projectAdapterSkillResourceOptionsV1,
+  type ProjectAdapterSkillResourceOptionsV1,
+} from "./project-adapter-skill.js";
+export {
+  runProjectEnvironmentInteractivePiSessionV1,
+  type RunProjectEnvironmentInteractivePiSessionV1Options,
+} from "./project-environment-interactive.js";
+export {
+  createProjectEnvironmentToolCallAdmissionV1,
+  ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
+  type ProjectEnvironmentToolCallAdmissionV1,
+} from "./project-environment-tool-call-budget.js";
+export {
+  createProjectEnvironmentGameToolDefinitions,
+  projectEnvironmentUnsupportedCapabilityResponseV1,
+  ProjectEnvironmentGameToolErrorEnvelopeV1Schema,
+  ProjectEnvironmentGameToolErrorV1Schema,
+  ProjectEnvironmentGameToolResponseV1Schema,
+  ProjectEnvironmentGameToolSuccessEnvelopeV1Schema,
+  PROJECT_ENVIRONMENT_GAME_TOOL_ERROR_CODES_V1,
+  type ProjectEnvironmentGameToolErrorCodeV1,
+  type ProjectEnvironmentGameToolErrorEnvelopeV1,
+  type ProjectEnvironmentGameToolErrorV1,
+  type ProjectEnvironmentGameToolDefinitionsOptionsV1,
+  type ProjectEnvironmentGameToolPort,
+  type ProjectEnvironmentGameToolPortRequestV1,
+  type ProjectEnvironmentGameToolResponseV1,
+  type ProjectEnvironmentGameToolSuccessEnvelopeV1,
+} from "./project-environment-game-tools.js";
+export {
   createVNextCodingToolDefinitions,
   type BrokerToolDetails,
   type BrokerToolResult,
+  type VNextCodingToolDefinitionsOptionsV1,
   type VNextCodingToolPort,
 } from "./vnext-coding-tools.js";
 export {

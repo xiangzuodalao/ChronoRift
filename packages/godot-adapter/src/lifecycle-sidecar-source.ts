@@ -57,6 +57,15 @@ export interface LifecycleSidecarSourceOptions {
         readonly addonDirectory: "chronorift_semantic";
         readonly reservedAutoload: "ChronoRiftSemantic";
         readonly adapterProfileHash: true;
+        readonly projectEnvironment?: false | undefined;
+      }
+    | {
+        readonly runtimeProfile: "chronorift-managed-godot-project-environment-v1";
+        readonly protocolProfile: "chronorift-godot-project-environment-v1";
+        readonly addonDirectory: "chronorift_project_environment";
+        readonly reservedAutoload: "ChronoRiftProjectEnvironment";
+        readonly adapterProfileHash: false;
+        readonly projectEnvironment: true;
       }
     | undefined;
 }
@@ -85,6 +94,7 @@ const createLifecycleSidecarSource = (
     addonDirectory: "chronorift_lifecycle" as const,
     reservedAutoload: "ChronoRiftLifecycle" as const,
     adapterProfileHash: false as const,
+    projectEnvironment: false as const,
   };
   if (
     argsPrefix.length > 16 ||
@@ -111,10 +121,13 @@ const PROTOCOL_PROFILE = ${JSON.stringify(managedProfile.protocolProfile)};
 const ADDON_DIRECTORY = ${JSON.stringify(managedProfile.addonDirectory)};
 const RESERVED_AUTOLOAD = ${JSON.stringify(managedProfile.reservedAutoload)};
 const REQUIRES_ADAPTER_PROFILE_HASH = ${JSON.stringify(managedProfile.adapterProfileHash)};
+const PROJECT_ENVIRONMENT = ${JSON.stringify(managedProfile.projectEnvironment === true)};
 const MANAGED_RUNTIME_ID = ${
-    managedProfile.adapterProfileHash
-      ? "/^managed-godot-semantic-runtime:v1:[a-f0-9]{64}$/u"
-      : "/^managed-godot-runtime:v1:[a-f0-9]{64}$/u"
+    managedProfile.projectEnvironment === true
+      ? "/^managed-godot-project-environment:v1:[a-f0-9]{64}$/u"
+      : managedProfile.adapterProfileHash
+        ? "/^managed-godot-semantic-runtime:v1:[a-f0-9]{64}$/u"
+        : "/^managed-godot-runtime:v1:[a-f0-9]{64}$/u"
   };
 const GODOT_EXECUTABLE = ${JSON.stringify(options.godotExecutable)};
 const GODOT_ARGS_PREFIX = Object.freeze(${JSON.stringify(argsPrefix)});
@@ -210,9 +223,12 @@ const parseLaunch = (json) => {
     "managedRuntimeId", "candidateSourceHash", "diagnosticFrameMaxBytes", "diagnosticTotalMaxBytes",
     "diagnosticMaxCount", "outputCaptureMaxBytes"
   ];
+  const projectEnvironmentKeys = PROJECT_ENVIRONMENT
+    ? ["instrumentationMode", "sourceClosureId", "environmentRevisionId", "adapterRevisionId", "adapterManifestSha256", "sdkSha256", "bridgeSha256", "toolchainSha256"]
+    : [];
   const operationKeys = OPERATION === "vanilla_smoke"
     ? ["importTimeoutMs", "vanillaTimeoutMs", "stabilityWindowMs"]
-    : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "importTimeoutMs", "startupTimeoutMs", "executionTimeoutMs", ...(REQUIRES_ADAPTER_PROFILE_HASH ? ["adapterProfileSha256"] : [])];
+    : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "importTimeoutMs", "startupTimeoutMs", "executionTimeoutMs", ...projectEnvironmentKeys, ...(REQUIRES_ADAPTER_PROFILE_HASH ? ["adapterProfileSha256"] : [])];
   if (!exactKeys(value, [...common, ...operationKeys]) || value.schemaVersion !== 1 ||
       value.runtimeProfile !== RUNTIME_PROFILE || value.operation !== OPERATION) {
     throw new Error("launch prelude has an unsupported lifecycle shape or profile");
@@ -241,6 +257,14 @@ const parseLaunch = (json) => {
       !Number.isInteger(value.startupTimeoutMs) || value.startupTimeoutMs < 1000 || value.startupTimeoutMs > 60000 ||
       !Number.isInteger(value.executionTimeoutMs) || value.executionTimeoutMs < 1000 || value.executionTimeoutMs > 600000) {
     throw new Error("managed lifecycle launch fields are invalid");
+  }
+  if (PROJECT_ENVIRONMENT && OPERATION !== "vanilla_smoke" &&
+      (!["bridge_only", "instrumented"].includes(value.instrumentationMode) ||
+       typeof value.sourceClosureId !== "string" || !assertResourceId(value.sourceClosureId) ||
+       typeof value.environmentRevisionId !== "string" || !assertResourceId(value.environmentRevisionId) ||
+       typeof value.adapterRevisionId !== "string" || !assertResourceId(value.adapterRevisionId) ||
+       ![value.adapterManifestSha256, value.sdkSha256, value.bridgeSha256, value.toolchainSha256].every((entry) => typeof entry === "string" && HASH.test(entry)))) {
+    throw new Error("Project Environment launch identity is invalid");
   }
   return value;
 };
@@ -338,7 +362,8 @@ const prepareProjectRoot = async () => {
   if (overrideStat.isSymbolicLink() || !overrideStat.isFile()) throw new Error("managed lifecycle override is not a regular file");
   const projectEntries = (await fsp.readdir(PROJECT_ROOT)).sort();
   const addonEntries = (await fsp.readdir(path.join(PROJECT_ROOT, "addons"))).sort();
-  if (JSON.stringify(projectEntries) !== JSON.stringify(["addons", "override.cfg"]) ||
+  const expectedProjectEntries = PROJECT_ENVIRONMENT ? [".chronorift", "addons", "override.cfg"] : ["addons", "override.cfg"];
+  if (JSON.stringify(projectEntries) !== JSON.stringify(expectedProjectEntries) ||
       JSON.stringify(addonEntries) !== JSON.stringify([ADDON_DIRECTORY])) {
     const collision = new Error("managed lifecycle project root contains an unexpected entry");
     collision.code = "MANAGED_RUNTIME_COLLISION";
@@ -360,10 +385,10 @@ const copyCandidate = async () => {
       if (!name || name === "." || name === ".." || name.includes("/") || name.includes("\\") || name.includes("\0") || name.normalize("NFC") !== name) {
         throw new Error("candidate source contains an invalid entry name");
       }
-      if (atRoot && (name === ".git" || name === ".godot")) continue;
+      if (atRoot && (name === ".git" || name === ".godot" || (PROJECT_ENVIRONMENT && name === ".chronorift"))) continue;
       const relativePath = prefix === "" ? name : prefix + "/" + name;
       const normalizedPath = relativePath.toLocaleLowerCase("en-US");
-      if (normalizedPath === ".chronorift" || normalizedPath.startsWith(".chronorift/") ||
+      if ((!PROJECT_ENVIRONMENT && (normalizedPath === ".chronorift" || normalizedPath.startsWith(".chronorift/"))) ||
           normalizedPath === "addons" || normalizedPath.startsWith("addons/") || normalizedPath === "override.cfg") {
         const collision = new Error("candidate source collides with the managed lifecycle overlay");
         collision.code = "MANAGED_RUNTIME_COLLISION";
@@ -447,7 +472,7 @@ const verifyStagedCandidate = async (expectedStage) => {
         }
         continue;
       }
-      if (OPERATION === "managed_lifecycle" && atRoot && (name === "addons" || name === "override.cfg")) continue;
+      if (OPERATION === "managed_lifecycle" && atRoot && (name === "addons" || name === "override.cfg" || (PROJECT_ENVIRONMENT && name === ".chronorift"))) continue;
       const relativePath = prefix === "" ? name : prefix + "/" + name;
       const target = path.join(directory, name);
       const inspected = await fsp.lstat(target, { bigint: true });
@@ -810,6 +835,17 @@ const startManagedRuntime = async (launch, stage, remainder) => {
       CHRONORIFT_MANAGED_RUNTIME_ID: launch.managedRuntimeId,
       CHRONORIFT_CANDIDATE_SOURCE_HASH: launch.candidateSourceHash,
       CHRONORIFT_OVERLAY_HASH: launch.overlayHash, CHRONORIFT_ADDON_HASH: launch.addonHash,
+      ...(PROJECT_ENVIRONMENT ? {
+        CHRONORIFT_INSTRUMENTATION_MODE: launch.instrumentationMode,
+        CHRONORIFT_EXPECTED_MAIN_SCENE: launch.expectedMainScene,
+        CHRONORIFT_SOURCE_CLOSURE_ID: launch.sourceClosureId,
+        CHRONORIFT_ENVIRONMENT_REVISION_ID: launch.environmentRevisionId,
+        CHRONORIFT_ADAPTER_REVISION_ID: launch.adapterRevisionId,
+        CHRONORIFT_ADAPTER_MANIFEST_HASH: launch.adapterManifestSha256,
+        CHRONORIFT_SDK_HASH: launch.sdkSha256,
+        CHRONORIFT_BRIDGE_HASH: launch.bridgeSha256,
+        CHRONORIFT_TOOLCHAIN_HASH: launch.toolchainSha256,
+      } : {}),
       ...(REQUIRES_ADAPTER_PROFILE_HASH ? { CHRONORIFT_ADAPTER_PROFILE_HASH: launch.adapterProfileSha256 } : {})
     }),
     stdio: ["ignore", "pipe", "pipe"]
@@ -925,4 +961,29 @@ export const createSemanticVanillaSmokeSidecarSource = (
       reservedAutoload: "ChronoRiftSemantic",
       adapterProfileHash: true,
     },
+  });
+
+const PROJECT_ENVIRONMENT_MANAGED_PROFILE = Object.freeze({
+  runtimeProfile: "chronorift-managed-godot-project-environment-v1" as const,
+  protocolProfile: "chronorift-godot-project-environment-v1" as const,
+  addonDirectory: "chronorift_project_environment" as const,
+  reservedAutoload: "ChronoRiftProjectEnvironment" as const,
+  adapterProfileHash: false as const,
+  projectEnvironment: true as const,
+});
+
+export const createProjectEnvironmentRuntimeSidecarSource = (
+  options: Omit<LifecycleSidecarSourceOptions, "managedProfile">,
+): string =>
+  createLifecycleSidecarSource("managed_lifecycle", {
+    ...options,
+    managedProfile: PROJECT_ENVIRONMENT_MANAGED_PROFILE,
+  });
+
+export const createProjectEnvironmentVanillaSmokeSidecarSource = (
+  options: Omit<LifecycleSidecarSourceOptions, "managedProfile">,
+): string =>
+  createLifecycleSidecarSource("vanilla_smoke", {
+    ...options,
+    managedProfile: PROJECT_ENVIRONMENT_MANAGED_PROFILE,
   });

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "pe-a-snapshot-characterization",
+  "engineVersion": "4.7.1",
+  "mainScene": "res://main.tscn",
+  "adapterRoot": "adapter",
+  "requestedBarrier": "process_frame_end",
+  "mutation": {
+    "mutationId": "mutation.set-counter-99",
+    "controlId": "characterization.set_counter",
+    "parameters": { "counter": 99 }
+  },
+  "expectedCapturedDomainIds": ["world"],
+  "expectedUncontrolledDomainIds": ["engine.runtime"],
+  "conclusion": "descriptive_only"
+}

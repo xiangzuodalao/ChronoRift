@@ -9,6 +9,7 @@ import {
   GodotLifecycleSidecarLaunchV1Schema,
   GodotLifecycleVanillaSmokeDiagnosticV1Schema,
   GodotLifecycleVanillaSmokeLaunchV1Schema,
+  GodotProjectEnvironmentVanillaSmokeLaunchV1Schema,
   WireFrameDecoder,
   encodeWireFrame,
 } from "@chronorift/godot-protocol";
@@ -18,6 +19,7 @@ import {
   GODOT_LIFECYCLE_OVERRIDE_SOURCE,
   createLifecycleRuntimeSidecarSource,
   createLifecycleVanillaSmokeSidecarSource,
+  createProjectEnvironmentVanillaSmokeSidecarSource,
 } from "./lifecycle-sidecar-source.js";
 
 const roots: string[] = [];
@@ -109,6 +111,83 @@ const commonLaunch = (candidateSourceHash: string) => ({
 });
 
 describe("Godot lifecycle sidecar sources", () => {
+  it("accepts the Project Environment vanilla launch without managed-only identity fields", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chronorift-pe-vanilla-smoke-"));
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    const runtime = join(root, "runtime");
+    await Promise.all([mkdir(workspace), mkdir(runtime)]);
+    const projectBytes = Buffer.from(
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    const sceneBytes = Buffer.from(
+      '[gd_scene format=3]\n\n[node name="Main" type="Node"]\n',
+    );
+    await Promise.all([
+      writeFile(join(workspace, "project.godot"), projectBytes),
+      writeFile(join(workspace, "main.tscn"), sceneBytes),
+    ]);
+    const fakeGodot = join(root, "fake-godot.cjs");
+    await writeFile(
+      fakeGodot,
+      [
+        'if (process.argv.includes("--import")) process.exit(0);',
+        'process.on("SIGTERM", () => process.exit(0));',
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    const source = createProjectEnvironmentVanillaSmokeSidecarSource({
+      godotExecutable: process.execPath,
+      godotArgsPrefix: [fakeGodot],
+      workspaceRoot: workspace,
+      runtimeRoot: runtime,
+    });
+    const sidecar = spawn(
+      process.execPath,
+      ["--input-type=commonjs", "--eval", source],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const stderr: Buffer[] = [];
+    sidecar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const candidateSourceHash = selectedTreeDigest([
+      { relativePath: "main.tscn", mode: "100644", bytes: sceneBytes },
+      {
+        relativePath: "project.godot",
+        mode: "100644",
+        bytes: projectBytes,
+      },
+    ]);
+    const launch = GodotProjectEnvironmentVanillaSmokeLaunchV1Schema.parse({
+      schemaVersion: 1,
+      runtimeProfile: "chronorift-managed-godot-project-environment-v1",
+      taskId: "task:pe-vanilla",
+      buildId: "build:pe-vanilla",
+      runtimeId: "runtime:pe-vanilla",
+      executionId: "execution:pe-vanilla",
+      managedRuntimeId: `managed-godot-project-environment:v1:${"a".repeat(64)}`,
+      candidateSourceHash,
+      diagnosticFrameMaxBytes: 64 * 1024,
+      diagnosticTotalMaxBytes: 1024 * 1024,
+      diagnosticMaxCount: 128,
+      outputCaptureMaxBytes: 1_024,
+      operation: "vanilla_smoke",
+      importTimeoutMs: 5_000,
+      vanillaTimeoutMs: 5_000,
+      stabilityWindowMs: 2_000,
+    });
+    sidecar.stdin.end(encodeWireFrame(JSON.stringify(launch)));
+
+    await expect(waitForExit(sidecar)).resolves.toEqual({
+      code: 0,
+      signal: null,
+    });
+    expect(
+      decode(Buffer.concat(stderr), (value) =>
+        GodotLifecycleVanillaSmokeDiagnosticV1Schema.parse(value),
+      ).map((record) => record.kind),
+    ).toContain("smoke_complete");
+  });
+
   it("imports then observes an unmodified vanilla main scene for two seconds", async () => {
     const root = await mkdtemp(join(tmpdir(), "chronorift-vanilla-smoke-"));
     roots.push(root);

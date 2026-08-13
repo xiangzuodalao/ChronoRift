@@ -55,7 +55,19 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 import {
+  ProjectAdapterRevisionV1Schema,
+  ProjectEnvironmentRevisionReferenceV1Schema,
+  PROJECT_CAPABILITY_MODULE_NAMES_V1,
+  asAdapterId,
+  asAdapterConformanceReceiptId,
+  asEnvironmentBindingEpochId,
+  asObserverEffectReceiptId,
+  asProjectAdapterRevisionId,
+  asProjectEnvironmentId,
+  asProjectEnvironmentRevisionId,
+  asProjectToolchainReceiptId,
   asSha256DigestV1,
+  asSourceId,
   asTaskId,
   asWorkspaceId,
   type JsonValue,
@@ -63,8 +75,10 @@ import {
 import { contentHash } from "@chronorift/json-artifacts";
 
 import {
+  collectCandidateGodotSourceV1,
   prepareCandidateGodotBuildV1,
   prepareExternalGodotLifecycleBuildV1,
+  prepareProjectEnvironmentGodotBuildV1,
 } from "./candidate-godot-build.js";
 import type { TaskFixtureCapabilityV1 } from "./contracts.js";
 import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
@@ -76,6 +90,207 @@ afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true })),
   );
+});
+
+describe("Project Environment candidate collection", () => {
+  it("hard-excludes the managed adapter view from game Build bytes", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-candidate-"),
+    );
+    roots.push(workspace);
+    await writeFile(join(workspace, "project.godot"), "[application]\n");
+    await mkdir(join(workspace, ".chronorift", "adapter-candidate"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(workspace, ".chronorift", "adapter-candidate", "adapter.gd"),
+      "extends RefCounted\n",
+    );
+
+    const files = await collectCandidateGodotSourceV1(
+      workspace,
+      "project-environment",
+    );
+
+    expect(files.map((file) => file.relativePath)).toEqual(["project.godot"]);
+  });
+
+  it.each(["native.so", "Logic.cs", "override.cfg", "addons/plugin.gd"])(
+    "rejects unsupported PE-A game path %s",
+    async (relativePath) => {
+      const workspace = await mkdtemp(
+        join(tmpdir(), "chronorift-project-environment-candidate-"),
+      );
+      roots.push(workspace);
+      await writeFile(join(workspace, "project.godot"), "[application]\n");
+      const target = join(workspace, relativePath);
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, "unsupported\n");
+
+      await expect(
+        collectCandidateGodotSourceV1(workspace, "project-environment"),
+      ).rejects.toBeInstanceOf(Error);
+    },
+  );
+
+  it.each([
+    ["credential path", ".env.production", "SECRET=value\n"],
+    ["private key path", "config/service.pem", "private\n"],
+    ["tool script", "tool_script.gd", "@tool\nextends Node\n"],
+    [
+      "editor plugin",
+      "editor_plugin.gd",
+      "extends EditorPlugin\nfunc _enter_tree():\n\tpass\n",
+    ],
+    ["toolchain drift", ".godot-version", "4.8.0\n"],
+  ])("rejects PE-A post-edit %s", async (_label, relativePath, contents) => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-candidate-"),
+    );
+    roots.push(workspace);
+    await writeFile(join(workspace, "project.godot"), "[application]\n");
+    const target = join(workspace, relativePath);
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, contents);
+
+    await expect(
+      collectCandidateGodotSourceV1(workspace, "project-environment"),
+    ).rejects.toBeInstanceOf(Error);
+  });
+});
+
+describe("Project Environment candidate Build binding", () => {
+  const capabilities = {
+    schemaVersion: 1 as const,
+    modules: PROJECT_CAPABILITY_MODULE_NAMES_V1.map((module) => ({
+      schemaVersion: 1 as const,
+      module,
+      status: (
+        [
+          "lifecycle",
+          "clock",
+          "runtime_error",
+          "entity_projection",
+          "state_projection",
+          "event_projection",
+          "capture",
+        ] as const
+      ).includes(
+        module as
+          | "lifecycle"
+          | "clock"
+          | "runtime_error"
+          | "entity_projection"
+          | "state_projection"
+          | "event_projection"
+          | "capture",
+      )
+        ? ("implemented" as const)
+        : ("unsupported" as const),
+      protocolVersion: (
+        [
+          "lifecycle",
+          "clock",
+          "runtime_error",
+          "entity_projection",
+          "state_projection",
+          "event_projection",
+          "capture",
+        ] as readonly string[]
+      ).includes(module)
+        ? "1"
+        : null,
+      limitations: (
+        [
+          "lifecycle",
+          "clock",
+          "runtime_error",
+          "entity_projection",
+          "state_projection",
+          "event_projection",
+          "capture",
+        ] as readonly string[]
+      ).includes(module)
+        ? []
+        : ["not declared by this adapter"],
+    })),
+  };
+
+  it("binds the exact environment, adapter, schema, SDK, bridge, and toolchain", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-build-"),
+    );
+    roots.push(workspace);
+    await writeFile(
+      join(workspace, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(workspace, "main.gd"), "extends Node\n");
+    await mkdir(join(workspace, ".chronorift", "adapter-candidate"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(workspace, ".chronorift", "adapter-candidate", "entry.gd"),
+      "extends RefCounted\n",
+    );
+
+    const sourceId = asSourceId(`source:${"1".repeat(64)}`);
+    const adapter = ProjectAdapterRevisionV1Schema.parse({
+      schemaVersion: 1,
+      adapterRevisionId: asProjectAdapterRevisionId("adapter-revision:test"),
+      adapterId: asAdapterId("adapter:test"),
+      sourceId,
+      packageDigest: "2".repeat(64),
+      manifestDigest: "3".repeat(64),
+      implementationDigest: "4".repeat(64),
+      payloadSchemaDigest: "5".repeat(64),
+      sdkDigest: "6".repeat(64),
+      bridgeDigest: "7".repeat(64),
+      capabilitySet: capabilities,
+      conformanceReceiptId: asAdapterConformanceReceiptId("conformance:test"),
+      contentByteLength: 128,
+      contentFileCount: 3,
+    });
+    const environment = ProjectEnvironmentRevisionReferenceV1Schema.parse({
+      schemaVersion: 1,
+      environmentId: asProjectEnvironmentId("environment:test"),
+      environmentRevisionId: asProjectEnvironmentRevisionId(
+        "environment-revision:test",
+      ),
+      sourceId,
+      adapterRevisionId: adapter.adapterRevisionId,
+      sdkDigest: adapter.sdkDigest,
+      bridgeDigest: adapter.bridgeDigest,
+      toolchainReceiptId: asProjectToolchainReceiptId("toolchain:test"),
+      conformanceReceiptId: adapter.conformanceReceiptId,
+      observerEffectReceiptId: asObserverEffectReceiptId("observer:test"),
+      policyProfileDigest: "8".repeat(64),
+      contentDigest: "9".repeat(64),
+    });
+    const prepared = await prepareProjectEnvironmentGodotBuildV1({
+      taskId: asTaskId("task:pe"),
+      workspaceId: asWorkspaceId("workspace:pe"),
+      workspaceDirectory: workspace,
+      baselineSourceHash: asSha256DigestV1("a".repeat(64)),
+      bindingEpochId: asEnvironmentBindingEpochId("binding:pe"),
+      environment,
+      adapter,
+      toolchainArtifactDigest: asSha256DigestV1("b".repeat(64)),
+      policyProfileDigest: environment.policyProfileDigest,
+      now: "2026-08-12T00:00:00.000Z",
+    });
+
+    expect(prepared.configuredMainScene).toBe("res://main.tscn");
+    expect(prepared.binding).toMatchObject({
+      taskId: "task:pe",
+      environmentRevisionId: "environment-revision:test",
+      adapterRevisionId: "adapter-revision:test",
+      payloadSchemaDigest: "5".repeat(64),
+      compatibilityStatus: "pending",
+      compatibilityReceiptId: null,
+    });
+    expect(prepared.fileCount).toBe(2);
+  });
 });
 
 const hash = asSha256DigestV1("a".repeat(64));

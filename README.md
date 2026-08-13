@@ -21,6 +21,16 @@ checkpoint、fork、replay、query 和 compare 原语。
 > semantic wire/Addon、data-only adapter profile，以及 Timer + spawned-entity 的 query/checkpoint/restore/fork/
 > trace/replay/compare。所有状态操作都明确是 `descriptive_only`；public exposed task Gate 只验证 plumbing，
 > 不证明智能诊断、等价恢复、修复正确性、独立验收或泛化。
+>
+> **Project Environment V1 / PE-A Preview 已达到 implementation present；当前下一实现切片是 PE-B Dynamic
+> Projection（planned，尚未实现）**。PE-A 在 Godot 4.7 GDScript 项目目录启动 ChronoRift，由同一个可见 Pi
+> Session 生成、验证并发布唯一 ProjectAdapter，然后进入独立用户目标 turn。Harness 提供 bridge、协议、Adapter
+> SDK、sandbox、loader、validator 和 publication broker；项目 entity/state/event/capture 语义由 Agent 生成。
+> 显式 `project preview` 路由、三阶段 conformance、crash reconciliation、post-edit exact Build、new-Session
+> reuse、durable runtime evidence、snapshot characterization 与独立 validator 已实现。默认离线、真实 Godot、
+> 下层 Linux Host 与 deterministic fake-Pi Gate 已通过。开发候选已有一次本地 Luna/max 输出，但它不绑定本次
+> baseline commit；只有针对冻结 product tree 重新取得并独立复验 create-new bundle 后，才升级为
+> `PE-A implementation present + local Gate passed`。它仍不证明通用外部项目支持或默认入口已经切换。
 
 ## 产品契约（vNext 目标）
 
@@ -69,11 +79,12 @@ Execution。
 ## 目标运行方式
 
 ```text
-用户启动 ChronoRift 并提供项目与目标
-→ ChronoRift 创建 managed task workspace 与执行 sandbox
-→ ChronoRift 使用 Pi SDK 创建 AgentSession
-→ 加载正常 coding tools、AGENTS.md、skills 和 Godot tools
-→ session.prompt(user goal)
+用户在包含 project.godot 的目录启动 ChronoRift，可同时提供目标
+→ ChronoRift 自动发现项目、冻结 source closure，并创建 managed workspace 与 sandbox
+→ 使用 Pi SDK 创建或恢复一个可见 AgentSession
+→ 首次进入时，Agent 在独立初始化 turn 中读取项目并生成唯一 ProjectAdapter
+→ 初始化 turn 正常返回后，Harness 冻结并验证 candidate，在 revision 完整落盘后原子切换 current pointer
+→ 在同一 Session 的下一 turn 处理已排队目标
 → Pi Agent Loop 自主调查、修改和验证
 → 模型输出普通最终结果，当前 turn 结束
 → ChronoRift 展示 diff、实际工具记录、Execution lineage 和资源/安全记录
@@ -84,6 +95,23 @@ Agent 的 `cwd` 目标为任务 sandbox 内的 `/workspace`，来自受管的临
 checkout。coding tools 和 Godot 进程运行在无特权容器或等价 Linux namespace 中；网络、宿主文件、
 凭据、设备和显示代理默认关闭，越界动作在执行前拒绝并形成结构化安全事件。模型侧 Pi Host 可以使用用户
 自己的 Pi credential store，但工具和游戏进程不能继承这些凭据。
+
+这个流程已有显式、实验性的 Preview 入口；它不是默认产品命令：
+
+```text
+pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--thinking LEVEL --host-config PATH]
+```
+
+每次 Preview 都先检查 project-local、path-free publication recovery authority，并只通过已验证 Host runtime root
+按 opaque Task ID 派生原 Task store。若发现上次命令中断在 revision/current/receipt/binding 之间，本次命令只做
+幂等 reconciliation 后非零返回，不恢复旧 Pi Session，也不投递旧 queued goal；即使恢复成功也需用户再次显式运行
+Preview 才开始新工作。Authority 或 pointer transaction 若只留下完全空或严格可识别的内部 stage 残留，reopen 会
+保留到独立 quarantine 后继续；含未知 bytes、链接或名字的目录仍 fail closed。
+
+它仅接受 clean、repository-root、单 `project.godot`、单默认 launch target 的 Godot 4.7.1 GDScript 项目，要求
+Linux sandbox 与严格 Host toolchain registry 配置；交互终端会进入官方 Pi TUI，`--json` 则只输出结果。当前可执行
+vNext 入口还包括后文列出的实验性 `pnpm task -- start/continue/show/export/discard`；默认 `chronorift [goal]` 只有
+全部 Preview 和晋升 Gate 通过后才能对外发布。
 
 一次 `session.prompt()` 返回只结束当前 turn。候选 patch、Pi Session、Execution、checkpoint 和 trace
 继续保留，直到用户继续对话、显式 handoff/apply、discard，或保留期到期。自动 commit、merge、push 和
@@ -113,6 +141,49 @@ checkout。coding tools 和 Godot 进程运行在无特权容器或等价 Linux 
 当前 v0.4 中的 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
 `DiagnosisProposalV4`、`DiagnosisVerdictV3` 和固定 replay/intervention flow 是 legacy 可执行事实，不是
 vNext 产品 API。
+
+### 下一产品切片：Project Environment V1 / PE-B Dynamic Projection
+
+Project Environment V1 不再为每个外部项目新增 lifecycle/semantic product profile。目标模型是：
+
+- 一个 `project.godot` 对应一个 project-local environment；
+- 常规入口自动冻结 dirty Git source closure 与 realized project descriptor；
+- 同一个可见 Pi Session 首次生成唯一的 manifest + GDScript ProjectAdapter；
+- Adapter 通过只读 managed overlay 注入，和游戏 source/probe 分别记录 identity；
+- Harness 固定 game tools 和 versioned capability modules，Agent 定义项目 entity/state/event/capture 语义；
+- Ready 至少要求可启动、可观察、可捕获；input、snapshot/restore、alignment 和 render 可明确 unsupported；
+- candidate 只有在初始化 turn 正常返回、并通过 vanilla/bridge-only/instrumented smoke、严格 schema、runtime 和
+  cleanup conformance 后，才能由 Host broker完整落盘为 local-only `.chronorift/` revision，再原子切换 current pointer；
+- 后续 Task pin 已验证 revision；源码变化由 Agent 增量审阅，普通 candidate Build 使用 compatibility receipt；
+- 游戏 patch 通过显式 review/apply 回到 Host，adapter publication 不混入游戏 patch。
+
+首版范围是 Linux + Godot 4.7 官方 GDScript runtime。C#、GDExtension、native plugin、audio 和其他 Host 平台不
+在范围内。完整契约、数据模型、状态机、信任边界和 Gate 见
+[Project Environment V1 RFC](docs/project-environment-v1.md)。当前源码已有 PE-A 的 DTO、SDK、loader、wire、
+bounded stores、初始化协调、三阶段 conformance、publication/binding、broker-only 跨命令 publication reconciliation、post-edit exact Build compatibility、new-Session
+reuse、durable runtime evidence、snapshot characterization、独立 validator、显式 CLI、官方 Pi TUI 与 Task-bound core
+runtime tools。此前开发候选已有本地 real-Pi Gate 成功输出，但它不绑定本次 baseline product tree；精确基线的
+create-new Gate 与独立复验完成前，PE-A 状态仍是 `implementation present`，不是 protected-ref conformance 或默认入口。
+
+初始化 workspace 中的 minimal package 只是结构参考；权威 validator 要求 candidate 至少声明一个非
+`scene-root` placeholder 的项目 entity type 和一个非 `project` placeholder 的状态域。原样复制模板、只改
+README 或只增加未引用文件都不能发布为 ready revision。
+
+首个实现进一步收窄为 **PE-A / Author → Validate → Publish → Use**：clean、single-root、单默认 launch target、
+headless/no-network 项目，证明同一 Pi Session 能初始化 adapter、在下一 turn 处理目标，对候选 Build 运行 quick
+compatibility smoke，并由新 Session 复用。PE-A 同时用一个冻结 characterization adapter 做 snapshot/restore
+read-back，只证明 optional contract 可执行，不把 snapshot 设为外部项目 Ready 要求。Dirty/multi-source、通用 failed-attempt/Session resume、
+source/adapter migration、并发 publication、Host refresh/apply、bundle和网络模板都是后续独立切片。
+
+当前实现会在 game tool 首次使用和 source 变化后重新冻结 workspace diff，为**精确 candidate Build**执行 compatibility
+smoke，并只让后续 runtime 使用该 Build；新 Task/Session 对 unchanged source 会重验已发布 bytes 和 quick smoke 后复用，
+不会伪造本 Task publication。冻结 characterization fixture 也已完成 snapshot → mutation → restore → read-back。
+下层 Linux sandbox/Godot Host conformance 与 deterministic fake-Pi 完整 Preview Host integration 已在本地隔离容器
+实际通过；双 Session、published receipt、raw pinned capture、Task ledger/inventory、physical seal 与 byte-pinned
+standalone validator 的实现和离线回归也已通过。此前 2026-08-13 的 Luna/max 输出只属于开发候选，必须针对本次精确
+baseline product tree 重新运行 create-new Gate 后才能作为冻结证据。仍未完成的是 protected-ref 长期证据 artifact、
+更多结构类别，以及 PE-B 的动态节点、自定义 Signal 与状态变化投影。Dirty/untracked、
+materialized dependency、addon/import 和 multi-target source closure 属于后续 PE-C，不混入 PE-B。
 
 ### 实验性 M3 vNext 入口
 
@@ -431,6 +502,11 @@ Formal benchmark 的冻结命令、退出码、恢复规则和证据 identity �
 当前 v0.4 单次运行写入 `.chronorift/v0.4/runs/<run-id>/`；v0.3 兼容路径写入
 `.chronorift/v0.3/runs/<run-id>/`。`.chronorift/` 是本地运行状态，不得提交 Git。
 
+Project Environment V1 的 PE-A Preview 已在独立 local-only namespace 中保存 immutable environment/adapter revisions，
+且不修改根 `.gitignore` 或 Git metadata；Task Session、candidate 和 runtime artifact 留在仓库外 bounded storage。
+该 namespace 不替代或重解释现有 v0.3/v0.4 store；dirty/multi-source、retention 与后续 publication 语义仍按 RFC
+中的后续窄切片推进。
+
 当前 adapter 对外部和持久化 DTO 使用显式 `schemaVersion` 与 strict validation；执行和事件 seal 后才
 作为证据；run store 拒绝 absolute path、`..`、symlink/canonical-path escape 和不同内容覆盖。requested
 control 只有获得匹配 realized receipt 后才是执行事实。content hash 能发现意外损坏，但不是签名、外部
@@ -492,6 +568,12 @@ fixtures/godot-*                 四个受支持的真实 Godot Fixture
 
 ## 当前限制
 
+- Project Environment V1 的 PE-A Preview 已有显式项目目录初始化、Agent-generated ProjectAdapter、环境
+  revision/CAS publication、通用 entity/state/event/capture SDK、交互 Session、post-edit exact Build、new-Session reuse、
+  snapshot characterization 与 durable runtime evidence。此前开发候选的本地 real-Pi 输出不绑定本次 baseline；精确
+  baseline 的 create-new Gate 与独立复验仍待重跑。尚无 PE-B dynamic projection、PE-C source/import closure 或
+  Host refresh/apply。`chronorift [goal]`
+  仍不是当前可执行入口。
 - v0.4 是四个小型、显式插桩 Fixture 的诊断 workflow，不支持任意外部 Godot 项目。
 - v0.4 覆盖 Pi 默认 prompt，禁用 built-in tools、skills/context，要求固定工具序列；这与 vNext 契约冲突。
 - M3 只接受 clean、冻结 identity 的 `frame-input-window` 初始项目；候选 `addons/**` 当前全部拒绝。它不是

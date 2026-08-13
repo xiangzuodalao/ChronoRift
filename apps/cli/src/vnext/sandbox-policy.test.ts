@@ -119,4 +119,20 @@ describe("M1 sandbox policy", () => {
       }),
     ).toThrow(/policyId/u);
   });
+
+  it("accepts the independently versioned Project Environment runtime identity", () => {
+    const policy = createSandboxPolicyV2(asSha256DigestV1("a".repeat(64)), {
+      coding: {
+        toolchainId: `sandbox-toolchain:v1:${"b".repeat(64)}`,
+        targets: ["/bin/bash"],
+      },
+      godot: {
+        toolchainId: `sandbox-toolchain:v1:${"c".repeat(64)}`,
+        managedRuntimeId: `managed-godot-project-environment:v1:${"d".repeat(64)}`,
+        targets: ["/opt/chronorift/bin/godot"],
+      },
+    });
+
+    expect(SandboxPolicyV2Schema.parse(policy)).toEqual(policy);
+  });
 });

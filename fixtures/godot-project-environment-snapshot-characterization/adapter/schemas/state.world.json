@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "dialect": "chronorift://schemas/project-adapter-payload/v1",
+  "schemaId": "state.world",
+  "root": {
+    "type": "object",
+    "properties": {
+      "counter": {
+        "type": "integer"
+      }
+    },
+    "required": ["counter"],
+    "additionalProperties": false
+  }
+}

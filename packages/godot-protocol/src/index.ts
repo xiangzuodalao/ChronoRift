@@ -4,4 +4,8 @@ export * from "./lifecycle-sidecar.js";
 export * from "./semantic-messages.js";
 export * from "./semantic-sidecar.js";
 export * from "./messages.js";
+export * from "./project-environment-manifest.js";
+export * from "./project-environment-messages.js";
+export * from "./project-environment-sidecar.js";
+export * from "./project-environment-values.js";
 export * from "./sidecar.js";

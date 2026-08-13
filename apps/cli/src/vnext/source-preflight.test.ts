@@ -23,6 +23,7 @@ import {
   parseGitTreeListing,
   preflightCleanGitSubtree,
   preflightCleanExternalGodotProject,
+  preflightCleanProjectEnvironmentV1,
 } from "./source-preflight.js";
 
 const execFileAsync = promisify(execFile);
@@ -492,5 +493,95 @@ describe("preflightCleanExternalGodotProject", () => {
         await externalRequestFor(reservedAutoload),
       ),
     ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+});
+
+describe("preflightCleanProjectEnvironmentV1", () => {
+  const createProject = async (): Promise<FixtureRepository> => {
+    const repo = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(repo.root, "chronorift.fixture.json"));
+    await commitAll(repo.root, "PE-A project");
+    return repo;
+  };
+
+  it("discovers a clean repository-root project without a descriptor", async () => {
+    const repo = await createProject();
+
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+
+    expect(source).toMatchObject({
+      sourceKind: "project-environment-v1-clean-git",
+      projectPrefix: "",
+      requestedGodotVersion: "4.7.1",
+    });
+    expect(source.mainScene).toMatch(/^(?:res|uid):\/\//u);
+    expect(source.projectSourceIdentity).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it("accepts only the exact PE-A Godot patch request", async () => {
+    const accepted = await createProject();
+    await writeFile(join(accepted.root, ".godot-version"), "4.7.1\n");
+    await commitAll(accepted.root, "pin Godot");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: accepted.root,
+        sourceRepositoryExclusionRoots: [accepted.runtimeRoot],
+      }),
+    ).resolves.toMatchObject({ requestedGodotVersion: "4.7.1" });
+
+    const rejected = await createProject();
+    await writeFile(join(rejected.root, ".godot-version"), "4.7.2\n");
+    await commitAll(rejected.root, "wrong Godot patch");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: rejected.root,
+        sourceRepositoryExclusionRoots: [rejected.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+
+  it.each([
+    ["credential-like source", ".env.production", "SECRET=value\n"],
+    ["tool script", "tool_script.gd", "@tool\nextends Node\n"],
+    [
+      "editor plugin",
+      "editor_plugin.gd",
+      "extends EditorPlugin\nfunc _enter_tree():\n\tpass\n",
+    ],
+  ])("rejects %s", async (_label, relativePath, contents) => {
+    const repo = await createProject();
+    await writeFile(join(repo.root, relativePath), contents);
+    await commitAll(repo.root, `add ${relativePath}`);
+
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: repo.root,
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+      }),
+    ).rejects.toBeInstanceOf(Error);
+  });
+
+  it("rejects a nested project and a dirty worktree", async () => {
+    const nested = await createCommittedFixtureRepository();
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: nested.project,
+        sourceRepositoryExclusionRoots: [nested.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+
+    const dirty = await createProject();
+    await appendFile(join(dirty.root, "project.godot"), "\n# dirty\n");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: dirty.root,
+        sourceRepositoryExclusionRoots: [dirty.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "source_not_clean" });
   });
 });

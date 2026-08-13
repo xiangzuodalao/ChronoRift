@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "dialect": "chronorift://schemas/project-adapter-payload/v1",
+  "schemaId": "state.engine",
+  "root": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  }
+}

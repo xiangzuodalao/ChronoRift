@@ -158,6 +158,44 @@ const authoredAdapterFiles = async (prompt: string) => {
     unknown
   >;
   manifest.adapterId = adapterId;
+  const schemaPathById = new Map([
+    ["entity.dynamic_actor", "schemas/entity.json"],
+    ["event.level_changed", "schemas/event.json"],
+    ["launch.params", "schemas/launch.params.json"],
+    ["state.dynamic_actor", "schemas/state.json"],
+  ]);
+  if (!Array.isArray(manifest.schemas))
+    throw new Error("PE-B reference adapter omitted its schema inventory");
+  const schemaDeclarations: unknown[] = manifest.schemas;
+  for (const declaration of schemaDeclarations) {
+    if (
+      typeof declaration !== "object" ||
+      declaration === null ||
+      !("schemaId" in declaration) ||
+      typeof declaration.schemaId !== "string"
+    )
+      throw new Error("PE-B reference adapter has a malformed schema entry");
+    const schemaId = declaration.schemaId;
+    const path = schemaPathById.get(schemaId);
+    if (path === undefined)
+      throw new Error("PE-B reference adapter declared an unknown schema");
+    (declaration as Record<string, unknown>).path = path;
+  }
+  files.set(
+    "schemas/entity.json",
+    files.get("schemas/entity.dynamic_actor.json")!,
+  );
+  files.set(
+    "schemas/event.json",
+    files.get("schemas/event.level_changed.json")!,
+  );
+  files.set(
+    "schemas/state.json",
+    files.get("schemas/state.dynamic_actor.json")!,
+  );
+  files.delete("schemas/entity.dynamic_actor.json");
+  files.delete("schemas/event.level_changed.json");
+  files.delete("schemas/state.dynamic_actor.json");
   files.set("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
   return files;
 };

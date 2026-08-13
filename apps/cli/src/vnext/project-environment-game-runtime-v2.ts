@@ -33,7 +33,10 @@ import type {
   SandboxedGodotProjectEnvironmentSidecarV2,
 } from "./project-environment-sidecar-port-v2.js";
 import { ProjectEnvironmentValidatedRingV2 } from "./project-environment-validated-ring-v2.js";
-import { projectEnvironmentRuntimeStopMissingEvidenceV2 } from "./project-environment-runtime-stop-readiness-v2.js";
+import {
+  projectEnvironmentRuntimeStopMissingEvidenceV2,
+  projectEnvironmentRuntimeStopReadinessSummaryV2,
+} from "./project-environment-runtime-stop-readiness-v2.js";
 import type {
   ProjectEnvironmentGameToolPort,
   ProjectEnvironmentGameToolPortRequestV1,
@@ -402,6 +405,21 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
 
   private status(input: Record<string, unknown>) {
     const active = this.requireRuntime(input.runtimeId);
+    let dynamicTraceCount = 0;
+    try {
+      dynamicTraceCount = active.ring.dynamicTraces(
+        this.options.adapterPackage,
+      ).length;
+    } catch {
+      // Status remains available while a still-growing trace is incomplete.
+    }
+    const readiness = projectEnvironmentRuntimeStopReadinessSummaryV2({
+      dynamicTraceCount,
+      entityRows: active.entityRows,
+      stateRows: active.stateRows,
+      eventRows: active.eventRows,
+      captureWindowCount: active.captureWindowIds.length,
+    });
     return {
       schemaVersion: 1,
       taskId: this.options.taskId,
@@ -414,8 +432,8 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       coverage: [coverage(active.ring.validatedRecordCount)],
       loss: [],
       limitations: active.ring.poisoned
-        ? ["Execution observation lineage is poisoned."]
-        : [],
+        ? ["Execution observation lineage is poisoned.", readiness]
+        : [readiness],
     };
   }
 
@@ -615,7 +633,7 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
     });
     if (missing.length > 0)
       throw new Error(
-        `runtime evidence is incomplete; keep this runtime running and add: ${missing.join(", ")}`,
+        `runtime evidence is incomplete; keep this runtime running, call game_status, and add: ${missing.join(", ")}`,
       );
     return this.finalize(active);
   }

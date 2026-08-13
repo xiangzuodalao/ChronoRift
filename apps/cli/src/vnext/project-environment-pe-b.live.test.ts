@@ -230,7 +230,8 @@ describe("PE-B real Pi dynamic Project Environment Gate", () => {
         "Call game_capabilities, launch its exact build and main target, configure capture with channels entity/state/event/runtime_error and zero process-frame retention, sampling and triggers empty.",
         "Query nonempty entities, state, and events; durably pin the current lossless capture using anchor now and before/after 0; then stop the runtime.",
         "Explain only the observed create/state/event/change/destroy/recreate lineage, including the two incarnations. Do not claim Signal causality.",
-        "After one execution has all three nonempty queries, one successful durable pin, and a successful stop, finish immediately. Do not relaunch, inspect files, or run shell commands.",
+        "Before stop, call game_status and read its PE-B stop readiness limitation. If it is incomplete, perform exactly the missing query or pin on that same runtime, then check status again. Call stop only when readiness says complete.",
+        "After one successful stop, finish immediately. Do not relaunch, inspect files, run shell commands, or call game tools again.",
       ].join("\n");
       const request = {
         projectPath: projectRoot,

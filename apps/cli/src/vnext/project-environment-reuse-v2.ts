@@ -528,27 +528,59 @@ export function inspectReusableProjectEnvironmentRevisionV2(input: {
     "records/observer-effect-receipt.v1.json",
     (value) => ObserverEffectReceiptV1Schema.parse(value),
   );
-  if (
-    adapterRevision.adapterId !== input.expectedAdapterId ||
-    adapterRevision.adapterRevisionId !== input.revision.adapterRevisionId ||
-    adapterRevision.sourceId !== input.revision.sourceId ||
-    adapterRevision.packageDigest !== adapterPackage.candidateSha256 ||
-    adapterRevision.manifestDigest !== adapterPackage.manifestSha256 ||
-    adapterRevision.sdkDigest !== input.revision.sdkDigest ||
-    adapterRevision.bridgeDigest !== input.revision.bridgeDigest ||
-    conformance.receiptId !== input.revision.conformanceReceiptId ||
-    conformance.sourceId !== input.revision.sourceId ||
-    conformance.candidateDigest !== adapterRevision.packageDigest ||
-    conformance.toolchainReceiptId !== input.revision.toolchainReceiptId ||
-    conformance.outcome !== "conformed" ||
-    observerEffect.receiptId !== input.revision.observerEffectReceiptId ||
-    observerEffect.sourceId !== input.revision.sourceId ||
-    observerEffect.taskId !== conformance.taskId ||
-    observerEffect.attemptId !== conformance.attemptId ||
-    observerEffect.candidateId !== conformance.candidateId ||
-    observerEffect.status !== "measured"
-  )
-    throw new Error("published V2 evidence closure crossed a revision binding");
+  const revisionBindingMismatches = [
+    ["adapter-id", adapterRevision.adapterId !== input.expectedAdapterId],
+    [
+      "adapter-revision-id",
+      adapterRevision.adapterRevisionId !== input.revision.adapterRevisionId,
+    ],
+    ["adapter-source", adapterRevision.sourceId !== input.revision.sourceId],
+    [
+      "adapter-package",
+      adapterRevision.packageDigest !== adapterPackage.candidateSha256,
+    ],
+    [
+      "adapter-manifest",
+      adapterRevision.manifestDigest !== adapterPackage.manifestSha256,
+    ],
+    ["adapter-sdk", adapterRevision.sdkDigest !== input.revision.sdkDigest],
+    [
+      "adapter-bridge",
+      adapterRevision.bridgeDigest !== input.revision.bridgeDigest,
+    ],
+    [
+      "revision-conformance",
+      conformance.receiptId !== input.revision.conformanceReceiptId,
+    ],
+    ["conformance-source", conformance.sourceId !== input.revision.sourceId],
+    [
+      "conformance-candidate",
+      conformance.candidateDigest !== adapterRevision.packageDigest,
+    ],
+    [
+      "conformance-toolchain",
+      conformance.toolchainReceiptId !== input.revision.toolchainReceiptId,
+    ],
+    ["conformance-outcome", conformance.outcome !== "conformed"],
+    [
+      "revision-observer-effect",
+      observerEffect.receiptId !== input.revision.observerEffectReceiptId,
+    ],
+    ["observer-source", observerEffect.sourceId !== input.revision.sourceId],
+    ["observer-task", observerEffect.taskId !== conformance.taskId],
+    ["observer-attempt", observerEffect.attemptId !== conformance.attemptId],
+    [
+      "observer-candidate",
+      observerEffect.candidateId !== conformance.candidateId,
+    ],
+    ["observer-status", observerEffect.status !== "measured"],
+  ]
+    .filter((entry) => entry[1] === true)
+    .map((entry) => entry[0]);
+  if (revisionBindingMismatches.length > 0)
+    throw new Error(
+      `published V2 evidence closure crossed revision bindings: ${revisionBindingMismatches.join(", ")}`,
+    );
   return Object.freeze({
     schemaVersion: 2,
     revision: input.revision,

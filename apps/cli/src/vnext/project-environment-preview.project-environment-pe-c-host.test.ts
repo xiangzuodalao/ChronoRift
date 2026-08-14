@@ -477,10 +477,11 @@ const createFakePiDependencies = (
     );
     if (initializing) {
       metrics.initializationTurns += 1;
-      for (const [path, content] of await authoredAdapterFiles(
+      const authoredFiles = await authoredAdapterFiles(
         options.prompt,
         contract,
-      )) {
+      );
+      for (const [path, content] of authoredFiles) {
         if (
           path === "manifest.json" &&
           content.includes("dynamic-placeholder")
@@ -499,6 +500,20 @@ const createFakePiDependencies = (
             `fake Pi failed to author ProjectAdapter file ${path}: ${writeOutput}`,
           );
         }
+      }
+      const expectedManifest = authoredFiles.get("manifest.json");
+      if (expectedManifest === undefined) {
+        throw new Error("fake Pi omitted its authored ProjectAdapter manifest");
+      }
+      const realizedManifest = toolText(
+        await invoke("read", {
+          path: ".chronorift/adapter-candidate/manifest.json",
+        }),
+      );
+      if (realizedManifest !== expectedManifest) {
+        throw new Error(
+          `fake Pi manifest read-back differed after a successful write: expectedSha256=${sha256(expectedManifest)} realizedSha256=${sha256(realizedManifest)} expectedBytes=${Buffer.byteLength(expectedManifest, "utf8")} realizedBytes=${Buffer.byteLength(realizedManifest, "utf8")} placeholder=${String(realizedManifest.includes("dynamic-placeholder"))}`,
+        );
       }
       const finalized = await invoke("project_adapter_finalize_v2", {});
       if (!toolText(finalized).includes("Updated 4 exact schema SHA-256")) {

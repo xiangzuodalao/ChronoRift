@@ -25,6 +25,10 @@ export interface TaskDirectoryLayout {
   readonly hostOperationTemporaryDirectory: string;
 }
 
+export interface ProjectEnvironmentTaskDirectoryLayout extends TaskDirectoryLayout {
+  readonly projectEnvironmentRecordDirectory: string;
+}
+
 const TASK_CHILDREN = [
   "records",
   "runtime-records",
@@ -40,6 +44,11 @@ const LEGACY_TASK_CHILDREN = TASK_CHILDREN.filter(
   (child) => child !== "runtime-records",
 );
 
+const PROJECT_ENVIRONMENT_TASK_CHILDREN = [
+  ...TASK_CHILDREN,
+  "project-environment-records",
+] as const;
+
 const layoutForRoot = (taskRootDirectory: string): TaskDirectoryLayout => ({
   taskRootDirectory,
   taskRecordDirectory: join(taskRootDirectory, "records"),
@@ -50,6 +59,16 @@ const layoutForRoot = (taskRootDirectory: string): TaskDirectoryLayout => ({
   piSessionDirectory: join(taskRootDirectory, "pi-sessions"),
   hostBaselineGitDirectory: join(taskRootDirectory, "host-baseline.git"),
   hostOperationTemporaryDirectory: join(taskRootDirectory, "host-tmp"),
+});
+
+const projectEnvironmentLayoutForRoot = (
+  taskRootDirectory: string,
+): ProjectEnvironmentTaskDirectoryLayout => ({
+  ...layoutForRoot(taskRootDirectory),
+  projectEnvironmentRecordDirectory: join(
+    taskRootDirectory,
+    "project-environment-records",
+  ),
 });
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
@@ -290,4 +309,104 @@ export async function openTaskDirectoryLayout(input: {
     await verifyPrivateOwnedDirectory(path, "Task lifecycle directory");
   }
   return layoutForRoot(taskRootDirectory);
+}
+
+/**
+ * PE-A gets an exact layout version rather than silently broadening the frozen
+ * legacy Task root. Legacy open rejects this extra owned child by design.
+ */
+export async function createProjectEnvironmentTaskDirectoryLayout(input: {
+  readonly runtimeRoot: string;
+  readonly sourceRepositoryRoot: string;
+  readonly taskId: TaskId;
+}): Promise<ProjectEnvironmentTaskDirectoryLayout> {
+  const [runtimeRoot, sourceRepositoryRoot] = await Promise.all([
+    canonicalizeExistingDirectoryWithoutSymlinks(input.runtimeRoot),
+    canonicalizeExistingDirectoryWithoutSymlinks(input.sourceRepositoryRoot),
+  ]);
+  if (
+    pathIsWithinOrEqual(runtimeRoot, sourceRepositoryRoot) ||
+    pathIsWithinOrEqual(sourceRepositoryRoot, runtimeRoot)
+  ) {
+    throw new M1Error(
+      "path_denied",
+      "runtime root and source repository must not overlap",
+    );
+  }
+  const tasksDirectory = await ensureTasksDirectory(runtimeRoot);
+  const taskRootDirectory = join(
+    tasksDirectory,
+    taskNamespaceDigestV1(input.taskId),
+  );
+  try {
+    await mkdir(taskRootDirectory, { mode: 0o700 });
+  } catch (error) {
+    if (isNodeError(error) && error.code === "EEXIST") {
+      throw new M1Error(
+        "artifact_write_failed",
+        "Task namespace already exists",
+        error,
+      );
+    }
+    throw new M1Error(
+      "artifact_write_failed",
+      "unable to create the Project Environment Task namespace",
+      error,
+    );
+  }
+  const createdRoot = await lstat(taskRootDirectory);
+  const createdChildren: string[] = [];
+  try {
+    await chmod(taskRootDirectory, 0o700);
+    await verifyPrivateOwnedDirectory(taskRootDirectory, "Task root directory");
+    for (const child of PROJECT_ENVIRONMENT_TASK_CHILDREN) {
+      const childPath = join(taskRootDirectory, child);
+      await mkdir(childPath, { mode: 0o700 });
+      createdChildren.push(childPath);
+      await chmod(childPath, 0o700);
+      await verifyPrivateOwnedDirectory(childPath, "Task lifecycle directory");
+    }
+  } catch (error) {
+    await rollbackCreatedRoot(taskRootDirectory, createdRoot, createdChildren);
+    throw new M1Error(
+      "artifact_write_failed",
+      "unable to create the complete Project Environment Task layout",
+      error,
+    );
+  }
+  return projectEnvironmentLayoutForRoot(taskRootDirectory);
+}
+
+export async function openProjectEnvironmentTaskDirectoryLayout(input: {
+  readonly runtimeRoot: string;
+  readonly taskId: TaskId;
+}): Promise<ProjectEnvironmentTaskDirectoryLayout> {
+  const runtimeRoot = await canonicalizeExistingDirectoryWithoutSymlinks(
+    input.runtimeRoot,
+  );
+  const tasksDirectory = await verifyPrivateOwnedDirectory(
+    join(runtimeRoot, "tasks"),
+    "vNext tasks directory",
+  );
+  const taskRootDirectory = await verifyPrivateOwnedDirectory(
+    join(tasksDirectory, taskNamespaceDigestV1(input.taskId)),
+    "Task root directory",
+  );
+  const entries = (await readdir(taskRootDirectory)).sort();
+  if (
+    JSON.stringify(entries) !==
+    JSON.stringify([...PROJECT_ENVIRONMENT_TASK_CHILDREN].sort())
+  ) {
+    throw new M1Error(
+      "path_denied",
+      "Task root is not the exact Project Environment V1 layout",
+    );
+  }
+  for (const child of entries) {
+    await verifyPrivateOwnedDirectory(
+      join(taskRootDirectory, child),
+      "Task lifecycle directory",
+    );
+  }
+  return projectEnvironmentLayoutForRoot(taskRootDirectory);
 }

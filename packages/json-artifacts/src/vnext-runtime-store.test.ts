@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  VNextSemanticCheckpointResourceV1Schema,
   asTaskId,
   taskNamespaceDigestV1,
   type TaskId,
@@ -200,6 +201,91 @@ describe("VNextRuntimeStore", () => {
         [RESOURCE_MARKER, "record.json"].sort(),
       );
     }
+  });
+
+  it("persists and reads a task-owned semantic checkpoint resource", async () => {
+    const { store, taskId } = await createHarness();
+    const checkpointId = "checkpoint:semantic:persistence";
+    const digest = "a".repeat(64);
+    const resource = VNextSemanticCheckpointResourceV1Schema.parse({
+      schemaVersion: 1,
+      resourceKind: "semantic_checkpoint",
+      taskId,
+      checkpointId,
+      payload: {
+        schemaVersion: 1,
+        taskId,
+        checkpointId,
+        executionId: "execution:semantic:persistence",
+        runtimeId: "runtime:semantic:persistence",
+        buildId: "build:semantic:persistence",
+        adapterId: "adapter:semantic:persistence",
+        adapterProfileSha256: digest,
+        semanticBarrier: "adapter_process_tail",
+        projection: {
+          schemaVersion: 1,
+          stateSchemaVersion: "chronorift.timer-spawn:v1",
+          subject: {
+            stableId: "semantic:subject",
+            incarnation: 1,
+            targetScene: "res://spawner.tscn",
+            spawnIntervalSeconds: 1,
+            spawnScene: "res://enemy.tscn",
+          },
+          timer: {
+            stableId: "semantic:timer",
+            incarnation: 1,
+            waitTimeSeconds: 1,
+            timeLeftSeconds: 0.5,
+            paused: false,
+            stopped: false,
+            oneShot: false,
+            autostart: false,
+            processCallback: "idle",
+            ignoreTimeScale: false,
+            timeoutOrdinal: 0,
+          },
+          entities: [],
+          nextSpawnOrdinal: 0,
+          capturedAt: {
+            processFrame: 1,
+            physicsTick: 1,
+            simulationTimeUs: 16_667,
+            hostMonotonicUs: null,
+            renderFrame: null,
+          },
+        },
+        projectionSha256: digest,
+        capturedDomains: [
+          "subject.configuration",
+          "spawned_entities",
+          "timer.configuration",
+          "timer.runtime",
+        ],
+        uncontrolledDomains: ["scene_private_state"],
+        restoreDependencyOrder: [
+          "subject.configuration",
+          "spawned_entities",
+          "timer.configuration",
+          "timer.runtime",
+        ],
+        fidelity: "descriptive_only",
+        equivalentForkEligible: false,
+      },
+    });
+
+    await store.putResourceOnce(
+      taskId,
+      "checkpoint",
+      checkpointId,
+      resource,
+      (value) => VNextSemanticCheckpointResourceV1Schema.parse(value),
+    );
+    await expect(
+      store.readResource(taskId, "checkpoint", checkpointId, (value) =>
+        VNextSemanticCheckpointResourceV1Schema.parse(value),
+      ),
+    ).resolves.toEqual(resource);
   });
 
   it("validates strict payloads, task ownership, and immutable conflicts", async () => {

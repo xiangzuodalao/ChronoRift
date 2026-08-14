@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "manifestKind": "chronorift-project-adapter",
+  "adapterId": "adapter.pe-a-snapshot-characterization",
+  "adapterVersion": "1.0.0",
+  "sdk": {
+    "id": "chronorift-project-adapter-sdk",
+    "version": 1
+  },
+  "engine": {
+    "id": "godot",
+    "versionRequirement": "4.7.x",
+    "language": "gdscript"
+  },
+  "entryScript": "src/project_adapter.gd",
+  "schemas": [
+    {
+      "schemaVersion": 1,
+      "schemaId": "launch.params",
+      "path": "schemas/launch.params.json",
+      "sha256": "eb80ed7cd472a3679d118b507efeec913ca91f48ff1088cc575fd825aa79ed66"
+    },
+    {
+      "schemaVersion": 1,
+      "schemaId": "entity.root",
+      "path": "schemas/entity.root.json",
+      "sha256": "5f94a2b5440a706083b41f8e8b7b2120d61ce3b363737abec33ba8b55a3bd8c6"
+    },
+    {
+      "schemaVersion": 1,
+      "schemaId": "state.world",
+      "path": "schemas/state.world.json",
+      "sha256": "8f943d397c38f31b672f80afe9f6a00a22a84620671c8cd944960a78007a69bf"
+    },
+    {
+      "schemaVersion": 1,
+      "schemaId": "state.engine",
+      "path": "schemas/state.engine.json",
+      "sha256": "c06a584f0c1e306f9c756eaf3a2b60b35f430dd1e887b4aea1462656141fecae"
+    }
+  ],
+  "launchTargets": [
+    {
+      "schemaVersion": 1,
+      "targetId": "main",
+      "scene": "res://main.tscn",
+      "default": true,
+      "parametersSchemaId": "launch.params",
+      "renderer": "headless",
+      "requiredModules": [
+        "lifecycle",
+        "clock",
+        "runtime_error",
+        "entity_projection",
+        "state_projection",
+        "event_projection",
+        "capture",
+        "input_control",
+        "snapshot",
+        "restore"
+      ]
+    }
+  ],
+  "modules": {
+    "schemaVersion": 1,
+    "modules": [
+      {
+        "schemaVersion": 1,
+        "module": "lifecycle",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "clock",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "runtime_error",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "entity_projection",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "state_projection",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "event_projection",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "capture",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "input_control",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "snapshot",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "restore",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v1",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "render_capture",
+        "status": "unsupported",
+        "protocolVersion": null,
+        "limitations": [
+          "The headless characterization fixture has no render capture."
+        ]
+      },
+      {
+        "schemaVersion": 1,
+        "module": "alignment",
+        "status": "unsupported",
+        "protocolVersion": null,
+        "limitations": [
+          "The single-revision characterization fixture has no alignment module."
+        ]
+      }
+    ]
+  },
+  "entityTypes": [
+    {
+      "schemaVersion": 1,
+      "entityTypeId": "root",
+      "schemaId": "entity.root",
+      "identityStrategy": "execution_local"
+    }
+  ],
+  "stateDomains": [
+    {
+      "schemaVersion": 1,
+      "stateDomainId": "world",
+      "schemaId": "state.world",
+      "checkpointDisposition": "captured"
+    },
+    {
+      "schemaVersion": 1,
+      "stateDomainId": "engine.runtime",
+      "schemaId": "state.engine",
+      "checkpointDisposition": "uncontrolled"
+    }
+  ],
+  "eventTypes": [],
+  "smoke": {
+    "schemaVersion": 1,
+    "targetId": "main",
+    "timeoutMs": 30000,
+    "minimumStateSamples": 1,
+    "minimumEntityLifecycleRecords": 1,
+    "requiredStateDomainIds": ["world"],
+    "requiredCustomEventTypeIds": []
+  }
+}

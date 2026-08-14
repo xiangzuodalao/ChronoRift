@@ -2,7 +2,13 @@ import {
   GAME_TOOL_OUTPUT_SCHEMAS_V1,
   GAME_TOOL_DEFINITIONS_V1,
   GameBoundedJsonValueV1Schema,
+  LIFECYCLE_GAME_TOOL_DEFINITIONS_V1,
+  LIFECYCLE_GAME_TOOL_OUTPUT_SCHEMAS_V2,
+  SEMANTIC_GAME_TOOL_DEFINITIONS_V1,
+  SEMANTIC_GAME_TOOL_OUTPUT_SCHEMAS_V1,
+  type LifecycleGameToolNameV1,
   type GameToolNameV1,
+  type SemanticGameToolNameV1,
 } from "@chronorift/agent-protocol";
 import {
   defineTool,
@@ -105,6 +111,34 @@ export interface VNextGameToolPort {
   ): Promise<unknown>;
 }
 
+export interface VNextLifecycleGameToolPortRequestV1 {
+  readonly schemaVersion: 1;
+  readonly toolCallId: string;
+  readonly toolName: LifecycleGameToolNameV1;
+  readonly input: unknown;
+}
+
+export interface VNextLifecycleGameToolPort {
+  invoke(
+    request: VNextLifecycleGameToolPortRequestV1,
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+}
+
+export interface VNextSemanticGameToolPortRequestV1 {
+  readonly schemaVersion: 1;
+  readonly toolCallId: string;
+  readonly toolName: SemanticGameToolNameV1;
+  readonly input: unknown;
+}
+
+export interface VNextSemanticGameToolPort {
+  invoke(
+    request: VNextSemanticGameToolPortRequestV1,
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+}
+
 interface JsonBudget {
   nodes: number;
   characters: number;
@@ -178,6 +212,64 @@ const validateResponse = (
   return value;
 };
 
+const validateLifecycleResponse = (
+  toolName: LifecycleGameToolNameV1,
+  toolCallId: string,
+  value: unknown,
+): VNextGameToolResponseV1 => {
+  if (!Check(VNextGameToolResponseV1Schema, value)) {
+    throw new TypeError(`Invalid response envelope for ${toolName}`);
+  }
+  if (value.toolCallId !== toolCallId) {
+    throw new TypeError(
+      `Response toolCallId for ${toolName} did not match the Pi toolCallId`,
+    );
+  }
+  if (value.outcome === "success") {
+    if (!isBoundedJsonValue(value.output)) {
+      throw new TypeError(`Invalid JSON output for ${toolName}`);
+    }
+    if (!Check(LIFECYCLE_GAME_TOOL_OUTPUT_SCHEMAS_V2[toolName], value.output)) {
+      throw new TypeError(`Invalid lifecycle success output for ${toolName}`);
+    }
+  } else if (
+    value.error.details !== undefined &&
+    !isBoundedJsonValue(value.error.details)
+  ) {
+    throw new TypeError(`Invalid JSON error details for ${toolName}`);
+  }
+  return value;
+};
+
+const validateSemanticResponse = (
+  toolName: SemanticGameToolNameV1,
+  toolCallId: string,
+  value: unknown,
+): VNextGameToolResponseV1 => {
+  if (!Check(VNextGameToolResponseV1Schema, value)) {
+    throw new TypeError(`Invalid response envelope for ${toolName}`);
+  }
+  if (value.toolCallId !== toolCallId) {
+    throw new TypeError(
+      `Response toolCallId for ${toolName} did not match the Pi toolCallId`,
+    );
+  }
+  if (value.outcome === "success") {
+    if (!isBoundedJsonValue(value.output)) {
+      throw new TypeError(`Invalid JSON output for ${toolName}`);
+    }
+    if (!Check(SEMANTIC_GAME_TOOL_OUTPUT_SCHEMAS_V1[toolName], value.output)) {
+      throw new TypeError(`Invalid semantic success output for ${toolName}`);
+    }
+  } else if (
+    value.error.details !== undefined &&
+    !isBoundedJsonValue(value.error.details)
+  ) {
+    throw new TypeError(`Invalid JSON error details for ${toolName}`);
+  }
+  return value;
+};
+
 /** Bind the SDK-neutral game-tool catalog to one task-scoped runtime port. */
 export function createVNextGameToolDefinitions(
   port: VNextGameToolPort,
@@ -206,6 +298,90 @@ export function createVNextGameToolDefinitions(
             signal,
           );
           const validated = validateResponse(
+            metadata.name,
+            toolCallId,
+            response,
+          );
+          return {
+            content: jsonContent(validated),
+            details: validated,
+          };
+        },
+      }),
+    ),
+  );
+}
+
+/** Bind the additive lifecycle-only catalog without filtering the M3 catalog. */
+export function createVNextLifecycleGameToolDefinitions(
+  port: VNextLifecycleGameToolPort,
+): readonly ToolDefinition[] {
+  return Object.freeze(
+    LIFECYCLE_GAME_TOOL_DEFINITIONS_V1.map((metadata) =>
+      defineTool({
+        name: metadata.name,
+        label: metadata.label,
+        description: metadata.description,
+        parameters: metadata.parameters,
+        async execute(toolCallId, input, signal) {
+          if (!Check(VNextGameToolCallIdV1Schema, toolCallId)) {
+            throw new TypeError(`Invalid Pi toolCallId for ${metadata.name}`);
+          }
+          if (!Check(metadata.parameters, input)) {
+            throw new TypeError(`Invalid input for ${metadata.name}`);
+          }
+          const response = await port.invoke(
+            {
+              schemaVersion: 1,
+              toolCallId,
+              toolName: metadata.name,
+              input,
+            },
+            signal,
+          );
+          const validated = validateLifecycleResponse(
+            metadata.name,
+            toolCallId,
+            response,
+          );
+          return {
+            content: jsonContent(validated),
+            details: validated,
+          };
+        },
+      }),
+    ),
+  );
+}
+
+/** Bind the external Timer/spawn semantic catalog as an independent profile. */
+export function createVNextSemanticGameToolDefinitions(
+  port: VNextSemanticGameToolPort,
+): readonly ToolDefinition[] {
+  return Object.freeze(
+    SEMANTIC_GAME_TOOL_DEFINITIONS_V1.map((metadata) =>
+      defineTool({
+        name: metadata.name,
+        label: metadata.label,
+        description: metadata.description,
+        parameters: metadata.parameters,
+        async execute(toolCallId, input, signal) {
+          if (!Check(VNextGameToolCallIdV1Schema, toolCallId)) {
+            throw new TypeError(`Invalid Pi toolCallId for ${metadata.name}`);
+          }
+          if (!Check(metadata.parameters, input)) {
+            throw new TypeError(`Invalid input for ${metadata.name}`);
+          }
+          const response = await port.invoke(
+            {
+              schemaVersion: 1,
+              toolCallId,
+              toolName: metadata.name,
+              input,
+            },
+            signal,
+          );
+          const validated = validateSemanticResponse(
             metadata.name,
             toolCallId,
             response,

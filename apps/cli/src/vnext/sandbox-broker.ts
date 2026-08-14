@@ -42,6 +42,7 @@ import {
   SandboxExecutionReceiptV1Schema,
   SandboxExecutionRequestV1Schema,
   SandboxHostCapabilityV1Schema,
+  SandboxMountAdmissionReceiptV1Schema,
   SandboxPolicySchema,
   SandboxToolchainCapabilityV1Schema,
   SandboxOperationIdV1Schema,
@@ -52,6 +53,7 @@ import {
   type SandboxExecutionReceiptV1,
   type SandboxExecutionRequestV1,
   type SandboxHostCapabilityV1,
+  type SandboxMountAdmissionReceiptV1,
   type SandboxPolicy,
   type SandboxToolchainCapabilityV1,
   type SecurityEventV1,
@@ -82,6 +84,162 @@ import {
   type ManagedGodotRuntimeBindingV1,
   type ManagedGodotRuntimeCapabilityV1,
 } from "./managed-godot-runtime.js";
+import {
+  ManagedGodotLifecycleRuntimeCapabilityV1Schema,
+  assertManagedGodotLifecycleRuntimeBinding,
+  type ManagedGodotLifecycleRuntimeBindingV1,
+  type ManagedGodotLifecycleRuntimeCapabilityV1,
+} from "./managed-godot-lifecycle-runtime.js";
+import {
+  ManagedGodotSemanticRuntimeCapabilityV1Schema,
+  assertManagedGodotSemanticRuntimeBinding,
+  type ManagedGodotSemanticRuntimeBindingV1,
+  type ManagedGodotSemanticRuntimeCapabilityV1,
+} from "./managed-godot-semantic-runtime.js";
+import {
+  ManagedGodotProjectEnvironmentRuntimeCapabilityV1Schema,
+  assertManagedGodotProjectEnvironmentRuntimeBinding,
+  type ManagedGodotProjectEnvironmentRuntimeBindingV1,
+  type ManagedGodotProjectEnvironmentRuntimeCapabilityV1,
+} from "./managed-godot-project-environment-runtime.js";
+import {
+  ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema,
+  assertManagedGodotProjectEnvironmentRuntimeBindingV2,
+  type ManagedGodotProjectEnvironmentRuntimeBindingV2,
+  type ManagedGodotProjectEnvironmentRuntimeCapabilityV2,
+} from "./managed-godot-project-environment-runtime-v2.js";
+
+export type SandboxManagedGodotRuntimeV1 =
+  | {
+      readonly capability: ManagedGodotRuntimeCapabilityV1;
+      readonly binding: ManagedGodotRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotLifecycleRuntimeCapabilityV1;
+      readonly binding: ManagedGodotLifecycleRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotSemanticRuntimeCapabilityV1;
+      readonly binding: ManagedGodotSemanticRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
+    };
+type SandboxManagedGodotRuntimeBindingV1 =
+  | ManagedGodotRuntimeBindingV1
+  | ManagedGodotLifecycleRuntimeBindingV1
+  | ManagedGodotSemanticRuntimeBindingV1
+  | ManagedGodotProjectEnvironmentRuntimeBindingV1
+  | ManagedGodotProjectEnvironmentRuntimeBindingV2;
+
+const isLifecycleManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is {
+  readonly capability: ManagedGodotLifecycleRuntimeCapabilityV1;
+  readonly binding: ManagedGodotLifecycleRuntimeBindingV1;
+} =>
+  "runtimeProfile" in runtime.capability &&
+  runtime.capability.runtimeProfile === "chronorift-managed-godot-lifecycle-v1";
+
+const isSemanticManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is {
+  readonly capability: ManagedGodotSemanticRuntimeCapabilityV1;
+  readonly binding: ManagedGodotSemanticRuntimeBindingV1;
+} =>
+  "runtimeProfile" in runtime.capability &&
+  runtime.capability.runtimeProfile === "chronorift-managed-godot-semantic-v1";
+
+const isProjectEnvironmentManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is {
+  readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
+  readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
+} =>
+  "runtimeProfile" in runtime.capability &&
+  runtime.capability.runtimeProfile ===
+    "chronorift-managed-godot-project-environment-v1";
+
+const isProjectEnvironmentManagedRuntimeV2 = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is {
+  readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+  readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
+} =>
+  "runtimeProfile" in runtime.capability &&
+  runtime.capability.runtimeProfile ===
+    "chronorift-managed-godot-project-environment-v2";
+
+const isAnyProjectEnvironmentManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
+    } =>
+  isProjectEnvironmentManagedRuntime(runtime) ||
+  isProjectEnvironmentManagedRuntimeV2(runtime);
+
+const isOverlayManagedRuntime = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): runtime is
+  | {
+      readonly capability: ManagedGodotLifecycleRuntimeCapabilityV1;
+      readonly binding: ManagedGodotLifecycleRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotSemanticRuntimeCapabilityV1;
+      readonly binding: ManagedGodotSemanticRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
+    }
+  | {
+      readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+      readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV2;
+    } =>
+  isLifecycleManagedRuntime(runtime) ||
+  isSemanticManagedRuntime(runtime) ||
+  isProjectEnvironmentManagedRuntime(runtime) ||
+  isProjectEnvironmentManagedRuntimeV2(runtime);
+
+const assertSandboxManagedRuntimeBinding = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): void => {
+  if (isLifecycleManagedRuntime(runtime)) {
+    assertManagedGodotLifecycleRuntimeBinding(
+      runtime.capability,
+      runtime.binding,
+    );
+  } else if (isSemanticManagedRuntime(runtime)) {
+    assertManagedGodotSemanticRuntimeBinding(
+      runtime.capability,
+      runtime.binding,
+    );
+  } else if (isProjectEnvironmentManagedRuntime(runtime)) {
+    assertManagedGodotProjectEnvironmentRuntimeBinding(
+      runtime.capability,
+      runtime.binding,
+    );
+  } else if (isProjectEnvironmentManagedRuntimeV2(runtime)) {
+    assertManagedGodotProjectEnvironmentRuntimeBindingV2(
+      runtime.capability,
+      runtime.binding,
+    );
+  } else {
+    assertManagedGodotRuntimeBinding(runtime.capability, runtime.binding);
+  }
+};
 
 export interface MonotonicClockV1 {
   now(): number;
@@ -168,6 +326,20 @@ export interface SandboxBrokerBoundResources {
         readonly target: string;
       }
     | undefined;
+  readonly managedOverlay?:
+    | {
+        readonly fd: number;
+        readonly target: string;
+      }
+    | undefined;
+  readonly managedAdapter?:
+    | {
+        readonly parentFd: number;
+        readonly parentTarget: string;
+        readonly fd: number;
+        readonly target: string;
+      }
+    | undefined;
   close(): Promise<void>;
 }
 
@@ -216,12 +388,7 @@ export interface SandboxBrokerDependencies {
           readonly binding: SandboxToolchainBindingV1;
         }
       | undefined;
-    readonly managedRuntime?:
-      | {
-          readonly capability: ManagedGodotRuntimeCapabilityV1;
-          readonly binding: ManagedGodotRuntimeBindingV1;
-        }
-      | undefined;
+    readonly managedRuntime?: SandboxManagedGodotRuntimeV1 | undefined;
   }): Promise<SandboxBrokerBoundResources>;
   createExecutionScratch(input: {
     readonly layout: TaskDirectoryLayout;
@@ -329,19 +496,21 @@ function hasExactKeys(value: object, expected: readonly string[]): boolean {
 }
 
 function assertLayout(taskId: TaskId, layout: TaskDirectoryLayout): void {
+  const baseKeys = [
+    "taskRootDirectory",
+    "taskRecordDirectory",
+    "runtimeRecordDirectory",
+    "workspaceDirectory",
+    "sandboxTemporaryDirectory",
+    "sandboxArtifactScratchDirectory",
+    "piSessionDirectory",
+    "hostBaselineGitDirectory",
+    "hostOperationTemporaryDirectory",
+  ] as const;
   if (
     !isObject(layout) ||
-    !hasExactKeys(layout, [
-      "taskRootDirectory",
-      "taskRecordDirectory",
-      "runtimeRecordDirectory",
-      "workspaceDirectory",
-      "sandboxTemporaryDirectory",
-      "sandboxArtifactScratchDirectory",
-      "piSessionDirectory",
-      "hostBaselineGitDirectory",
-      "hostOperationTemporaryDirectory",
-    ])
+    (!hasExactKeys(layout, baseKeys) &&
+      !hasExactKeys(layout, [...baseKeys, "projectEnvironmentRecordDirectory"]))
   ) {
     throw new M1Error("path_denied", "invalid Task directory layout");
   }
@@ -374,6 +543,21 @@ function assertLayout(taskId: TaskId, layout: TaskDirectoryLayout): void {
         `Task layout ${key} is not the fixed Task child`,
       );
     }
+  }
+  const projectEnvironmentRecordDirectory = (
+    layout as TaskDirectoryLayout & {
+      readonly projectEnvironmentRecordDirectory?: unknown;
+    }
+  ).projectEnvironmentRecordDirectory;
+  if (
+    projectEnvironmentRecordDirectory !== undefined &&
+    projectEnvironmentRecordDirectory !==
+      join(root, "project-environment-records")
+  ) {
+    throw new M1Error(
+      "path_denied",
+      "Task layout projectEnvironmentRecordDirectory is not the fixed Task child",
+    );
   }
 }
 
@@ -747,12 +931,7 @@ async function bindDefaultResources(input: {
         readonly binding: SandboxToolchainBindingV1;
       }
     | undefined;
-  readonly managedRuntime?:
-    | {
-        readonly capability: ManagedGodotRuntimeCapabilityV1;
-        readonly binding: ManagedGodotRuntimeBindingV1;
-      }
-    | undefined;
+  readonly managedRuntime?: SandboxManagedGodotRuntimeV1 | undefined;
 }): Promise<SandboxBrokerBoundResources> {
   const resources: { close(): Promise<void> }[] = [];
   const keepHandle = (handle: FileHandle): FileHandle => {
@@ -837,11 +1016,18 @@ async function bindDefaultResources(input: {
           readonly target: string;
         }
       | undefined;
+    let managedOverlay:
+      { readonly fd: number; readonly target: string } | undefined;
+    let managedAdapter:
+      | {
+          readonly parentFd: number;
+          readonly parentTarget: string;
+          readonly fd: number;
+          readonly target: string;
+        }
+      | undefined;
     if (input.managedRuntime !== undefined) {
-      assertManagedGodotRuntimeBinding(
-        input.managedRuntime.capability,
-        input.managedRuntime.binding,
-      );
+      assertSandboxManagedRuntimeBinding(input.managedRuntime);
       const fontconfigDirectory = await mkdtemp(
         join(input.layout.hostOperationTemporaryDirectory, "fontconfig-"),
       );
@@ -864,7 +1050,10 @@ async function bindDefaultResources(input: {
       const addonParentDirectory = await mkdtemp(
         join(input.layout.hostOperationTemporaryDirectory, "managed-addon-"),
       );
-      const addonDirectory = join(addonParentDirectory, "chronorift");
+      const addonDirectory = join(
+        addonParentDirectory,
+        basename(input.managedRuntime.capability.addonTarget),
+      );
       await mkdir(addonDirectory, { mode: 0o700 });
       resources.push({
         close: () => rm(addonParentDirectory, { recursive: true, force: true }),
@@ -887,6 +1076,67 @@ async function bindDefaultResources(input: {
         fd: addonHandle.fd,
         target: input.managedRuntime.capability.addonTarget,
       };
+      if (isOverlayManagedRuntime(input.managedRuntime)) {
+        const overlayDirectory = await mkdtemp(
+          join(
+            input.layout.hostOperationTemporaryDirectory,
+            "managed-overlay-",
+          ),
+        );
+        resources.push({
+          close: () => rm(overlayDirectory, { recursive: true, force: true }),
+        });
+        const overlayPath = join(overlayDirectory, "override.cfg");
+        await writeFile(
+          overlayPath,
+          input.managedRuntime.binding.overlayBytes,
+          { flag: "wx", mode: 0o400 },
+        );
+        const overlayHandle = keepHandle(
+          await openPinned(overlayPath, "runtime-file"),
+        );
+        managedOverlay = {
+          fd: overlayHandle.fd,
+          target: input.managedRuntime.capability.overlayTarget,
+        };
+      }
+      if (isAnyProjectEnvironmentManagedRuntime(input.managedRuntime)) {
+        const adapterParentDirectory = await mkdtemp(
+          join(
+            input.layout.hostOperationTemporaryDirectory,
+            "managed-adapter-",
+          ),
+        );
+        const adapterDirectory = join(
+          adapterParentDirectory,
+          basename(input.managedRuntime.capability.adapterTarget),
+        );
+        await mkdir(adapterDirectory, { mode: 0o700 });
+        resources.push({
+          close: () =>
+            rm(adapterParentDirectory, { recursive: true, force: true }),
+        });
+        for (const file of input.managedRuntime.binding.adapterFiles) {
+          const target = join(
+            adapterDirectory,
+            ...file.relativePath.split("/"),
+          );
+          await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+          await writeFile(target, file.bytes, { flag: "wx", mode: 0o400 });
+        }
+        const adapterParentHandle = keepHandle(
+          await openPinned(adapterParentDirectory, "directory"),
+        );
+        const adapterHandle = keepHandle(
+          await openPinned(adapterDirectory, "directory"),
+        );
+        managedAdapter = {
+          parentFd: adapterParentHandle.fd,
+          parentTarget: input.managedRuntime.capability.adapterParentTarget,
+          fd: adapterHandle.fd,
+          target: input.managedRuntime.capability.adapterTarget,
+        };
+      }
     }
 
     const [bwrapIdentity, prlimitIdentity, runtimeBytes, cgroupIdentity] =
@@ -924,6 +1174,8 @@ async function bindDefaultResources(input: {
       managedRuntimeFiles: Object.freeze(managedRuntimeFiles),
       ...(managedFontconfig === undefined ? {} : { managedFontconfig }),
       ...(managedAddon === undefined ? {} : { managedAddon }),
+      ...(managedOverlay === undefined ? {} : { managedOverlay }),
+      ...(managedAdapter === undefined ? {} : { managedAdapter }),
       close,
     };
   } catch (error) {
@@ -973,6 +1225,12 @@ function assertBoundDescriptors(resources: SandboxBrokerBoundResources): void {
     ...(resources.managedAddon === undefined
       ? []
       : [resources.managedAddon.parentFd, resources.managedAddon.fd]),
+    ...(resources.managedOverlay === undefined
+      ? []
+      : [resources.managedOverlay.fd]),
+    ...(resources.managedAdapter === undefined
+      ? []
+      : [resources.managedAdapter.parentFd, resources.managedAdapter.fd]),
   ];
   if (
     !descriptors.every((fd) => Number.isInteger(fd) && fd >= 0) ||
@@ -1055,7 +1313,13 @@ function assertLayoutWithinTaskStorage(
   capability: SandboxHostCapabilityV1,
   binding: SandboxHostBinding,
   layout: TaskDirectoryLayout,
-  managedRuntime: ManagedGodotRuntimeCapabilityV1 | undefined,
+  managedRuntime:
+    | ManagedGodotRuntimeCapabilityV1
+    | ManagedGodotLifecycleRuntimeCapabilityV1
+    | ManagedGodotSemanticRuntimeCapabilityV1
+    | ManagedGodotProjectEnvironmentRuntimeCapabilityV1
+    | ManagedGodotProjectEnvironmentRuntimeCapabilityV2
+    | undefined,
 ): void {
   if (
     managedRuntime !== undefined &&
@@ -1101,7 +1365,7 @@ function assertHostExecutablesOutsideWritableLayout(
   binding: SandboxHostBinding,
   layout: TaskDirectoryLayout,
   toolchain: SandboxToolchainBindingV1 | undefined,
-  managedRuntime: ManagedGodotRuntimeBindingV1 | undefined,
+  managedRuntime: SandboxManagedGodotRuntimeBindingV1 | undefined,
 ): void {
   const executables = [
     binding.bwrapPath,
@@ -1130,6 +1394,70 @@ function assertHostExecutablesOutsideWritableLayout(
   }
 }
 
+interface SanitizedBindMountV1 {
+  readonly access: "read-write" | "read-only";
+  readonly fd: number;
+  readonly target: string;
+}
+
+const credentialLikeSandboxTarget = (target: string): boolean => {
+  const normalized = target.toLowerCase();
+  const segments = normalized.split("/").filter(Boolean);
+  return (
+    normalized === "/root" ||
+    normalized.startsWith("/root/") ||
+    normalized === "/home" ||
+    normalized.startsWith("/home/") ||
+    normalized === "/run/secrets" ||
+    normalized.startsWith("/run/secrets/") ||
+    normalized === "/var/run/secrets" ||
+    normalized.startsWith("/var/run/secrets/") ||
+    normalized === "/credentials" ||
+    normalized.startsWith("/credentials/") ||
+    segments.some((segment) =>
+      [".aws", ".gnupg", ".netrc", ".ssh", "auth.json", "credentials"].includes(
+        segment,
+      ),
+    )
+  );
+};
+
+const readSanitizedBindMounts = (
+  plan: SandboxProcessPlan,
+  commandSeparator: number,
+): readonly SanitizedBindMountV1[] => {
+  const mounts: SanitizedBindMountV1[] = [];
+  for (let index = 0; index < commandSeparator; index += 1) {
+    const argument = plan.args[index];
+    if (argument !== "--bind-fd" && argument !== "--ro-bind-fd") continue;
+    const fdValue = plan.args[index + 1];
+    const target = plan.args[index + 2];
+    const fd = Number(fdValue);
+    if (
+      index + 2 >= commandSeparator ||
+      fdValue === undefined ||
+      !/^\d+$/u.test(fdValue) ||
+      !Number.isSafeInteger(fd) ||
+      target === undefined ||
+      !isAbsolute(target) ||
+      resolve(target) !== target ||
+      target.includes("\0")
+    ) {
+      throw new M1Error(
+        "sandbox_launch_failed",
+        "sandbox process plan contains an invalid bind mount",
+      );
+    }
+    mounts.push({
+      access: argument === "--ro-bind-fd" ? "read-only" : "read-write",
+      fd,
+      target,
+    });
+    index += 2;
+  }
+  return mounts;
+};
+
 function assertProcessPlan(
   plan: SandboxProcessPlan,
   request: SandboxExecutionRequestV1,
@@ -1138,7 +1466,7 @@ function assertProcessPlan(
   runtimeScratch: { readonly fd: number; readonly target: string } | undefined,
   runtimeTargets: readonly { readonly fd: number; readonly target: string }[],
   toolchainBinding: SandboxToolchainBindingV1 | undefined,
-): void {
+): SandboxMountAdmissionReceiptV1 {
   const expectedFds = [
     SANDBOX_FDS.block,
     SANDBOX_FDS.status,
@@ -1167,26 +1495,54 @@ function assertProcessPlan(
       "sandbox process plan crossed its fixed executable or FD boundary",
     );
   }
-  const serialized = [plan.executable, ...plan.args].join("\0");
-  const workspaceMount = [
-    request.profile === "godot-headless" ? "--ro-bind-fd" : "--bind-fd",
-    String(SANDBOX_FDS.workspace),
-    "/workspace",
-  ].join("\0");
-  const forbiddenWorkspaceMount = [
-    request.profile === "godot-headless" ? "--bind-fd" : "--ro-bind-fd",
-    String(SANDBOX_FDS.workspace),
-    "/workspace",
-  ].join("\0");
-  if (
-    !serialized.includes(workspaceMount) ||
-    serialized.includes(forbiddenWorkspaceMount)
-  ) {
+  const actualMounts = readSanitizedBindMounts(plan, commandSeparator);
+  const expectedMounts: readonly SanitizedBindMountV1[] = [
+    {
+      access: request.profile === "godot-headless" ? "read-only" : "read-write",
+      fd: SANDBOX_FDS.workspace,
+      target: "/workspace",
+    },
+    {
+      access: "read-write",
+      fd: SANDBOX_FDS.temporary,
+      target: "/tmp",
+    },
+    {
+      access: "read-write",
+      fd: SANDBOX_FDS.artifacts,
+      target: "/artifacts",
+    },
+    ...(runtimeScratch === undefined
+      ? []
+      : [
+          {
+            access: "read-write" as const,
+            fd: runtimeScratch.fd,
+            target: runtimeScratch.target,
+          },
+        ]),
+    ...runtimeTargets.map(({ fd, target }) => ({
+      access: "read-only" as const,
+      fd,
+      target,
+    })),
+  ];
+  if (JSON.stringify(actualMounts) !== JSON.stringify(expectedMounts)) {
     throw new M1Error(
       "sandbox_launch_failed",
-      "sandbox process plan changed the frozen profile workspace access",
+      "sandbox process plan changed the exact admitted mount set",
     );
   }
+  const credentialTargetCount = actualMounts.filter((mount) =>
+    credentialLikeSandboxTarget(mount.target),
+  ).length;
+  if (credentialTargetCount !== 0) {
+    throw new M1Error(
+      "sandbox_launch_failed",
+      "sandbox process plan attempted to mount a credential-like target",
+    );
+  }
+  const serialized = [plan.executable, ...plan.args].join("\0");
   for (const forbidden of [
     layout.taskRecordDirectory,
     layout.hostBaselineGitDirectory,
@@ -1203,6 +1559,28 @@ function assertProcessPlan(
       );
     }
   }
+  const readonlyTargets = actualMounts
+    .filter((mount) => mount.access === "read-only")
+    .map((mount) => mount.target);
+  const sanitizedMountPlan = actualMounts.map(({ access, target }) => ({
+    access,
+    target,
+  }));
+  return SandboxMountAdmissionReceiptV1Schema.parse({
+    schemaVersion: 1,
+    evidenceBasis: "validated-process-plan",
+    profile: request.profile,
+    workspaceAccess:
+      request.profile === "godot-headless" ? "read-only" : "read-write",
+    taskSharedWritableTargets: ["/tmp", "/artifacts"],
+    operationPrivateWritableTargets:
+      runtimeScratch === undefined ? [] : ["/run/chronorift"],
+    readonlyTargetCount: readonlyTargets.length,
+    readonlyTargetsSha256: asSha256DigestV1(contentHash(readonlyTargets)),
+    mountCount: actualMounts.length,
+    mountPlanSha256: asSha256DigestV1(contentHash(sanitizedMountPlan)),
+    credentialTargetCount: 0,
+  });
 }
 
 class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
@@ -1227,12 +1605,7 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
           readonly binding: SandboxToolchainBindingV1;
         }
       | undefined,
-    private readonly managedRuntime:
-      | {
-          readonly capability: ManagedGodotRuntimeCapabilityV1;
-          readonly binding: ManagedGodotRuntimeBindingV1;
-        }
-      | undefined,
+    private readonly managedRuntime: SandboxManagedGodotRuntimeV1 | undefined,
     private readonly layout: TaskDirectoryLayout,
     private readonly resources: SandboxBrokerBoundResources,
     private readonly securityEvents: (event: SecurityEventV1) => Promise<void>,
@@ -1315,7 +1688,10 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
         if (
           (!receipt.processGroupTerminated ||
             receipt.cgroupPopulated ||
-            !receipt.scopeRemoved) &&
+            !receipt.scopeRemoved ||
+            (this.capability.taskStorage !== undefined &&
+              this.hostBinding.taskStorageRoot !== undefined &&
+              receipt.storageReconciled !== true)) &&
           this.#cleanupPromise === attempt
         ) {
           this.#cleanupPromise = undefined;
@@ -1494,6 +1870,7 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
       stdoutDrain: undefined,
       stderrDrain: undefined,
     };
+    let mountAdmission: SandboxMountAdmissionReceiptV1 | undefined;
     const setupDone = deferred<void>();
     const ready = deferred<boolean>();
     const terminal = deferred<TerminalReason>();
@@ -1623,6 +2000,15 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
                   this.resources.managedAddon.parentFd,
                   this.resources.managedAddon.fd,
                 ]),
+            ...(this.resources.managedOverlay === undefined
+              ? []
+              : [this.resources.managedOverlay.fd]),
+            ...(this.resources.managedAdapter === undefined
+              ? []
+              : [
+                  this.resources.managedAdapter.parentFd,
+                  this.resources.managedAdapter.fd,
+                ]),
           ];
           if (
             !Number.isInteger(scratch.fd) ||
@@ -1661,6 +2047,24 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
           };
         }
         if (terminalReason !== undefined) return;
+        const includeManagedAddon =
+          request.profile === "godot-headless" &&
+          this.resources.managedAddon !== undefined &&
+          (this.managedRuntime === undefined ||
+            !isOverlayManagedRuntime(this.managedRuntime) ||
+            duplex);
+        const includeManagedOverlay =
+          request.profile === "godot-headless" &&
+          this.resources.managedOverlay !== undefined &&
+          this.managedRuntime !== undefined &&
+          isOverlayManagedRuntime(this.managedRuntime) &&
+          duplex;
+        const includeManagedAdapter =
+          request.profile === "godot-headless" &&
+          this.resources.managedAdapter !== undefined &&
+          this.managedRuntime !== undefined &&
+          isAnyProjectEnvironmentManagedRuntime(this.managedRuntime) &&
+          duplex;
         const runtimeStart =
           SANDBOX_FDS.runtimeStart +
           (runtimeScratchTarget === undefined ? 0 : 1);
@@ -1671,11 +2075,21 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
           this.resources.managedFontconfig !== undefined
             ? [this.resources.managedFontconfig.target]
             : []),
-          ...(request.profile === "godot-headless" &&
-          this.resources.managedAddon !== undefined
+          ...(includeManagedAddon && this.resources.managedAddon !== undefined
             ? [
                 this.resources.managedAddon.parentTarget,
                 this.resources.managedAddon.target,
+              ]
+            : []),
+          ...(includeManagedOverlay &&
+          this.resources.managedOverlay !== undefined
+            ? [this.resources.managedOverlay.target]
+            : []),
+          ...(includeManagedAdapter &&
+          this.resources.managedAdapter !== undefined
+            ? [
+                this.resources.managedAdapter.parentTarget,
+                this.resources.managedAdapter.target,
               ]
             : []),
         ].map((target, index) => ({ fd: runtimeStart + index, target }));
@@ -1692,7 +2106,7 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
           runtimeTargets,
           unshareCgroupNamespace: this.capability.cgroupNamespaceUnshared,
         });
-        assertProcessPlan(
+        mountAdmission = assertProcessPlan(
           plan,
           request,
           this.hostBinding,
@@ -1723,11 +2137,22 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
               this.resources.managedFontconfig !== undefined
                 ? [this.resources.managedFontconfig.fd]
                 : []),
-              ...(request.profile === "godot-headless" &&
+              ...(includeManagedAddon &&
               this.resources.managedAddon !== undefined
                 ? [
                     this.resources.managedAddon.parentFd,
                     this.resources.managedAddon.fd,
+                  ]
+                : []),
+              ...(includeManagedOverlay &&
+              this.resources.managedOverlay !== undefined
+                ? [this.resources.managedOverlay.fd]
+                : []),
+              ...(includeManagedAdapter &&
+              this.resources.managedAdapter !== undefined
+                ? [
+                    this.resources.managedAdapter.parentFd,
+                    this.resources.managedAdapter.fd,
                   ]
                 : []),
             ],
@@ -1931,12 +2356,33 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
         bootstrapExited && scopeRemoved && !cgroupPopulated;
       const allResourcesRemoved = processGroupTerminated && scratchRemoved;
 
+      let storageReconciled: boolean | undefined;
+      if (
+        this.capability.taskStorage !== undefined &&
+        this.hostBinding.taskStorageRoot !== undefined
+      ) {
+        storageReconciled = false;
+        if (allResourcesRemoved && aggregateStorageObserved) {
+          try {
+            await this.dependencies.inspectTaskStorage({
+              capability: this.capability.taskStorage,
+              taskStorageRoot: this.hostBinding.taskStorageRoot,
+              layoutPaths: taskLayoutPaths(this.layout),
+            });
+            storageReconciled = true;
+          } catch (error) {
+            await this.reportDiagnostic(error);
+          }
+        }
+      }
+
       const cleanup = SandboxCleanupReceiptV1Schema.parse({
         processGroupTerminated,
         cgroupPopulated,
         termSent,
         killSent,
         scopeRemoved: allResourcesRemoved,
+        ...(storageReconciled === undefined ? {} : { storageReconciled }),
       });
       const status: SandboxExecutionReceiptV1["status"] =
         reason.kind === "exit"
@@ -1973,6 +2419,7 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
         startedAtMonotonicMs,
         endedAtMonotonicMs: this.clock.now(),
         cleanup,
+        ...(mountAdmission === undefined ? {} : { mountAdmission }),
       });
       return {
         kind: "executed",
@@ -2063,6 +2510,27 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
       await this.reportDiagnostic(error);
     }
 
+    let storageReconciled: boolean | undefined;
+    if (
+      this.capability.taskStorage !== undefined &&
+      this.hostBinding.taskStorageRoot !== undefined
+    ) {
+      storageReconciled = false;
+      try {
+        await this.dependencies.inspectTaskStorage({
+          capability: this.capability.taskStorage,
+          taskStorageRoot: this.hostBinding.taskStorageRoot,
+          layoutPaths: [
+            ...taskLayoutPaths(this.layout),
+            ...[...this.#executionScratches].map((scratch) => scratch.path),
+          ],
+        });
+        storageReconciled = true;
+      } catch (error) {
+        await this.reportDiagnostic(error);
+      }
+    }
+
     const processGroupsTerminated =
       controllerCleaned && bootstrapProcessesCleaned;
     const allResourcesRemoved =
@@ -2077,6 +2545,7 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
         (receipt) => receipt.killSent,
       ),
       scopeRemoved: allResourcesRemoved,
+      ...(storageReconciled === undefined ? {} : { storageReconciled }),
     });
   }
 }
@@ -2092,12 +2561,7 @@ export interface CreateBwrapCgroupTaskSandboxOptionsV1 {
         readonly binding: SandboxToolchainBindingV1;
       }
     | undefined;
-  readonly managedRuntime?:
-    | {
-        readonly capability: ManagedGodotRuntimeCapabilityV1;
-        readonly binding: ManagedGodotRuntimeBindingV1;
-      }
-    | undefined;
+  readonly managedRuntime?: SandboxManagedGodotRuntimeV1 | undefined;
   readonly layout: TaskDirectoryLayout;
   readonly securityEvents: (event: SecurityEventV1) => Promise<void>;
   readonly clock?: MonotonicClockV1 | undefined;
@@ -2127,25 +2591,52 @@ export async function createDuplexBwrapCgroupTaskSandbox(
           ),
           binding: options.toolchain.binding,
         };
-  const managedRuntime =
-    options.managedRuntime === undefined
-      ? undefined
-      : {
-          capability: ManagedGodotRuntimeCapabilityV1Schema.parse(
+  let managedRuntime: SandboxManagedGodotRuntimeV1 | undefined;
+  if (options.managedRuntime !== undefined) {
+    managedRuntime = isLifecycleManagedRuntime(options.managedRuntime)
+      ? {
+          capability: ManagedGodotLifecycleRuntimeCapabilityV1Schema.parse(
             options.managedRuntime.capability,
           ),
           binding: options.managedRuntime.binding,
-        };
+        }
+      : isSemanticManagedRuntime(options.managedRuntime)
+        ? {
+            capability: ManagedGodotSemanticRuntimeCapabilityV1Schema.parse(
+              options.managedRuntime.capability,
+            ),
+            binding: options.managedRuntime.binding,
+          }
+        : isProjectEnvironmentManagedRuntime(options.managedRuntime)
+          ? {
+              capability:
+                ManagedGodotProjectEnvironmentRuntimeCapabilityV1Schema.parse(
+                  options.managedRuntime.capability,
+                ),
+              binding: options.managedRuntime.binding,
+            }
+          : isProjectEnvironmentManagedRuntimeV2(options.managedRuntime)
+            ? {
+                capability:
+                  ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema.parse(
+                    options.managedRuntime.capability,
+                  ),
+                binding: options.managedRuntime.binding,
+              }
+            : {
+                capability: ManagedGodotRuntimeCapabilityV1Schema.parse(
+                  options.managedRuntime.capability,
+                ),
+                binding: options.managedRuntime.binding,
+              };
+  }
   assertHostBinding(capability, options.hostBinding);
   const hostBinding = Object.freeze({ ...options.hostBinding });
   if (toolchain !== undefined) {
     assertToolchainBinding(toolchain.capability, toolchain.binding);
   }
   if (managedRuntime !== undefined) {
-    assertManagedGodotRuntimeBinding(
-      managedRuntime.capability,
-      managedRuntime.binding,
-    );
+    assertSandboxManagedRuntimeBinding(managedRuntime);
     const shellIndex = managedRuntime.capability.toolchain.files.findIndex(
       (file) => file.target === DEFAULT_RUNTIME_SIDECAR_TARGETS.shellExecutable,
     );
@@ -2199,6 +2690,15 @@ export async function createDuplexBwrapCgroupTaskSandbox(
           managedRuntime.capability.fontconfigTarget,
           managedRuntime.capability.addonParentTarget,
           managedRuntime.capability.addonTarget,
+          ...(isOverlayManagedRuntime(managedRuntime)
+            ? [managedRuntime.capability.overlayTarget]
+            : []),
+          ...(isAnyProjectEnvironmentManagedRuntime(managedRuntime)
+            ? [
+                managedRuntime.capability.adapterParentTarget,
+                managedRuntime.capability.adapterTarget,
+              ]
+            : []),
         ].sort();
   if (policy.schemaVersion === 1) {
     if (managedRuntime !== undefined) {
@@ -2269,12 +2769,26 @@ export async function createDuplexBwrapCgroupTaskSandbox(
       (managedRuntime === undefined) !==
         (resources.managedFontconfig === undefined) ||
       (managedRuntime !== undefined &&
+        isOverlayManagedRuntime(managedRuntime)) !==
+        (resources.managedOverlay !== undefined) ||
+      (managedRuntime !== undefined &&
+        isAnyProjectEnvironmentManagedRuntime(managedRuntime)) !==
+        (resources.managedAdapter !== undefined) ||
+      (managedRuntime !== undefined &&
         (resources.managedAddon?.target !==
           managedRuntime.capability.addonTarget ||
           resources.managedAddon.parentTarget !==
             managedRuntime.capability.addonParentTarget ||
           resources.managedFontconfig?.target !==
-            managedRuntime.capability.fontconfigTarget))
+            managedRuntime.capability.fontconfigTarget ||
+          (isOverlayManagedRuntime(managedRuntime) &&
+            resources.managedOverlay?.target !==
+              managedRuntime.capability.overlayTarget) ||
+          (isAnyProjectEnvironmentManagedRuntime(managedRuntime) &&
+            (resources.managedAdapter?.target !==
+              managedRuntime.capability.adapterTarget ||
+              resources.managedAdapter.parentTarget !==
+                managedRuntime.capability.adapterParentTarget))))
     ) {
       throw new M1Error(
         "sandbox_preflight_failed",

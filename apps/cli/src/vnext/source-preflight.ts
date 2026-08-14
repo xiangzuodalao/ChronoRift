@@ -4,10 +4,29 @@ import { lstat, mkdtemp, open, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 
-import { asSha256DigestV1, type Sha256DigestV1 } from "@chronorift/domain";
+import {
+  asSha256DigestV1,
+  type JsonValue,
+  type Sha256DigestV1,
+} from "@chronorift/domain";
+import { contentHash } from "@chronorift/json-artifacts";
 
-import type { TaskFixtureCapabilityV1 } from "./contracts.js";
+import {
+  TaskGodotProjectCapabilityV1Schema,
+  type TaskFixtureCapabilityV1,
+  type TaskGodotProjectCapabilityV1,
+} from "./contracts.js";
 import { M1Error } from "./errors.js";
+import {
+  EXTERNAL_GODOT_MAX_BYTES_V1,
+  EXTERNAL_GODOT_MAX_FILES_V1,
+  isExternalGodotNativeSourcePathV1,
+  isExternalGodotReservedSourcePathV1,
+} from "./external-godot-source-policy.js";
+import {
+  hasProjectEnvironmentDeferredGdscriptFeatureV1,
+  isProjectEnvironmentSensitivePathV1,
+} from "./project-environment-source-policy.js";
 import {
   loadTrustedFixtureCatalog,
   resolveTaskFixtureCapability,
@@ -19,6 +38,11 @@ import {
   type SelectedTreeContentSourceV1,
 } from "./selected-tree.js";
 import { FixtureManifestV1Schema } from "./contracts.js";
+import {
+  parseGodotProjectDescriptorSnapshotV1,
+  type GodotProjectDescriptorSnapshotV1,
+  type HostGodotProjectDescriptorSnapshotV1,
+} from "./godot-project-descriptor.js";
 
 const LFS_POINTER_HEADER = Buffer.from(
   "version https://git-lfs.github.com/spec/v1\n",
@@ -27,10 +51,22 @@ const LFS_POINTER_HEADER = Buffer.from(
 const MAX_SELECTED_TREE_ENTRIES = 10_000;
 const MAX_SELECTED_TREE_BYTES = 512 * 1024 * 1024;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
+const MAX_PROJECT_CONFIGURATION_BYTES = 1024 * 1024;
 
 export interface CleanGitSubtreePreflightRequest {
   readonly projectPath: string;
   readonly trustedFixtureRoot: string;
+  readonly sourceRepositoryExclusionRoots: readonly string[];
+}
+
+export interface CleanExternalGodotProjectPreflightRequest {
+  readonly projectPath: string;
+  readonly descriptorSnapshot: HostGodotProjectDescriptorSnapshotV1;
+  readonly sourceRepositoryExclusionRoots: readonly string[];
+}
+
+export interface CleanProjectEnvironmentPreflightRequestV1 {
+  readonly projectPath: string;
   readonly sourceRepositoryExclusionRoots: readonly string[];
 }
 
@@ -52,6 +88,40 @@ export interface VerifiedGitSubtree {
   readonly fixtureCapability: TaskFixtureCapabilityV1;
 }
 
+export interface VerifiedExternalGodotProject {
+  readonly sourceKind: "godot-external-lifecycle-v1";
+  readonly repositoryRoot: string;
+  readonly projectRoot: string;
+  readonly projectPrefix: "";
+  readonly headCommit: string;
+  readonly repositoryIdentity: Sha256DigestV1;
+  readonly selectedTreeSha256: Sha256DigestV1;
+  readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly descriptorSnapshot: GodotProjectDescriptorSnapshotV1;
+  readonly descriptorCanonicalPath: string;
+  readonly projectCapability: TaskGodotProjectCapabilityV1;
+}
+
+/**
+ * The deliberately narrow PE-A source closure. Host paths are retained only for
+ * composition and must not be copied into a persisted Project Environment DTO.
+ */
+export interface VerifiedProjectEnvironmentSourceV1 {
+  readonly sourceKind: "project-environment-v1-clean-git";
+  readonly repositoryRoot: string;
+  readonly projectRoot: string;
+  readonly projectPrefix: "";
+  readonly headCommit: string;
+  readonly selectedTreeSha256: Sha256DigestV1;
+  readonly projectSourceIdentity: Sha256DigestV1;
+  readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly mainScene: string;
+  readonly requestedGodotVersion: "4.7.1";
+}
+
+export type VerifiedTaskSource =
+  VerifiedGitSubtree | VerifiedExternalGodotProject;
+
 const sourceFeatureUnsupported = (message: string, cause?: unknown): never => {
   throw new M1Error("source_feature_unsupported", message, cause);
 };
@@ -70,6 +140,13 @@ const decodeUtf8Path = (bytes: Buffer): string => {
 export function parseGitTreeListing(
   listing: Uint8Array,
   projectPrefix: string,
+  limits: {
+    readonly maxEntries: number;
+    readonly maxBytes: number;
+  } = {
+    maxEntries: MAX_SELECTED_TREE_ENTRIES,
+    maxBytes: MAX_SELECTED_TREE_BYTES,
+  },
 ): readonly VerifiedGitTreeEntry[] {
   const bytes = Buffer.from(listing);
   if (bytes.byteLength === 0) return [];
@@ -147,9 +224,9 @@ export function parseGitTreeListing(
     const relativePath = decodeUtf8Path(pathBytes);
     totalBytes += byteLength;
     if (
-      entries.length >= MAX_SELECTED_TREE_ENTRIES ||
+      entries.length >= limits.maxEntries ||
       !Number.isSafeInteger(totalBytes) ||
-      totalBytes > MAX_SELECTED_TREE_BYTES ||
+      totalBytes > limits.maxBytes ||
       (relativePath === "chronorift.fixture.json" &&
         byteLength > MAX_MANIFEST_BYTES)
     ) {
@@ -222,11 +299,9 @@ const assertNoRepositoryOverlap = async (
 const assertTrackedRequiredFiles = async (
   projectRoot: string,
   entries: readonly VerifiedGitTreeEntry[],
+  requiredFiles: readonly string[],
 ): Promise<void> => {
-  for (const relativePath of [
-    "project.godot",
-    "chronorift.fixture.json",
-  ] as const) {
+  for (const relativePath of requiredFiles) {
     const entry = entries.find(
       (candidate) => candidate.relativePath === relativePath,
     );
@@ -256,9 +331,12 @@ const inspectAndHashBlobs = async (input: {
   readonly git: HostGitPort;
   readonly repositoryRoot: string;
   readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly requireFixtureManifest: boolean;
+  readonly captureProjectFile?: string | undefined;
 }): Promise<{
   readonly selectedTreeSha256: Sha256DigestV1;
-  readonly manifest: unknown;
+  readonly manifest?: unknown;
+  readonly projectFileBytes?: Uint8Array | undefined;
 }> => {
   const temporaryDirectory = await mkdtemp(
     join(tmpdir(), "chronorift-source-blobs-"),
@@ -266,7 +344,16 @@ const inspectAndHashBlobs = async (input: {
   try {
     const sources: SelectedTreeContentSourceV1[] = [];
     let manifestPath: string | undefined;
+    let projectFilePath: string | undefined;
     for (const [index, entry] of input.entries.entries()) {
+      if (
+        entry.relativePath === input.captureProjectFile &&
+        entry.byteLength > MAX_PROJECT_CONFIGURATION_BYTES
+      ) {
+        return sourceFeatureUnsupported(
+          "project.godot exceeds the bounded configuration profile",
+        );
+      }
       const blobPath = join(temporaryDirectory, index.toString(16));
       const destination = await open(
         blobPath,
@@ -326,25 +413,311 @@ const inspectAndHashBlobs = async (input: {
       if (entry.relativePath === "chronorift.fixture.json") {
         manifestPath = blobPath;
       }
+      if (entry.relativePath === input.captureProjectFile) {
+        projectFilePath = blobPath;
+      }
     }
-    if (manifestPath === undefined) {
+    if (input.requireFixtureManifest && manifestPath === undefined) {
       return sourceFeatureUnsupported(
         "tracked fixture manifest is unavailable",
       );
     }
-    const manifestBytes = await readFile(manifestPath);
-    const manifestText = new TextDecoder("utf-8", { fatal: true }).decode(
-      manifestBytes,
-    );
+    let manifest: unknown;
+    if (input.requireFixtureManifest && manifestPath !== undefined) {
+      const manifestBytes = await readFile(manifestPath);
+      const manifestText = new TextDecoder("utf-8", { fatal: true }).decode(
+        manifestBytes,
+      );
+      manifest = FixtureManifestV1Schema.parse(
+        JSON.parse(manifestText) as unknown,
+      );
+    }
     return {
       selectedTreeSha256: await selectedTreeSha256FromSources(sources),
-      manifest: FixtureManifestV1Schema.parse(
-        JSON.parse(manifestText) as unknown,
-      ),
+      ...(manifest === undefined ? {} : { manifest }),
+      ...(projectFilePath === undefined
+        ? {}
+        : {
+            projectFileBytes: Uint8Array.from(await readFile(projectFilePath)),
+          }),
     };
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
+};
+
+interface CleanGitProjectInspection {
+  readonly repositoryRoot: string;
+  readonly projectRoot: string;
+  readonly projectPrefix: string;
+  readonly headCommit: string;
+  readonly repositoryIdentity: Sha256DigestV1;
+  readonly selectedTreeSha256: Sha256DigestV1;
+  readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly manifest?: unknown;
+  readonly projectFileBytes?: Uint8Array | undefined;
+}
+
+const inspectCleanGitProject = async (
+  request: {
+    readonly projectPath: string;
+    readonly sourceRepositoryExclusionRoots: readonly string[];
+    readonly requiredFiles: readonly string[];
+    readonly requireFixtureManifest: boolean;
+    readonly requireRepositoryRootProject: boolean;
+    readonly descriptorCanonicalPath?: string | undefined;
+    readonly captureProjectFile?: string | undefined;
+    readonly sourceLimits?:
+      | {
+          readonly maxEntries: number;
+          readonly maxBytes: number;
+        }
+      | undefined;
+  },
+  git: HostGitPort,
+): Promise<CleanGitProjectInspection> => {
+  const projectRoot = await realpath(request.projectPath);
+  const projectMetadata = await lstat(projectRoot);
+  if (!projectMetadata.isDirectory()) {
+    return sourceFeatureUnsupported("project path must be a directory");
+  }
+  const repositoryRoot = await realpath(
+    await git.resolveRepositoryRoot(projectRoot),
+  );
+  const prefix = relative(repositoryRoot, projectRoot);
+  if (
+    isAbsolute(prefix) ||
+    prefix === ".." ||
+    prefix.startsWith(`..${sep}`) ||
+    prefix.includes("\\") ||
+    prefix.split("/").some((segment) => segment === "." || segment === "..")
+  ) {
+    return sourceFeatureUnsupported(
+      "project path must be contained by its enclosing repository",
+    );
+  }
+  const projectPrefix = prefix === "." ? "" : prefix;
+  if (request.requireRepositoryRootProject && projectPrefix !== "") {
+    return sourceFeatureUnsupported(
+      "external Godot lifecycle profile requires a repository-root project",
+    );
+  }
+  await assertNoRepositoryOverlap(
+    repositoryRoot,
+    request.sourceRepositoryExclusionRoots,
+  );
+  if (
+    request.descriptorCanonicalPath !== undefined &&
+    pathIsWithinOrEqual(repositoryRoot, request.descriptorCanonicalPath)
+  ) {
+    throw new M1Error(
+      "path_denied",
+      "external Godot project descriptor must be stored outside the source repository",
+    );
+  }
+  if (request.descriptorCanonicalPath !== undefined) {
+    for (const exclusionRoot of request.sourceRepositoryExclusionRoots) {
+      const canonicalExclusionRoot = await realpath(exclusionRoot);
+      if (
+        pathIsWithinOrEqual(
+          canonicalExclusionRoot,
+          request.descriptorCanonicalPath,
+        )
+      ) {
+        throw new M1Error(
+          "path_denied",
+          "external Godot project descriptor must not overlap task or runtime storage",
+        );
+      }
+    }
+  }
+  const headCommit = await git.resolveHeadCommit(repositoryRoot);
+  const status = await git.statusPorcelain(repositoryRoot);
+  if (status.byteLength !== 0) {
+    throw new M1Error(
+      "source_not_clean",
+      "the entire enclosing Git worktree must be clean",
+    );
+  }
+  const listing = await git.listTree({
+    context: { cwd: repositoryRoot },
+    treeish: headCommit,
+    ...(projectPrefix.length === 0 ? {} : { projectPrefix }),
+  });
+  const entries = parseGitTreeListing(
+    listing,
+    projectPrefix,
+    request.sourceLimits,
+  );
+  await assertTrackedRequiredFiles(projectRoot, entries, request.requiredFiles);
+  const inspected = await inspectAndHashBlobs({
+    git,
+    repositoryRoot,
+    entries,
+    requireFixtureManifest: request.requireFixtureManifest,
+    ...(request.captureProjectFile === undefined
+      ? {}
+      : { captureProjectFile: request.captureProjectFile }),
+  });
+  const repositoryIdentity = asSha256DigestV1(
+    createHash("sha256")
+      .update("chronorift-repository-identity-v1\0")
+      .update(repositoryRoot)
+      .digest("hex"),
+  );
+  return {
+    repositoryRoot,
+    projectRoot,
+    projectPrefix,
+    headCommit,
+    repositoryIdentity,
+    selectedTreeSha256: inspected.selectedTreeSha256,
+    entries,
+    ...(inspected.manifest === undefined
+      ? {}
+      : { manifest: inspected.manifest }),
+    ...(inspected.projectFileBytes === undefined
+      ? {}
+      : { projectFileBytes: inspected.projectFileBytes }),
+  };
+};
+
+const normalizeSourcePreflightError = (error: unknown): never => {
+  if (error instanceof M1Error) throw error;
+  throw new M1Error(
+    "source_feature_unsupported",
+    "Git source preflight failed before task execution",
+    error,
+  );
+};
+
+const PROJECT_ENVIRONMENT_RESERVED_AUTOLOAD = "ChronoRiftProjectEnvironment";
+
+const readVerifiedGitBlob = async (input: {
+  readonly git: HostGitPort;
+  readonly repositoryRoot: string;
+  readonly entry: VerifiedGitTreeEntry;
+}): Promise<Buffer> => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "chronorift-project-environment-blob-"),
+  );
+  const blobPath = join(temporaryDirectory, "blob");
+  try {
+    const destination = await open(
+      blobPath,
+      constants.O_RDWR |
+        constants.O_CREAT |
+        constants.O_EXCL |
+        constants.O_NOFOLLOW,
+      0o600,
+    );
+    let receipt: Awaited<ReturnType<HostGitPort["streamBlob"]>>;
+    try {
+      receipt = await input.git.streamBlob({
+        cwd: input.repositoryRoot,
+        objectId: input.entry.objectId,
+        destination,
+      });
+      await destination.sync();
+    } finally {
+      await destination.close();
+    }
+    const bytes = await readFile(blobPath);
+    if (
+      receipt.byteLength !== input.entry.byteLength ||
+      bytes.byteLength !== input.entry.byteLength
+    ) {
+      return sourceFeatureUnsupported(
+        "Git blob byte length changed during Project Environment inspection",
+      );
+    }
+    return bytes;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+};
+
+const projectEnvironmentMainScene = (input: Uint8Array): string => {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(input);
+  } catch (error) {
+    return sourceFeatureUnsupported("project.godot must be valid UTF-8", error);
+  }
+  if (
+    text.includes("\0") ||
+    new RegExp(`^\\s*${PROJECT_ENVIRONMENT_RESERVED_AUTOLOAD}\\s*=`, "mu").test(
+      text,
+    )
+  ) {
+    return sourceFeatureUnsupported(
+      "project.godot collides with the reserved Project Environment autoload",
+    );
+  }
+  const mainScene =
+    /^\s*run\/main_scene\s*=\s*"((?:res|uid):\/\/[^"\r\n]+)"\s*$/mu.exec(
+      text,
+    )?.[1];
+  if (mainScene === undefined || mainScene.length > 2_048) {
+    return sourceFeatureUnsupported(
+      "project.godot must configure a bounded res:// or uid:// main scene",
+    );
+  }
+  return mainScene;
+};
+
+const assertProjectEnvironmentSourceProfileV1 = async (input: {
+  readonly git: HostGitPort;
+  readonly repositoryRoot: string;
+  readonly entries: readonly VerifiedGitTreeEntry[];
+}): Promise<"4.7.1"> => {
+  let requestedVersion = "4.7.1" as const;
+  for (const entry of input.entries) {
+    if (isExternalGodotReservedSourcePathV1(entry.relativePath)) {
+      return sourceFeatureUnsupported(
+        "PE-A source collides with a reserved managed root",
+      );
+    }
+    if (isExternalGodotNativeSourcePathV1(entry.relativePath)) {
+      return sourceFeatureUnsupported(
+        "PE-A supports GDScript without native or C# extensions",
+      );
+    }
+    if (isProjectEnvironmentSensitivePathV1(entry.relativePath)) {
+      throw new M1Error(
+        "path_denied",
+        "PE-A source contains a credential-like path",
+      );
+    }
+    if (
+      entry.relativePath === ".godot-version" ||
+      entry.relativePath.endsWith(".gd")
+    ) {
+      const bytes = await readVerifiedGitBlob({ ...input, entry });
+      let text: string;
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      } catch (error) {
+        return sourceFeatureUnsupported(
+          `${entry.relativePath} must be valid UTF-8`,
+          error,
+        );
+      }
+      if (entry.relativePath === ".godot-version") {
+        if (text.trim() !== "4.7.1") {
+          return sourceFeatureUnsupported(
+            "PE-A requires .godot-version to request exact Godot 4.7.1",
+          );
+        }
+        requestedVersion = "4.7.1";
+      } else if (hasProjectEnvironmentDeferredGdscriptFeatureV1(text)) {
+        return sourceFeatureUnsupported(
+          "PE-A defers @tool scripts and EditorPlugin to a later source/import slice",
+        );
+      }
+    }
+  }
+  return requestedVersion;
 };
 
 export async function preflightCleanGitSubtree(
@@ -353,51 +726,21 @@ export async function preflightCleanGitSubtree(
 ): Promise<VerifiedGitSubtree> {
   const git = dependencies?.git ?? new NodeHostGitPort();
   try {
-    const projectRoot = await realpath(request.projectPath);
-    const projectMetadata = await lstat(projectRoot);
-    if (!projectMetadata.isDirectory()) {
-      return sourceFeatureUnsupported("project path must be a directory");
-    }
-    const repositoryRoot = await realpath(
-      await git.resolveRepositoryRoot(projectRoot),
-    );
-    const prefix = relative(repositoryRoot, projectRoot);
-    if (
-      isAbsolute(prefix) ||
-      prefix === ".." ||
-      prefix.startsWith(`..${sep}`) ||
-      prefix.includes("\\") ||
-      prefix.split("/").some((segment) => segment === "." || segment === "..")
-    ) {
-      return sourceFeatureUnsupported(
-        "project path must be contained by its enclosing repository",
-      );
-    }
-    const projectPrefix = prefix === "." ? "" : prefix;
-    await assertNoRepositoryOverlap(
-      repositoryRoot,
-      request.sourceRepositoryExclusionRoots,
-    );
-    const headCommit = await git.resolveHeadCommit(repositoryRoot);
-    const status = await git.statusPorcelain(repositoryRoot);
-    if (status.byteLength !== 0) {
-      throw new M1Error(
-        "source_not_clean",
-        "the entire enclosing Git worktree must be clean",
-      );
-    }
-    const listing = await git.listTree({
-      context: { cwd: repositoryRoot },
-      treeish: headCommit,
-      ...(projectPrefix.length === 0 ? {} : { projectPrefix }),
-    });
-    const entries = parseGitTreeListing(listing, projectPrefix);
-    await assertTrackedRequiredFiles(projectRoot, entries);
-    const inspected = await inspectAndHashBlobs({
+    const inspected = await inspectCleanGitProject(
+      {
+        projectPath: request.projectPath,
+        sourceRepositoryExclusionRoots: request.sourceRepositoryExclusionRoots,
+        requiredFiles: ["project.godot", "chronorift.fixture.json"],
+        requireFixtureManifest: true,
+        requireRepositoryRootProject: false,
+      },
       git,
-      repositoryRoot,
-      entries,
-    });
+    );
+    if (inspected.manifest === undefined) {
+      return sourceFeatureUnsupported(
+        "tracked fixture manifest is unavailable",
+      );
+    }
     const catalog = await loadTrustedFixtureCatalog(request.trustedFixtureRoot);
     const fixtureCapability = resolveTaskFixtureCapability(
       {
@@ -406,28 +749,213 @@ export async function preflightCleanGitSubtree(
       },
       catalog,
     );
-    const repositoryIdentity = asSha256DigestV1(
-      createHash("sha256")
-        .update("chronorift-repository-identity-v1\0")
-        .update(repositoryRoot)
-        .digest("hex"),
+    const { manifest: _manifest, ...source } = inspected;
+    void _manifest;
+    return { ...source, fixtureCapability };
+  } catch (error) {
+    return normalizeSourcePreflightError(error);
+  }
+}
+
+const assertExternalGodotSourceProfile = (
+  entries: readonly VerifiedGitTreeEntry[],
+): void => {
+  for (const entry of entries) {
+    if (isExternalGodotReservedSourcePathV1(entry.relativePath)) {
+      return sourceFeatureUnsupported(
+        "external Godot source collides with a reserved managed root",
+      );
+    }
+    if (isExternalGodotNativeSourcePathV1(entry.relativePath)) {
+      return sourceFeatureUnsupported(
+        "external Godot lifecycle profile supports GDScript without native extensions",
+      );
+    }
+  }
+};
+
+export const assertExternalGodotProjectConfigurationV1 = (
+  input: Uint8Array | undefined,
+): void => {
+  if (input === undefined) {
+    return sourceFeatureUnsupported(
+      "tracked project.godot bytes are unavailable",
     );
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(input);
+  } catch (error) {
+    return sourceFeatureUnsupported("project.godot must be valid UTF-8", error);
+  }
+  if (text.includes("\0") || /^\s*ChronoRiftLifecycle\s*=/mu.test(text)) {
+    return sourceFeatureUnsupported(
+      "project.godot collides with the reserved ChronoRiftLifecycle autoload",
+    );
+  }
+  const mainScene =
+    /^\s*run\/main_scene\s*=\s*"((?:res|uid):\/\/[^"\r\n]+)"\s*$/mu.exec(
+      text,
+    )?.[1];
+  if (mainScene === undefined || mainScene.length > 2_048) {
+    return sourceFeatureUnsupported(
+      "project.godot must configure a bounded res:// or uid:// main scene",
+    );
+  }
+};
+
+export async function preflightCleanExternalGodotProject(
+  request: CleanExternalGodotProjectPreflightRequest,
+  dependencies?: { readonly git?: HostGitPort },
+): Promise<VerifiedExternalGodotProject> {
+  const git = dependencies?.git ?? new NodeHostGitPort();
+  try {
+    const reparsed = parseGodotProjectDescriptorSnapshotV1(
+      request.descriptorSnapshot.bytes,
+    );
+    if (
+      reparsed.descriptorSha256 !== request.descriptorSnapshot.descriptorSha256
+    ) {
+      throw new M1Error(
+        "source_configuration_mismatch",
+        "external Godot project descriptor snapshot identity is inconsistent",
+      );
+    }
+    const descriptorCanonicalPath = await realpath(
+      request.descriptorSnapshot.canonicalPath,
+    );
+    if (descriptorCanonicalPath !== request.descriptorSnapshot.canonicalPath) {
+      throw new M1Error(
+        "path_denied",
+        "external Godot project descriptor path is no longer canonical",
+      );
+    }
+    const inspected = await inspectCleanGitProject(
+      {
+        projectPath: request.projectPath,
+        sourceRepositoryExclusionRoots: request.sourceRepositoryExclusionRoots,
+        requiredFiles: [reparsed.descriptor.projectFile],
+        requireFixtureManifest: false,
+        requireRepositoryRootProject: true,
+        descriptorCanonicalPath,
+        captureProjectFile: reparsed.descriptor.projectFile,
+        sourceLimits: {
+          maxEntries: EXTERNAL_GODOT_MAX_FILES_V1,
+          maxBytes: EXTERNAL_GODOT_MAX_BYTES_V1,
+        },
+      },
+      git,
+    );
+    assertExternalGodotSourceProfile(inspected.entries);
+    assertExternalGodotProjectConfigurationV1(inspected.projectFileBytes);
+    const capabilityContent = {
+      schemaVersion: 1 as const,
+      capabilityKind: "godot-external-lifecycle-v1" as const,
+      descriptorSha256: reparsed.descriptorSha256,
+      declaredSourceUrl: reparsed.descriptor.declaredSourceUrl,
+      sourceRevision: inspected.headCommit,
+      baselineSelectedTreeSha256: inspected.selectedTreeSha256,
+      projectFile: reparsed.descriptor.projectFile,
+      engineVersion: reparsed.descriptor.runtime.engineVersion,
+      scripting: reparsed.descriptor.runtime.scripting,
+      renderer: reparsed.descriptor.runtime.renderer,
+      executionMode: reparsed.descriptor.runtime.executionMode,
+      startup: reparsed.descriptor.launch.scene,
+      runtimeProfile: "chronorift-godot-lifecycle-v1" as const,
+      bridgeMode: reparsed.descriptor.bridge.mode,
+      protocolVersion: reparsed.descriptor.bridge.protocolVersion,
+      ignoredCachePaths: reparsed.descriptor.cache.ignoredPaths,
+      reservedSourceRoots: [".chronorift", "addons", "override.cfg"] as const,
+    };
+    const projectCapability = TaskGodotProjectCapabilityV1Schema.parse({
+      ...capabilityContent,
+      capabilitySha256: contentHash(capabilityContent as unknown as JsonValue),
+    });
+    const descriptorSnapshot: GodotProjectDescriptorSnapshotV1 = Object.freeze({
+      descriptor: reparsed.descriptor,
+      descriptorSha256: reparsed.descriptorSha256,
+      bytes: Uint8Array.from(reparsed.bytes),
+    });
     return {
-      repositoryRoot,
-      projectRoot,
-      projectPrefix,
-      headCommit,
-      repositoryIdentity,
+      sourceKind: "godot-external-lifecycle-v1",
+      repositoryRoot: inspected.repositoryRoot,
+      projectRoot: inspected.projectRoot,
+      projectPrefix: "",
+      headCommit: inspected.headCommit,
+      repositoryIdentity: inspected.repositoryIdentity,
       selectedTreeSha256: inspected.selectedTreeSha256,
-      entries,
-      fixtureCapability,
+      entries: inspected.entries,
+      descriptorSnapshot,
+      descriptorCanonicalPath,
+      projectCapability,
     };
   } catch (error) {
-    if (error instanceof M1Error) throw error;
-    throw new M1Error(
-      "source_feature_unsupported",
-      "Git source preflight failed before task execution",
-      error,
+    return normalizeSourcePreflightError(error);
+  }
+}
+
+/**
+ * PE-A intentionally accepts only a clean, repository-root Godot project. It
+ * does not require an operator-authored descriptor; the realized main scene and
+ * exact source identity are derived from tracked Git bytes.
+ */
+export async function preflightCleanProjectEnvironmentV1(
+  request: CleanProjectEnvironmentPreflightRequestV1,
+  dependencies?: { readonly git?: HostGitPort },
+): Promise<VerifiedProjectEnvironmentSourceV1> {
+  const git = dependencies?.git ?? new NodeHostGitPort();
+  try {
+    const inspected = await inspectCleanGitProject(
+      {
+        projectPath: request.projectPath,
+        sourceRepositoryExclusionRoots: request.sourceRepositoryExclusionRoots,
+        requiredFiles: ["project.godot"],
+        requireFixtureManifest: false,
+        requireRepositoryRootProject: true,
+        captureProjectFile: "project.godot",
+        sourceLimits: {
+          maxEntries: EXTERNAL_GODOT_MAX_FILES_V1,
+          maxBytes: EXTERNAL_GODOT_MAX_BYTES_V1,
+        },
+      },
+      git,
     );
+    const requestedGodotVersion = await assertProjectEnvironmentSourceProfileV1(
+      {
+        git,
+        repositoryRoot: inspected.repositoryRoot,
+        entries: inspected.entries,
+      },
+    );
+    if (inspected.projectFileBytes === undefined) {
+      return sourceFeatureUnsupported(
+        "tracked project.godot bytes are unavailable",
+      );
+    }
+    const mainScene = projectEnvironmentMainScene(inspected.projectFileBytes);
+    const identityContent = {
+      schemaVersion: 1 as const,
+      sourceKind: "project-environment-v1-clean-git" as const,
+      headCommit: inspected.headCommit,
+      selectedTreeSha256: inspected.selectedTreeSha256,
+      mainScene,
+      requestedGodotVersion,
+    };
+    return Object.freeze({
+      sourceKind: identityContent.sourceKind,
+      repositoryRoot: inspected.repositoryRoot,
+      projectRoot: inspected.projectRoot,
+      projectPrefix: "" as const,
+      headCommit: inspected.headCommit,
+      selectedTreeSha256: inspected.selectedTreeSha256,
+      projectSourceIdentity: asSha256DigestV1(
+        contentHash(identityContent as unknown as JsonValue),
+      ),
+      entries: Object.freeze([...inspected.entries]),
+      mainScene,
+      requestedGodotVersion,
+    });
+  } catch (error) {
+    return normalizeSourcePreflightError(error);
   }
 }

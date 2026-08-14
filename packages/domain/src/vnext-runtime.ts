@@ -387,7 +387,7 @@ export const VNextCaptureLossV1Schema = z
   });
 export type VNextCaptureLossV1 = z.infer<typeof VNextCaptureLossV1Schema>;
 
-const validateCoverageAndLoss = (
+export const validateVNextCaptureCoverageAndLoss = (
   coverage: readonly VNextCaptureCoverageV1[],
   loss: readonly VNextCaptureLossV1[],
   context: z.core.$RefinementCtx,
@@ -833,7 +833,7 @@ export const VNextExecutionRecordV1Schema = z
       }
     }
 
-    validateCoverageAndLoss(value.coverage, value.loss, context);
+    validateVNextCaptureCoverageAndLoss(value.coverage, value.loss, context);
     const requestedCoverageChannels = new Set(
       value.manifest.capturePolicy.channels.map((entry) => entry.channel),
     );
@@ -913,7 +913,7 @@ export const VNextCaptureWindowV1Schema = z
   .strict()
   .superRefine((value, context) => {
     addDuplicateIssue(value.probeIds, "probeIds", context);
-    validateCoverageAndLoss(value.coverage, value.loss, context);
+    validateVNextCaptureCoverageAndLoss(value.coverage, value.loss, context);
     if (value.status === "unavailable" && value.realizedRange !== null) {
       context.addIssue({
         code: "custom",
@@ -1857,7 +1857,7 @@ export const VNextRuntimeStateQueryResultV1Schema = z
         input: value.query,
       });
     }
-    validateCoverageAndLoss(value.coverage, value.loss, context);
+    validateVNextCaptureCoverageAndLoss(value.coverage, value.loss, context);
     const hasIncompleteCoverage =
       value.loss.length > 0 ||
       value.coverage.some((entry) => entry.status !== "full");

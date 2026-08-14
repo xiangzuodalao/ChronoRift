@@ -9,6 +9,17 @@
 > descriptive compare 与外部 release acceptance 实现。M3 不是新的公开 release，也不能描述成任意 Godot
 > 项目能力或修复正确性证明；本文不声称尚未实际运行的 Gate 或 live acceptance 已通过。
 >
+> **Project Environment V1 / PE-B Dynamic Projection 当前是 implementation present + local Gate passed。**
+> PE-A 已实现显式 Preview、ProjectAdapter SDK/wire/loader、初始化、
+> authoritative conformance、crash-safe publication/binding、post-edit exact Build、new-Session reuse、durable runtime
+> evidence 与独立 validator。默认离线、真实 Godot、下层 Linux Host 与 deterministic fake-Pi Gate 已通过；冻结
+> product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 的本地 Luna/max one-shot 也已产生 create-new bundle，
+> 经 standalone validator 复验并归档为 local r1。该 archive 不是 protected artifact、签名或外部 attestation；它只
+> 覆盖一个冻结 clean/single-root fixture，不代表通用外部项目支持或默认入口晋升。
+> PE-B product subject `0731eb13b0c103dbcb61bd0e2d967962838324a4` 也已通过默认、Godot、特权 Host 与
+> Luna/max 双 Session local Gate；raw-chain bundle content hash 为
+> `df1388507271901602fb8371d50087ddc17c528270459f73d6493bbc6a981bf1`，归档为 PE-B local r1。
+>
 > v0.1–v0.4 schema、artifact、benchmark spec、ledger、报告与冻结 tag 保持不可变。新路径不会静默迁移、
 > 覆盖或重新解释历史结果。
 
@@ -135,6 +146,7 @@ flowchart LR
 
   subgraph HOST["ChronoRift Host Control Plane"]
     CLI --> TASK["Task / Workspace Manager"]
+    CLI --> ENV["Project Environment Manager"]
     CLI --> PI["Pi SDK AgentSession"]
     PI --> CODETOOLS["Sandboxed coding-tool broker"]
     PI --> GAMETOOLS["Game-runtime tool bridge"]
@@ -143,10 +155,11 @@ flowchart LR
 
   subgraph SANDBOX["Task Sandbox"]
     WORKSPACE["Managed /workspace"]
+    ADAPTER["Agent-authored ProjectAdapter"]
     GODOT["Godot + ChronoProbe"]
     CAPTURE["Capture / checkpoint / replay"]
     INDEX["Runtime State Index"]
-    WORKSPACE --> GODOT
+    WORKSPACE --> ADAPTER --> GODOT
     GODOT --> CAPTURE --> INDEX
   end
 
@@ -154,6 +167,7 @@ flowchart LR
   CODETOOLS <--> WORKSPACE
   GAMETOOLS <--> CAPTURE
   TASK --> WORKSPACE
+  ENV --> ADAPTER
   CAPTURE --> STORE
   INDEX --> STORE
   PI --> STORE
@@ -185,13 +199,14 @@ Host control plane 对以下有限事实负责：
 目标默认流程是：
 
 ```text
-用户启动 chronorift 并提供项目与目标
-→ CLI 解析项目、provider/model、sandbox 与 capture 配置
+用户在包含 project.godot 的项目目录启动 chronorift，可同时提供目标
+→ CLI 自动发现项目、显式展示 provider/model，并冻结 source closure 与 sandbox capability
 → 创建任务级 managed workspace 和 execution sandbox
-→ 准备 Godot Addon、项目配置与已声明 snapshot adapter
-→ 使用 Pi SDK 创建 AgentSession
-→ 启用 Pi coding tools、ChronoRift game tools、AGENTS.md 与 skills
-→ 调用 session.prompt(user goal)
+→ 使用 Pi SDK 创建或恢复同一个可见 AgentSession
+→ 加载正常 coding tools、AGENTS.md、skills、ProjectAdapter SDK 与环境工具
+→ 若 Project Environment 尚未 ready，Agent 在独立初始化 turn 中读取项目并生成唯一 ProjectAdapter
+→ 初始化 turn 正常返回后 Harness 冻结 candidate，执行 authoritative conformance，并在 fully materialized revision 后原子切换 current pointer
+→ 若用户目标已排队，在同一 Session 的下一个 turn 调用 session.prompt(user goal)
 → Pi Agent Loop 自主读码、执行、观测、实验、修改和验证
 → 模型输出普通最终结果，当前 turn 结束
 → ChronoRift 展示 diff、工具记录、Execution lineage 和资源/安全记录
@@ -199,8 +214,14 @@ Host control plane 对以下有限事实负责：
 → 保留 Session、workspace 和 artifact，直到用户继续、应用或显式清理
 ```
 
-一次 `session.prompt()` 返回不关闭整个任务。用户可以在同一 Pi Session 和同一 managed workspace 中
-继续追问。自动清理只针对运行进程和临时授权；任务代码与 artifact 采用显式 discard 或保留期策略。
+Task 是一个交互工作上下文，拥有一个 Pi Session/workspace、环境 turn 与零到多个用户 goal turn；每个 turn 记录
+purpose、预算和精确 environment binding。初始化 turn 和用户目标 turn 是两条独立记录；前者正常结束时只有存在绑定当前 source、SDK、toolchain 与
+conformance 的 ready Project Environment revision，才算初始化成功。Agent prose 或某个固定 submit tool 都不能
+替代该事实。首次初始化失败时命令 fail closed，不执行排队目标；未发布 candidate、Pi Session 与失败记录可以在
+有界 Task storage 中显式 resume；resume 创建 successor attempt，不修改 sealed failure。Publication 后 Task 追加
+精确 `EnvironmentBindingEpoch`，排队 goal 只能在该 epoch 之后进入下一 prompt。一次普通 `session.prompt()` 返回不关闭整个任务，用户可以在同一 Pi Session 和
+同一 managed workspace 中继续追问。自动清理只针对运行进程和临时授权；任务代码与 artifact 采用显式 discard
+或保留期策略。
 
 ## 7. Task Workspace 与执行沙箱
 
@@ -213,6 +234,8 @@ Pi Session 的 `cwd` 指向任务级 `/workspace`。它来自宿主项目的 Cod
 - Agent 修改不会直接落入用户当前工作区；
 - 宿主 refs、其他 worktree 和 Git 配置不能被任务命令任意修改；
 - ChronoRift 能稳定提取 diff/patch，并在用户明确选择后 handoff/apply；
+- Host source drift 只触发可见的 refresh/review，不与 managed workspace 静默双向同步；
+- 游戏 patch、ProjectAdapter/probe diff 与 `.chronorift/` environment publication 始终分离；
 - worktree/workspace 是版本隔离机制，不被宣称为安全沙箱。
 
 该产品语义参考 Codex 的
@@ -272,7 +295,8 @@ Pi 官方 SDK 文档见 [pi.dev](https://pi.dev/docs/latest/sdk)。
 - 保留 Pi 默认 coding-agent system prompt，不再用诊断 workflow 整段覆盖；
 - ChronoRift 只追加短小环境说明：sandbox 边界、game tool 语义、fidelity、coverage 和缺失数据；
 - 正常加载任务 workspace 中适用的 `AGENTS.md`；其内容不能改变 Host 或 sandbox policy；
-- 正常启用 Pi skills；ChronoRift 可以提供 game-runtime debugging skill，介绍常见方法但不规定必选步骤；
+- 正常启用 Pi skills；Project Environment V1 目标提供与 SDK version 绑定的 `project-adapter` skill，解释 adapter contract、示例和
+  validator，但不规定必选工具顺序；
 - 工具描述只说明能力、输入、输出、权限、成本和失败行为，不使用 `call first`、`only after` 或
   `exactly once`；
 - 项目内容或 runtime 文本不能覆盖 system/sandbox policy。
@@ -292,21 +316,26 @@ vNext 显式启用 Pi 提供的 `read`、`bash`、`edit`、`write`、`grep`、`f
 - 用户取消、显式超时、不可恢复的 Pi/provider failure 或 Host 自身失败才终止当前 turn；
 - 最终 assistant 文本与实际工具记录分别保存，前者不能覆盖或改写后者。
 
-## 9. Runtime 资源模型
+## 9. Project Environment 与 Runtime 资源模型
 
-vNext 使用少量稳定资源组织游戏运行历史：
+vNext 使用少量稳定资源组织项目环境与游戏运行历史：
 
-| 资源            | 含义                                                             |
-| --------------- | ---------------------------------------------------------------- |
-| `Task`          | 一个用户目标、Pi Session、workspace 和 runtime artifact 集合     |
-| `Build`         | source revision、workspace diff、Godot/import 配置与构建输出身份 |
-| `Runtime`       | 一个正在运行或已终止的 Godot 进程及其 negotiated capabilities    |
-| `Execution`     | 一次从明确 build/scene/config/trace 起点产生的实际运行记录       |
-| `CaptureWindow` | rolling buffer 中被 pin 的时间窗口及覆盖/丢失信息                |
-| `Checkpoint`    | 某个语义 barrier 上按 manifest 捕获的可恢复状态                  |
-| `Trace`         | 输入与控制事件及其目标 tick/phase                                |
-| `Branch`        | 从 Execution/checkpoint/build/workspace 派生的 lineage edge      |
-| `Comparison`    | 两个 Execution 的描述性对齐与差异结果                            |
+| 资源                           | 含义                                                                                                |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `ProjectEnvironment`           | project-local、跨 Task 复用的 adapter/toolchain/conformance 环境                                    |
+| `ProjectEnvironmentRevision`   | reviewed source、adapter、SDK/bridge、toolchain 与 conformance 的不可变组合                         |
+| `ProjectAdapterRevision`       | Agent 生成的唯一 adapter package 与 capability/payload schema identity                              |
+| `ProjectInitializationAttempt` | 可恢复但未必发布的 Agent 初始化/迁移 attempt                                                        |
+| `Task`                         | 一个交互工作上下文：一个 Pi Session/workspace、环境 turns、零到多个 goal turns 与 runtime artifacts |
+| `EnvironmentBindingEpoch`      | Task 在安全 turn boundary 绑定的精确 environment/adapter revision                                   |
+| `Build`                        | source、adapter/probe、workspace diff、Godot/import 与 compatibility 身份                           |
+| `Runtime`                      | 一个正在运行或已终止的 Godot 进程及其 negotiated capabilities                                       |
+| `Execution`                    | 一次从明确 build/scene/config/trace 起点产生的实际运行记录                                          |
+| `CaptureWindow`                | rolling buffer 中被 pin 的时间窗口及覆盖/丢失信息                                                   |
+| `Checkpoint`                   | 某个语义 barrier 上按 manifest 捕获的可恢复状态                                                     |
+| `Trace`                        | 输入与控制事件及其目标 tick/phase                                                                   |
+| `Branch`                       | 从 Execution/checkpoint/build/workspace 派生的 lineage edge                                         |
+| `Comparison`                   | 两个 Execution 的描述性对齐与差异结果                                                               |
 
 资源 ID 是稳定、不透明的业务身份，但不承担 Session capability 仪式，也不能被解释为文件路径。工具直接
 返回资源 ID；每次使用仍验证任务归属、权限、schema 和存在性。
@@ -382,10 +411,12 @@ runtime records 保存，但当前不会自动替 Agent pin 一个窗口。
 
 ## 11. Checkpoint 与 Restore
 
-### 11.1 零 adapter 模式
+### 11.1 无 snapshot module 模式
 
-这里的“零 adapter”只表示项目没有编写 snapshot adapter，不是无插件黑盒模式；它仍依赖
-ChronoProbe/Host runtime bridge。此时 ChronoRift 只保证捕获自己控制且可重建的执行外壳：
+Project Environment ready 后总是存在一个已验证的 ProjectAdapter；这里的“无 snapshot module”只表示该
+adapter 对 snapshot/restore 明确报告 unsupported，不是无插件黑盒模式。首次初始化尚无 adapter 时，只能使用
+coding、隔离命令、vanilla Godot 与 adapter 编写/验证工具，不能进入普通项目工作模式。没有 snapshot module
+时，ChronoRift 只保证捕获自己控制且可重建的执行外壳：
 
 - source/build identity；
 - 启动场景、项目配置和运行参数；
@@ -393,12 +424,12 @@ ChronoProbe/Host runtime bridge。此时 ChronoRift 只保证捕获自己控制�
 - seed 配置；
 - 基础日志和 capture metadata。
 
-它不保证任意 gameplay 私有字段、对象关系、Timer、pending effect、状态机或异步任务可恢复。零 adapter
-模式可以支持重新启动和 trace replay，不能宣传为“从失败瞬间等价分叉”。
+它不保证任意 gameplay 私有字段、对象关系、Timer、pending effect、状态机或异步任务可恢复。无 snapshot
+module 可以支持重新启动和 trace replay，不能宣传为“从失败瞬间等价分叉”。
 
 ### 11.2 Snapshot adapter
 
-项目开发者显式注册具有领域语义的 snapshot adapter，包括：
+Agent 在唯一 ProjectAdapter 中实现并声明具有领域语义的 snapshot module，包括：
 
 - 要捕获的私有字段和容差/规范化规则；
 - 对象引用的稳定身份与 incarnation；
@@ -406,8 +437,10 @@ ChronoProbe/Host runtime bridge。此时 ChronoRift 只保证捕获自己控制�
 - Timer、pending effect、状态机、RNG 和异步任务的重建逻辑；
 - 恢复后自检以及已知缺失域。
 
-Agent 可以在调查期间新增临时 adapter、probe 或序列化代码，但只对安装之后产生的 Execution 和
-checkpoint 生效。它不能追溯补全首次失败，也不能在不同 build 之间假装同一 snapshot 自动兼容。
+Agent 可以在调查期间修订 ProjectAdapter、probe 或序列化代码，但每次修改必须形成新的不可变 adapter
+revision，只对 publication 之后创建的 Build、Execution 和 checkpoint 生效；正在运行的 Execution 不热替换。
+用户手工修改也只形成待验证 candidate。任何修改都不能追溯补全首次失败，也不能在不同 build 之间假装同一
+snapshot 自动兼容。
 
 ### 11.3 Manifest 与 receipt
 
@@ -557,6 +590,18 @@ M3 的 V1 catalog 固定为 16 个原子工具；这些名称与 strict input/ou
 `game_capture_configure` 的 schema 预留 trigger 表达，但 M3 runtime 对非空 trigger 明确返回 unsupported；当前
 实现的 retention 操作只有手动 `game_capture_pin`。这不改变长期目标中的自动 freeze/trigger 设计。
 
+M4 使用独立的 `chronorift-godot-lifecycle-v1` capability/profile，只发布四个 Discovery/Lifecycle 工具：
+`game_capabilities`、`game_launch`、`game_status` 和 `game_stop`。M3 catalog 的其余十二个名字不会作为 M4
+Agent tool definition 暴露；对内部 protocol/coordinator 请求则返回结构化 `unsupported_capability`。这个窄
+catalog 是 external-project onboarding 的能力边界，不把目标架构中的 capture/checkpoint/fork/replay/query/
+compare 降级成 optional 空壳。
+
+Project Environment V1 目标不允许 ProjectAdapter 生成任意 Pi tool。Agent 始终看到同一组固定、版本化的核心 game-tool contract；
+ProjectAdapter 通过 capability modules 实现这些 port，并对未实现、被 policy 禁止或降级的能力分别报告
+`unsupported`、`unavailable_by_policy` 或 `degraded`。项目差异存在于 adapter manifest、payload schema、resource
+identity 与 receipt 中，不存在于随项目变化的工具名或自由输入协议中。PE-A 已用独立 catalog 实现这组固定工具；
+现有 M3/M4/E2 catalog 没有因此被静默迁移或统一。
+
 工具契约必须：
 
 - 使用 strict、versioned input/output schema；
@@ -598,6 +643,10 @@ M3 的 V1 catalog 固定为 16 个原子工具；这些名称与 strict input/ou
 规则：
 
 - `.chronorift/` 是本地运行状态，不提交 Git；
+- Project Environment V1 的根级 `.chronorift/` 必须自包含 local-only 标记，并被 source discovery、dirty snapshot、patch、refresh
+  和 apply 硬性排除；不得自动修改项目根 `.gitignore`、Git index 或共享 Git config；
+- 已被 Git 跟踪、经过 symlink 映射或无法从 source closure 中排除的根级 `.chronorift/` 不能作为 Project
+  Environment root；
 - raw tool/runtime records 在产生期间 append，seal 后不原地修改；
 - final assistant text、candidate diff 和实际 execution records 分开保存；
 - manifest/index 可以演进，但历史 revision 不静默覆盖；
@@ -629,12 +678,37 @@ mount 放入 `/run/chronorift/project/addons/chronorift`；候选源码的整个
 stdio 控制和读取诊断；diagnostic overflow/truncation 必须形成 error/loss record，不能丢掉底层 cleanup
 receipt。没有可验证的 cleanup receipt 就不能 seal Execution。
 
+M4 复用已经实现并测试的 sandbox、bounded storage、process/cgroup cleanup 和 Host framing 基础，但新增
+独立 lifecycle-only wire profile，而不放宽 Protocol v2。受管 Addon 位于
+`godot/addons/chronorift_lifecycle`，Autoload 名为 `ChronoRiftLifecycle`；它只协商 engine/build/scene identity、
+process frame、physics tick、status、bounded diagnostics 和 shutdown。Host 通过独立
+`CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT` 冻结该输入，不能与 M3 Addon capability 串线或共用 identity。
+
+首次 M4 launch 使用两个 bounded operation scratch：vanilla operation 先 import 再无 overlay smoke；managed
+operation 在 fresh stage 中再次 import，随后注入 hashed overlay 并握手。cache 不跨 operation 复用，managed
+import 使 UID main scene 在 launch 前可解析。Godot import 可能执行项目 tool script/plugin，因此也属于不可信项目执行，必须留在同一
+无网络、无 credential、只读 Task `/workspace` 和有界 cleanup 边界中；Host source checkout 不挂入 sandbox，
+也不能在其上预跑。
+Godot 实际执行 bounded scratch 中的 writable staged copy；实现会在两次 import、vanilla stop 和 managed stop
+endpoint 重验 selected-tree，并在隔离 PID namespace 中拒绝 phase 后残留进程，但不能排除同一 Godot 进程
+在窗口内 mutate/load/restore。因此 source identity 是 admission 与 endpoint fact，不是 continuous immutable
+execution attestation。vanilla 与 overlay 结果分别记录；一方失败不能由另一方成功掩盖，也不能被 Harness
+解释成兼容性或根因 verdict。
+
+M4 的 phase 与 process-output 可能在对应 operation 完成后才进入 raw ledger。此类 retrospective event 的
+顶层 engine clock 只能引用写入前最近一次真实 sample，并以 `last_sample_before_ingest` 标记；payload 另外
+保留 phase/operation 的 Host monotonic envelope。该 envelope 不是逐 chunk occurrence time，不能用于伪造
+逐帧日志对齐。
+
 bwrap 在完成所有子挂载后，会把自动构造的空根文件系统和 `/dev` 非递归重挂为只读；
 `/dev/null` 等既有设备仍可使用，但候选不能在 `/` 或 `/dev` 创建未计量文件。Godot 的
 `/run/chronorift` 不再是匿名 tmpfs；每个 operation 都从 bounded Task filesystem 上的 Host-only
 parent 获得独立 scratch 目录 FD。该目录不会从其他 sandbox 的 `/tmp` 可见，且只有
 Bootstrap 退出、cgroup 为空和 scope 删除三项同时得证后才删除。回收失败会保留 retry owner
-并令 cleanup receipt 不完整，不能被 seal 路径解释为已清理。
+并令 cleanup receipt 不完整，不能被 seal 路径解释为已清理。`/tmp` 与 `/artifacts` 仍是 Task-global、
+跨 operation 共用的 writable view；mount-admission receipt 必须把它们标成 shared，而不能把顺序运行误述为
+拥有独立临时目录或 artifact 起点。只有 `/run/chronorift` stage 是 operation-private；shared view 中的残留
+状态属于需要公开的潜在 confounder。
 
 Godot 4.7.1 的 headless 启动仍会动态加载 fontconfig，并通过 `xdg-user-dir` 查询系统目录。M3 因此把 Host
 `fc-match` 仅作为 preflight 的动态依赖 inspection anchor，冻结其 loader/fontconfig 闭包而不把该命令本体
@@ -648,6 +722,12 @@ profile；Godot stderr 仍作为原始 runtime error 处理，不按消息文本
 一次性 loopback handshake token，只能关联本次启动、拒绝意外连接；候选代码处于同一进程，不能把该 token
 当作对恶意候选的隔离、runtime telemetry 的真实性证明、Addon provenance 或外部 attestation。managed Addon
 的 Host preflight、只读 mount 与 content hash 仍是必要的完整性边界，但也不会把同进程观测变成第三方证明。
+
+Project Environment V1 目标继续沿用这一安全事实：Agent 生成的 ProjectAdapter、runtime-only probe overlay、项目 GDScript、
+`@tool` script 与 GDScript EditorPlugin 都是不可信项目代码，并在同一个 Godot sandbox 主体中运行；adapter 不因
+属于环境而获得 Host、网络、credential、device 或进程权限。bridge、Adapter SDK runtime、ProjectAdapter 与 probe
+以分别冻结和寻址的只读 managed overlay 注入 Task-owned runtime stage，游戏 source、adapter 和 probe identity
+分别进入 Build/Execution lineage。静态检查与严格 SDK 入口只约束协议形状；真正的安全边界仍是 OS sandbox。
 
 普通 stop、timeout、可观测 crash 和 Host 捕获到的错误路径必须排空 process group/cgroup 后再形成 cleanup
 receipt。若 Host Harness 自身被 `SIGKILL`、掉电或遭遇内核级终止，进程没有机会写 receipt 或删除 operation
@@ -718,6 +798,14 @@ domain ← agent-protocol ← pi-harness / optional external bridge
 | `godot/addons/chronorift` | ChronoProbe、capture hooks、entity/state registration、runtime channel                       |
 | `fixtures/godot-*`        | 真实 Godot characterization；vNext 首先只迁移 `frame-input-window`                           |
 
+Project Environment V1 不预设新 package：只有 engine-neutral environment identity/state、capability 与 receipt
+contract 可以进入 `domain`；Git dirty/submodule/LFS/symlink、Godot discovery、Host path 和 physical layout DTO 必须
+留在 source/Godot/CLI/artifact adapter 边界。固定 capability modules 与 Agent-facing schema 属于
+`agent-protocol`；Godot wire/SDK runtime 分属 `godot-protocol` 与 `godot-adapter`；Project Environment/adapter
+revision 的 physical store 属于 `json-artifacts`；同一可见 Session、skill/tool binding 属于 `pi-harness`；discovery、
+初始化 composition、publication/apply broker 与交互 UI 由 CLI 组合。
+只有实现后出现可独立测试的依赖和生命周期边界，才从这些 owner 中拆出新 package。
+
 Task workspace 与 execution sandbox 是首个切片的真实生命周期边界。先以窄 port 和一个实现落地；只有依赖、
 平台和清理语义经过测试后才决定是否拆成新 package。不要仅为匹配旧目标目录图创建
 `worktree-manager` 或 `execution-sandbox` 空壳。
@@ -725,7 +813,9 @@ Task workspace 与 execution sandbox 是首个切片的真实生命周期边界�
 Pi、Godot `Node`/`Variant`、JSON 文件布局、Git/container 实现不得泄漏进 domain。各 package 通过公开
 `src/index.ts` 导入，不 deep-import 私有实现。
 
-## 20. 首个 vNext 垂直切片（实验性 M3）
+## 20. vNext 垂直切片 rollout
+
+### 20.1 首个切片：实验性 M3
 
 唯一迁移 Fixture 是现有 `fixtures/godot-frame-input-window`。它模拟角色离开平台后的跳跃输入窗口错误，
 包含适合语义 snapshot 的 `jumping`、`window_open`、`leftFrame` 等状态。M3 源码已经把本节各层接成一个
@@ -803,10 +893,124 @@ assistant prose、临时路径、原始 provider request 或 credential。该 su
 
 其他三个 Godot Fixture 只保持历史兼容，不同时迁移。
 
+### 20.2 下一切片：实验性 M4 external-project lifecycle-only onboarding
+
+M4 只增加一个主要不确定性维度：让冻结的真实第三方 Godot 项目贯穿既有 Task/workspace/sandbox/patch
+lifecycle。它不同时证明 gameplay 修复、深层 runtime 原语、跨项目泛化或相对产品优势。
+
+实现边界如下：
+
+1. Operator 提供本地 clean Git root checkout 和 strict `GodotProjectDescriptorV1`；descriptor 只声明 HTTPS
+   source metadata、root `project.godot`、精确 Godot 4.7.1/GDScript/GL Compatibility/headless、main scene、
+   `.godot` cache 与 managed overlay protocol。它不能声明任意 argv、environment、Host path、mount、network
+   或 credential。
+2. source preflight 复用 Git raw-object、selected-tree、clean/hidden-index、symlink/submodule/LFS、size 和路径
+   防线，但不要求外部仓库包含 `chronorift.fixture.json`。source URL 是 Operator 声明，不触发 clone/fetch；
+   实际 HEAD 和 selected-tree bytes 才是 execution 输入事实。
+3. M4 写独立 Task profile/capability，Agent 只获得 §15 的四个 lifecycle tools。M3 `FixtureManifestV1`、完整
+   V1 catalog、Protocol v2、runtime resources 和外部 13 场景 evaluator 保持原语义。
+4. vanilla 与 managed operation 都在各自 fresh stage 中先执行 Godot import；随后分别执行 main-scene smoke 和
+   managed lifecycle overlay。所有步骤都在 §17 的 task sandbox 内执行。
+   source、descriptor、overlay、Addon、runtime、build 与 requested/realized clock identity 分开记录；import
+   cache、overlay 与 Addon 不进入候选 patch。
+5. Task 继续使用 `start/continue/show/export/discard`。continue 只重新 strict validation Task 内持久化的
+   descriptor/profile bytes，并验证当前 sandbox/toolchain/runtime capability，不重读 Operator 的 Host descriptor；
+   show 是 path-free read；export 仍须 binary/full-index
+   round-trip；discard 仍受 records/runtime/process/cgroup ownership 约束。
+6. 默认离线测试用生成式项目、fake process/clock/Pi；真实 Host Gate 由 Operator/CI 预置 frozen checkout 后，
+   在只有 loopback 的 private network namespace 中运行，不允许 test command 联网或因 Host 条件缺失而 skip。
+
+首个 test-only conformance target 是 `endlessm/moddable-platformer` commit
+`3e793f53598a131c53fb82555191cc14b8db07ff`。Gate 要求 import exit 0、vanilla 至少按 Host monotonic clock稳定
+2 秒、overlay handshake 后至少观察 120 process frames 和 120 physics ticks，并由 deterministic driver 新增
+`CHRONORIFT_ONBOARDING_SMOKE.md`、重启 candidate、export/round-trip、证明 Host source 不变并完成 cleanup。
+这些冻结值只存在于 test/CI spec，不能进入产品 source 分支或变成 supported-project registry。
+
+required command 是 `corepack pnpm test:vnext:external-project`。它成功后只输出/上传通过 test-only strict
+schema 的 path-free sanitized evidence summary；schema 只允许冻结 identity、数值、hash 和 cleanup facts。
+summary 与 content hash 不是签名、GitHub provenance attestation 或产品 verdict。没有该命令针对当前实现的
+实际成功输出，只能声称 M4 路径和 Gate 已实现，不能声称目标项目已经成功接入。clock/probe receipt 只覆盖
+lifecycle endpoint sampling，并保留未采样位置和未知 observer effect；不得把它提升为逐帧完整 coverage。
+
+### 20.3 E2：外部项目 Timer/spawn semantic profile
+
+E2 在 M4 source/workspace/sandbox lifecycle 上增加一个语义轴，不扩展或重解释 M3 Protocol v2 与 M4
+lifecycle wire。它使用独立 Task V4、`chronorift-godot-semantic-v1` wire、独立 managed Addon，以及绑定冻结
+project capability 的 data-only adapter profile。core/domain 不得按 `moddable-platformer` 名称分支，adapter
+也不得包含根因、源码位置、期望值或 evaluator oracle。
+
+E2 的 Agent catalog 精确为 lifecycle 四工具，加 query、checkpoint create/restore、fork、trace create/replay
+与 compare，共 11 项。input、step、controls、capture configure/pin 显式不暴露。adapter 只投影一个声明的
+Timer、subject 配置和由其生成的实体 lifecycle；事件为 endpoint samples，并记录 partial coverage 与未采样
+限制。
+
+Checkpoint barrier 是 `adapter_process_tail`。manifest 明确区分 captured 与 uncontrolled domains；restore
+只写回声明投影。所有 checkpoint、restore、fork、replay 和 compare 均固定为 `descriptive_only`，且
+`equivalentForkEligible=false`。compare 只报告 sealed Execution 的 observable differences、alignment 与
+confounders，不做因果或修复 verdict。
+
+首个 required Host conformance 仍钉死 `moddable-platformer` 同一提交，但使用公开、文件名/注释/FIXME 已泄题
+的 `enemy_spawner_broken`。因此 `corepack pnpm test:vnext:external-semantic` 只能验证实际 11-tool、sandbox、
+checkpoint lineage、seal/cleanup 和 sanitized evidence plumbing；证据必须标记
+`public_exposed_plumbing_conformance`，不能支持智能诊断、独立 acceptance、等价恢复、泛化或产品优势。后续
+任务 acceptance 必须在产品和 adapter freeze 后由隔离 curator/evaluator 提供 holdout，并预注册预算、重试与
+全部结果。
+
+run `31416348238` 已在 commit `f8ccb183eb7db21c1737b60a9f4970dce5ff17f0` 上通过 required Host
+conformance；仓库保存 Operator 从该 run artifact 下载、归档时与下载副本逐字节核对的 sanitized M4/E2 inner
+bytes，并用 strict post-Gate freeze record 绑定产品 subject、semantic Addon/profile 与实际 Gate interface。仓库
+可重算 inner-file hash；离线 validator 不能重建即将过期的 ZIP，也不能独立证明 archive-to-inner linkage。
+独立的 test/eval-only V1 contract 与 artifact-aware validator 定义一个确定性 single-assignment bundle：Agent 的
+provider failure、abort、timeout、无候选及 budget 终态也必须封入 ledger；有候选时 evaluator 结果必须按冻结
+顺序覆盖全部 scenario，只有零场景、零 oracle、零 Execution 进度且 cleanup/source identity 得到 receipt 的
+infrastructure failure 可原 candidate 重试一次。validator 会重算 selected tree、exact patch round-trip、runtime
+resource envelope、raw event hash chain 和 physical seal；assignment/evaluation ID 固定来自 canonical assignment
+basis，scenario ID 固定来自 definition 原始 bytes，artifact/message/receipt 则分别按声明的 raw 或 omit-own-hash
+算法重算。ledger 还必须引用一个绑定冻结 product commit/tree/interface 清单的 checkout receipt；
+`invalid_candidate` 必须引用绑定同一 candidate/evaluator identity 的 admission-rejection receipt，不能只靠 outcome
+字段自报。
+
+Agent、evaluator、runtime 和 evaluation artifact 共用一个 1 GiB/131072 inode aggregate Task storage budget，
+不是每个阶段分别拥有该额度。Pi Agent auto retry（每 cycle 最多 2、单 Agent attempt 观测总数 eligibility 最多
+8）与配置为每 model call 0 次的 provider SDK retry 是两种不同计数，也都不同于 evaluator 的一次
+infrastructure retry。usage、cleanup、product checkout 和 invalid-candidate receipt 的来源与测量真实性仍依赖尚未
+实现的 Host/evaluator；content hash 只验证确定性内容、绑定和内部一致性。该 contract 明确保持 holdout
+`unselected`、evaluator implementation `not_implemented`、跨 assignment create-only denominator store
+`not_implemented`，所以单份 ledger 无法证明不存在被替换/遗漏的 assignment，也没有把已公开 conformance test
+冒充独立 evaluator，或把 post-Gate freeze 冒充 preregistration、完整 campaign denominator、可靠性或泛化证据。
+
+### 20.4 当前产品切片：Project Environment V1 / PE-B Dynamic Projection（implementation present + local Gate passed）
+
+Project Environment V1 取代“为每个外部项目新增冻结 profile”的产品方向。在 Godot 4.7 GDScript project root
+启动 Preview 时，同一个可见 Pi Session 首次生成唯一 ProjectAdapter；初始化 turn 正常返回且 authoritative
+conformance 通过后，Harness 完整落盘 immutable revision、原子切换 current pointer，并在独立下一 turn 处理
+排队目标。Harness 提供 bridge、versioned wire、Adapter SDK/schema、sandbox、toolchain、loader、validator、
+bounded stores 与 publication broker；Agent 定义项目 entity/state/event/capture 语义，Harness 不按项目名、节点名
+或源码字符串猜测这些语义。
+
+PE-A 已实现 Author → Validate → Publish → Use 的窄闭环：clean、single-root、single-project、single default
+launch target、headless、deny-all network；Task-owned adapter candidate；vanilla/bridge-only/instrumented smoke；最低
+entity/state/event/query/capture Ready；crash-safe initial publication/binding；同 Session goal；post-edit exact Build；
+unchanged-source new-Session reuse；durable observation/pinned capture；以及不把 snapshot 变成外部项目 Ready 要求的
+characterization fixture。PE-A store baseline 是 `project-environment-v1` physical format 的首次冻结；更早开发目录
+不做静默迁移，冻结后的不兼容变更必须使用新 namespace/marker。
+
+PE-B 只增加 dynamic identity propagation。它保持 PE-A 的 source、launch、Host、network 与 toolchain
+边界不变，用动态节点与 declared custom Signal 验证：entity create 先于引用它的 state/event；destroy 封闭当前
+`(entityId, incarnation)`；同一稳定语义 ID 的 recreate 必须使用更大的 incarnation；历史 query 不污染当前
+Execution 的 lifecycle state。offline、真实 Godot Host、rolling capture/pin 与独立 raw-chain validator 都必须
+拒绝 duplicate active identity、stale incarnation、create 前或 destroy 后的引用及跨 Execution ownership。
+
+Dirty/untracked、materialized dependency、LFS/submodule/symlink、addon/import、多项目选择和 multi-target 属于 PE-C，
+不能借 PE-B 顺带实现。完整 contract、rollout 与 Gate 见
+[Project Environment V1 RFC](project-environment-v1.md)。全部晋升 Gate 通过前，`chronorift [goal]` 仍不是现有默认
+入口。
+
 ## 21. 当前实现映射
 
-本节把 2026-08-07 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3 是源码中的实验性、单一
-Fixture vNext slice，不因为代码或测试入口存在就自动成为 release。
+本节把 2026-08-13 的仓库映射到目标架构。**当前公开 release 仍是 v0.4**；M3、M4、E2 与 Project
+Environment 都是实验性 vNext slice。PE-A 与 PE-B 均达到 implementation present + local Gate passed；精确 baseline
+product tree 的 real-Pi create-new bundle、standalone validation 与 local r1 freeze record 已归档，但不是 protected artifact。
 
 | 能力            | 当前公开 v0.4                                            | 实验性 M3 vNext slice                                                                      | 未覆盖或后续方向                                |
 | --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
@@ -825,6 +1029,35 @@ Fixture vNext slice，不因为代码或测试入口存在就自动成为 releas
 | Product result  | Proposal → Harness Verdict                               | assistant result、diff、实际 tool/runtime/lineage records 分离                             | acceptance 归用户、CI、review 或独立 Eval       |
 | Release/Eval    | v0.4 与冻结的 legacy benchmark                           | 外部 13 场景 release-only evaluator 已实现；不是 Task verdict 或默认 CI                    | 实际 Gate 证据、后续独立且优先开源的 Eval Suite |
 
+M4 相对上述 M3 映射只增加以下实现面：
+
+| 能力           | 实验性 M4 lifecycle-only path                                                        | 明确未覆盖                                                    |
+| -------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Source/profile | strict external descriptor、clean Git root、冻结 HEAD/selected-tree、声明性 URL      | 任意 Godot 项目、subtree、LFS/submodule/symlink、source fetch |
+| Agent/runtime  | 四个 lifecycle tools、独立 lifecycle wire/Addon、import/vanilla/overlay receipts     | input/query/capture/checkpoint/fork/replay/compare            |
+| Task/patch     | 统一 start/continue/show/export/discard、source 不变、round-trip checked patch       | gameplay acceptance、自动 apply/commit/push                   |
+| Conformance    | pinned `moddable-platformer` Host Gate、private-network fake-Pi deterministic driver | provider表现、修复正确性、跨项目泛化、产品优势                |
+
+E2 再增加以下独立实现面：
+
+| 能力               | 实验性 E2 semantic path                                                 | 明确未覆盖                                          |
+| ------------------ | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| Profile/wire       | Task V4、独立 semantic wire/Addon、冻结 data-only Timer/spawn adapter   | 任意项目语义、M3/M4 wire 迁移、candidate adapter    |
+| Agent/runtime      | 11 tools；query/checkpoint/restore/fork/trace/replay/compare            | input、step、capture、视觉/音频/GPU                 |
+| State/lineage      | Timer + spawned entity projection、raw observation chain、physical seal | private state、engine internals、等价起点或因果结论 |
+| Public conformance | pinned exposed spawner task、strict sanitized evidence                  | 智能诊断、独立 acceptance、泛化或相对产品优势       |
+
+Project Environment V1 是当前产品主线；PE-B Dynamic Projection implementation 已落地，Source/Import closure 是 PE-C：
+
+| 维度                | 已冻结目标                                                                | 当前实现或缺口                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 用户入口            | 项目目录内交互 Session；首次可见初始化，ready 后处理排队目标              | 显式 `pnpm project preview`、同 Session goal 与 new-Session reuse 已实现；尚无默认 `chronorift [goal]`               |
+| Project Environment | project-local immutable revisions、bounded attempts、publication/binding  | PE-A DTO/store、initial publication 与跨命令 crash reconciliation 已实现；通用 resume 与 multi-writer lease/CAS 后续 |
+| Source              | dirty snapshot、显式 untracked、materialized multi-source closure         | PE-A 只接受 clean single-root；Source/Import closure 属于 PE-C                                                       |
+| ProjectAdapter      | Agent 生成 manifest + GDScript package、固定 tools、module negotiation    | V1 与 PE-A revision 保持；V2 dynamic identity SDK/wire/loader 已实现，迁移仍属后续 slice                             |
+| Ready               | lifecycle + clock/error + entity/state/event projection + rolling capture | PE-B event-driven dynamic trace、连续 validated ring、lossless raw conformance/pin 已实现                            |
+| Release Gate        | 三类结构矩阵、至少两个真实 Agent 初始化、Host/sandbox 与独立 validator    | PE-A 与 PE-B local r1 已冻结；PE-B 只证明一个动态结构类别，完整矩阵及默认入口仍待后续 slice                          |
+
 默认单元 Gate 仍是离线的 `corepack pnpm check`。真实 coding sandbox boundary 必须另外运行
 `corepack pnpm test:sandbox`，且不得 skip；CI 或本地 Host 需要预先提供空、可写、已启用 `cpu`、`memory`、
 `pids` controller 的 delegated cgroup v2 root。仓库脚本 `.github/scripts/run-sandbox-conformance.sh` 建立和
@@ -840,6 +1073,38 @@ sandbox conformance 通过。该 M3 Gate 还要求 `CHRONORIFT_TEST_TASK_STORAGE
 和外部 13 场景 evaluator；它需要明确的 provider/network/Host runtime 授权，不属于默认 CI，不产生产品
 verdict，也不证明候选机制、根因、跨项目泛化或产品优势。本文只定义这些 Gate，不声称当前 checkout 已经
 运行或通过它们。
+
+M4 另由 `corepack pnpm test:vnext:external-project` 和
+`.github/scripts/run-vnext-external-project-conformance.sh` 验证。CI 的 provisioning 可以在进入 Gate 前取得
+frozen checkout；Gate 本身运行在 `PrivateNetwork=yes` 的 systemd namespace，只有 loopback，并要求独立
+`CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT`、fresh bounded mount、delegated cgroup 与精确 toolchain。成功 job
+上传 sanitized evidence，失败或 cleanup 未证明时不得产生可发布的成功 claim。
+
+E2 另由 `corepack pnpm test:vnext:external-semantic` 验证；CI wrapper 在同一 private-network Host boundary 中、
+完成 M4 cleanup 并确认 bounded storage 为空后再运行它。语义 Addon/profile 有独立冻结 identity，成功 evidence
+有独立 strict validator，并强制列出不支持的 claim。run `31416348238` 已为冻结 product subject
+`f8ccb183eb7db21c1737b60a9f4970dce5ff17f0` 取得通过证据；Operator 下载并逐字节核对后归档的 inner bytes、
+hash 和 claim boundary 保存在 `docs/evidence/vnext-e2-public-exposed-r1/`。离线验证不独立证明 GitHub artifact
+archive 与这些 inner bytes 的来源链路。这只改变“当前是否已有 Gate 输出”的实现映射，不扩大该输出支持的产品
+主张。首次 `vnext-e2-public-exposed-conformance-r1-freeze` tag 的 CI 因 checkout 将本地 annotated-tag ref
+覆盖为 commit ref 而 fail-closed；该 tag 保持不动，后继
+`vnext-e2-public-exposed-conformance-r2-freeze` 只修复 tag-object 恢复与验证。
+
+PE-A 另由 `test:vnext:project-environment-pe-a-live` 验证。该 Gate 固定
+`openai-codex/gpt-5.6-luna/max`、Godot 4.7.1、显式 Host config 与 evidence output，要求初始化、publication、
+same-Session goal、exact candidate Build runtime observation/pinned capture，以及新 Task/Session reuse。success bundle
+必须 create-new 并由不导入产品 TypeScript 的 standalone validator 复验；本地输出不是 protected-ref artifact、
+签名、Host attestation、adapter 语义正确性或任意项目泛化证明。2026-08-13 的 local r1 绑定 product subject
+`5d98857a0c5423d050615b93d6fa0dfd6f109a5b`，bundle content hash 为
+`ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`；可复验 bytes、freeze record 与 claim boundary
+保存在 [`docs/evidence/vnext-project-environment-pe-a-local-r1/`](evidence/vnext-project-environment-pe-a-local-r1/README.md)。
+
+M4 当前 cleanup reconciliation 只在同一 Host command 仍持有 coordinator 时成立：Task sandbox 的最终
+cleanup receipt 只有在进程/cgroup/scope cleanup 与 fresh bounded Task-storage inspection 都明确成功时才可
+收束 start-unknown operation；storage observation 缺失或失败时 Execution 必须保持 unsealed。Host 在
+reconciliation 前突然退出时，raw Execution
+ledger 保持 unsealed，尚无跨 command 的 durable cleanup owner。后续 `continue` 不得据新 sandbox 的干净
+状态追认旧 execution 已清理；实现该恢复协议属于后续 slice。
 
 当前 v0.4 仍实现并测试 `FrozenContractBundleV3`、`ClaimEvidencePolicyRegistry`、opaque handles、
 `DiagnosisProposalV4`、`DiagnosisVerdictV3`、固定 replay/intervention flow 和 write-once verdict artifact。
@@ -862,6 +1127,8 @@ game-native treatment 优势结论；详见
 
 ## 23. 决策记录
 
+### 23.1 vNext 基础决策（2026-08-06）
+
 本轮架构重构明确选择：
 
 1. ChronoRift 拥有 Harness，Pi 是内嵌 Loop Engine；
@@ -873,7 +1140,8 @@ game-native treatment 优势结论；详见
 7. 保留世界的可查询结构，删除系统替 Agent 作出的因果解释；
 8. Checkpoint 只对声明状态负责，restore 成功不代表实验起点等价；
 9. Fork 允许任意已授权变化，Compare 只公开差异与混杂项；
-10. 零 adapter 模式只重建执行外壳，深度语义恢复需要项目 snapshot adapter；
+10. M3 的零 snapshot-adapter 模式只重建执行外壳，深度语义恢复需要项目 snapshot adapter；Project
+    Environment V1 的 ready 外部项目环境由 §23.2 改为始终存在一个已验证 ProjectAdapter；
 11. 产品不要求 Game Contract；Contract 以后只能作为可选验证工具；
 12. 首个 vNext 切片只迁移 `frame-input-window`；
 13. 历史 v0.1–v0.4 证据保留，但不再决定新产品 API；
@@ -881,3 +1149,35 @@ game-native treatment 优势结论；详见
 
 该边界把 ChronoRift 定义为：**让通用 coding Agent 能安全操作、回退、分叉和比较游戏运行世界的专用
 runtime substrate，而不是替 Agent 规定调查方法或替用户宣布真相的诊断 workflow。**
+
+### 23.2 Project Environment V1 决策（2026-08-12）
+
+1. 用户在 Godot project root 启动 ChronoRift；一个 `project.godot` 对应一个 Project Environment；
+2. 首版只承诺 Linux Host、Godot 4.7 官方 GDScript runtime；C#、GDExtension 和 native plugin unsupported；
+3. Harness 提供 bridge、协议、Adapter SDK/schema、sandbox、loader、validator 和 publication broker；Agent 是
+   默认且唯一的自动 ProjectAdapter generator，用户可显式成为 sandbox candidate author；
+4. 首次初始化由同一个可见 Pi Session 的独立 turn 完成；排队用户目标只在 ready publication 后执行；
+5. 初始化成功的权威事实是绑定当前 source/adapter/SDK/toolchain/conformance 的 ready environment revision，
+   不是 Agent prose、固定 submit tool 或 schema-only candidate；
+6. ProjectAdapter 是一个 manifest + GDScript package，使用模块化 capability contract 与固定 game-tool surface，
+   不注册项目自定义 Pi tools；
+7. Ready 至少要求 lifecycle、clock/error、entity/state/event projection 与 bounded rolling capture；深层 input、
+   snapshot/restore、alignment 和 render 可以诚实报告 `unsupported`、`unavailable_by_policy` 或
+   `unavailable_by_environment`；
+8. Git source 输入支持 tracked dirty changes、显式 untracked 与已 materialize multi-source closure；Task 不自动
+   fetch，Host checkout 不挂入 sandbox；
+9. `.chronorift/` 保存 local-only immutable environment revisions；Task/runtime artifacts 仍进入 bounded external
+   storage，游戏 patch 与 adapter/probe publication 分离；
+10. Agent 只写 sandbox candidate；初始化 turn 正常返回后 Host 冻结 candidate，执行 authoritative conformance，
+    fully materialize create-new revision 后只原子切换 current pointer；失败 resume 创建 successor attempt；
+11. Adapter/probe 更新只影响未来 Build/Execution，不热替换 runtime；普通 candidate Build 通过 compatibility
+    receipt 复用 adapter，Host source 或 SDK 改变时由 Agent 审阅并产生新 environment revision；
+12. ProjectAdapter、probe、项目代码与项目 GDScript plugin 处于同一不可信 Godot sandbox 主体；adapter 不获得
+    Host、network、credential、device 或 process 权限提升；
+13. 项目级网络设置只是用户预授权模板，每个 Task 仍实现精确 task-scoped policy；headless 默认，render/display/
+    GPU 显式授权，audio 延后；
+14. Conformance 使用 vanilla/instrumented paired smoke，记录 observer effect、coverage、loss 和 cleanup，但不证明
+    adapter 语义正确或完整等价；
+15. Project Environment V1 使用独立 namespace，不改写 M3/M4/E2；首个 PE-A 只验证
+    Author → Validate → Publish → Use，其他能力按 RFC §10 的单轴 slices 推进；三类结构矩阵、两个真实 Agent
+    初始化和 Host/独立-validator Gate 全部通过后，Preview 才能晋升为默认入口。

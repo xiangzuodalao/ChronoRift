@@ -14,6 +14,8 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
+  PROJECT_ADAPTER_SKILL_V1_NAME,
   runVNextPiTurn,
   VNEXT_ENVIRONMENT_APPENDIX,
   VNEXT_PI_WORKSPACE_CWD,
@@ -76,7 +78,8 @@ const stats = {
 const fakeSessionFactory =
   (
     captures: CreateAgentSessionOptions[],
-    mode: "complete" | "wait-for-abort" = "complete",
+    mode: "complete" | "wait-for-abort" | "reject" = "complete",
+    lifecycle?: { disposeCalls: number; unsubscribeCalls: number },
   ) =>
   async (
     options: CreateAgentSessionOptions,
@@ -118,6 +121,9 @@ const fakeSessionFactory =
           listener?.({ type: "tool_execution_end", isError: true } as never);
           return Promise.resolve();
         }
+        if (mode === "reject") {
+          return Promise.reject(new Error("provider request failed"));
+        }
         return new Promise<void>((resolvePrompt) => {
           settlePrompt = resolvePrompt;
         });
@@ -138,9 +144,12 @@ const fakeSessionFactory =
         listener = next;
         return () => {
           listener = undefined;
+          if (lifecycle !== undefined) lifecycle.unsubscribeCalls += 1;
         };
       },
-      dispose: () => undefined,
+      dispose: () => {
+        if (lifecycle !== undefined) lifecycle.disposeCalls += 1;
+      },
       getActiveToolNames: () => tools.map((tool) => tool.name),
       getSessionStats: () => ({ ...stats, sessionFile, sessionId }),
       sessionFile,
@@ -215,6 +224,28 @@ describe("vNext Pi AgentSession host", () => {
     ]);
   });
 
+  it("uses the Host-selected durable Session identity for a new Project Environment turn", async () => {
+    const root = await createRoot();
+    const captures: CreateAgentSessionOptions[] = [];
+    const result = await runVNextPiTurn(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        newSessionId: "019ff4ae-576f-7a32-8969-b6dfb414befa",
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        prompt: "Initialize the project environment.",
+        tools,
+      },
+      { createSession: fakeSessionFactory(captures) },
+    );
+
+    expect(result.sessionId).toBe("019ff4ae-576f-7a32-8969-b6dfb414befa");
+    expect(captures[0]?.sessionManager?.getSessionId()).toBe(result.sessionId);
+  });
+
   it("opens the exact persisted session for a continuation turn", async () => {
     const root = await createRoot();
     const firstCaptures: CreateAgentSessionOptions[] = [];
@@ -254,6 +285,39 @@ describe("vNext Pi AgentSession host", () => {
     );
   });
 
+  it("adds the pinned Project Adapter skill without replacing normal Pi resources", async () => {
+    const root = await createRoot();
+    const captures: CreateAgentSessionOptions[] = [];
+    await runVNextPiTurn(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        prompt: "Author the project adapter candidate.",
+        tools,
+        loadProjectAdapterSkillV1: true,
+      },
+      { createSession: fakeSessionFactory(captures) },
+    );
+
+    const loader = captures[0]?.resourceLoader;
+    expect(loader?.getSkills().skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: PROJECT_ADAPTER_SKILL_V1_NAME,
+          baseDir: PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
+        }),
+      ]),
+    );
+    expect(loader?.getAgentsFiles().agentsFiles).toEqual([
+      expect.objectContaining({ content: "# Project guidance\n" }),
+    ]);
+    expect(loader?.getExtensions().extensions).toEqual([]);
+  });
+
   it("aborts only for a turn timeout and reports the observed termination", async () => {
     const root = await createRoot();
     const captures: CreateAgentSessionOptions[] = [];
@@ -277,5 +341,28 @@ describe("vNext Pi AgentSession host", () => {
       assistantText: "Stopped",
       errorMessage: "Pi turn timed out after 5ms",
     });
+  });
+
+  it("unsubscribes and disposes the Pi session when prompt rejects", async () => {
+    const root = await createRoot();
+    const captures: CreateAgentSessionOptions[] = [];
+    const lifecycle = { disposeCalls: 0, unsubscribeCalls: 0 };
+
+    await expect(
+      runVNextPiTurn(
+        {
+          resourceWorkspaceDirectory: root.workspace,
+          sessionDirectory: root.sessions,
+          agentDir: root.agentDir,
+          modelRuntime,
+          model,
+          thinkingLevel: "max",
+          prompt: "Initialize the environment",
+          tools,
+        },
+        { createSession: fakeSessionFactory(captures, "reject", lifecycle) },
+      ),
+    ).rejects.toThrow("provider request failed");
+    expect(lifecycle).toEqual({ disposeCalls: 1, unsubscribeCalls: 1 });
   });
 });

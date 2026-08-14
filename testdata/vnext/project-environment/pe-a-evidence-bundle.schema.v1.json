@@ -1,0 +1,1617 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chronorift.invalid/evidence/project-environment-pe-a-bundle.v1.schema.json",
+  "title": "ChronoRift Project Environment PE-A evidence bundle V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceKind",
+    "evidenceProfile",
+    "source",
+    "toolchain",
+    "adapter",
+    "environment",
+    "publishedReceipts",
+    "publication",
+    "initializationAttempt",
+    "taskInventory",
+    "candidateBuild",
+    "compatibility",
+    "binding",
+    "turns",
+    "runtime",
+    "pinnedCaptures",
+    "reuse",
+    "goalDelivered",
+    "bundleContentHash"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceKind": {
+      "const": "chronorift-project-environment-pe-a-evidence"
+    },
+    "evidenceProfile": {
+      "const": "author-validate-publish-use-reuse-v1"
+    },
+    "source": { "$ref": "#/$defs/source" },
+    "toolchain": { "$ref": "#/$defs/toolchain" },
+    "adapter": { "$ref": "#/$defs/adapter" },
+    "environment": { "$ref": "#/$defs/environment" },
+    "publishedReceipts": { "$ref": "#/$defs/publishedReceipts" },
+    "publication": { "$ref": "#/$defs/publication" },
+    "initializationAttempt": { "$ref": "#/$defs/hashedRecord" },
+    "taskInventory": { "$ref": "#/$defs/taskInventory" },
+    "candidateBuild": { "$ref": "#/$defs/candidateBuild" },
+    "compatibility": { "$ref": "#/$defs/compatibility" },
+    "binding": { "$ref": "#/$defs/binding" },
+    "turns": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [{ "$ref": "#/$defs/turn" }, { "$ref": "#/$defs/turn" }],
+      "items": false
+    },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "pinnedCaptures": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": { "$ref": "#/$defs/pinnedCapture" }
+    },
+    "reuse": { "$ref": "#/$defs/reuse" },
+    "goalDelivered": { "const": true },
+    "bundleContentHash": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+    },
+    "boundedText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[^\\u0000\\r\\n]+$"
+    },
+    "nullableDigest": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/digest" }]
+    },
+    "nullableOpaqueId": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/opaqueId" }]
+    },
+    "nullableCounter": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      ]
+    },
+    "base64": {
+      "type": "string",
+      "maxLength": 22369624,
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+    },
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string", "maxLength": 1048576 },
+        {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/jsonValue" }
+        },
+        {
+          "type": "object",
+          "maxProperties": 4096,
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        }
+      ]
+    },
+    "turnBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "wallTimeMs",
+        "toolCallLimit",
+        "runtimeTimeMs",
+        "tokenPolicy",
+        "tokenLimit",
+        "storageByteLimit",
+        "storageInodeLimit"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "wallTimeMs": { "type": "integer", "minimum": 1 },
+        "toolCallLimit": { "type": "integer", "minimum": 1 },
+        "runtimeTimeMs": { "type": "integer", "minimum": 0 },
+        "tokenPolicy": { "const": "observe_only" },
+        "tokenLimit": { "type": "null" },
+        "storageByteLimit": { "type": "integer", "minimum": 1 },
+        "storageInodeLimit": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "turnUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "wallTimeMs",
+        "toolCalls",
+        "runtimeTimeMs",
+        "inputTokens",
+        "outputTokens",
+        "storageBytes",
+        "storageInodes"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "wallTimeMs": { "$ref": "#/$defs/nullableCounter" },
+        "toolCalls": { "$ref": "#/$defs/nullableCounter" },
+        "runtimeTimeMs": { "$ref": "#/$defs/nullableCounter" },
+        "inputTokens": { "$ref": "#/$defs/nullableCounter" },
+        "outputTokens": { "$ref": "#/$defs/nullableCounter" },
+        "storageBytes": { "$ref": "#/$defs/nullableCounter" },
+        "storageInodes": { "$ref": "#/$defs/nullableCounter" }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "byteLength", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?:[A-Za-z0-9]|\\.[A-Za-z0-9])[A-Za-z0-9._/-]*$"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "module",
+        "status",
+        "protocolVersion",
+        "limitations"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "module": {
+          "enum": [
+            "lifecycle",
+            "clock",
+            "runtime_error",
+            "entity_projection",
+            "state_projection",
+            "event_projection",
+            "capture",
+            "input_control",
+            "snapshot",
+            "restore",
+            "render_capture",
+            "alignment"
+          ]
+        },
+        "status": {
+          "enum": [
+            "implemented",
+            "unsupported",
+            "unavailable_by_policy",
+            "unavailable_by_environment",
+            "degraded"
+          ]
+        },
+        "protocolVersion": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/boundedText" }]
+        },
+        "limitations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/boundedText" }
+        }
+      }
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": { "$ref": "#/$defs/module" }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "processTreeTerminated",
+        "runtimeExited",
+        "bridgeExited",
+        "isolationGroupEmpty",
+        "scopeRemoved",
+        "scratchRemoved",
+        "storageReconciled"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "processTreeTerminated": { "const": true },
+        "runtimeExited": { "const": true },
+        "bridgeExited": { "const": true },
+        "isolationGroupEmpty": { "const": true },
+        "scopeRemoved": { "const": true },
+        "scratchRemoved": { "const": true },
+        "storageReconciled": { "const": true }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "sourceId",
+        "projectSourceIdentity",
+        "sourceKind",
+        "headCommit",
+        "selectedTreeSha256",
+        "mainScene",
+        "requestedGodotVersion",
+        "clean",
+        "rootCount",
+        "projectCount",
+        "credentialLikePathCount",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "projectSourceIdentity": { "$ref": "#/$defs/digest" },
+        "sourceKind": { "const": "project-environment-v1-clean-git" },
+        "headCommit": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "selectedTreeSha256": { "$ref": "#/$defs/digest" },
+        "mainScene": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 1024,
+          "pattern": "^res://[^\\u0000\\r\\n\\\\]+$"
+        },
+        "requestedGodotVersion": { "const": "4.7.1" },
+        "clean": { "const": true },
+        "rootCount": { "const": 1 },
+        "projectCount": { "const": 1 },
+        "credentialLikePathCount": { "const": 0 },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "payloadSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "path", "sha256"],
+      "properties": {
+        "schemaId": { "$ref": "#/$defs/stableId" },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "embeddedDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "byteLength", "sha256", "canonicalBase64"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?:[A-Za-z0-9]|\\.[A-Za-z0-9])[A-Za-z0-9._/-]*$"
+        },
+        "byteLength": { "type": "integer", "minimum": 1, "maximum": 262144 },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "canonicalBase64": { "$ref": "#/$defs/base64" }
+      }
+    },
+    "adapterDocuments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "manifest", "payloadSchemas", "recordHash"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "manifest": { "$ref": "#/$defs/embeddedDocument" },
+        "payloadSchemas": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/embeddedDocument" }
+        },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "requested",
+        "status",
+        "realized",
+        "limitations",
+        "observedAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptId": { "$ref": "#/$defs/opaqueId" },
+        "requested": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "engineFamily",
+            "versionRequirement",
+            "platform",
+            "requiredFeatures"
+          ],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "engineFamily": { "const": "godot" },
+            "versionRequirement": { "const": "4.7.1" },
+            "platform": { "$ref": "#/$defs/stableId" },
+            "requiredFeatures": {
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/stableId" }
+            }
+          }
+        },
+        "status": { "const": "realized" },
+        "realized": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "engineFamily",
+            "version",
+            "platform",
+            "artifactDigest",
+            "features",
+            "renderer"
+          ],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "engineFamily": { "const": "godot" },
+            "version": { "const": "4.7.1" },
+            "platform": { "$ref": "#/$defs/stableId" },
+            "artifactDigest": { "$ref": "#/$defs/digest" },
+            "features": {
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/stableId" }
+            },
+            "renderer": { "$ref": "#/$defs/stableId" }
+          }
+        },
+        "limitations": { "type": "array", "maxItems": 0 },
+        "observedAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "adapterRevisionId",
+        "adapterId",
+        "sourceId",
+        "packageFiles",
+        "packageDigest",
+        "manifestDigest",
+        "implementationDigest",
+        "payloadSchemas",
+        "payloadSchemaDigest",
+        "sdkDigest",
+        "bridgeDigest",
+        "conformanceReceiptId",
+        "modules",
+        "contentByteLength",
+        "contentFileCount",
+        "documents",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "adapterId": { "$ref": "#/$defs/stableId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "packageFiles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/file" }
+        },
+        "packageDigest": { "$ref": "#/$defs/digest" },
+        "manifestDigest": { "$ref": "#/$defs/digest" },
+        "implementationDigest": { "$ref": "#/$defs/digest" },
+        "payloadSchemas": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/payloadSchema" }
+        },
+        "payloadSchemaDigest": { "$ref": "#/$defs/digest" },
+        "sdkDigest": { "$ref": "#/$defs/digest" },
+        "bridgeDigest": { "$ref": "#/$defs/digest" },
+        "conformanceReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "modules": { "$ref": "#/$defs/modules" },
+        "contentByteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456
+        },
+        "contentFileCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "documents": { "$ref": "#/$defs/adapterDocuments" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "environmentId",
+        "environmentRevisionId",
+        "sourceId",
+        "adapterRevisionId",
+        "sdkDigest",
+        "bridgeDigest",
+        "toolchainReceiptId",
+        "conformanceReceiptId",
+        "observerEffectReceiptId",
+        "policyProfileDigest",
+        "publicationOperationId",
+        "revisionFiles",
+        "contentDigest",
+        "publishedAt",
+        "revisionPackage",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "environmentId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "sdkDigest": { "$ref": "#/$defs/digest" },
+        "bridgeDigest": { "$ref": "#/$defs/digest" },
+        "toolchainReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "conformanceReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "observerEffectReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "policyProfileDigest": { "$ref": "#/$defs/digest" },
+        "publicationOperationId": { "$ref": "#/$defs/opaqueId" },
+        "revisionFiles": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/file" }
+        },
+        "contentDigest": { "$ref": "#/$defs/digest" },
+        "publishedAt": { "$ref": "#/$defs/timestamp" },
+        "revisionPackage": { "$ref": "#/$defs/revisionPackage" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "packageSeal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "ownerId",
+        "resourceId",
+        "operationId",
+        "recordHash",
+        "files",
+        "packageByteLength",
+        "packageHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "ownerId": { "$ref": "#/$defs/opaqueId" },
+        "resourceId": { "$ref": "#/$defs/opaqueId" },
+        "operationId": { "$ref": "#/$defs/nullableOpaqueId" },
+        "recordHash": { "$ref": "#/$defs/digest" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/file" }
+        },
+        "packageByteLength": { "type": "integer", "minimum": 1 },
+        "packageHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "revisionPackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "payloadHash", "packageSeal", "recordHash"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "payloadHash": { "$ref": "#/$defs/digest" },
+        "packageSeal": { "$ref": "#/$defs/packageSeal" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "operationId",
+        "taskId",
+        "attemptId",
+        "environmentId",
+        "targetEnvironmentRevisionId",
+        "expectedCurrentRevisionId",
+        "observedCurrentRevisionId",
+        "realizedCurrentRevisionId",
+        "revisionMaterialized",
+        "pointerCommitted",
+        "outcome",
+        "failures",
+        "completedAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptId": { "$ref": "#/$defs/opaqueId" },
+        "operationId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "attemptId": { "$ref": "#/$defs/opaqueId" },
+        "environmentId": { "$ref": "#/$defs/opaqueId" },
+        "targetEnvironmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "expectedCurrentRevisionId": { "type": "null" },
+        "observedCurrentRevisionId": { "type": "null" },
+        "realizedCurrentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "revisionMaterialized": { "const": true },
+        "pointerCommitted": { "const": true },
+        "outcome": { "const": "committed" },
+        "failures": { "type": "array", "maxItems": 0 },
+        "completedAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "conformanceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "taskId",
+        "attemptId",
+        "sourceId",
+        "candidateId",
+        "candidateDigest",
+        "toolchainReceiptId",
+        "capabilitySet",
+        "stateDomains",
+        "observations",
+        "coverage",
+        "cleanup",
+        "outcome",
+        "failures",
+        "startedAt",
+        "completedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "attemptId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "candidateId": { "$ref": "#/$defs/opaqueId" },
+        "candidateDigest": { "$ref": "#/$defs/digest" },
+        "toolchainReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "capabilitySet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "modules"],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "modules": { "$ref": "#/$defs/modules" }
+          }
+        },
+        "stateDomains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "domainId",
+              "disposition",
+              "schemaDigest",
+              "limitations"
+            ],
+            "properties": {
+              "schemaVersion": { "const": 1 },
+              "domainId": { "$ref": "#/$defs/stableId" },
+              "disposition": {
+                "enum": [
+                  "captured",
+                  "reset",
+                  "externally_controlled",
+                  "unsupported",
+                  "uncontrolled"
+                ]
+              },
+              "schemaDigest": { "$ref": "#/$defs/nullableDigest" },
+              "limitations": {
+                "type": "array",
+                "maxItems": 64,
+                "items": { "$ref": "#/$defs/boundedText" }
+              }
+            }
+          }
+        },
+        "observations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "bridgeHandshakes",
+            "entityLifecycleRecords",
+            "stateSamples",
+            "queries",
+            "declaredCustomEventTypes",
+            "observedCustomEventTypes",
+            "captures"
+          ],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "bridgeHandshakes": { "type": "integer", "minimum": 1 },
+            "entityLifecycleRecords": { "type": "integer", "minimum": 1 },
+            "stateSamples": { "type": "integer", "minimum": 1 },
+            "queries": { "type": "integer", "minimum": 1 },
+            "declaredCustomEventTypes": { "type": "integer", "minimum": 0 },
+            "observedCustomEventTypes": { "type": "integer", "minimum": 0 },
+            "captures": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "coverage": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/coverage" }
+        },
+        "cleanup": { "$ref": "#/$defs/cleanup" },
+        "outcome": { "const": "conformed" },
+        "failures": { "type": "array", "maxItems": 0 },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "completedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "observerEffectReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "taskId",
+        "attemptId",
+        "sourceId",
+        "candidateId",
+        "status",
+        "differences",
+        "alignmentGaps",
+        "unknowns",
+        "observedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "attemptId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "candidateId": { "$ref": "#/$defs/opaqueId" },
+        "status": { "const": "measured" },
+        "differences": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "comparison",
+              "dimension",
+              "baselineDigest",
+              "instrumentedDigest",
+              "description"
+            ],
+            "properties": {
+              "schemaVersion": { "const": 1 },
+              "comparison": {
+                "enum": ["vanilla_to_bridge", "bridge_to_instrumented"]
+              },
+              "dimension": { "$ref": "#/$defs/stableId" },
+              "baselineDigest": { "$ref": "#/$defs/nullableDigest" },
+              "instrumentedDigest": { "$ref": "#/$defs/nullableDigest" },
+              "description": { "$ref": "#/$defs/boundedText" }
+            }
+          }
+        },
+        "alignmentGaps": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/boundedText" }
+        },
+        "unknowns": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/boundedText" }
+        },
+        "observedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "publishedRecordConformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "path",
+        "byteLength",
+        "sha256",
+        "receipt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "path": { "const": "records/conformance-receipt.v1.json" },
+        "byteLength": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "receipt": { "$ref": "#/$defs/conformanceReceipt" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "publishedRecordObserver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "path",
+        "byteLength",
+        "sha256",
+        "receipt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "path": { "const": "records/observer-effect-receipt.v1.json" },
+        "byteLength": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "receipt": { "$ref": "#/$defs/observerEffectReceipt" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "publishedReceipts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "conformance",
+        "observerEffect",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "conformance": { "$ref": "#/$defs/publishedRecordConformance" },
+        "observerEffect": { "$ref": "#/$defs/publishedRecordObserver" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "candidateBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "taskId",
+        "workspaceId",
+        "sourceId",
+        "buildId",
+        "baselineSourceHash",
+        "sourceHash",
+        "workspaceDiffHash",
+        "buildConfigurationHash",
+        "projectHash",
+        "outputHash",
+        "bindingEpochId",
+        "environmentRevisionId",
+        "adapterRevisionId",
+        "payloadSchemaDigest",
+        "sdkDigest",
+        "bridgeDigest",
+        "toolchainReceiptId",
+        "compatibilityReceiptId",
+        "createdAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "workspaceId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "buildId": { "$ref": "#/$defs/opaqueId" },
+        "baselineSourceHash": { "$ref": "#/$defs/digest" },
+        "sourceHash": { "$ref": "#/$defs/digest" },
+        "workspaceDiffHash": { "$ref": "#/$defs/digest" },
+        "buildConfigurationHash": { "$ref": "#/$defs/digest" },
+        "projectHash": { "$ref": "#/$defs/digest" },
+        "outputHash": { "$ref": "#/$defs/digest" },
+        "bindingEpochId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "payloadSchemaDigest": { "$ref": "#/$defs/digest" },
+        "sdkDigest": { "$ref": "#/$defs/digest" },
+        "bridgeDigest": { "$ref": "#/$defs/digest" },
+        "toolchainReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "compatibilityReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "hashedRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "attemptId",
+        "predecessorAttemptId",
+        "taskId",
+        "sessionId",
+        "sourceId",
+        "providerId",
+        "modelId",
+        "thinkingLevel",
+        "budget",
+        "state",
+        "candidateId",
+        "candidateDigest",
+        "publicationOperationId",
+        "environmentRevisionId",
+        "adapterRevisionId",
+        "publicationReceiptId",
+        "bindingEpochId",
+        "terminalCode",
+        "terminalMessage",
+        "eventCount",
+        "createdAt",
+        "updatedAt",
+        "sealedAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "attemptId": { "$ref": "#/$defs/opaqueId" },
+        "predecessorAttemptId": { "type": "null" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "sessionId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "providerId": { "$ref": "#/$defs/stableId" },
+        "modelId": { "$ref": "#/$defs/stableId" },
+        "thinkingLevel": { "$ref": "#/$defs/stableId" },
+        "budget": { "$ref": "#/$defs/turnBudget" },
+        "state": { "const": "succeeded" },
+        "candidateId": { "$ref": "#/$defs/opaqueId" },
+        "candidateDigest": { "$ref": "#/$defs/digest" },
+        "publicationOperationId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "publicationReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "bindingEpochId": { "$ref": "#/$defs/opaqueId" },
+        "terminalCode": { "type": "null" },
+        "terminalMessage": { "type": "null" },
+        "eventCount": { "const": 8 },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "sealedAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "taskId",
+        "buildId",
+        "sourceId",
+        "environmentRevisionId",
+        "adapterRevisionId",
+        "toolchainReceiptId",
+        "bridgeHandshakeObserved",
+        "instrumentedLaunchObserved",
+        "queryObservations",
+        "coverage",
+        "modules",
+        "cleanup",
+        "outcome",
+        "failures",
+        "observedAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "buildId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "toolchainReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "bridgeHandshakeObserved": { "const": true },
+        "instrumentedLaunchObserved": { "const": true },
+        "queryObservations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "entityQueryObserved",
+            "stateQueryObserved",
+            "entityRows",
+            "stateRows"
+          ],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "entityQueryObserved": { "const": true },
+            "stateQueryObserved": { "const": true },
+            "entityRows": { "type": "integer", "minimum": 1 },
+            "stateRows": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "coverage": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/coverage" }
+        },
+        "modules": { "$ref": "#/$defs/modules" },
+        "cleanup": { "$ref": "#/$defs/cleanup" },
+        "outcome": { "const": "compatible" },
+        "failures": { "type": "array", "maxItems": 0 },
+        "observedAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "environmentReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "environmentId",
+        "environmentRevisionId",
+        "sourceId",
+        "adapterRevisionId",
+        "sdkDigest",
+        "bridgeDigest",
+        "toolchainReceiptId",
+        "conformanceReceiptId",
+        "observerEffectReceiptId",
+        "policyProfileDigest",
+        "contentDigest"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "environmentId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "sdkDigest": { "$ref": "#/$defs/digest" },
+        "bridgeDigest": { "$ref": "#/$defs/digest" },
+        "toolchainReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "conformanceReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "observerEffectReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "policyProfileDigest": { "$ref": "#/$defs/digest" },
+        "contentDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "bindingEpochId",
+        "taskId",
+        "ordinal",
+        "state",
+        "attemptId",
+        "environment",
+        "publicationOperationId",
+        "publicationReceiptId",
+        "compatibilityReceiptId",
+        "createdAt",
+        "boundAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "bindingEpochId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "ordinal": { "const": 0 },
+        "state": { "const": "bound" },
+        "attemptId": { "$ref": "#/$defs/opaqueId" },
+        "environment": { "$ref": "#/$defs/environmentReference" },
+        "publicationOperationId": { "$ref": "#/$defs/opaqueId" },
+        "publicationReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "compatibilityReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "boundAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "reuseReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "taskId",
+        "sessionId",
+        "sourceId",
+        "buildId",
+        "buildSourceId",
+        "environmentRevisionId",
+        "adapterRevisionId",
+        "toolchainReceiptId",
+        "sdkDigest",
+        "bridgeDigest",
+        "policyProfileDigest",
+        "observedCurrentRevisionId",
+        "compatibilityReceiptId",
+        "schemaBindingValidated",
+        "adapterPackageValidated",
+        "quickSmokeCompatible",
+        "cleanup",
+        "outcome",
+        "failures",
+        "observedAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "sessionId": { "$ref": "#/$defs/opaqueId" },
+        "sourceId": { "$ref": "#/$defs/opaqueId" },
+        "buildId": { "$ref": "#/$defs/opaqueId" },
+        "buildSourceId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "toolchainReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "sdkDigest": { "$ref": "#/$defs/digest" },
+        "bridgeDigest": { "$ref": "#/$defs/digest" },
+        "policyProfileDigest": { "$ref": "#/$defs/digest" },
+        "observedCurrentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "compatibilityReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "schemaBindingValidated": { "const": true },
+        "adapterPackageValidated": { "const": true },
+        "quickSmokeCompatible": { "const": true },
+        "cleanup": { "$ref": "#/$defs/cleanup" },
+        "outcome": { "const": "reused" },
+        "failures": { "type": "array", "maxItems": 0 },
+        "observedAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "reuseBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "bindingEpochId",
+        "taskId",
+        "ordinal",
+        "state",
+        "sessionId",
+        "environment",
+        "reuseReceiptId",
+        "compatibilityReceiptId",
+        "createdAt",
+        "boundAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "bindingEpochId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "ordinal": { "const": 0 },
+        "state": { "const": "reused" },
+        "sessionId": { "$ref": "#/$defs/opaqueId" },
+        "environment": { "$ref": "#/$defs/environmentReference" },
+        "reuseReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "compatibilityReceiptId": { "$ref": "#/$defs/opaqueId" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "boundAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "sequence",
+        "turnId",
+        "taskId",
+        "sessionId",
+        "purpose",
+        "attemptId",
+        "bindingEpochId",
+        "promptDigest",
+        "queuedGoalDigest",
+        "budget",
+        "usageStatus",
+        "usage",
+        "status",
+        "terminalCode",
+        "terminalMessage",
+        "startedAt",
+        "endedAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "sequence": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "turnId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "sessionId": { "$ref": "#/$defs/opaqueId" },
+        "purpose": {
+          "enum": ["environment_initialization", "user_goal"]
+        },
+        "attemptId": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/opaqueId" }]
+        },
+        "bindingEpochId": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/opaqueId" }]
+        },
+        "promptDigest": { "$ref": "#/$defs/digest" },
+        "queuedGoalDigest": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/digest" }]
+        },
+        "budget": { "$ref": "#/$defs/turnBudget" },
+        "usageStatus": { "enum": ["observed", "partial"] },
+        "usage": { "$ref": "#/$defs/turnUsage" },
+        "status": { "const": "completed" },
+        "terminalCode": { "type": "null" },
+        "terminalMessage": { "type": "null" },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "endedAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "processFrame",
+        "physicsTick",
+        "simulationTimeUs",
+        "renderFrame",
+        "hostMonotonicUs"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "processFrame": { "type": "integer", "minimum": 0 },
+        "physicsTick": { "type": "integer", "minimum": 0 },
+        "simulationTimeUs": { "type": "integer", "minimum": 0 },
+        "renderFrame": {
+          "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }]
+        },
+        "hostMonotonicUs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "runtimeQueryObservations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "entityQueryCount",
+        "entityRows",
+        "stateQueryCount",
+        "stateRows"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "entityQueryCount": { "type": "integer", "minimum": 1 },
+        "entityRows": { "type": "integer", "minimum": 1 },
+        "stateQueryCount": { "type": "integer", "minimum": 1 },
+        "stateRows": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "channelId",
+        "status",
+        "observedRecords",
+        "droppedRecords",
+        "overwrittenRecords",
+        "limitations"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "channelId": { "$ref": "#/$defs/stableId" },
+        "status": { "const": "complete" },
+        "observedRecords": { "type": "integer", "minimum": 1 },
+        "droppedRecords": { "const": 0 },
+        "overwrittenRecords": { "const": 0 },
+        "limitations": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "taskId",
+        "runtimeId",
+        "executionId",
+        "buildId",
+        "environmentRevisionId",
+        "adapterRevisionId",
+        "launchTargetId",
+        "instrumentationMode",
+        "status",
+        "bridgeHandshakeCount",
+        "clock",
+        "queryObservations",
+        "captureCount",
+        "captureWindowIds",
+        "coverage",
+        "loss",
+        "cleanup",
+        "outcome",
+        "failures",
+        "startedAt",
+        "observedAt",
+        "completedAt",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "runtimeId": { "$ref": "#/$defs/opaqueId" },
+        "executionId": { "$ref": "#/$defs/opaqueId" },
+        "buildId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "launchTargetId": { "$ref": "#/$defs/stableId" },
+        "instrumentationMode": { "const": "instrumented" },
+        "status": { "const": "stopped" },
+        "bridgeHandshakeCount": { "type": "integer", "minimum": 1 },
+        "clock": { "$ref": "#/$defs/clock" },
+        "queryObservations": { "$ref": "#/$defs/runtimeQueryObservations" },
+        "captureCount": { "type": "integer", "minimum": 1 },
+        "captureWindowIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2000,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/opaqueId" }
+        },
+        "coverage": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/coverage" }
+        },
+        "loss": { "type": "array", "maxItems": 0 },
+        "cleanup": { "$ref": "#/$defs/cleanup" },
+        "outcome": { "const": "succeeded" },
+        "failures": { "type": "array", "maxItems": 0 },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "observedAt": { "$ref": "#/$defs/timestamp" },
+        "completedAt": { "$ref": "#/$defs/timestamp" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "resourceInventoryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceId", "resourceDigest"],
+      "properties": {
+        "resourceId": { "$ref": "#/$defs/opaqueId" },
+        "resourceDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "taskRecordEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "taskId",
+        "recordKind",
+        "resourceId",
+        "resourceDigest",
+        "payload",
+        "payloadHash",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "recordKind": {
+          "enum": [
+            "initialization-attempt",
+            "publication-intent",
+            "publication-receipt",
+            "toolchain-receipt",
+            "conformance-receipt",
+            "observer-effect-receipt",
+            "compatibility-receipt",
+            "reuse-receipt",
+            "runtime-observation-receipt",
+            "build",
+            "build-binding"
+          ]
+        },
+        "resourceId": { "$ref": "#/$defs/opaqueId" },
+        "resourceDigest": { "$ref": "#/$defs/digest" },
+        "payload": { "$ref": "#/$defs/jsonValue" },
+        "payloadHash": { "$ref": "#/$defs/digest" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "ledgerEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "ownerId",
+        "sequence",
+        "previousRecordHash",
+        "payload",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "ownerId": { "$ref": "#/$defs/opaqueId" },
+        "sequence": { "type": "integer", "minimum": 0, "maximum": 4095 },
+        "previousRecordHash": { "$ref": "#/$defs/nullableDigest" },
+        "payload": { "$ref": "#/$defs/jsonValue" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "ledgerSeal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "ownerId",
+        "recordCount",
+        "finalRecordHash",
+        "ledgerByteLength",
+        "ledgerSha256"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "ownerId": { "$ref": "#/$defs/opaqueId" },
+        "recordCount": { "type": "integer", "minimum": 0, "maximum": 4096 },
+        "finalRecordHash": { "$ref": "#/$defs/nullableDigest" },
+        "ledgerByteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777216
+        },
+        "ledgerSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "sealedLedger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "canonicalBase64", "envelopes", "seal"],
+      "properties": {
+        "kind": { "enum": ["attempt-events", "binding-epochs", "turns"] },
+        "canonicalBase64": { "$ref": "#/$defs/base64" },
+        "envelopes": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/ledgerEnvelope" }
+        },
+        "seal": { "$ref": "#/$defs/ledgerSeal" }
+      }
+    },
+    "taskInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "taskId",
+        "candidatePackages",
+        "captureWindowPackages",
+        "records",
+        "ledgers",
+        "inventoryHash",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "candidatePackages": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/resourceInventoryEntry" }
+        },
+        "captureWindowPackages": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2000,
+          "items": { "$ref": "#/$defs/resourceInventoryEntry" }
+        },
+        "records": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/taskRecordEnvelope" }
+        },
+        "ledgers": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/sealedLedger" }
+        },
+        "inventoryHash": { "$ref": "#/$defs/digest" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "pinnedCaptureManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "captureWindowId",
+        "taskId",
+        "runtimeId",
+        "executionId",
+        "buildId",
+        "environmentRevisionId",
+        "adapterRevisionId",
+        "recordCount",
+        "contentDigest",
+        "anchorClock",
+        "coverage",
+        "loss",
+        "createdAt"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "captureWindowId": { "$ref": "#/$defs/opaqueId" },
+        "taskId": { "$ref": "#/$defs/opaqueId" },
+        "runtimeId": { "$ref": "#/$defs/opaqueId" },
+        "executionId": { "$ref": "#/$defs/opaqueId" },
+        "buildId": { "$ref": "#/$defs/opaqueId" },
+        "environmentRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "adapterRevisionId": { "$ref": "#/$defs/opaqueId" },
+        "recordCount": { "type": "integer", "minimum": 1 },
+        "contentDigest": { "$ref": "#/$defs/digest" },
+        "anchorClock": { "$ref": "#/$defs/clock" },
+        "coverage": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/coverage" }
+        },
+        "loss": { "type": "array", "maxItems": 0 },
+        "createdAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "pinnedCapture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "manifest",
+        "recordsCanonicalBase64",
+        "payloadHash",
+        "packageSeal",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "manifest": { "$ref": "#/$defs/pinnedCaptureManifest" },
+        "recordsCanonicalBase64": { "$ref": "#/$defs/base64" },
+        "payloadHash": { "$ref": "#/$defs/digest" },
+        "packageSeal": { "$ref": "#/$defs/packageSeal" },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "reuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "taskInventory",
+        "toolchain",
+        "receipt",
+        "binding",
+        "candidateBuild",
+        "compatibility",
+        "turns",
+        "runtime",
+        "pinnedCaptures",
+        "goalDelivered",
+        "recordHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "taskInventory": { "$ref": "#/$defs/taskInventory" },
+        "toolchain": { "$ref": "#/$defs/toolchain" },
+        "receipt": { "$ref": "#/$defs/reuseReceipt" },
+        "binding": { "$ref": "#/$defs/reuseBinding" },
+        "candidateBuild": { "$ref": "#/$defs/candidateBuild" },
+        "compatibility": { "$ref": "#/$defs/compatibility" },
+        "turns": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/turn" }
+        },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "pinnedCaptures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2000,
+          "items": { "$ref": "#/$defs/pinnedCapture" }
+        },
+        "goalDelivered": { "const": true },
+        "recordHash": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

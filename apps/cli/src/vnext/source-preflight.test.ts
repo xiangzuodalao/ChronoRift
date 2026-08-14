@@ -7,6 +7,7 @@ import {
   mkdir,
   rm,
   symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,9 +18,12 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { NodeHostGitPort } from "./host-git.js";
+import { readGodotProjectDescriptorSnapshotV1 } from "./godot-project-descriptor.js";
 import {
   parseGitTreeListing,
   preflightCleanGitSubtree,
+  preflightCleanExternalGodotProject,
+  preflightCleanProjectEnvironmentV1,
 } from "./source-preflight.js";
 
 const execFileAsync = promisify(execFile);
@@ -93,6 +97,33 @@ const requestFor = (repo: FixtureRepository) => ({
   trustedFixtureRoot,
   sourceRepositoryExclusionRoots: [repo.runtimeRoot],
 });
+
+const externalDescriptor = {
+  schemaVersion: 1,
+  descriptorKind: "chronorift-godot-external-project",
+  declaredSourceUrl: "https://github.com/endlessm/moddable-platformer",
+  projectFile: "project.godot",
+  runtime: {
+    engineVersion: "4.7.1-stable (official)",
+    scripting: "gdscript",
+    renderer: "gl_compatibility",
+    executionMode: "headless",
+  },
+  launch: { scene: "project-main-scene" },
+  cache: { ignoredPaths: [".godot"] },
+  bridge: { mode: "managed-runtime-overlay", protocolVersion: 1 },
+} as const;
+
+const externalRequestFor = async (repo: FixtureRepository) => {
+  const descriptorPath = join(repo.container, "external-project.json");
+  await writeFile(descriptorPath, `${JSON.stringify(externalDescriptor)}\n`);
+  return {
+    projectPath: repo.project,
+    descriptorSnapshot:
+      await readGodotProjectDescriptorSnapshotV1(descriptorPath),
+    sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+  } as const;
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -352,5 +383,205 @@ describe("preflightCleanGitSubtree", () => {
         git: new CorruptingBlobGit(),
       }),
     ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+});
+
+describe("preflightCleanExternalGodotProject", () => {
+  it("accepts a clean root project without a ChronoRift fixture manifest", async () => {
+    const repo = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(repo.root, "chronorift.fixture.json"));
+    await commitAll(repo.root, "external project");
+
+    const source = await preflightCleanExternalGodotProject(
+      await externalRequestFor(repo),
+    );
+
+    expect(source.sourceKind).toBe("godot-external-lifecycle-v1");
+    expect(source.projectPrefix).toBe("");
+    expect(source.projectCapability.baselineSelectedTreeSha256).toBe(
+      source.selectedTreeSha256,
+    );
+    expect(source.projectCapability.sourceRevision).toBe(source.headCommit);
+    expect(source.projectCapability.declaredSourceUrl).toBe(
+      externalDescriptor.declaredSourceUrl,
+    );
+  });
+
+  it("rejects a nested project and reserved source roots", async () => {
+    const nested = await createCommittedFixtureRepository();
+    await expect(
+      preflightCleanExternalGodotProject(await externalRequestFor(nested)),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+
+    const reserved = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(reserved.root, "chronorift.fixture.json"));
+    await mkdir(join(reserved.root, "addons"));
+    await writeFile(
+      join(reserved.root, "addons", "plugin.gd"),
+      "extends Node\n",
+    );
+    await commitAll(reserved.root, "reserved root");
+    await expect(
+      preflightCleanExternalGodotProject(await externalRequestFor(reserved)),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+
+    const reservedOverride = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(reservedOverride.root, "chronorift.fixture.json"));
+    await writeFile(
+      join(reservedOverride.root, "override.cfg"),
+      "[autoload]\n",
+    );
+    await commitAll(reservedOverride.root, "reserved override");
+    await expect(
+      preflightCleanExternalGodotProject(
+        await externalRequestFor(reservedOverride),
+      ),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+
+  it("rejects a descriptor stored inside the source repository", async () => {
+    const repo = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(repo.root, "chronorift.fixture.json"));
+    await commitAll(repo.root, "external project");
+    const descriptorPath = join(repo.root, "operator.json");
+    await writeFile(descriptorPath, `${JSON.stringify(externalDescriptor)}\n`);
+    const descriptorSnapshot =
+      await readGodotProjectDescriptorSnapshotV1(descriptorPath);
+
+    await expect(
+      preflightCleanExternalGodotProject({
+        projectPath: repo.root,
+        descriptorSnapshot,
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "path_denied" });
+  });
+
+  it("requires a configured main scene and rejects the reserved lifecycle autoload", async () => {
+    const missingMain = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(missingMain.root, "chronorift.fixture.json"));
+    await writeFile(
+      join(missingMain.root, "project.godot"),
+      '[application]\nconfig/name="External"\n',
+    );
+    await commitAll(missingMain.root, "missing main scene");
+    await expect(
+      preflightCleanExternalGodotProject(await externalRequestFor(missingMain)),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+
+    const reservedAutoload = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(reservedAutoload.root, "chronorift.fixture.json"));
+    await writeFile(
+      join(reservedAutoload.root, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n\n[autoload]\nChronoRiftLifecycle="*res://probe.gd"\n',
+    );
+    await commitAll(reservedAutoload.root, "reserved autoload");
+    await expect(
+      preflightCleanExternalGodotProject(
+        await externalRequestFor(reservedAutoload),
+      ),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+});
+
+describe("preflightCleanProjectEnvironmentV1", () => {
+  const createProject = async (): Promise<FixtureRepository> => {
+    const repo = await createCommittedFixtureRepository({
+      projectDirectory: "",
+    });
+    await unlink(join(repo.root, "chronorift.fixture.json"));
+    await commitAll(repo.root, "PE-A project");
+    return repo;
+  };
+
+  it("discovers a clean repository-root project without a descriptor", async () => {
+    const repo = await createProject();
+
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+
+    expect(source).toMatchObject({
+      sourceKind: "project-environment-v1-clean-git",
+      projectPrefix: "",
+      requestedGodotVersion: "4.7.1",
+    });
+    expect(source.mainScene).toMatch(/^(?:res|uid):\/\//u);
+    expect(source.projectSourceIdentity).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it("accepts only the exact PE-A Godot patch request", async () => {
+    const accepted = await createProject();
+    await writeFile(join(accepted.root, ".godot-version"), "4.7.1\n");
+    await commitAll(accepted.root, "pin Godot");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: accepted.root,
+        sourceRepositoryExclusionRoots: [accepted.runtimeRoot],
+      }),
+    ).resolves.toMatchObject({ requestedGodotVersion: "4.7.1" });
+
+    const rejected = await createProject();
+    await writeFile(join(rejected.root, ".godot-version"), "4.7.2\n");
+    await commitAll(rejected.root, "wrong Godot patch");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: rejected.root,
+        sourceRepositoryExclusionRoots: [rejected.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+
+  it.each([
+    ["credential-like source", ".env.production", "SECRET=value\n"],
+    ["tool script", "tool_script.gd", "@tool\nextends Node\n"],
+    [
+      "editor plugin",
+      "editor_plugin.gd",
+      "extends EditorPlugin\nfunc _enter_tree():\n\tpass\n",
+    ],
+  ])("rejects %s", async (_label, relativePath, contents) => {
+    const repo = await createProject();
+    await writeFile(join(repo.root, relativePath), contents);
+    await commitAll(repo.root, `add ${relativePath}`);
+
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: repo.root,
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+      }),
+    ).rejects.toBeInstanceOf(Error);
+  });
+
+  it("rejects a nested project and a dirty worktree", async () => {
+    const nested = await createCommittedFixtureRepository();
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: nested.project,
+        sourceRepositoryExclusionRoots: [nested.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+
+    const dirty = await createProject();
+    await appendFile(join(dirty.root, "project.godot"), "\n# dirty\n");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: dirty.root,
+        sourceRepositoryExclusionRoots: [dirty.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "source_not_clean" });
   });
 });

@@ -1,0 +1,7 @@
+docs/evidence/vnext-e2-public-exposed-r1/*.json -text
+testdata/vnext/external-project/e2-evaluator-interface.schema.v1.json -text
+testdata/vnext/external-project/moddable-platformer.e2-evaluation-contract.v1.json -text
+.github/scripts/validate-vnext-e2-evaluator-ledger.mjs -text
+.github/scripts/validate-vnext-e2-freeze.mjs -text
+.github/scripts/run-vnext-external-project-conformance.sh -text
+.github/workflows/ci.yml -text

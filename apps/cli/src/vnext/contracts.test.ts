@@ -19,7 +19,11 @@ import {
   SecurityEventV1Schema,
   TaskFixtureCapabilityContentV1Schema,
   TaskFixtureCapabilityV1Schema,
+  TaskGodotProjectCapabilityContentV1Schema,
+  TaskGodotProjectCapabilityV1Schema,
+  WorkspaceMaterializationReceiptSchema,
   WorkspaceMaterializationReceiptV1Schema,
+  WorkspaceMaterializationReceiptV2Schema,
 } from "./contracts.js";
 import { sanitizeM1Diagnostic } from "./errors.js";
 
@@ -268,6 +272,74 @@ describe("M1 contracts", () => {
     ).toThrow(/projectPrefix/u);
   });
 
+  it("binds the external Godot project capability and V2 workspace receipt", () => {
+    const content = TaskGodotProjectCapabilityContentV1Schema.parse({
+      schemaVersion: 1,
+      capabilityKind: "godot-external-lifecycle-v1",
+      descriptorSha256: digest,
+      declaredSourceUrl: "https://github.com/endlessm/moddable-platformer",
+      sourceRevision: "b".repeat(40),
+      baselineSelectedTreeSha256: digest,
+      projectFile: "project.godot",
+      engineVersion: "4.7.1-stable (official)",
+      scripting: "gdscript",
+      renderer: "gl_compatibility",
+      executionMode: "headless",
+      startup: "project-main-scene",
+      runtimeProfile: "chronorift-godot-lifecycle-v1",
+      bridgeMode: "managed-runtime-overlay",
+      protocolVersion: 1,
+      ignoredCachePaths: [".godot"],
+      reservedSourceRoots: [".chronorift", "addons", "override.cfg"],
+    });
+    const capability = TaskGodotProjectCapabilityV1Schema.parse({
+      ...content,
+      capabilitySha256: contentHash(content as unknown as JsonValue),
+    });
+    expect(capability.capabilityKind).toBe("godot-external-lifecycle-v1");
+    expect(() =>
+      TaskGodotProjectCapabilityV1Schema.parse({
+        ...capability,
+        capabilitySha256: asSha256DigestV1("f".repeat(64)),
+      }),
+    ).toThrow(/capabilitySha256/u);
+
+    const receipt = WorkspaceMaterializationReceiptV2Schema.parse({
+      schemaVersion: 2,
+      taskId: asTaskId("task_external"),
+      repositoryIdentity: digest,
+      sourceRevision: "b".repeat(40),
+      projectPrefix: "",
+      selectedTreeSha256: digest,
+      agentBaselineCommit: "c".repeat(40),
+      hostBaselineCommit: "d".repeat(40),
+      copyRule: "git-object-plumbing-v1",
+      excludedCachePaths: [".godot"],
+      sourceCapabilityKind: "godot-external-lifecycle-v1",
+      projectCapabilitySha256: capability.capabilitySha256,
+      descriptorSha256: digest,
+      sourcePostflight: {
+        observedHeadCommit: "b".repeat(40),
+        observedSelectedTreeSha256: digest,
+        statusPorcelainSha256:
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        stagingWorktreeRegistered: false,
+      },
+    });
+    expect(WorkspaceMaterializationReceiptSchema.parse(receipt)).toEqual(
+      receipt,
+    );
+    expect(() =>
+      WorkspaceMaterializationReceiptV2Schema.parse({
+        ...receipt,
+        sourcePostflight: {
+          ...receipt.sourcePostflight,
+          observedHeadCommit: "e".repeat(40),
+        },
+      }),
+    ).toThrow(/observedHeadCommit/u);
+  });
+
   it("checks stream accounting and monotonic execution order", () => {
     const request = {
       schemaVersion: 1,
@@ -341,6 +413,45 @@ describe("M1 contracts", () => {
     expect(historical.exitCode).toBe(0);
     expect(historical.realizedMechanisms.aggregateStorage).toBeUndefined();
     expect(historical.realizedMechanisms.unavailable).toEqual([]);
+    expect(historical.cleanup.storageReconciled).toBeUndefined();
+
+    const storageObserved = SandboxExecutionReceiptV1Schema.parse({
+      ...receipt,
+      cleanup: { ...receipt.cleanup, storageReconciled: true },
+    });
+    expect(storageObserved.cleanup.storageReconciled).toBe(true);
+
+    const admitted = SandboxExecutionReceiptV1Schema.parse({
+      ...receipt,
+      mountAdmission: {
+        schemaVersion: 1,
+        evidenceBasis: "validated-process-plan",
+        profile: "coding-default",
+        workspaceAccess: "read-write",
+        taskSharedWritableTargets: ["/tmp", "/artifacts"],
+        operationPrivateWritableTargets: [],
+        readonlyTargetCount: 1,
+        readonlyTargetsSha256: digest,
+        mountCount: 4,
+        mountPlanSha256: digest,
+        credentialTargetCount: 0,
+      },
+    });
+    expect(admitted.mountAdmission).toMatchObject({
+      evidenceBasis: "validated-process-plan",
+      workspaceAccess: "read-write",
+      taskSharedWritableTargets: ["/tmp", "/artifacts"],
+      credentialTargetCount: 0,
+    });
+    expect(() =>
+      SandboxExecutionReceiptV1Schema.parse({
+        ...receipt,
+        mountAdmission: {
+          ...admitted.mountAdmission,
+          profile: "godot-headless",
+        },
+      }),
+    ).toThrow(/workspace access|profile/iu);
 
     const unavailableAggregateStorage = SandboxExecutionReceiptV1Schema.parse({
       ...receipt,

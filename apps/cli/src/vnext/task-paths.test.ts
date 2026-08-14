@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { asTaskId, taskNamespaceDigestV1 } from "@chronorift/domain";
 
 import {
+  createProjectEnvironmentTaskDirectoryLayout,
   createTaskDirectoryLayout,
+  openProjectEnvironmentTaskDirectoryLayout,
   openTaskDirectoryLayout,
 } from "./task-paths.js";
 
@@ -27,6 +29,33 @@ afterEach(async () => {
 });
 
 describe("vNext task paths", () => {
+  it("creates and reopens an exact PE-A layout without widening legacy open", async () => {
+    const base = await createRoot("chronorift-project-environment-paths-");
+    const runtimeRoot = join(base, "runtime");
+    const sourceRepositoryRoot = join(base, "source");
+    await Promise.all([mkdir(runtimeRoot), mkdir(sourceRepositoryRoot)]);
+    const taskId = asTaskId("task_project_environment");
+
+    const created = await createProjectEnvironmentTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot,
+      taskId,
+    });
+
+    expect(created.projectEnvironmentRecordDirectory).toBe(
+      join(created.taskRootDirectory, "project-environment-records"),
+    );
+    expect(
+      (await lstat(created.projectEnvironmentRecordDirectory)).mode & 0o777,
+    ).toBe(0o700);
+    await expect(
+      openProjectEnvironmentTaskDirectoryLayout({ runtimeRoot, taskId }),
+    ).resolves.toEqual(created);
+    await expect(
+      openTaskDirectoryLayout({ runtimeRoot, taskId }),
+    ).rejects.toThrow(/exact owned lifecycle directories/u);
+  });
+
   it("creates the exact private layout under an opaque Task namespace", async () => {
     const base = await createRoot("chronorift-task-paths-");
     const runtimeRoot = join(base, "runtime");

@@ -50,6 +50,7 @@ import {
   PatchExportEventV1Schema,
   RelativeExportPathV1Schema,
   SandboxHostCapabilityV1Schema,
+  TaskGodotProjectCapabilityV1Schema,
   TaskFixtureCapabilityV1Schema,
   SandboxExecutionReceiptV1Schema,
   SandboxExecutionRequestV1Schema,
@@ -58,7 +59,9 @@ import {
   SandboxPreflightReceiptV1Schema,
   SandboxToolchainCapabilityV1Schema,
   SecurityEventV1Schema,
+  WorkspaceMaterializationReceiptSchema,
   WorkspaceMaterializationReceiptV1Schema,
+  WorkspaceMaterializationReceiptV2Schema,
   type PatchExportReceiptV1,
   type SandboxCleanupReceiptV1,
   type SandboxExecutionRequestV1,
@@ -66,8 +69,11 @@ import {
   type SandboxPolicy,
   type SandboxToolchainCapabilityV1,
   type SecurityEventV1,
+  type TaskGodotProjectCapabilityV1,
   type TaskFixtureCapabilityV1,
+  type WorkspaceMaterializationReceipt,
   type WorkspaceMaterializationReceiptV1,
+  type WorkspaceMaterializationReceiptV2,
 } from "./contracts.js";
 import { M1Error, M1PatchExportError, sanitizeM1Diagnostic } from "./errors.js";
 import { NodeHostGitPort } from "./host-git.js";
@@ -112,11 +118,48 @@ import {
   ManagedGodotRuntimeCapabilityV1Schema,
   type ManagedGodotRuntimeCapabilityV1,
 } from "./managed-godot-runtime.js";
+import {
+  ManagedGodotLifecycleRuntimeCapabilityV1Schema,
+  type ManagedGodotLifecycleRuntimeCapabilityV1,
+} from "./managed-godot-lifecycle-runtime.js";
+import {
+  ManagedGodotSemanticRuntimeCapabilityV1Schema,
+  type ManagedGodotSemanticRuntimeCapabilityV1,
+} from "./managed-godot-semantic-runtime.js";
+import {
+  DEFAULT_MANAGED_GODOT_LIFECYCLE_HOST_DEPENDENCY_PATHS,
+  preflightManagedGodotLifecycleRuntimeV1,
+  type ManagedGodotLifecycleRuntimePreflightInputV1,
+  type ManagedGodotLifecycleRuntimePreflightResultV1,
+} from "./managed-godot-lifecycle-runtime-preflight.js";
+import {
+  DEFAULT_MANAGED_GODOT_SEMANTIC_HOST_DEPENDENCY_PATHS,
+  preflightManagedGodotSemanticRuntimeV1,
+  type ManagedGodotSemanticRuntimePreflightInputV1,
+  type ManagedGodotSemanticRuntimePreflightResultV1,
+} from "./managed-godot-semantic-runtime-preflight.js";
 import { GodotSidecarPortV1 } from "./godot-sidecar-port.js";
+import { GodotLifecycleSidecarPortV1 } from "./godot-lifecycle-sidecar-port.js";
+import { GodotSemanticSidecarPortV1 } from "./godot-semantic-sidecar-port.js";
+import {
+  parseGodotProjectDescriptorSnapshotV1,
+  type GodotProjectDescriptorSnapshotV1,
+  type HostGodotProjectDescriptorSnapshotV1,
+} from "./godot-project-descriptor.js";
+import {
+  GodotSemanticAdapterProfileSnapshotV1Schema,
+  parseGodotSemanticAdapterProfileSnapshotV1,
+  type GodotSemanticAdapterProfileSnapshotV1,
+  type HostGodotSemanticAdapterProfileSnapshotV1,
+} from "./semantic-adapter-profile.js";
 import {
   preflightCleanGitSubtree,
+  preflightCleanExternalGodotProject,
   type CleanGitSubtreePreflightRequest,
+  type CleanExternalGodotProjectPreflightRequest,
+  type VerifiedExternalGodotProject,
   type VerifiedGitSubtree,
+  type VerifiedTaskSource,
 } from "./source-preflight.js";
 import {
   createTaskDirectoryLayout,
@@ -125,7 +168,9 @@ import {
 } from "./task-paths.js";
 import {
   materializePrivateTaskWorkspace,
-  type MaterializedPrivateTaskWorkspace,
+  type MaterializedExternalGodotProjectWorkspace,
+  type MaterializedTaskWorkspace,
+  type MaterializeTaskWorkspaceRequest,
 } from "./workspace-materializer.js";
 
 interface M1TaskRecordStore {
@@ -221,21 +266,66 @@ export interface M1TaskRuntimeArtifactStore {
   summarize(): Promise<VNextRuntimeResourceSummaryV1>;
 }
 
-export interface M1TaskEnvironment {
+interface M1TaskEnvironmentCommon {
   readonly task: TaskIdentityV1;
-  readonly workspace: WorkspaceMaterializationReceiptV1;
   readonly sandboxCapability: SandboxHostCapabilityV1;
   readonly toolchainCapability?: SandboxToolchainCapabilityV1 | undefined;
-  readonly managedRuntimeCapability?:
-    ManagedGodotRuntimeCapabilityV1 | undefined;
   readonly policy: SandboxPolicy;
   readonly runtimeStore: M1TaskRuntimeArtifactStore;
 }
 
+export interface M1FixtureTaskEnvironment extends M1TaskEnvironmentCommon {
+  readonly sourceKind?: undefined;
+  readonly workspace: WorkspaceMaterializationReceiptV1;
+  readonly projectCapability?: undefined;
+  readonly managedRuntimeCapability?:
+    ManagedGodotRuntimeCapabilityV1 | undefined;
+  readonly managedLifecycleRuntimeCapability?: undefined;
+  readonly managedSemanticRuntimeCapability?: undefined;
+  readonly semanticAdapterProfile?: undefined;
+}
+
+export interface M1ExternalGodotTaskEnvironment extends M1TaskEnvironmentCommon {
+  readonly sourceKind: "godot-external-lifecycle-v1";
+  readonly workspace: WorkspaceMaterializationReceiptV2;
+  readonly projectCapability: TaskGodotProjectCapabilityV1;
+  readonly managedRuntimeCapability?: undefined;
+  readonly managedLifecycleRuntimeCapability: ManagedGodotLifecycleRuntimeCapabilityV1;
+  readonly managedSemanticRuntimeCapability?: undefined;
+  readonly semanticAdapterProfile?: undefined;
+}
+
+export interface M1ExternalGodotSemanticTaskEnvironment extends M1TaskEnvironmentCommon {
+  readonly sourceKind: "godot-external-semantic-v1";
+  readonly workspace: WorkspaceMaterializationReceiptV2;
+  readonly projectCapability: TaskGodotProjectCapabilityV1;
+  readonly managedRuntimeCapability?: undefined;
+  readonly managedLifecycleRuntimeCapability?: undefined;
+  readonly managedSemanticRuntimeCapability: ManagedGodotSemanticRuntimeCapabilityV1;
+  readonly semanticAdapterProfile: GodotSemanticAdapterProfileSnapshotV1;
+}
+
+export type M1TaskEnvironment =
+  | M1FixtureTaskEnvironment
+  | M1ExternalGodotTaskEnvironment
+  | M1ExternalGodotSemanticTaskEnvironment;
+
+export const isM1ExternalGodotTaskEnvironment = (
+  environment: M1TaskEnvironment,
+): environment is M1ExternalGodotTaskEnvironment =>
+  environment.sourceKind === "godot-external-lifecycle-v1";
+
+export const isM1ExternalGodotSemanticTaskEnvironment = (
+  environment: M1TaskEnvironment,
+): environment is M1ExternalGodotSemanticTaskEnvironment =>
+  environment.sourceKind === "godot-external-semantic-v1";
+
 export interface PrepareM1TaskEnvironmentRequest {
   readonly taskId: TaskId;
   readonly projectPath: string;
-  readonly trustedFixtureRoot: string;
+  readonly trustedFixtureRoot?: string | undefined;
+  readonly externalProjectDescriptor?:
+    HostGodotProjectDescriptorSnapshotV1 | undefined;
   readonly runtimeRoot: string;
   readonly sandboxHost: SandboxHostPreflightRequest;
   readonly sandboxToolchain?:
@@ -246,6 +336,12 @@ export interface PrepareM1TaskEnvironmentRequest {
     | undefined;
   readonly managedGodotRuntime?:
     ManagedGodotRuntimePreflightInputV1 | undefined;
+  readonly managedGodotLifecycleRuntime?:
+    ManagedGodotLifecycleRuntimePreflightInputV1 | undefined;
+  readonly managedGodotSemanticRuntime?:
+    ManagedGodotSemanticRuntimePreflightInputV1 | undefined;
+  readonly semanticAdapterProfile?:
+    HostGodotSemanticAdapterProfileSnapshotV1 | undefined;
 }
 
 export interface ResumeM1TaskEnvironmentRequest {
@@ -254,6 +350,8 @@ export interface ResumeM1TaskEnvironmentRequest {
   readonly sandboxHost: SandboxHostPreflightRequest;
   readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
   readonly managedGodotRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotRuntime"];
+  readonly managedGodotLifecycleRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotLifecycleRuntime"];
+  readonly managedGodotSemanticRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotSemanticRuntime"];
 }
 
 interface M1TaskEnvironmentDependencies {
@@ -264,32 +362,55 @@ interface M1TaskEnvironmentDependencies {
   readonly preflightSource: (
     request: CleanGitSubtreePreflightRequest,
   ) => Promise<VerifiedGitSubtree>;
+  readonly preflightExternalSource: (
+    request: CleanExternalGodotProjectPreflightRequest,
+  ) => Promise<VerifiedExternalGodotProject>;
   readonly createLayout: typeof createTaskDirectoryLayout;
   readonly openLayout: typeof openTaskDirectoryLayout;
   readonly createStore: (runtimeRoot: string) => M1TaskRecordStore;
   readonly createRuntimeStore: (
     runtimeRoot: string,
   ) => M1TaskRuntimeRecordStore;
-  readonly materializeWorkspace: typeof materializePrivateTaskWorkspace;
+  readonly materializeWorkspace: (
+    request: MaterializeTaskWorkspaceRequest,
+  ) => Promise<MaterializedTaskWorkspaceCandidate>;
   readonly assertSandboxBinding: typeof assertSandboxHostBindingMatches;
   readonly assertTaskStorageLayout: typeof assertSandboxTaskStorageLayoutMatches;
   readonly inspectToolchain: typeof inspectSandboxToolchain;
   readonly preflightManagedRuntime: typeof preflightManagedGodotRuntimeV1;
+  readonly preflightManagedLifecycleRuntime: typeof preflightManagedGodotLifecycleRuntimeV1;
+  readonly preflightManagedSemanticRuntime: typeof preflightManagedGodotSemanticRuntimeV1;
   readonly createBroker: typeof createDuplexBwrapCgroupTaskSandbox;
   readonly extractPatch: typeof extractTaskPatch;
   readonly exportPatch: typeof exportTaskPatch;
   readonly cleanStagingRegistration: (
-    source: VerifiedGitSubtree,
+    source: VerifiedTaskSource,
     layout: TaskDirectoryLayout,
   ) => Promise<void>;
 }
 
+interface MaterializedTaskWorkspaceCandidate {
+  readonly sourceKind?: "godot-external-lifecycle-v1" | undefined;
+  readonly workspaceDirectory: string;
+  readonly hostBaselineGitDirectory: string;
+  readonly agentBaselineCommit: string;
+  readonly hostBaselineCommit: string;
+  readonly receipt: WorkspaceMaterializationReceipt;
+  readonly fixtureCapability?: TaskFixtureCapabilityV1 | undefined;
+  readonly projectCapability?: TaskGodotProjectCapabilityV1 | undefined;
+  readonly descriptorSnapshot?: GodotProjectDescriptorSnapshotV1 | undefined;
+}
+
 interface M1TaskEnvironmentState {
   readonly layout: TaskDirectoryLayout;
-  readonly materialized: MaterializedPrivateTaskWorkspace;
+  readonly materialized: MaterializedTaskWorkspace;
   readonly binding: SandboxHostBinding;
   readonly broker: DuplexTaskSandboxBrokerV1;
   readonly managedRuntime: ManagedGodotRuntimePreflightResultV1 | undefined;
+  readonly managedLifecycleRuntime:
+    ManagedGodotLifecycleRuntimePreflightResultV1 | undefined;
+  readonly managedSemanticRuntime:
+    ManagedGodotSemanticRuntimePreflightResultV1 | undefined;
   readonly activeDuplexCompletions: Set<Promise<unknown>>;
   readonly store: M1TaskRecordStore;
   readonly runtimeStore: M1TaskRuntimeRecordStore;
@@ -320,6 +441,12 @@ const MUTABLE_TASK_CHILDREN = [
 const DISCARDABLE_TASK_CHILDREN = new Set<string>(MUTABLE_TASK_CHILDREN);
 const ARTIFACT_TASK_CHILDREN = ["records", "runtime-records"] as const;
 const MANAGED_RUNTIME_SLOT = "managed-runtime.json" as VNextTaskJsonSlot;
+const MANAGED_LIFECYCLE_RUNTIME_SLOT =
+  "managed-lifecycle-runtime.json" as VNextTaskJsonSlot;
+const MANAGED_SEMANTIC_RUNTIME_SLOT =
+  "managed-semantic-runtime.json" as VNextTaskJsonSlot;
+const SEMANTIC_ADAPTER_PROFILE_SLOT =
+  "semantic-adapter-profile.json" as VNextTaskJsonSlot;
 
 class TaskOperationGate {
   #accepting = true;
@@ -464,7 +591,7 @@ const cloneAndFreeze = <T>(value: T): T => {
 };
 
 const defaultCleanStagingRegistration = async (
-  source: VerifiedGitSubtree,
+  source: VerifiedTaskSource,
   layout: TaskDirectoryLayout,
 ): Promise<void> => {
   const git = new NodeHostGitPort();
@@ -502,6 +629,8 @@ const DEFAULT_DEPENDENCIES: M1TaskEnvironmentDependencies = {
   now: () => new Date().toISOString(),
   preflightSandbox: (request) => preflightSandboxHost(request),
   preflightSource: (request) => preflightCleanGitSubtree(request),
+  preflightExternalSource: (request) =>
+    preflightCleanExternalGodotProject(request),
   createLayout: createTaskDirectoryLayout,
   openLayout: openTaskDirectoryLayout,
   createStore: (runtimeRoot) => new VNextTaskStore(runtimeRoot),
@@ -512,6 +641,10 @@ const DEFAULT_DEPENDENCIES: M1TaskEnvironmentDependencies = {
   inspectToolchain: (request) => inspectSandboxToolchain(request),
   preflightManagedRuntime: (request, dependencies) =>
     preflightManagedGodotRuntimeV1(request, dependencies),
+  preflightManagedLifecycleRuntime: (request, dependencies) =>
+    preflightManagedGodotLifecycleRuntimeV1(request, dependencies),
+  preflightManagedSemanticRuntime: (request, dependencies) =>
+    preflightManagedGodotSemanticRuntimeV1(request, dependencies),
   createBroker: (request) => createDuplexBwrapCgroupTaskSandbox(request),
   extractPatch: (request) => extractTaskPatch(request),
   exportPatch: (request) => exportTaskPatch(request),
@@ -819,7 +952,8 @@ const normalizeError = (
 const cleanupWasProven = (receipt: SandboxCleanupReceiptV1): boolean =>
   receipt.processGroupTerminated &&
   !receipt.cgroupPopulated &&
-  receipt.scopeRemoved;
+  receipt.scopeRemoved &&
+  receipt.storageReconciled !== false;
 
 const cleanupBrokerAfterSetupFailure = async (
   broker: DuplexTaskSandboxBrokerV1,
@@ -994,12 +1128,99 @@ const recordSetupFailure = async (input: {
   );
 };
 
+const isExternalVerifiedSource = (
+  source: VerifiedTaskSource,
+): source is VerifiedExternalGodotProject => "projectCapability" in source;
+
+const isExternalMaterializedWorkspace = (
+  materialized: MaterializedTaskWorkspaceCandidate,
+): materialized is MaterializedExternalGodotProjectWorkspace =>
+  materialized.sourceKind === "godot-external-lifecycle-v1" &&
+  materialized.projectCapability !== undefined &&
+  materialized.descriptorSnapshot !== undefined;
+
 const bindMaterializedWorkspace = (input: {
   readonly taskId: TaskId;
-  readonly source: VerifiedGitSubtree;
+  readonly source: VerifiedTaskSource;
   readonly layout: TaskDirectoryLayout;
-  readonly materialized: MaterializedPrivateTaskWorkspace;
-}): MaterializedPrivateTaskWorkspace => {
+  readonly materialized: MaterializedTaskWorkspaceCandidate;
+}): MaterializedTaskWorkspace => {
+  const commonMismatch =
+    input.materialized.workspaceDirectory !== input.layout.workspaceDirectory ||
+    input.materialized.hostBaselineGitDirectory !==
+      input.layout.hostBaselineGitDirectory ||
+    input.materialized.receipt.taskId !== input.taskId ||
+    input.materialized.receipt.repositoryIdentity !==
+      input.source.repositoryIdentity ||
+    input.materialized.receipt.sourceRevision !== input.source.headCommit ||
+    input.materialized.receipt.projectPrefix !== input.source.projectPrefix ||
+    input.materialized.receipt.selectedTreeSha256 !==
+      input.source.selectedTreeSha256 ||
+    input.materialized.receipt.agentBaselineCommit !==
+      input.materialized.agentBaselineCommit ||
+    input.materialized.receipt.hostBaselineCommit !==
+      input.materialized.hostBaselineCommit;
+  if (commonMismatch) {
+    throw new M1Error(
+      "artifact_write_failed",
+      "workspace materialization is not bound to the verified Task source and private layout",
+    );
+  }
+
+  if (isExternalVerifiedSource(input.source)) {
+    if (!isExternalMaterializedWorkspace(input.materialized)) {
+      throw new M1Error(
+        "artifact_write_failed",
+        "external project materialization returned a fixture workspace",
+      );
+    }
+    const receipt = WorkspaceMaterializationReceiptV2Schema.parse(
+      input.materialized.receipt,
+    );
+    const projectCapability = TaskGodotProjectCapabilityV1Schema.parse(
+      input.materialized.projectCapability,
+    );
+    const descriptorSnapshot = parseGodotProjectDescriptorSnapshotV1(
+      input.materialized.descriptorSnapshot.bytes,
+    );
+    if (
+      receipt.projectCapabilitySha256 !==
+        input.source.projectCapability.capabilitySha256 ||
+      receipt.descriptorSha256 !==
+        input.source.descriptorSnapshot.descriptorSha256 ||
+      !sameJson(
+        receipt.excludedCachePaths,
+        input.source.projectCapability.ignoredCachePaths,
+      ) ||
+      !sameJson(projectCapability, input.source.projectCapability) ||
+      descriptorSnapshot.descriptorSha256 !== receipt.descriptorSha256 ||
+      !Buffer.from(descriptorSnapshot.bytes).equals(
+        Buffer.from(input.source.descriptorSnapshot.bytes),
+      )
+    ) {
+      throw new M1Error(
+        "artifact_write_failed",
+        "external project workspace is detached from its descriptor and source capability",
+      );
+    }
+    return {
+      sourceKind: "godot-external-lifecycle-v1",
+      workspaceDirectory: input.layout.workspaceDirectory,
+      hostBaselineGitDirectory: input.layout.hostBaselineGitDirectory,
+      agentBaselineCommit: receipt.agentBaselineCommit,
+      hostBaselineCommit: receipt.hostBaselineCommit,
+      receipt,
+      projectCapability,
+      descriptorSnapshot,
+    };
+  }
+
+  if (isExternalMaterializedWorkspace(input.materialized)) {
+    throw new M1Error(
+      "artifact_write_failed",
+      "fixture materialization returned an external project workspace",
+    );
+  }
   const receipt = WorkspaceMaterializationReceiptV1Schema.parse(
     input.materialized.receipt,
   );
@@ -1007,16 +1228,6 @@ const bindMaterializedWorkspace = (input: {
     input.materialized.fixtureCapability,
   );
   if (
-    input.materialized.workspaceDirectory !== input.layout.workspaceDirectory ||
-    input.materialized.hostBaselineGitDirectory !==
-      input.layout.hostBaselineGitDirectory ||
-    receipt.taskId !== input.taskId ||
-    receipt.repositoryIdentity !== input.source.repositoryIdentity ||
-    receipt.sourceRevision !== input.source.headCommit ||
-    receipt.projectPrefix !== input.source.projectPrefix ||
-    receipt.selectedTreeSha256 !== input.source.selectedTreeSha256 ||
-    receipt.agentBaselineCommit !== input.materialized.agentBaselineCommit ||
-    receipt.hostBaselineCommit !== input.materialized.hostBaselineCommit ||
     receipt.fixtureCapabilitySha256 !==
       input.source.fixtureCapability.capabilitySha256 ||
     !sameJson(
@@ -1045,6 +1256,10 @@ const runtimeSensitiveValues = (request: {
   readonly sandboxHost: SandboxHostPreflightRequest;
   readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
   readonly managedGodotRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotRuntime"];
+  readonly managedGodotLifecycleRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotLifecycleRuntime"];
+  readonly managedGodotSemanticRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotSemanticRuntime"];
+  readonly externalProjectDescriptor?: PrepareM1TaskEnvironmentRequest["externalProjectDescriptor"];
+  readonly semanticAdapterProfile?: PrepareM1TaskEnvironmentRequest["semanticAdapterProfile"];
 }): string[] => [
   request.runtimeRoot,
   request.sandboxHost.delegatedCgroupRoot,
@@ -1077,6 +1292,40 @@ const runtimeSensitiveValues = (request: {
         request.managedGodotRuntime.lddPath,
         request.managedGodotRuntime.addonRoot,
       ]),
+  ...(request.managedGodotLifecycleRuntime === undefined
+    ? []
+    : [
+        request.managedGodotLifecycleRuntime.nodePath,
+        request.managedGodotLifecycleRuntime.godotPath,
+        request.managedGodotLifecycleRuntime.fontconfigProbePath ??
+          DEFAULT_MANAGED_GODOT_LIFECYCLE_HOST_DEPENDENCY_PATHS.fontconfigProbePath,
+        request.managedGodotLifecycleRuntime.shellPath ??
+          DEFAULT_MANAGED_GODOT_LIFECYCLE_HOST_DEPENDENCY_PATHS.shellPath,
+        request.managedGodotLifecycleRuntime.xdgUserDirPath ??
+          DEFAULT_MANAGED_GODOT_LIFECYCLE_HOST_DEPENDENCY_PATHS.xdgUserDirPath,
+        request.managedGodotLifecycleRuntime.lddPath,
+        request.managedGodotLifecycleRuntime.addonRoot,
+      ]),
+  ...(request.managedGodotSemanticRuntime === undefined
+    ? []
+    : [
+        request.managedGodotSemanticRuntime.nodePath,
+        request.managedGodotSemanticRuntime.godotPath,
+        request.managedGodotSemanticRuntime.fontconfigProbePath ??
+          DEFAULT_MANAGED_GODOT_SEMANTIC_HOST_DEPENDENCY_PATHS.fontconfigProbePath,
+        request.managedGodotSemanticRuntime.shellPath ??
+          DEFAULT_MANAGED_GODOT_SEMANTIC_HOST_DEPENDENCY_PATHS.shellPath,
+        request.managedGodotSemanticRuntime.xdgUserDirPath ??
+          DEFAULT_MANAGED_GODOT_SEMANTIC_HOST_DEPENDENCY_PATHS.xdgUserDirPath,
+        request.managedGodotSemanticRuntime.lddPath,
+        request.managedGodotSemanticRuntime.addonRoot,
+      ]),
+  ...(request.externalProjectDescriptor === undefined
+    ? []
+    : [request.externalProjectDescriptor.canonicalPath]),
+  ...(request.semanticAdapterProfile === undefined
+    ? []
+    : [request.semanticAdapterProfile.canonicalPath]),
 ];
 
 const inspectM1Runtime = async (
@@ -1085,10 +1334,23 @@ const inspectM1Runtime = async (
     readonly sandboxHost: SandboxHostPreflightRequest;
     readonly sandboxToolchain?: PrepareM1TaskEnvironmentRequest["sandboxToolchain"];
     readonly managedGodotRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotRuntime"];
+    readonly managedGodotLifecycleRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotLifecycleRuntime"];
+    readonly managedGodotSemanticRuntime?: PrepareM1TaskEnvironmentRequest["managedGodotSemanticRuntime"];
   },
   dependencies: M1TaskEnvironmentDependencies,
   sensitiveValues: readonly string[],
 ) => {
+  const requestedManagedRuntimeCount = [
+    request.managedGodotRuntime,
+    request.managedGodotLifecycleRuntime,
+    request.managedGodotSemanticRuntime,
+  ].filter((value) => value !== undefined).length;
+  if (requestedManagedRuntimeCount > 1) {
+    throw new M1Error(
+      "source_configuration_mismatch",
+      "managed Godot runtime profiles are mutually exclusive",
+    );
+  }
   let sandboxResult: SandboxHostPreflightResult;
   let sandboxReceipt: ReturnType<typeof SandboxPreflightReceiptV1Schema.parse>;
   try {
@@ -1146,7 +1408,11 @@ const inspectM1Runtime = async (
       "sandbox preflight capability does not match its receipt",
     );
   }
-  if (request.managedGodotRuntime !== undefined) {
+  if (
+    request.managedGodotRuntime !== undefined ||
+    request.managedGodotLifecycleRuntime !== undefined ||
+    request.managedGodotSemanticRuntime !== undefined
+  ) {
     const requestedStorageRoot = request.sandboxHost.taskStorageRoot;
     const boundStorageRoot = sandboxResult.binding.taskStorageRoot;
     if (
@@ -1217,6 +1483,10 @@ const inspectM1Runtime = async (
     }
   }
   let managedRuntime: ManagedGodotRuntimePreflightResultV1 | undefined;
+  let managedLifecycleRuntime:
+    ManagedGodotLifecycleRuntimePreflightResultV1 | undefined;
+  let managedSemanticRuntime:
+    ManagedGodotSemanticRuntimePreflightResultV1 | undefined;
   if (request.managedGodotRuntime !== undefined) {
     if (toolchain === undefined) {
       throw new M1Error(
@@ -1232,6 +1502,38 @@ const inspectM1Runtime = async (
       throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
     }
   }
+  if (request.managedGodotLifecycleRuntime !== undefined) {
+    if (toolchain === undefined) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "managed Godot lifecycle runtime requires the coding toolchain",
+      );
+    }
+    try {
+      managedLifecycleRuntime =
+        await dependencies.preflightManagedLifecycleRuntime(
+          request.managedGodotLifecycleRuntime,
+        );
+    } catch (error) {
+      throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
+    }
+  }
+  if (request.managedGodotSemanticRuntime !== undefined) {
+    if (toolchain === undefined) {
+      throw new M1Error(
+        "sandbox_preflight_failed",
+        "managed Godot semantic runtime requires the coding toolchain",
+      );
+    }
+    try {
+      managedSemanticRuntime =
+        await dependencies.preflightManagedSemanticRuntime(
+          request.managedGodotSemanticRuntime,
+        );
+    } catch (error) {
+      throw normalizeError(error, "sandbox_preflight_failed", sensitiveValues);
+    }
+  }
   return {
     sandbox: {
       ...sandboxResult,
@@ -1240,6 +1542,8 @@ const inspectM1Runtime = async (
     },
     toolchain,
     managedRuntime,
+    managedLifecycleRuntime,
+    managedSemanticRuntime,
   };
 };
 
@@ -1250,15 +1554,41 @@ export async function prepareM1TaskEnvironment(
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
   const earlySensitiveValues = [
     request.projectPath,
-    request.trustedFixtureRoot,
+    ...(request.trustedFixtureRoot === undefined
+      ? []
+      : [request.trustedFixtureRoot]),
+    ...(request.externalProjectDescriptor === undefined
+      ? []
+      : [request.externalProjectDescriptor.canonicalPath]),
     ...runtimeSensitiveValues(request),
   ];
-  const { sandbox, toolchain, managedRuntime } = await inspectM1Runtime(
-    request,
-    dependencies,
-    earlySensitiveValues,
-  );
-  if (managedRuntime !== undefined) {
+  const {
+    sandbox,
+    toolchain,
+    managedRuntime,
+    managedLifecycleRuntime,
+    managedSemanticRuntime,
+  } = await inspectM1Runtime(request, dependencies, earlySensitiveValues);
+  const externalProfile = request.externalProjectDescriptor !== undefined;
+  const semanticProfile = managedSemanticRuntime !== undefined;
+  if (
+    externalProfile !==
+      (managedLifecycleRuntime !== undefined || semanticProfile) ||
+    semanticProfile !== (request.semanticAdapterProfile !== undefined) ||
+    (externalProfile &&
+      (managedRuntime !== undefined ||
+        request.trustedFixtureRoot !== undefined))
+  ) {
+    throw new M1Error(
+      "source_configuration_mismatch",
+      "external descriptor Tasks require exactly one external managed runtime, and semantic Tasks require one adapter profile",
+    );
+  }
+  if (
+    managedRuntime !== undefined ||
+    managedLifecycleRuntime !== undefined ||
+    managedSemanticRuntime !== undefined
+  ) {
     try {
       await dependencies.assertSandboxBinding(
         sandbox.capability,
@@ -1273,15 +1603,54 @@ export async function prepareM1TaskEnvironment(
     }
   }
 
-  let source: VerifiedGitSubtree;
+  let source: VerifiedTaskSource;
   try {
-    source = await dependencies.preflightSource({
-      projectPath: request.projectPath,
-      trustedFixtureRoot: request.trustedFixtureRoot,
-      sourceRepositoryExclusionRoots: [request.runtimeRoot],
-    });
+    if (request.externalProjectDescriptor === undefined) {
+      if (request.trustedFixtureRoot === undefined) {
+        throw new M1Error(
+          "source_configuration_mismatch",
+          "M3 fixture Task requires a trusted fixture root",
+        );
+      }
+      source = await dependencies.preflightSource({
+        projectPath: request.projectPath,
+        trustedFixtureRoot: request.trustedFixtureRoot,
+        sourceRepositoryExclusionRoots: [request.runtimeRoot],
+      });
+    } else {
+      source = await dependencies.preflightExternalSource({
+        projectPath: request.projectPath,
+        descriptorSnapshot: request.externalProjectDescriptor,
+        sourceRepositoryExclusionRoots: [request.runtimeRoot],
+      });
+    }
   } catch (error) {
     throw normalizeError(error, "artifact_write_failed", earlySensitiveValues);
+  }
+
+  let semanticAdapterProfile: GodotSemanticAdapterProfileSnapshotV1 | undefined;
+  if (request.semanticAdapterProfile !== undefined) {
+    try {
+      semanticAdapterProfile = parseGodotSemanticAdapterProfileSnapshotV1(
+        request.semanticAdapterProfile.bytes,
+      );
+      if (
+        !("projectCapability" in source) ||
+        semanticAdapterProfile.profile.projectCapabilitySha256 !==
+          source.projectCapability.capabilitySha256
+      ) {
+        throw new M1Error(
+          "source_configuration_mismatch",
+          "semantic adapter profile does not match the verified external project capability",
+        );
+      }
+    } catch (error) {
+      throw normalizeError(
+        error,
+        "artifact_write_failed",
+        earlySensitiveValues,
+      );
+    }
   }
 
   const sensitiveValues = [
@@ -1352,6 +1721,30 @@ export async function prepareM1TaskEnvironment(
         (value) => ManagedGodotRuntimeCapabilityV1Schema.parse(value),
       );
     }
+    if (managedLifecycleRuntime !== undefined) {
+      await store.putJsonOnce(
+        request.taskId,
+        MANAGED_LIFECYCLE_RUNTIME_SLOT,
+        managedLifecycleRuntime.capability,
+        (value) => ManagedGodotLifecycleRuntimeCapabilityV1Schema.parse(value),
+      );
+    }
+    if (managedSemanticRuntime !== undefined) {
+      await store.putJsonOnce(
+        request.taskId,
+        MANAGED_SEMANTIC_RUNTIME_SLOT,
+        managedSemanticRuntime.capability,
+        (value) => ManagedGodotSemanticRuntimeCapabilityV1Schema.parse(value),
+      );
+    }
+    if (semanticAdapterProfile !== undefined) {
+      await store.putJsonOnce(
+        request.taskId,
+        SEMANTIC_ADAPTER_PROFILE_SLOT,
+        semanticAdapterProfile,
+        (value) => GodotSemanticAdapterProfileSnapshotV1Schema.parse(value),
+      );
+    }
 
     const materialized = bindMaterializedWorkspace({
       taskId: request.taskId,
@@ -1367,16 +1760,32 @@ export async function prepareM1TaskEnvironment(
       request.taskId,
       "workspace.json",
       materialized.receipt,
-      (value) => WorkspaceMaterializationReceiptV1Schema.parse(value),
+      (value) => WorkspaceMaterializationReceiptSchema.parse(value),
     );
-    await store.putJsonOnce(
-      request.taskId,
-      "fixture-capability.json",
-      materialized.fixtureCapability,
-      (value) => TaskFixtureCapabilityV1Schema.parse(value),
-    );
+    if (isExternalMaterializedWorkspace(materialized)) {
+      await store.putJsonOnce(
+        request.taskId,
+        "project-capability.json",
+        materialized.projectCapability,
+        (value) => TaskGodotProjectCapabilityV1Schema.parse(value),
+      );
+      await store.putBytesOnce(
+        request.taskId,
+        "project-descriptor.json",
+        Uint8Array.from(materialized.descriptorSnapshot.bytes),
+      );
+    } else {
+      await store.putJsonOnce(
+        request.taskId,
+        "fixture-capability.json",
+        materialized.fixtureCapability,
+        (value) => TaskFixtureCapabilityV1Schema.parse(value),
+      );
+    }
+    const activeManagedRuntime =
+      managedRuntime ?? managedLifecycleRuntime ?? managedSemanticRuntime;
     const policy =
-      managedRuntime === undefined
+      activeManagedRuntime === undefined
         ? createSandboxPolicyV1(
             sandbox.capability.runtimeIdentity,
             toolchain === undefined
@@ -1394,15 +1803,22 @@ export async function prepareM1TaskEnvironment(
               targets: toolchain!.capability.files.map((file) => file.target),
             },
             godot: {
-              toolchainId: managedRuntime.capability.toolchain.toolchainId,
-              managedRuntimeId: managedRuntime.capability.managedRuntimeId,
+              toolchainId:
+                activeManagedRuntime.capability.toolchain.toolchainId,
+              managedRuntimeId:
+                activeManagedRuntime.capability.managedRuntimeId,
               targets: [
-                ...managedRuntime.capability.toolchain.files.map(
+                ...activeManagedRuntime.capability.toolchain.files.map(
                   (file) => file.target,
                 ),
-                managedRuntime.capability.fontconfigTarget,
-                managedRuntime.capability.addonParentTarget,
-                managedRuntime.capability.addonTarget,
+                activeManagedRuntime.capability.fontconfigTarget,
+                activeManagedRuntime.capability.addonParentTarget,
+                activeManagedRuntime.capability.addonTarget,
+                ...(managedLifecycleRuntime !== undefined
+                  ? [managedLifecycleRuntime.capability.overlayTarget]
+                  : managedSemanticRuntime !== undefined
+                    ? [managedSemanticRuntime.capability.overlayTarget]
+                    : []),
               ],
             },
           });
@@ -1412,7 +1828,7 @@ export async function prepareM1TaskEnvironment(
       policy,
       (value) => SandboxPolicySchema.parse(value),
     );
-    if (managedRuntime === undefined) {
+    if (activeManagedRuntime === undefined) {
       await dependencies.assertSandboxBinding(
         sandbox.capability,
         sandbox.binding,
@@ -1430,14 +1846,9 @@ export async function prepareM1TaskEnvironment(
       hostBinding: sandbox.binding,
       policy,
       ...(toolchain === undefined ? {} : { toolchain }),
-      ...(managedRuntime === undefined
+      ...(activeManagedRuntime === undefined
         ? {}
-        : {
-            managedRuntime: {
-              capability: managedRuntime.capability,
-              binding: managedRuntime.binding,
-            },
-          }),
+        : { managedRuntime: activeManagedRuntime }),
       layout,
       securityEvents: (event) => {
         securityEvents.stage(event);
@@ -1458,27 +1869,57 @@ export async function prepareM1TaskEnvironment(
       (value) => M1TaskEventV1Schema.parse(value),
     );
 
-    const environment = Object.freeze({
+    const commonEnvironment = {
       task: cloneAndFreeze(task),
-      workspace: cloneAndFreeze(materialized.receipt),
       sandboxCapability: cloneAndFreeze(sandbox.capability),
       ...(toolchain === undefined
         ? {}
         : { toolchainCapability: cloneAndFreeze(toolchain.capability) }),
-      ...(managedRuntime === undefined
-        ? {}
-        : {
-            managedRuntimeCapability: cloneAndFreeze(managedRuntime.capability),
-          }),
       policy: cloneAndFreeze(policy),
       runtimeStore: bindTaskRuntimeStore(request.taskId, runtimeStore),
-    });
+    } as const;
+    const environment: M1TaskEnvironment = isExternalMaterializedWorkspace(
+      materialized,
+    )
+      ? semanticAdapterProfile === undefined
+        ? Object.freeze({
+            ...commonEnvironment,
+            sourceKind: "godot-external-lifecycle-v1" as const,
+            workspace: cloneAndFreeze(materialized.receipt),
+            projectCapability: cloneAndFreeze(materialized.projectCapability),
+            managedLifecycleRuntimeCapability: cloneAndFreeze(
+              managedLifecycleRuntime!.capability,
+            ),
+          })
+        : Object.freeze({
+            ...commonEnvironment,
+            sourceKind: "godot-external-semantic-v1" as const,
+            workspace: cloneAndFreeze(materialized.receipt),
+            projectCapability: cloneAndFreeze(materialized.projectCapability),
+            managedSemanticRuntimeCapability: cloneAndFreeze(
+              managedSemanticRuntime!.capability,
+            ),
+            semanticAdapterProfile: cloneAndFreeze(semanticAdapterProfile),
+          })
+      : Object.freeze({
+          ...commonEnvironment,
+          workspace: cloneAndFreeze(materialized.receipt),
+          ...(managedRuntime === undefined
+            ? {}
+            : {
+                managedRuntimeCapability: cloneAndFreeze(
+                  managedRuntime.capability,
+                ),
+              }),
+        });
     ENVIRONMENT_STATES.set(environment, {
       layout,
       materialized,
       binding: sandbox.binding,
       broker,
       managedRuntime,
+      managedLifecycleRuntime,
+      managedSemanticRuntime,
       activeDuplexCompletions: new Set(),
       store,
       runtimeStore,
@@ -1566,11 +2007,13 @@ export async function resumeM1TaskEnvironment(
 ): Promise<M1TaskEnvironment> {
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
   const sensitiveValues = runtimeSensitiveValues(request);
-  const { sandbox, toolchain, managedRuntime } = await inspectM1Runtime(
-    request,
-    dependencies,
-    sensitiveValues,
-  );
+  const {
+    sandbox,
+    toolchain,
+    managedRuntime,
+    managedLifecycleRuntime,
+    managedSemanticRuntime,
+  } = await inspectM1Runtime(request, dependencies, sensitiveValues);
   let store: M1TaskRecordStore | undefined;
   let runtimeStore: M1TaskRuntimeRecordStore | undefined;
   let broker: DuplexTaskSandboxBrokerV1 | undefined;
@@ -1583,33 +2026,90 @@ export async function resumeM1TaskEnvironment(
     store = dependencies.createStore(request.runtimeRoot);
     await store.create(request.taskId);
     runtimeStore = dependencies.createRuntimeStore(request.runtimeRoot);
-    const [task, workspace, fixtureCapability, storedSandbox, policy] =
-      await Promise.all([
-        store.readJson(request.taskId, "task.json", (value) =>
-          TaskIdentityV1Schema.parse(value),
+    const [task, workspace, storedSandbox, policy] = await Promise.all([
+      store.readJson(request.taskId, "task.json", (value) =>
+        TaskIdentityV1Schema.parse(value),
+      ),
+      store.readJson(request.taskId, "workspace.json", (value) =>
+        WorkspaceMaterializationReceiptSchema.parse(value),
+      ),
+      store.readJson(request.taskId, "sandbox-capability.json", (value) =>
+        SandboxHostCapabilityV1Schema.parse(value),
+      ),
+      store.readJson(request.taskId, "sandbox-policy.json", (value) =>
+        SandboxPolicySchema.parse(value),
+      ),
+    ]);
+    let fixtureCapability: TaskFixtureCapabilityV1 | undefined;
+    let projectCapability: TaskGodotProjectCapabilityV1 | undefined;
+    let descriptorSnapshot:
+      ReturnType<typeof parseGodotProjectDescriptorSnapshotV1> | undefined;
+    let semanticAdapterProfile:
+      GodotSemanticAdapterProfileSnapshotV1 | undefined;
+    if (workspace.schemaVersion === 1) {
+      fixtureCapability = await store.readJson(
+        request.taskId,
+        "fixture-capability.json",
+        (value) => TaskFixtureCapabilityV1Schema.parse(value),
+      );
+    } else {
+      const [storedProjectCapability, descriptorBytes] = await Promise.all([
+        store.readJson(request.taskId, "project-capability.json", (value) =>
+          TaskGodotProjectCapabilityV1Schema.parse(value),
         ),
-        store.readJson(request.taskId, "workspace.json", (value) =>
-          WorkspaceMaterializationReceiptV1Schema.parse(value),
-        ),
-        store.readJson(request.taskId, "fixture-capability.json", (value) =>
-          TaskFixtureCapabilityV1Schema.parse(value),
-        ),
-        store.readJson(request.taskId, "sandbox-capability.json", (value) =>
-          SandboxHostCapabilityV1Schema.parse(value),
-        ),
-        store.readJson(request.taskId, "sandbox-policy.json", (value) =>
-          SandboxPolicySchema.parse(value),
-        ),
+        store.readBytes(request.taskId, "project-descriptor.json"),
       ]);
+      projectCapability = storedProjectCapability;
+      descriptorSnapshot =
+        parseGodotProjectDescriptorSnapshotV1(descriptorBytes);
+      if (managedSemanticRuntime !== undefined) {
+        semanticAdapterProfile = await store.readJson(
+          request.taskId,
+          SEMANTIC_ADAPTER_PROFILE_SLOT,
+          (value) => GodotSemanticAdapterProfileSnapshotV1Schema.parse(value),
+        );
+      }
+    }
+    const sourceBindingMatches =
+      workspace.schemaVersion === 1
+        ? fixtureCapability !== undefined &&
+          workspace.fixtureCapabilitySha256 ===
+            fixtureCapability.capabilitySha256 &&
+          sameJson(
+            workspace.excludedCachePaths,
+            fixtureCapability.ignoredCachePaths,
+          )
+        : projectCapability !== undefined &&
+          descriptorSnapshot !== undefined &&
+          workspace.sourceCapabilityKind === projectCapability.capabilityKind &&
+          workspace.projectCapabilitySha256 ===
+            projectCapability.capabilitySha256 &&
+          workspace.descriptorSha256 === descriptorSnapshot.descriptorSha256 &&
+          workspace.sourceRevision === projectCapability.sourceRevision &&
+          workspace.selectedTreeSha256 ===
+            projectCapability.baselineSelectedTreeSha256 &&
+          sameJson(
+            workspace.excludedCachePaths,
+            projectCapability.ignoredCachePaths,
+          ) &&
+          descriptorSnapshot.descriptor.declaredSourceUrl ===
+            projectCapability.declaredSourceUrl &&
+          (managedSemanticRuntime === undefined ||
+            semanticAdapterProfile?.profile.projectCapabilitySha256 ===
+              projectCapability.capabilitySha256);
+    const runtimeProfileMatchesWorkspace =
+      workspace.schemaVersion === 1
+        ? managedLifecycleRuntime === undefined &&
+          managedSemanticRuntime === undefined
+        : managedRuntime === undefined &&
+          Number(managedLifecycleRuntime !== undefined) +
+            Number(managedSemanticRuntime !== undefined) ===
+            1;
     if (
       task.taskId !== request.taskId ||
       workspace.taskId !== request.taskId ||
-      workspace.fixtureCapabilitySha256 !==
-        fixtureCapability.capabilitySha256 ||
-      !sameJson(
-        workspace.excludedCachePaths,
-        fixtureCapability.ignoredCachePaths,
-      ) ||
+      !sourceBindingMatches ||
+      !runtimeProfileMatchesWorkspace ||
       !sameStableSandboxCapability(
         storedSandbox,
         sandbox.capability,
@@ -1624,12 +2124,20 @@ export async function resumeM1TaskEnvironment(
     }
     let storedToolchain: SandboxToolchainCapabilityV1 | undefined;
     let storedManagedRuntime: ManagedGodotRuntimeCapabilityV1 | undefined;
+    let storedManagedLifecycleRuntime:
+      ManagedGodotLifecycleRuntimeCapabilityV1 | undefined;
+    let storedManagedSemanticRuntime:
+      ManagedGodotSemanticRuntimeCapabilityV1 | undefined;
     await dependencies.assertSandboxBinding(
       sandbox.capability,
       sandbox.binding,
     );
     if (policy.schemaVersion === 1) {
-      if (managedRuntime !== undefined) {
+      if (
+        managedRuntime !== undefined ||
+        managedLifecycleRuntime !== undefined ||
+        managedSemanticRuntime !== undefined
+      ) {
         throw new M1Error(
           "sandbox_preflight_failed",
           "Sandbox Policy V1 Task cannot authorize a managed runtime",
@@ -1672,27 +2180,51 @@ export async function resumeM1TaskEnvironment(
         }
       }
     } else {
-      if (toolchain === undefined || managedRuntime === undefined) {
+      if (toolchain === undefined) {
         throw new M1Error(
           "sandbox_preflight_failed",
           "Task continuation requires its frozen coding and managed Godot toolchains",
         );
       }
       try {
-        const frozenCapabilities = await Promise.all([
-          store.readJson<SandboxToolchainCapabilityV1>(
-            request.taskId,
-            "sandbox-toolchain.json",
-            (value) => SandboxToolchainCapabilityV1Schema.parse(value),
-          ),
-          store.readJson<ManagedGodotRuntimeCapabilityV1>(
+        storedToolchain = await store.readJson<SandboxToolchainCapabilityV1>(
+          request.taskId,
+          "sandbox-toolchain.json",
+          (value) => SandboxToolchainCapabilityV1Schema.parse(value),
+        );
+        if (workspace.schemaVersion === 1) {
+          if (managedRuntime === undefined) {
+            throw new M1Error(
+              "sandbox_preflight_failed",
+              "M3 Task continuation requires its managed Godot runtime",
+            );
+          }
+          storedManagedRuntime = await store.readJson(
             request.taskId,
             MANAGED_RUNTIME_SLOT,
             (value) => ManagedGodotRuntimeCapabilityV1Schema.parse(value),
-          ),
-        ]);
-        storedToolchain = frozenCapabilities[0];
-        storedManagedRuntime = frozenCapabilities[1];
+          );
+        } else if (managedSemanticRuntime !== undefined) {
+          storedManagedSemanticRuntime = await store.readJson(
+            request.taskId,
+            MANAGED_SEMANTIC_RUNTIME_SLOT,
+            (value) =>
+              ManagedGodotSemanticRuntimeCapabilityV1Schema.parse(value),
+          );
+        } else {
+          if (managedLifecycleRuntime === undefined) {
+            throw new M1Error(
+              "sandbox_preflight_failed",
+              "external Task continuation requires its managed Godot lifecycle runtime",
+            );
+          }
+          storedManagedLifecycleRuntime = await store.readJson(
+            request.taskId,
+            MANAGED_LIFECYCLE_RUNTIME_SLOT,
+            (value) =>
+              ManagedGodotLifecycleRuntimeCapabilityV1Schema.parse(value),
+          );
+        }
       } catch (error) {
         throw new M1Error(
           "sandbox_preflight_failed",
@@ -1700,7 +2232,17 @@ export async function resumeM1TaskEnvironment(
           error,
         );
       }
-      if (storedToolchain === undefined || storedManagedRuntime === undefined) {
+      const storedActiveManagedRuntime =
+        storedManagedRuntime ??
+        storedManagedLifecycleRuntime ??
+        storedManagedSemanticRuntime;
+      const currentActiveManagedRuntime =
+        managedRuntime ?? managedLifecycleRuntime ?? managedSemanticRuntime;
+      if (
+        storedToolchain === undefined ||
+        storedActiveManagedRuntime === undefined ||
+        currentActiveManagedRuntime === undefined
+      ) {
         throw new M1Error(
           "sandbox_preflight_failed",
           "Task managed runtime capability is missing or invalid",
@@ -1712,14 +2254,24 @@ export async function resumeM1TaskEnvironment(
       ].sort();
       const godotTargets = [
         "/bin/busybox",
-        ...storedManagedRuntime.toolchain.files.map((file) => file.target),
-        storedManagedRuntime.fontconfigTarget,
-        storedManagedRuntime.addonParentTarget,
-        storedManagedRuntime.addonTarget,
+        ...storedActiveManagedRuntime.toolchain.files.map(
+          (file) => file.target,
+        ),
+        storedActiveManagedRuntime.fontconfigTarget,
+        storedActiveManagedRuntime.addonParentTarget,
+        storedActiveManagedRuntime.addonTarget,
+        ...(storedManagedLifecycleRuntime !== undefined
+          ? [storedManagedLifecycleRuntime.overlayTarget]
+          : storedManagedSemanticRuntime !== undefined
+            ? [storedManagedSemanticRuntime.overlayTarget]
+            : []),
       ].sort();
       if (
         !sameJson(storedToolchain, toolchain.capability) ||
-        !sameJson(storedManagedRuntime, managedRuntime.capability) ||
+        !sameJson(
+          storedActiveManagedRuntime,
+          currentActiveManagedRuntime.capability,
+        ) ||
         policy.profileBindings["coding-default"].toolchainId !==
           storedToolchain.toolchainId ||
         policy.profileBindings["coding-default"].managedRuntimeId !== null ||
@@ -1730,9 +2282,9 @@ export async function resumeM1TaskEnvironment(
           codingTargets,
         ) ||
         policy.profileBindings["godot-headless"].toolchainId !==
-          storedManagedRuntime.toolchain.toolchainId ||
+          storedActiveManagedRuntime.toolchain.toolchainId ||
         policy.profileBindings["godot-headless"].managedRuntimeId !==
-          storedManagedRuntime.managedRuntimeId ||
+          storedActiveManagedRuntime.managedRuntimeId ||
         policy.profileBindings["godot-headless"].workspaceAccess !==
           "read-only" ||
         !sameJson(
@@ -1767,20 +2319,17 @@ export async function resumeM1TaskEnvironment(
       taskStore,
       sensitiveValues,
     );
+    const activeManagedRuntime =
+      managedRuntime ?? managedLifecycleRuntime ?? managedSemanticRuntime;
     broker = await dependencies.createBroker({
       taskId: request.taskId,
       capability: sandbox.capability,
       hostBinding: sandbox.binding,
       policy,
       ...(toolchain === undefined ? {} : { toolchain }),
-      ...(managedRuntime === undefined
+      ...(activeManagedRuntime === undefined
         ? {}
-        : {
-            managedRuntime: {
-              capability: managedRuntime.capability,
-              binding: managedRuntime.binding,
-            },
-          }),
+        : { managedRuntime: activeManagedRuntime }),
       layout,
       securityEvents: (event) => {
         securityEvents.stage(event);
@@ -1799,17 +2348,28 @@ export async function resumeM1TaskEnvironment(
       },
       (value) => M1TaskEventV1Schema.parse(value),
     );
-    const materialized: MaterializedPrivateTaskWorkspace = {
-      workspaceDirectory: layout.workspaceDirectory,
-      hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
-      agentBaselineCommit: workspace.agentBaselineCommit,
-      hostBaselineCommit: workspace.hostBaselineCommit,
-      receipt: workspace,
-      fixtureCapability,
-    };
-    const environment = Object.freeze({
+    const materialized: MaterializedTaskWorkspace =
+      workspace.schemaVersion === 1
+        ? {
+            workspaceDirectory: layout.workspaceDirectory,
+            hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
+            agentBaselineCommit: workspace.agentBaselineCommit,
+            hostBaselineCommit: workspace.hostBaselineCommit,
+            receipt: workspace,
+            fixtureCapability: fixtureCapability!,
+          }
+        : {
+            sourceKind: "godot-external-lifecycle-v1",
+            workspaceDirectory: layout.workspaceDirectory,
+            hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
+            agentBaselineCommit: workspace.agentBaselineCommit,
+            hostBaselineCommit: workspace.hostBaselineCommit,
+            receipt: workspace,
+            projectCapability: projectCapability!,
+            descriptorSnapshot: descriptorSnapshot!,
+          };
+    const commonEnvironment = {
       task: cloneAndFreeze(task),
-      workspace: cloneAndFreeze(workspace),
       // The persisted capability remains the immutable creation-time record,
       // while executions after resume are bound to the freshly proven Host
       // capability. Ephemeral probe and cgroup-delegation identities are
@@ -1820,20 +2380,49 @@ export async function resumeM1TaskEnvironment(
       ...(storedToolchain === undefined
         ? {}
         : { toolchainCapability: cloneAndFreeze(storedToolchain) }),
-      ...(storedManagedRuntime === undefined
-        ? {}
-        : {
-            managedRuntimeCapability: cloneAndFreeze(storedManagedRuntime),
-          }),
       policy: cloneAndFreeze(policy),
       runtimeStore: bindTaskRuntimeStore(request.taskId, runtimeStore),
-    });
+    } as const;
+    const environment: M1TaskEnvironment =
+      workspace.schemaVersion === 2
+        ? storedManagedSemanticRuntime === undefined
+          ? Object.freeze({
+              ...commonEnvironment,
+              sourceKind: "godot-external-lifecycle-v1" as const,
+              workspace: cloneAndFreeze(workspace),
+              projectCapability: cloneAndFreeze(projectCapability!),
+              managedLifecycleRuntimeCapability: cloneAndFreeze(
+                storedManagedLifecycleRuntime!,
+              ),
+            })
+          : Object.freeze({
+              ...commonEnvironment,
+              sourceKind: "godot-external-semantic-v1" as const,
+              workspace: cloneAndFreeze(workspace),
+              projectCapability: cloneAndFreeze(projectCapability!),
+              managedSemanticRuntimeCapability: cloneAndFreeze(
+                storedManagedSemanticRuntime,
+              ),
+              semanticAdapterProfile: cloneAndFreeze(semanticAdapterProfile!),
+            })
+        : Object.freeze({
+            ...commonEnvironment,
+            workspace: cloneAndFreeze(workspace),
+            ...(storedManagedRuntime === undefined
+              ? {}
+              : {
+                  managedRuntimeCapability:
+                    cloneAndFreeze(storedManagedRuntime),
+                }),
+          });
     ENVIRONMENT_STATES.set(environment, {
       layout,
       materialized,
       binding: sandbox.binding,
       broker,
       managedRuntime,
+      managedLifecycleRuntime,
+      managedSemanticRuntime,
       activeDuplexCompletions: new Set(),
       store,
       runtimeStore,
@@ -2040,6 +2629,10 @@ export function executeAndRecordM1Command(
 }
 
 export interface M1TaskDuplexSandboxPortV1 {
+  execute(
+    request: SandboxExecutionRequestV1,
+    options?: SandboxExecutionOptionsV1,
+  ): Promise<SandboxExecutionResultV1>;
   openDuplex(
     request: SandboxExecutionRequestV1,
     options?: SandboxDuplexExecutionOptionsV1,
@@ -2051,6 +2644,11 @@ export function getM1TaskDuplexSandboxPort(
 ): M1TaskDuplexSandboxPortV1 {
   const state = requireEnvironmentState(environment);
   return Object.freeze({
+    execute: (
+      request: SandboxExecutionRequestV1,
+      options?: SandboxExecutionOptionsV1,
+    ): Promise<SandboxExecutionResultV1> =>
+      executeAndRecordM1Command(environment, request, options),
     openDuplex: (
       request: SandboxExecutionRequestV1,
       options?: SandboxDuplexExecutionOptionsV1,
@@ -2152,6 +2750,44 @@ export function createM1ManagedGodotSidecarPort(
   });
 }
 
+export function createM1ManagedGodotLifecycleSidecarPort(
+  environment: M1TaskEnvironment,
+): GodotLifecycleSidecarPortV1 {
+  const state = requireEnvironmentState(environment);
+  if (
+    !isM1ExternalGodotTaskEnvironment(environment) ||
+    state.managedLifecycleRuntime === undefined
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "Task has no managed Godot lifecycle runtime",
+    );
+  }
+  return new GodotLifecycleSidecarPortV1({
+    broker: getM1TaskDuplexSandboxPort(environment),
+    managedRuntime: state.managedLifecycleRuntime,
+  });
+}
+
+export function createM1ManagedGodotSemanticSidecarPort(
+  environment: M1TaskEnvironment,
+): GodotSemanticSidecarPortV1 {
+  const state = requireEnvironmentState(environment);
+  if (
+    !isM1ExternalGodotSemanticTaskEnvironment(environment) ||
+    state.managedSemanticRuntime === undefined
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "Task has no managed Godot semantic runtime",
+    );
+  }
+  return new GodotSemanticSidecarPortV1({
+    broker: getM1TaskDuplexSandboxPort(environment),
+    managedRuntime: state.managedSemanticRuntime,
+  });
+}
+
 export interface M1TaskGameRuntimeContextV1 {
   readonly taskId: TaskId;
   readonly workspaceId: WorkspaceId;
@@ -2167,10 +2803,14 @@ export function getM1TaskGameRuntimeContext(
   environment: M1TaskEnvironment,
 ): M1TaskGameRuntimeContextV1 {
   const state = requireEnvironmentState(environment);
-  if (environment.managedRuntimeCapability === undefined) {
+  if (
+    isM1ExternalGodotTaskEnvironment(environment) ||
+    environment.managedRuntimeCapability === undefined ||
+    isExternalMaterializedWorkspace(state.materialized)
+  ) {
     throw new M1Error(
       "sandbox_preflight_failed",
-      "Task has no managed Godot runtime",
+      "Task has no M3 managed Godot fixture runtime",
     );
   }
   const workspaceId = asWorkspaceId(
@@ -2188,24 +2828,125 @@ export function getM1TaskGameRuntimeContext(
   });
 }
 
+export interface M1TaskExternalGodotRuntimeContextV1 {
+  readonly taskId: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceDirectory: string;
+  readonly baselineSourceHash: Sha256DigestV1;
+  readonly projectCapability: TaskGodotProjectCapabilityV1;
+  readonly managedLifecycleRuntime: ManagedGodotLifecycleRuntimeCapabilityV1;
+  readonly sandboxPort: M1TaskDuplexSandboxPortV1;
+  readonly sidecarPort: GodotLifecycleSidecarPortV1;
+  readonly runtimeStore: M1TaskRuntimeArtifactStore;
+}
+
+export function getM1TaskExternalGodotRuntimeContext(
+  environment: M1TaskEnvironment,
+): M1TaskExternalGodotRuntimeContextV1 {
+  const state = requireEnvironmentState(environment);
+  if (
+    !isM1ExternalGodotTaskEnvironment(environment) ||
+    !isExternalMaterializedWorkspace(state.materialized) ||
+    state.managedLifecycleRuntime === undefined
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "Task is not an external Godot lifecycle Task",
+    );
+  }
+  const workspaceId = asWorkspaceId(
+    `workspace:v1:${contentHash(environment.workspace as unknown as JsonValue)}`,
+  );
+  return Object.freeze({
+    taskId: environment.task.taskId,
+    workspaceId,
+    workspaceDirectory: state.layout.workspaceDirectory,
+    baselineSourceHash: environment.workspace.selectedTreeSha256,
+    projectCapability: cloneAndFreeze(environment.projectCapability),
+    managedLifecycleRuntime: cloneAndFreeze(
+      environment.managedLifecycleRuntimeCapability,
+    ),
+    sandboxPort: getM1TaskDuplexSandboxPort(environment),
+    sidecarPort: createM1ManagedGodotLifecycleSidecarPort(environment),
+    runtimeStore: environment.runtimeStore,
+  });
+}
+
+export interface M1TaskExternalGodotSemanticRuntimeContextV1 {
+  readonly taskId: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly workspaceDirectory: string;
+  readonly baselineSourceHash: Sha256DigestV1;
+  readonly projectCapability: TaskGodotProjectCapabilityV1;
+  readonly managedSemanticRuntime: ManagedGodotSemanticRuntimeCapabilityV1;
+  readonly semanticAdapterProfile: GodotSemanticAdapterProfileSnapshotV1;
+  readonly sandboxPort: M1TaskDuplexSandboxPortV1;
+  readonly sidecarPort: GodotSemanticSidecarPortV1;
+  readonly runtimeStore: M1TaskRuntimeArtifactStore;
+}
+
+export function getM1TaskExternalGodotSemanticRuntimeContext(
+  environment: M1TaskEnvironment,
+): M1TaskExternalGodotSemanticRuntimeContextV1 {
+  const state = requireEnvironmentState(environment);
+  if (
+    !isM1ExternalGodotSemanticTaskEnvironment(environment) ||
+    !isExternalMaterializedWorkspace(state.materialized) ||
+    state.managedSemanticRuntime === undefined
+  ) {
+    throw new M1Error(
+      "sandbox_preflight_failed",
+      "Task is not an external Godot semantic Task",
+    );
+  }
+  const workspaceId = asWorkspaceId(
+    `workspace:v1:${contentHash(environment.workspace as unknown as JsonValue)}`,
+  );
+  return Object.freeze({
+    taskId: environment.task.taskId,
+    workspaceId,
+    workspaceDirectory: state.layout.workspaceDirectory,
+    baselineSourceHash: environment.workspace.selectedTreeSha256,
+    projectCapability: cloneAndFreeze(environment.projectCapability),
+    managedSemanticRuntime: cloneAndFreeze(
+      environment.managedSemanticRuntimeCapability,
+    ),
+    semanticAdapterProfile: cloneAndFreeze(environment.semanticAdapterProfile),
+    sandboxPort: getM1TaskDuplexSandboxPort(environment),
+    sidecarPort: createM1ManagedGodotSemanticSidecarPort(environment),
+    runtimeStore: environment.runtimeStore,
+  });
+}
+
 export function extractAndPersistM1Patch(
   environment: M1TaskEnvironment,
 ): Promise<ExtractedTaskPatch> {
   const state = requireEnvironmentState(environment);
   return state.gate.run(async () => {
     try {
-      const extracted = await state.dependencies.extractPatch({
+      const commonPatchRequest = {
         taskId: environment.task.taskId,
         workspaceDirectory: state.layout.workspaceDirectory,
         hostBaselineGitDirectory: state.layout.hostBaselineGitDirectory,
         hostBaselineCommit: state.materialized.hostBaselineCommit,
         baselineSourceHash: state.materialized.receipt.selectedTreeSha256,
-        ignoredCachePaths:
-          state.materialized.fixtureCapability.ignoredCachePaths,
-        fixtureCapability: state.materialized.fixtureCapability,
         hostOperationTemporaryDirectory:
           state.layout.hostOperationTemporaryDirectory,
-      });
+      } as const;
+      const extracted = isExternalMaterializedWorkspace(state.materialized)
+        ? await state.dependencies.extractPatch({
+            ...commonPatchRequest,
+            sourceKind: "godot-external-lifecycle-v1",
+            ignoredCachePaths:
+              state.materialized.projectCapability.ignoredCachePaths,
+            projectCapability: state.materialized.projectCapability,
+          })
+        : await state.dependencies.extractPatch({
+            ...commonPatchRequest,
+            ignoredCachePaths:
+              state.materialized.fixtureCapability.ignoredCachePaths,
+            fixtureCapability: state.materialized.fixtureCapability,
+          });
       if (!(extracted.patchBytes instanceof Uint8Array)) {
         throw new M1Error(
           "artifact_write_failed",

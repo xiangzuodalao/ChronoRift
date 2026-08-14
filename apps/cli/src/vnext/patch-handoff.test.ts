@@ -18,11 +18,18 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { asTaskId, type TaskId } from "@chronorift/domain";
+import {
+  asSha256DigestV1,
+  asTaskId,
+  type JsonValue,
+  type TaskId,
+} from "@chronorift/domain";
+import { contentHash } from "@chronorift/json-artifacts";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   FixtureManifestV1Schema,
+  TaskGodotProjectCapabilityV1Schema,
   type TaskFixtureCapabilityV1,
 } from "./contracts.js";
 import { M1Error, M1PatchExportError } from "./errors.js";
@@ -187,6 +194,85 @@ afterEach(async () => {
 });
 
 describe("extractTaskPatch", () => {
+  it("uses the external project patch policy without requiring a fixture manifest", async () => {
+    const prepared = await prepareFixture();
+    const { fixtureCapability: _fixtureCapability, ...common } =
+      prepared.request;
+    void _fixtureCapability;
+    const projectCapabilityContent = {
+      schemaVersion: 1 as const,
+      capabilityKind: "godot-external-lifecycle-v1" as const,
+      descriptorSha256: asSha256DigestV1("b".repeat(64)),
+      declaredSourceUrl: "https://github.com/endlessm/moddable-platformer",
+      sourceRevision: prepared.hostBaselineCommit,
+      baselineSelectedTreeSha256: prepared.request.baselineSourceHash,
+      projectFile: "project.godot" as const,
+      engineVersion: "4.7.1-stable (official)" as const,
+      scripting: "gdscript" as const,
+      renderer: "gl_compatibility" as const,
+      executionMode: "headless" as const,
+      startup: "project-main-scene" as const,
+      runtimeProfile: "chronorift-godot-lifecycle-v1" as const,
+      bridgeMode: "managed-runtime-overlay" as const,
+      protocolVersion: 1 as const,
+      ignoredCachePaths: [".godot"] as const,
+      reservedSourceRoots: [".chronorift", "addons", "override.cfg"] as const,
+    };
+    const projectCapability = TaskGodotProjectCapabilityV1Schema.parse({
+      ...projectCapabilityContent,
+      capabilitySha256: asSha256DigestV1(
+        contentHash(projectCapabilityContent as unknown as JsonValue),
+      ),
+    });
+    const request: ExtractTaskPatchRequest = {
+      ...common,
+      sourceKind: "godot-external-lifecycle-v1",
+      projectCapability,
+    };
+    await rm(join(prepared.workspaceDirectory, "chronorift.fixture.json"));
+    await appendFile(
+      join(prepared.workspaceDirectory, "frame_input_window.gd"),
+      "\n# external candidate\n",
+    );
+
+    await expect(extractTaskPatch(request)).resolves.toMatchObject({
+      roundTripVerified: true,
+    });
+
+    await writeFile(
+      join(prepared.workspaceDirectory, "override.cfg"),
+      "[autoload]\n",
+    );
+    await expect(extractTaskPatch(request)).rejects.toMatchObject({
+      code: "source_feature_unsupported",
+    });
+    await rm(join(prepared.workspaceDirectory, "override.cfg"));
+
+    const projectConfiguration = await readFile(
+      join(prepared.workspaceDirectory, "project.godot"),
+    );
+    await writeFile(
+      join(prepared.workspaceDirectory, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n\n[autoload]\nChronoRiftLifecycle="*res://probe.gd"\n',
+    );
+    await expect(extractTaskPatch(request)).rejects.toMatchObject({
+      code: "source_feature_unsupported",
+    });
+    await writeFile(
+      join(prepared.workspaceDirectory, "project.godot"),
+      projectConfiguration,
+    );
+
+    await mkdir(join(prepared.workspaceDirectory, "addons"));
+    await writeFile(
+      join(prepared.workspaceDirectory, "addons", "injected.gd"),
+      "extends Node\n",
+    );
+    await expect(extractTaskPatch(request)).rejects.toMatchObject({
+      code: "source_feature_unsupported",
+    });
+  });
+
   it("rejects an oversized candidate before importing it into Host Git", async () => {
     const prepared = await prepareFixture();
     const oversized = join(prepared.workspaceDirectory, "oversized.bin");

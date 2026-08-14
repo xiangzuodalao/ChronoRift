@@ -15,15 +15,22 @@ import {
   type V03ExecutionLog,
 } from "@chronorift/domain";
 import {
+  DEFAULT_LIFECYCLE_SIDECAR_TARGETS,
+  DEFAULT_SEMANTIC_SIDECAR_TARGETS,
   DEFAULT_RUNTIME_SIDECAR_TARGETS,
   V03_FIXTURE_IDS,
   asV03FixtureName,
+  createLifecycleRuntimeSidecarSource,
+  createLifecycleVanillaSmokeSidecarSource,
+  createSemanticRuntimeSidecarSource,
+  createSemanticVanillaSmokeSidecarSource,
   createRuntimeSidecarSource,
   doctorGodot,
   installGodot,
   prepareGodotSwitchDoorFixture,
 } from "@chronorift/godot-adapter";
 import {
+  ArtifactNotFoundError,
   V01JsonArtifactRepository,
   V03BenchmarkJsonArtifactRepository,
   V03BenchmarkJsonArtifactRepositoryV3,
@@ -101,11 +108,17 @@ import {
   startVNextAgentTask,
 } from "./vnext/task-agent.js";
 import { SandboxPolicySchema } from "./vnext/contracts.js";
+import { readGodotProjectDescriptorSnapshotV1 } from "./vnext/godot-project-descriptor.js";
+import { ManagedGodotLifecycleRuntimeCapabilityV1Schema } from "./vnext/managed-godot-lifecycle-runtime.js";
+import { ManagedGodotSemanticRuntimeCapabilityV1Schema } from "./vnext/managed-godot-semantic-runtime.js";
+import { readGodotSemanticAdapterProfileSnapshotV1 } from "./vnext/semantic-adapter-profile.js";
 import { createSandboxTaskRuntimeRoot } from "./vnext/sandbox-preflight.js";
+import { runProjectEnvironmentPreviewV1 } from "./vnext/project-environment-preview.js";
 
 interface Arguments {
   readonly command: string;
   readonly flags: ReadonlyMap<string, string | true>;
+  readonly positionals: readonly string[];
 }
 
 const booleanFlags = new Set(["json"]);
@@ -113,17 +126,25 @@ const booleanFlags = new Set(["json"]);
 function parseArguments(argv: readonly string[]): Arguments {
   const [rootCommand = "help", ...rootRest] = argv;
   const taskSubcommand = rootCommand === "task" ? rootRest[0] : undefined;
+  const projectSubcommand = rootCommand === "project" ? rootRest[0] : undefined;
   const command =
     rootCommand === "task" && taskSubcommand !== undefined
       ? `task-${taskSubcommand}`
-      : rootCommand;
-  const rest = rootCommand === "task" ? rootRest.slice(1) : rootRest;
+      : rootCommand === "project" && projectSubcommand !== undefined
+        ? `project-${projectSubcommand}`
+        : rootCommand;
+  const rest =
+    rootCommand === "task" || rootCommand === "project"
+      ? rootRest.slice(1)
+      : rootRest;
   const flags = new Map<string, string | true>();
+  const positionals: string[] = [];
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
     if (token === "--") continue;
     if (token === undefined || !token.startsWith("--")) {
-      throw new Error(`Unexpected argument: ${String(token)}`);
+      positionals.push(String(token));
+      continue;
     }
     const equals = token.indexOf("=");
     if (equals > 2) {
@@ -146,7 +167,13 @@ function parseArguments(argv: readonly string[]): Arguments {
     flags.set(name, value);
     index += 1;
   }
-  return { command, flags };
+  if (positionals.length > 0 && command !== "project-preview") {
+    throw new Error(`Unexpected argument: ${positionals[0]}`);
+  }
+  if (positionals.length > 1) {
+    throw new Error("Project Environment preview accepts at most one goal");
+  }
+  return { command, flags, positionals: Object.freeze(positionals) };
 }
 
 function flag(
@@ -1086,6 +1113,8 @@ const taskSandboxFlagNames = [
   "node-bin",
   "godot-bin",
   "addon-root",
+  "lifecycle-addon-root",
+  "semantic-addon-root",
 ] as const;
 
 async function existingCanonicalPath(path: string): Promise<string> {
@@ -1107,7 +1136,9 @@ async function taskRuntimeRoot(
       : join(taskStorageRoot, "runtime"));
   if (create) {
     if (taskStorageRoot === undefined) {
-      throw new Error("M3 runtime root creation requires bounded Task storage");
+      throw new Error(
+        "game Task runtime root creation requires bounded Task storage",
+      );
     }
     return createSandboxTaskRuntimeRoot(taskStorageRoot, configured);
   }
@@ -1126,7 +1157,7 @@ const assertRuntimeRootWithinTaskStorage = (
     isAbsolute(difference)
   ) {
     throw new Error(
-      "--runtime-root must be a strict child of --task-storage-root for M3 Tasks",
+      "--runtime-root must be a strict child of --task-storage-root for game Tasks",
     );
   }
 };
@@ -1135,6 +1166,7 @@ async function taskSandboxRequest(
   args: Arguments,
   taskId: ReturnType<typeof asTaskId>,
   createRuntimeRoot: boolean,
+  externalProfileOnCreate: "fixture" | "lifecycle" | "semantic" = "fixture",
 ) {
   const configuredTaskStorageRoot = flag(
     args,
@@ -1162,6 +1194,28 @@ async function taskSandboxRequest(
         (value) => SandboxPolicySchema.parse(value),
       )
     ).schemaVersion === 2;
+  const lifecycleProfile = createRuntimeRoot
+    ? externalProfileOnCreate === "lifecycle"
+    : await new VNextTaskStore(runtimeRoot)
+        .readJson(taskId, "managed-lifecycle-runtime.json", (value) =>
+          ManagedGodotLifecycleRuntimeCapabilityV1Schema.parse(value),
+        )
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (error instanceof ArtifactNotFoundError) return false;
+          throw error;
+        });
+  const semanticProfile = createRuntimeRoot
+    ? externalProfileOnCreate === "semantic"
+    : await new VNextTaskStore(runtimeRoot)
+        .readJson(taskId, "managed-semantic-runtime.json", (value) =>
+          ManagedGodotSemanticRuntimeCapabilityV1Schema.parse(value),
+        )
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (error instanceof ArtifactNotFoundError) return false;
+          throw error;
+        });
   if (managedGodotEnabled && taskStorageRoot === undefined) {
     requiredFlag(args, "task-storage-root", "CHRONORIFT_TASK_STORAGE_ROOT");
   }
@@ -1192,7 +1246,33 @@ async function taskSandboxRequest(
     existingCanonicalPath(flag(args, "find-bin") ?? "/usr/bin/find"),
     existingCanonicalPath(flag(args, "ls-bin") ?? "/usr/bin/ls"),
   ]);
-  const managedGodotRuntime = managedGodotEnabled
+  const managedGodotRuntime =
+    managedGodotEnabled && !lifecycleProfile && !semanticProfile
+      ? await (async () => {
+          const [nodePath, godotPath, addonRoot] = await Promise.all([
+            existingCanonicalPath(
+              requiredFlag(args, "node-bin", "CHRONORIFT_NODE_BIN"),
+            ),
+            existingCanonicalPath(requiredFlag(args, "godot-bin", "GODOT_BIN")),
+            existingCanonicalPath(
+              requiredFlag(args, "addon-root", "CHRONORIFT_GODOT_ADDON_ROOT"),
+            ),
+          ]);
+          return {
+            nodePath,
+            godotPath,
+            shellPath: busyboxPath,
+            lddPath,
+            addonRoot,
+            sidecarSource: createRuntimeSidecarSource({
+              godotExecutable: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
+              workspaceRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.workspaceRoot,
+              runtimeRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.runtimeRoot,
+            }),
+          } as const;
+        })()
+      : undefined;
+  const managedGodotLifecycleRuntime = lifecycleProfile
     ? await (async () => {
         const [nodePath, godotPath, addonRoot] = await Promise.all([
           existingCanonicalPath(
@@ -1200,7 +1280,11 @@ async function taskSandboxRequest(
           ),
           existingCanonicalPath(requiredFlag(args, "godot-bin", "GODOT_BIN")),
           existingCanonicalPath(
-            requiredFlag(args, "addon-root", "CHRONORIFT_GODOT_ADDON_ROOT"),
+            requiredFlag(
+              args,
+              "lifecycle-addon-root",
+              "CHRONORIFT_GODOT_LIFECYCLE_ADDON_ROOT",
+            ),
           ),
         ]);
         return {
@@ -1209,10 +1293,49 @@ async function taskSandboxRequest(
           shellPath: busyboxPath,
           lddPath,
           addonRoot,
-          sidecarSource: createRuntimeSidecarSource({
-            godotExecutable: DEFAULT_RUNTIME_SIDECAR_TARGETS.godotExecutable,
-            workspaceRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.workspaceRoot,
-            runtimeRoot: DEFAULT_RUNTIME_SIDECAR_TARGETS.runtimeRoot,
+          vanillaSidecarSource: createLifecycleVanillaSmokeSidecarSource({
+            godotExecutable: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.runtimeRoot,
+          }),
+          lifecycleSidecarSource: createLifecycleRuntimeSidecarSource({
+            godotExecutable: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_LIFECYCLE_SIDECAR_TARGETS.runtimeRoot,
+          }),
+        } as const;
+      })()
+    : undefined;
+  const managedGodotSemanticRuntime = semanticProfile
+    ? await (async () => {
+        const [nodePath, godotPath, addonRoot] = await Promise.all([
+          existingCanonicalPath(
+            requiredFlag(args, "node-bin", "CHRONORIFT_NODE_BIN"),
+          ),
+          existingCanonicalPath(requiredFlag(args, "godot-bin", "GODOT_BIN")),
+          existingCanonicalPath(
+            requiredFlag(
+              args,
+              "semantic-addon-root",
+              "CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT",
+            ),
+          ),
+        ]);
+        return {
+          nodePath,
+          godotPath,
+          shellPath: busyboxPath,
+          lddPath,
+          addonRoot,
+          vanillaSidecarSource: createSemanticVanillaSmokeSidecarSource({
+            godotExecutable: DEFAULT_SEMANTIC_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.runtimeRoot,
+          }),
+          semanticSidecarSource: createSemanticRuntimeSidecarSource({
+            godotExecutable: DEFAULT_SEMANTIC_SIDECAR_TARGETS.godotExecutable,
+            workspaceRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.workspaceRoot,
+            runtimeRoot: DEFAULT_SEMANTIC_SIDECAR_TARGETS.runtimeRoot,
           }),
         } as const;
       })()
@@ -1239,6 +1362,12 @@ async function taskSandboxRequest(
       ],
     },
     ...(managedGodotRuntime === undefined ? {} : { managedGodotRuntime }),
+    ...(managedGodotLifecycleRuntime === undefined
+      ? {}
+      : { managedGodotLifecycleRuntime }),
+    ...(managedGodotSemanticRuntime === undefined
+      ? {}
+      : { managedGodotSemanticRuntime }),
   } as const;
 }
 
@@ -1248,6 +1377,8 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     "goal",
     "task-id",
     "trusted-fixture",
+    "project-descriptor",
+    "semantic-adapter-profile",
     "provider",
     "model",
     "thinking",
@@ -1257,7 +1388,40 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     ...taskSandboxFlagNames,
   ]);
   const taskId = asTaskId(flag(args, "task-id") ?? `task:${randomUUID()}`);
-  const runtime = await taskSandboxRequest(args, taskId, true);
+  const descriptorPath = flag(args, "project-descriptor");
+  if (
+    descriptorPath !== undefined &&
+    flag(args, "trusted-fixture") !== undefined
+  ) {
+    throw new Error(
+      "--project-descriptor and --trusted-fixture are mutually exclusive",
+    );
+  }
+  const externalProjectDescriptor =
+    descriptorPath === undefined
+      ? undefined
+      : await readGodotProjectDescriptorSnapshotV1(descriptorPath);
+  const semanticAdapterPath = flag(args, "semantic-adapter-profile");
+  if (
+    semanticAdapterPath !== undefined &&
+    externalProjectDescriptor === undefined
+  ) {
+    throw new Error("--semantic-adapter-profile requires --project-descriptor");
+  }
+  const semanticAdapterProfile =
+    semanticAdapterPath === undefined
+      ? undefined
+      : await readGodotSemanticAdapterProfileSnapshotV1(semanticAdapterPath);
+  const runtime = await taskSandboxRequest(
+    args,
+    taskId,
+    true,
+    externalProjectDescriptor === undefined
+      ? "fixture"
+      : semanticAdapterProfile === undefined
+        ? "lifecycle"
+        : "semantic",
+  );
   const timeoutMs =
     flag(args, "timeout-ms") === undefined
       ? undefined
@@ -1266,10 +1430,19 @@ async function taskStartCommand(args: Arguments, cwd: string): Promise<void> {
     await startVNextAgentTask({
       ...runtime,
       projectPath: resolve(flag(args, "project") ?? cwd),
-      trustedFixtureRoot: resolve(
-        flag(args, "trusted-fixture") ??
-          join(cwd, "fixtures", "godot-frame-input-window"),
-      ),
+      ...(externalProjectDescriptor === undefined
+        ? {
+            trustedFixtureRoot: resolve(
+              flag(args, "trusted-fixture") ??
+                join(cwd, "fixtures", "godot-frame-input-window"),
+            ),
+          }
+        : {
+            externalProjectDescriptor,
+            ...(semanticAdapterProfile === undefined
+              ? {}
+              : { semanticAdapterProfile }),
+          }),
       goal: requiredFlag(args, "goal"),
       provider:
         flag(args, "provider", "CHRONORIFT_PI_PROVIDER") ?? DEFAULT_PI_PROVIDER,
@@ -1341,8 +1514,105 @@ async function taskDiscardCommand(args: Arguments): Promise<void> {
   );
 }
 
+async function projectPreviewCommand(
+  args: Arguments,
+  cwd: string,
+): Promise<void> {
+  assertOnlyFlags(args, [
+    "provider",
+    "model",
+    "thinking",
+    "host-config",
+    "timeout-ms",
+    "agent-dir",
+    "json",
+  ]);
+  let result: Awaited<ReturnType<typeof runProjectEnvironmentPreviewV1>>;
+  try {
+    result = await runProjectEnvironmentPreviewV1({
+      projectPath: cwd,
+      provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
+      model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
+      thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
+      goal: args.positionals[0] ?? null,
+      interactive:
+        !hasFlag(args, "json") &&
+        process.stdin.isTTY === true &&
+        process.stdout.isTTY === true,
+      ...(flag(args, "host-config") === undefined
+        ? {}
+        : { hostConfigPath: resolve(flag(args, "host-config")!) }),
+      ...(flag(args, "agent-dir") === undefined
+        ? {}
+        : { agentDir: resolve(flag(args, "agent-dir")!) }),
+      ...(flag(args, "timeout-ms") === undefined
+        ? {}
+        : { timeoutMs: positiveIntegerFlag(args, "timeout-ms", 1_800_000) }),
+    });
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const failureMessage =
+      rawMessage
+        .replace(/[\r\n\0]/gu, " ")
+        .trim()
+        .slice(0, 4_096) || "Project Environment Preview failed";
+    const failure = {
+      schemaVersion: 1 as const,
+      status: "failed" as const,
+      goalDelivered: false as const,
+      failureCode: "project_preview_failed" as const,
+      failureMessage,
+    };
+    if (hasFlag(args, "json")) {
+      printJson(failure);
+    } else {
+      process.stderr.write(
+        `ChronoRift Project Environment Preview — failed\nfailure: ${failure.failureCode}: ${failure.failureMessage}\n`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+  const unsuccessful =
+    result.status !== "ready" ||
+    !result.goalDelivered ||
+    result.failureCode !== null;
+  if (hasFlag(args, "json")) {
+    printJson(result);
+    if (unsuccessful) process.exitCode = 1;
+    return;
+  }
+  process.stdout.write(
+    [
+      `ChronoRift Project Environment Preview — ${result.status}`,
+      `project environment: ${result.environmentId}`,
+      `revision: ${result.environmentRevisionId ?? "not published"}`,
+      `adapter: ${result.adapterRevisionId ?? "not published"}`,
+      `environment setup: ${result.reused ? "reused current revision" : "initialized and published"}`,
+      `compatible build: ${result.buildId ?? "unavailable"}`,
+      `candidate source: ${result.candidateSourceChanged ? "changed" : "unchanged"}`,
+      `runtime observation: ${result.runtimeObservationReceiptId ?? "not recorded"}`,
+      `Pi: ${result.provider}/${result.model} (${result.thinkingLevel})`,
+      `session: ${result.sessionFile ?? "not persisted"}`,
+      `queued goal: ${result.goalDelivered ? "delivered" : "not delivered"}`,
+      ...(result.failureMessage === null
+        ? []
+        : [`failure: ${result.failureCode}: ${result.failureMessage}`]),
+      `task records: ${result.taskDirectory}`,
+      ...result.limitations.map((limitation) => `limitation: ${limitation}`),
+    ].join("\n") + "\n",
+  );
+  if (unsuccessful) process.exitCode = 1;
+}
+
 function printHelp(): void {
   process.stdout.write(`ChronoRift v0.4.0\n\n`);
+  process.stdout.write(
+    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--thinking LEVEL --host-config PATH]\n`,
+  );
+  process.stdout.write(
+    `  Project Environment Preview requires a clean repository-root Godot 4.7.1 GDScript project and an explicit Host registry config. It remains separate from the default entry point.\n\n`,
+  );
   process.stdout.write(
     `  pnpm task start --goal TEXT [--project PATH --provider PROVIDER --model MODEL --thinking LEVEL]\n`,
   );
@@ -1350,7 +1620,7 @@ function printHelp(): void {
     `  pnpm task continue --task-id ID --prompt TEXT\n  pnpm task show --task-id ID\n  pnpm task export --task-id ID --output FILE\n  pnpm task discard --task-id ID\n`,
   );
   process.stdout.write(
-    `  New game Tasks require --task-storage-root PATH, --node-bin PATH, --godot-bin PATH, and --addon-root PATH; M3 continuations, exports, and discards revalidate them each time.\n  For M3, --runtime-root must be a strict child of the bounded Task storage root (default: TASK_STORAGE_ROOT/runtime). Task execution also requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT).\n\n`,
+    `  New game Tasks require --task-storage-root PATH, --node-bin PATH, and --godot-bin PATH. M3 uses --addon-root. External lifecycle Tasks use --project-descriptor and --lifecycle-addon-root. E2 semantic Tasks additionally use --semantic-adapter-profile and --semantic-addon-root (or CHRONORIFT_GODOT_SEMANTIC_ADDON_ROOT). Continuations, exports, and discards revalidate persisted bytes without rereading either Host profile file.\n  --runtime-root must be a strict child of the bounded Task storage root (default: TASK_STORAGE_ROOT/runtime). Task execution also requires --cgroup-root PATH (or CHRONORIFT_CGROUP_ROOT).\n\n`,
   );
   process.stdout.write(
     `  pnpm demo [--environment mock|godot] [--godot-bin PATH] [--artifacts PATH] [--json]\n`,
@@ -1415,6 +1685,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArguments(argv);
   const cwd = process.cwd();
   switch (args.command) {
+    case "project-preview":
+      await projectPreviewCommand(args, cwd);
+      return;
     case "task-start":
       await taskStartCommand(args, cwd);
       return;

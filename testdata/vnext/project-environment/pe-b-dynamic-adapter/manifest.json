@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 2,
+  "manifestKind": "chronorift-project-adapter",
+  "adapterId": "adapter.dynamic-projection.reference",
+  "adapterVersion": "2.0.0",
+  "sdk": { "id": "chronorift-project-adapter-sdk", "version": 2 },
+  "engine": {
+    "id": "godot",
+    "versionRequirement": "4.7.x",
+    "language": "gdscript"
+  },
+  "entryScript": "src/project_adapter.gd",
+  "schemas": [
+    {
+      "schemaVersion": 2,
+      "schemaId": "launch.params",
+      "path": "schemas/launch.params.json",
+      "sha256": "fe84c6eac2a84be5989760519912ec5966cf350d4f39e6b032a67e0a21ca2846"
+    },
+    {
+      "schemaVersion": 2,
+      "schemaId": "entity.dynamic_actor",
+      "path": "schemas/entity.dynamic_actor.json",
+      "sha256": "e54dc2a5263dc2a0f2396b5c07fcad2facdad9f2b7c51cdc2ed372ab328f831f"
+    },
+    {
+      "schemaVersion": 2,
+      "schemaId": "state.dynamic_actor",
+      "path": "schemas/state.dynamic_actor.json",
+      "sha256": "48df4b2ca0c04a8c3f8b37b3e3f7127604ec047d8461c13d1d5311b74498cb5a"
+    },
+    {
+      "schemaVersion": 2,
+      "schemaId": "event.level_changed",
+      "path": "schemas/event.level_changed.json",
+      "sha256": "7a3cbe6e9a8a2fb1c8913055d671b4f72493b4de89f5cda8f6210c0ec8e056c6"
+    }
+  ],
+  "launchTargets": [
+    {
+      "schemaVersion": 2,
+      "targetId": "main",
+      "scene": "res://main.tscn",
+      "default": true,
+      "parametersSchemaId": "launch.params",
+      "renderer": "headless",
+      "requiredModules": [
+        "lifecycle",
+        "clock",
+        "runtime_error",
+        "entity_projection",
+        "state_projection",
+        "event_projection",
+        "capture"
+      ]
+    }
+  ],
+  "modules": {
+    "schemaVersion": 1,
+    "modules": [
+      {
+        "schemaVersion": 1,
+        "module": "lifecycle",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v2",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "clock",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v2",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "runtime_error",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v2",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "entity_projection",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v2",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "state_projection",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v2",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "event_projection",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v2",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "capture",
+        "status": "implemented",
+        "protocolVersion": "project-adapter-module:v2",
+        "limitations": []
+      },
+      {
+        "schemaVersion": 1,
+        "module": "input_control",
+        "status": "unsupported",
+        "protocolVersion": null,
+        "limitations": ["not implemented by this adapter"]
+      },
+      {
+        "schemaVersion": 1,
+        "module": "snapshot",
+        "status": "unsupported",
+        "protocolVersion": null,
+        "limitations": ["not implemented by this adapter"]
+      },
+      {
+        "schemaVersion": 1,
+        "module": "restore",
+        "status": "unsupported",
+        "protocolVersion": null,
+        "limitations": ["not implemented by this adapter"]
+      },
+      {
+        "schemaVersion": 1,
+        "module": "render_capture",
+        "status": "unsupported",
+        "protocolVersion": null,
+        "limitations": ["not implemented by this adapter"]
+      },
+      {
+        "schemaVersion": 1,
+        "module": "alignment",
+        "status": "unsupported",
+        "protocolVersion": null,
+        "limitations": ["not implemented by this adapter"]
+      }
+    ]
+  },
+  "entityTypes": [
+    {
+      "schemaVersion": 2,
+      "entityTypeId": "dynamic_actor",
+      "schemaId": "entity.dynamic_actor",
+      "identityStrategy": "spawn_lineage"
+    }
+  ],
+  "stateDomains": [
+    {
+      "schemaVersion": 2,
+      "stateDomainId": "dynamic_actor_state",
+      "schemaId": "state.dynamic_actor",
+      "checkpointDisposition": "uncontrolled",
+      "subject": {
+        "schemaVersion": 2,
+        "kind": "entity",
+        "allowedEntityTypeIds": ["dynamic_actor"]
+      }
+    }
+  ],
+  "eventTypes": [
+    {
+      "schemaVersion": 2,
+      "eventTypeId": "level_changed",
+      "schemaId": "event.level_changed",
+      "source": {
+        "schemaVersion": 2,
+        "kind": "entity",
+        "allowedEntityTypeIds": ["dynamic_actor"]
+      }
+    }
+  ],
+  "smoke": {
+    "schemaVersion": 2,
+    "targetId": "main",
+    "timeoutMs": 30000,
+    "minimumStateSamples": 4,
+    "minimumEntityLifecycleRecords": 3,
+    "requiredStateDomainIds": ["dynamic_actor_state"],
+    "requiredCustomEventTypeIds": ["level_changed"],
+    "requiredDynamicTraces": [
+      {
+        "schemaVersion": 2,
+        "traceId": "dynamic_actor_recreation",
+        "entityTypeId": "dynamic_actor",
+        "stateDomainId": "dynamic_actor_state",
+        "eventTypeId": "level_changed",
+        "minimumIncarnations": 2
+      }
+    ]
+  }
+}

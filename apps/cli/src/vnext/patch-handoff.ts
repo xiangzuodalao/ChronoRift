@@ -35,11 +35,17 @@ import {
   FixtureManifestV1Schema,
   PatchExportReceiptV1Schema,
   RelativeExportPathV1Schema,
+  TaskGodotProjectCapabilityV1Schema,
   TaskFixtureCapabilityV1Schema,
   type PatchExportReceiptV1,
+  type TaskGodotProjectCapabilityV1,
   type TaskFixtureCapabilityV1,
 } from "./contracts.js";
 import { M1Error, M1PatchExportError } from "./errors.js";
+import {
+  isExternalGodotNativeSourcePathV1,
+  isExternalGodotReservedSourcePathV1,
+} from "./external-godot-source-policy.js";
 import { assertCandidateFixtureCompatible } from "./fixture-manifest.js";
 import {
   NodeHostGitPort,
@@ -51,10 +57,12 @@ import {
   selectedTreeSha256FromSources,
   type SelectedTreeContentSourceV1,
 } from "./selected-tree.js";
+import { assertExternalGodotProjectConfigurationV1 } from "./source-preflight.js";
 
 const PATCH_BYTE_LIMIT = 512 * 1024 * 1024;
 const CANDIDATE_ENTRY_LIMIT = 10_000;
 const MANIFEST_BYTE_LIMIT = 1024 * 1024;
+const PROJECT_CONFIGURATION_BYTE_LIMIT = 1024 * 1024;
 const FILE_CHUNK_BYTES = 64 * 1024;
 const MANIFEST_PATH = "chronorift.fixture.json";
 const GIT_OBJECT_ID = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
@@ -82,16 +90,30 @@ export interface ExtractedTaskPatch {
   readonly roundTripVerified: true;
 }
 
-export interface ExtractTaskPatchRequest {
+interface ExtractTaskPatchRequestCommon {
   readonly taskId: TaskId;
   readonly workspaceDirectory: string;
   readonly hostBaselineGitDirectory: string;
   readonly hostBaselineCommit: string;
   readonly baselineSourceHash: Sha256DigestV1;
   readonly ignoredCachePaths: readonly string[];
-  readonly fixtureCapability: TaskFixtureCapabilityV1;
   readonly hostOperationTemporaryDirectory: string;
 }
+
+export interface ExtractFixtureTaskPatchRequest extends ExtractTaskPatchRequestCommon {
+  readonly sourceKind?: undefined;
+  readonly fixtureCapability: TaskFixtureCapabilityV1;
+  readonly projectCapability?: undefined;
+}
+
+export interface ExtractExternalGodotTaskPatchRequest extends ExtractTaskPatchRequestCommon {
+  readonly sourceKind: "godot-external-lifecycle-v1";
+  readonly fixtureCapability?: undefined;
+  readonly projectCapability: TaskGodotProjectCapabilityV1;
+}
+
+export type ExtractTaskPatchRequest =
+  ExtractFixtureTaskPatchRequest | ExtractExternalGodotTaskPatchRequest;
 
 interface ExtractionDependencies {
   readonly git?: PatchGitPort | undefined;
@@ -532,12 +554,16 @@ const collectCandidate = async (
   ignoredRoots: readonly string[],
   git: PatchGitPort,
   gitContext: HostGitRepositoryContext,
+  captureFixtureManifest: boolean,
+  captureProjectFile?: string,
 ): Promise<{
   readonly entries: readonly CandidateEntry[];
-  readonly manifestBytes: Buffer;
+  readonly manifestBytes?: Buffer | undefined;
+  readonly projectFileBytes?: Buffer | undefined;
 }> => {
   const entries: CandidateEntry[] = [];
   let manifestBytes: Buffer | undefined;
+  let projectFileBytes: Buffer | undefined;
   let candidateBytes = 0;
   await walkTree(root.handle, ignoredRoots, async (file) => {
     candidateBytes += file.byteLength;
@@ -551,6 +577,20 @@ const collectCandidate = async (
       );
     }
     if (
+      file.relativePath === captureProjectFile &&
+      file.byteLength > PROJECT_CONFIGURATION_BYTE_LIMIT
+    ) {
+      throw new M1Error(
+        "source_feature_unsupported",
+        "candidate project.godot exceeds the bounded configuration profile",
+      );
+    }
+    const captureProjectConfiguration =
+      file.relativePath === captureProjectFile;
+    const captureManifest =
+      captureFixtureManifest && file.relativePath === MANIFEST_PATH;
+    if (
+      captureFixtureManifest &&
       file.relativePath === MANIFEST_PATH &&
       file.byteLength > MANIFEST_BYTE_LIMIT
     ) {
@@ -565,11 +605,13 @@ const collectCandidate = async (
     });
     const content = await readAndHashFile(
       file.handle,
-      file.relativePath === MANIFEST_PATH,
-      MANIFEST_BYTE_LIMIT,
-      file.relativePath === MANIFEST_PATH
+      captureManifest || captureProjectConfiguration,
+      Math.max(MANIFEST_BYTE_LIMIT, PROJECT_CONFIGURATION_BYTE_LIMIT),
+      captureManifest
         ? MANIFEST_BYTE_LIMIT
-        : Number.MAX_SAFE_INTEGER,
+        : captureProjectConfiguration
+          ? PROJECT_CONFIGURATION_BYTE_LIMIT
+          : Number.MAX_SAFE_INTEGER,
     );
     if (content.byteLength !== file.byteLength) {
       throw new M1Error(
@@ -577,7 +619,10 @@ const collectCandidate = async (
         "candidate file length changed during snapshot",
       );
     }
-    if (file.relativePath === MANIFEST_PATH) manifestBytes = content.bytes;
+    if (captureFixtureManifest && file.relativePath === MANIFEST_PATH) {
+      manifestBytes = content.bytes;
+    }
+    if (captureProjectConfiguration) projectFileBytes = content.bytes;
     entries.push({
       relativePath: file.relativePath,
       mode: file.mode,
@@ -587,7 +632,7 @@ const collectCandidate = async (
       objectId,
     });
   });
-  if (manifestBytes === undefined) {
+  if (captureFixtureManifest && manifestBytes === undefined) {
     throw new M1Error(
       "source_configuration_mismatch",
       "candidate fixture manifest is missing",
@@ -596,7 +641,33 @@ const collectCandidate = async (
   entries.sort((left, right) =>
     Buffer.from(left.relativePath).compare(Buffer.from(right.relativePath)),
   );
-  return { entries, manifestBytes };
+  return { entries, manifestBytes, projectFileBytes };
+};
+
+const assertExternalGodotCandidatePolicy = (
+  entries: readonly CandidateEntry[],
+  capability: TaskGodotProjectCapabilityV1,
+): void => {
+  if (!entries.some((entry) => entry.relativePath === capability.projectFile)) {
+    throw new M1Error(
+      "source_configuration_mismatch",
+      "external Godot candidate removed the frozen project file",
+    );
+  }
+  for (const entry of entries) {
+    if (isExternalGodotReservedSourcePathV1(entry.relativePath)) {
+      throw new M1Error(
+        "source_feature_unsupported",
+        "external Godot candidate collides with a reserved managed root",
+      );
+    }
+    if (isExternalGodotNativeSourcePathV1(entry.relativePath)) {
+      throw new M1Error(
+        "source_feature_unsupported",
+        "external Godot lifecycle candidate supports GDScript without native extensions",
+      );
+    }
+  }
 };
 
 const openRelativeFile = async (
@@ -993,27 +1064,55 @@ export async function extractTaskPatch(
       "Host baseline commit identity is invalid",
     );
   }
-  const parsedFixtureCapability = TaskFixtureCapabilityV1Schema.safeParse(
-    request.fixtureCapability,
-  );
-  if (!parsedFixtureCapability.success) {
-    throw new M1Error(
-      "source_configuration_mismatch",
-      "frozen task fixture capability is invalid",
-      parsedFixtureCapability.error,
+  const externalProfile = request.sourceKind === "godot-external-lifecycle-v1";
+  let fixtureCapability: TaskFixtureCapabilityV1 | undefined;
+  let projectCapability: TaskGodotProjectCapabilityV1 | undefined;
+  if (externalProfile) {
+    const parsedProjectCapability =
+      TaskGodotProjectCapabilityV1Schema.safeParse(request.projectCapability);
+    if (!parsedProjectCapability.success) {
+      throw new M1Error(
+        "source_configuration_mismatch",
+        "frozen external Godot project capability is invalid",
+        parsedProjectCapability.error,
+      );
+    }
+    projectCapability = parsedProjectCapability.data;
+    if (
+      request.baselineSourceHash !==
+      projectCapability.baselineSelectedTreeSha256
+    ) {
+      throw new M1Error(
+        "source_configuration_mismatch",
+        "patch baseline does not match the frozen external Godot project capability",
+      );
+    }
+  } else {
+    const parsedFixtureCapability = TaskFixtureCapabilityV1Schema.safeParse(
+      request.fixtureCapability,
     );
+    if (!parsedFixtureCapability.success) {
+      throw new M1Error(
+        "source_configuration_mismatch",
+        "frozen task fixture capability is invalid",
+        parsedFixtureCapability.error,
+      );
+    }
+    fixtureCapability = parsedFixtureCapability.data;
   }
-  const fixtureCapability = parsedFixtureCapability.data;
   const ignoredRoots = validateIgnoredRoots(request.ignoredCachePaths);
+  const frozenIgnoredCachePaths = externalProfile
+    ? projectCapability!.ignoredCachePaths
+    : fixtureCapability!.ignoredCachePaths;
   if (
-    ignoredRoots.length !== fixtureCapability.ignoredCachePaths.length ||
+    ignoredRoots.length !== frozenIgnoredCachePaths.length ||
     ignoredRoots.some(
-      (value, index) => value !== fixtureCapability.ignoredCachePaths[index],
+      (value, index) => value !== frozenIgnoredCachePaths[index],
     )
   ) {
     throw new M1Error(
       "source_configuration_mismatch",
-      "ignored cache paths do not match the frozen fixture capability",
+      "ignored cache paths do not match the frozen Task source capability",
     );
   }
 
@@ -1078,29 +1177,48 @@ export async function extractTaskPatch(
       ignoredRoots,
       git,
       candidateContext,
+      !externalProfile,
+      externalProfile ? projectCapability?.projectFile : undefined,
     );
-    let manifest: unknown;
-    try {
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(
-        candidate.manifestBytes,
-      );
-      manifest = JSON.parse(text) as unknown;
-    } catch (error) {
-      throw new M1Error(
-        "source_configuration_mismatch",
-        "candidate fixture manifest is not valid UTF-8 JSON",
-        error,
-      );
+    if (externalProfile) {
+      if (projectCapability === undefined) {
+        throw new M1Error(
+          "source_configuration_mismatch",
+          "frozen external Godot project capability is unavailable",
+        );
+      }
+      assertExternalGodotCandidatePolicy(candidate.entries, projectCapability);
+      assertExternalGodotProjectConfigurationV1(candidate.projectFileBytes);
+    } else {
+      if (candidate.manifestBytes === undefined) {
+        throw new M1Error(
+          "source_configuration_mismatch",
+          "candidate fixture manifest is missing",
+        );
+      }
+      let manifest: unknown;
+      try {
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(
+          candidate.manifestBytes,
+        );
+        manifest = JSON.parse(text) as unknown;
+      } catch (error) {
+        throw new M1Error(
+          "source_configuration_mismatch",
+          "candidate fixture manifest is not valid UTF-8 JSON",
+          error,
+        );
+      }
+      const parsedManifest = FixtureManifestV1Schema.safeParse(manifest);
+      if (!parsedManifest.success) {
+        throw new M1Error(
+          "source_configuration_mismatch",
+          "candidate fixture manifest does not match the frozen task capability",
+          parsedManifest.error,
+        );
+      }
+      assertCandidateFixtureCompatible(parsedManifest.data, fixtureCapability!);
     }
-    const parsedManifest = FixtureManifestV1Schema.safeParse(manifest);
-    if (!parsedManifest.success) {
-      throw new M1Error(
-        "source_configuration_mismatch",
-        "candidate fixture manifest does not match the frozen task capability",
-        parsedManifest.error,
-      );
-    }
-    assertCandidateFixtureCompatible(parsedManifest.data, fixtureCapability);
     await git.updateIndex({
       context: candidateContext,
       entries: candidate.entries,

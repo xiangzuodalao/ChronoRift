@@ -115,6 +115,8 @@ describe("vNext task CLI", () => {
       const output = write.mock.calls.map(([chunk]) => String(chunk)).join("");
       expect(output).toContain("--task-storage-root PATH");
       expect(output).toContain("TASK_STORAGE_ROOT/runtime");
+      expect(output).toContain("--semantic-adapter-profile");
+      expect(output).toContain("--semantic-addon-root");
     } finally {
       write.mockRestore();
     }

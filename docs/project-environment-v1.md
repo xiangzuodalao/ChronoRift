@@ -1,6 +1,7 @@
 # Project Environment V1 RFC
 
-> 状态：**设计冻结；PE-B Dynamic Projection implementation present + local Gate passed；完整晋升 Gate 未通过**
+> 状态：**设计冻结；PE-B Dynamic Projection implementation present + local Gate passed；PE-C narrow slice
+> implementation present、本 worktree default/Godot checks passed、external Host Gate pending；完整晋升 Gate 未通过**
 > 决策日期：2026-08-12
 > 目标入口：Project Environment Preview；通过晋升 Gate 后成为默认 `chronorift [goal]` 入口
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
@@ -111,6 +112,12 @@ Task sandbox 不自动 clone、fetch、更新 submodule 或下载 LFS object。L
 symlink 逃逸、unsupported tree entry 或 identity 在冻结期间漂移时 fail closed。URL、commit 名称或 lockfile 不是已取得
 字节的替代品。
 
+以上是完整 V1 的目标边界，不等于 PE-C 一次实现全部能力。当前 PE-C 只接纳选中项目的 tracked 最终工作树 bytes、
+逐次显式选择的 untracked 文件，以及遇到的 clean、已 materialize direct-submodule set；未 materialize 的 LFS
+pointer、symlink、dirty/递归 submodule 与任意 sibling/absolute roots 在该切片继续明确拒绝。已 materialize 的 LFS
+实体 bytes 仅按普通文件进入 admission 和 closure；PE-C 不提供 LFS-aware 下载、专门 lineage 或跨仓库一致性保证。
+materialize 后必须重新计算 closure identity，漂移时在 Agent、import 或 game execution 前停止。
+
 Source admission 在 hashing、copy 和模型可见之前拒绝 Pi auth/credential roots、`.env*`、private key、常见 cloud
 credential 文件及由 operator policy 标记的敏感路径；submodule、LFS 实体和 vendored addon 使用同一规则。拒绝日志
 只能记录脱敏的 project-relative category，不能回显 secret bytes。项目确实需要的 secret 只能由独立的
@@ -159,26 +166,28 @@ commit、merge 或 push。`ApplyReceiptV1` 绑定 input patch、目标 pre/post 
 
 所有 external、wire 与 persisted DTO 都必须 strict、versioned，并在每次读取时重新验证。V1 至少定义以下资源：
 
-| DTO                               | 语义                                                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `ProjectSourceClosureV1`          | project root、多个 source root、HEAD/dirty/untracked/LFS/submodule/symlink 与 realized descriptor 的冻结身份 |
-| `ProjectEnvironmentV1`            | project-local 环境身份、状态和 current revision 引用                                                         |
-| `ProjectEnvironmentRevisionV1`    | 经 Agent 审阅的 source closure、adapter、SDK/bridge、toolchain、最低 policy profile 与 conformance 组合      |
-| `ProjectAdapterRevisionV1`        | 唯一 adapter package 的 manifest、GDScript、schemas、smoke、可选 probe/alignment 与内容身份                  |
-| `ProjectInitializationAttemptV1`  | predecessor、Task/Session、provider/model/thinking、candidate、预算、验证和 sealed 终态                      |
-| `ProjectEnvironmentTurnV1`        | initialization/maintenance/user-goal purpose、attempt、预算、binding 与排队隔离                              |
-| `EnvironmentBindingEpochV1`       | Task 从 pending attempt 到精确 environment/adapter revision 的 append-only binding                           |
-| `ProjectToolchainReceiptV1`       | requested/realized Godot version、platform、binary hash、features 与 renderer                                |
-| `AdapterConformanceReceiptV1`     | adapter 声明能力的实际执行、coverage、loss、failure 与 cleanup 结果                                          |
-| `AdapterCompatibilityReceiptV1`   | 已发布 adapter revision 对某个精确 candidate Build 的快速兼容事实                                            |
-| `EnvironmentPublicationIntentV1`  | candidate、target revision、expected current 与 crash-recovery operation identity                            |
-| `EnvironmentPublicationReceiptV1` | create-new revision、expected/current CAS、实际 publication 与失败事实                                       |
-| `LaunchReceiptV1`                 | requested target/params 与 realized scene/params/renderer/capability/clock                                   |
-| `ObserverEffectReceiptV1`         | vanilla/instrumented smoke 的可观察差异、对齐缺口与未知 observer effect                                      |
-| `ApplyReceiptV1`                  | 游戏 patch、Host pre/post tree identity、实际应用/冲突与 retained candidate                                  |
-| `ProjectNetworkPolicyTemplateV1`  | Host 用户批准的 project identity、endpoint/principal 上限、版本、有效期与撤销状态                            |
-| `TaskNetworkPolicyReceiptV1`      | template version 到 Task 主体/domain/protocol/port/DNS 的 requested/realized policy                          |
-| `ProjectAdapterBundleV1`          | 可显式 export/import 的无 Host path、credential 或 Pi Session 的 adapter 交换格式                            |
+| DTO                                                   | 语义                                                                                                                   |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `ProjectSourceClosureV1`                              | HEAD、selected project、规范 path/mode/content/provenance、允许的 submodule lineage、realized descriptor 与 `SourceId` |
+| `ProjectEnvironmentWorkspaceMaterializationReceiptV2` | closure freeze/postflight identity、输出 tree identity 与 `source_drift` 结果                                          |
+| `ProjectEnvironmentV1`                                | project-local 环境身份、状态和 current revision 引用                                                                   |
+| `ProjectEnvironmentRevisionV1`                        | 经 Agent 审阅的 source closure、adapter、SDK/bridge、toolchain、最低 policy profile 与 conformance 组合                |
+| `ProjectAdapterRevisionV1`                            | 唯一 adapter package 的 manifest、GDScript、schemas、smoke、可选 probe/alignment 与内容身份                            |
+| `ProjectInitializationAttemptV1`                      | predecessor、Task/Session、provider/model/thinking、candidate、预算、验证和 sealed 终态                                |
+| `ProjectEnvironmentTurnV1`                            | initialization/maintenance/user-goal purpose、attempt、预算、binding 与排队隔离                                        |
+| `EnvironmentBindingEpochV1`                           | Task 从 pending attempt 到精确 environment/adapter revision 的 append-only binding                                     |
+| `ProjectToolchainReceiptV1`                           | requested/realized Godot version、platform、binary hash、features 与 renderer                                          |
+| `AdapterConformanceReceiptV1`                         | adapter 声明能力的实际执行、coverage、loss、failure 与 cleanup 结果                                                    |
+| `AdapterCompatibilityReceiptV1`                       | 已发布 adapter revision 对某个精确 candidate Build 的快速兼容事实                                                      |
+| `ProjectAdapterLaunchTargetValidationV1`              | declared/default/selected target，以及各 target 的 `validated` 或 `declared_unvalidated` 状态                          |
+| `EnvironmentPublicationIntentV1`                      | candidate、target revision、expected current 与 crash-recovery operation identity                                      |
+| `EnvironmentPublicationReceiptV1`                     | create-new revision、expected/current CAS、实际 publication 与失败事实                                                 |
+| `LaunchReceiptV1`                                     | requested target/params 与 realized scene/params/renderer/capability/clock                                             |
+| `ObserverEffectReceiptV1`                             | vanilla/instrumented smoke 的可观察差异、对齐缺口与未知 observer effect                                                |
+| `ApplyReceiptV1`                                      | 游戏 patch、Host pre/post tree identity、实际应用/冲突与 retained candidate                                            |
+| `ProjectNetworkPolicyTemplateV1`                      | Host 用户批准的 project identity、endpoint/principal 上限、版本、有效期与撤销状态                                      |
+| `TaskNetworkPolicyReceiptV1`                          | template version 到 Task 主体/domain/protocol/port/DNS 的 requested/realized policy                                    |
+| `ProjectAdapterBundleV1`                              | 可显式 export/import 的无 Host path、credential 或 Pi Session 的 adapter 交换格式                                      |
 
 这些名字描述 wire/persisted contract，不预先指定 TypeScript package。只有 engine-neutral identity、state、capability
 和 receipt contract 可以进入 `domain`；Git dirty/submodule/LFS/symlink、Godot discovery、Host canonical path 与
@@ -590,20 +599,30 @@ intent 和 revision operation identity 收敛 publication/binding；它不恢复
 
 ### 10.2 后续单轴切片
 
-| Slice | 主要新增不确定性                                                                                                        |
-| ----- | ----------------------------------------------------------------------------------------------------------------------- |
-| PE-B  | dynamic nodes、custom Signal 与状态变化下 entity/state/event projection 的结构泛化                                      |
-| PE-C  | tracked dirty、显式 untracked、materialized multi-source/LFS/submodule/symlink、addon/import、多项目选择与 multi-target |
-| PE-D  | source review、新 environment revision、compatibility failure 后的 adapter 更新与 SDK migration                         |
-| PE-E  | sealed failed attempt 的跨命令 successor resume、budget increase、discard 与 retention                                  |
-| PE-F  | lease/CAS conflict、multi-Session workspace、revision pin 与 binding epoch                                              |
-| PE-G  | Host drift、显式 refresh、游戏 patch review/apply、冲突与 `ApplyReceiptV1`                                              |
-| PE-H  | adapter bundle export/import；import 永远只创建重新验证的 untrusted candidate                                           |
-| PE-P  | project network preauthorization 到每 Task 精确 realized policy                                                         |
+| Slice | 主要新增不确定性                                                                                                    |
+| ----- | ------------------------------------------------------------------------------------------------------------------- |
+| PE-B  | dynamic nodes、custom Signal 与状态变化下 entity/state/event projection 的结构泛化                                  |
+| PE-C  | narrow dirty closure、显式 untracked、项目选择、addon/import、default + selected target、稳定 reuse/review boundary |
+| PE-D  | source review、新 environment revision、compatibility failure 后的 adapter 更新与 SDK migration                     |
+| PE-E  | sealed failed attempt 的跨命令 successor resume、budget increase、discard 与 retention                              |
+| PE-F  | lease/CAS conflict、multi-Session workspace、revision pin 与 binding epoch                                          |
+| PE-G  | Host drift、显式 refresh、游戏 patch review/apply、冲突与 `ApplyReceiptV1`                                          |
+| PE-H  | adapter bundle export/import；import 永远只创建重新验证的 untrusted candidate                                       |
+| PE-P  | project network preauthorization 到每 Task 精确 realized policy                                                     |
 
 Input/probe/alignment/render 各自等待真实依赖再成为独立切片。首发仍不实现 daemon、多项目 Task、C#、GDExtension、
 native plugin、audio、macOS、Windows、完整 physics/Timer/Tween/coroutine snapshot、bit-exact replay 或任意项目
 零配置成功保证。
+
+PE-C 的命令增量固定为 `--project-root RELATIVE_PATH`、可重复的
+`--include-untracked RELATIVE_FILE` 和 `--launch-target TARGET_ID`。多个 `project.godot` 没有显式选择时 fail closed；
+untracked 选择不写入长期 allowlist，每次 Preview/reuse 都必须重申。Adapter publication 只验证 default target 和当前
+selected target，其余声明保留 `declared_unvalidated`，不能运行或复用。相同 closure 与选择允许复用；`SourceId` 变化
+只返回 `review_required`，adapter review/migration 由 PE-D 实现。
+
+PE-C 不包含完整 LFS、dirty/递归 submodule、directory symlink/cycle/race、内容级 secret 扫描、完整 quota matrix、
+所有 targets × vanilla/bridge/instrumented、独立 PE-C bundle validator、product-subject git bundle 或全量 crash-cut。
+这些能力只有真实项目要求时才进入后续 hardening/conformance，不是 PE-C 完成条件。
 
 开发期通过显式 `pnpm project preview -- [GOAL] --provider ... --model ...` route 暴露已完成切片；当前 README
 不得把目标 `chronorift [goal]` 写成已存在命令。只有
@@ -637,7 +656,8 @@ real-Pi Gate 的 success bundle 必须写入显式、canonical 的
 ### 11.2 各切片 Gate
 
 PE-B 至 PE-H 以及 PE-P 分别为其 §10.2 单一边界增加 offline、Host 与 failure Gate；某个切片未完成不能借其他切片
-的证据越过。尤其：PE-B 检查动态 entity/event identity；PE-C 检查多源/secret/symlink admission；PE-E 检查
+的证据越过。尤其：PE-B 检查动态 entity/event identity；PE-C 检查 narrow dirty closure、project selection、
+addon import、default + selected target、drift 与 reuse/review boundary；PE-E 检查
 successor resume 和 drift refusal；PE-F 只新增 multi-writer lease/CAS contention 与 pinning；PE-G 检查 conflict-safe
 refresh/apply；PE-H 检查 bundle 全量重验；PE-P 检查空 template deny、DNS/target drift 与新主体授权拒绝。
 
@@ -652,8 +672,19 @@ duplicate/unknown lifecycle、stale incarnation、scope/schema mismatch、跨 Ex
 260.037 秒，完整双 Session case 387.718 秒；默认离线 Gate 为 162 files/1252 tests，Godot Gate 为
 11 files/27 tests，特权 Preview Host 与真实模型 Gate 均为 1/1。归档见
 [`docs/evidence/vnext-project-environment-pe-b-local-r1/`](evidence/vnext-project-environment-pe-b-local-r1/README.md)。
-该 local archive 不是 protected artifact、签名、外部 attestation 或通用 Godot 支持证明；下一切片是 PE-C
-Source/Import Closure。
+该 local archive 不是 protected artifact、签名、外部 attestation 或通用 Godot 支持证明；PE-C Source/Import Closure
+是当前正在实现的下一切片。
+
+PE-C 的离线 Gate 覆盖项目发现、tracked dirty、显式 untracked、canonical `SourceId`、materialize postflight drift、
+addon admission、target validation 状态、reuse/review，以及未 materialize LFS pointer、symlink、dirty/recursive
+submodule 的拒绝。已 materialize 的 LFS 实体 bytes 只作为普通文件覆盖；不声称 LFS-aware 下载、lineage 或一致性
+支持。Godot Gate 只运行 default 与当前 selected target。真实 Host Gate 复用固定
+`endlessm/moddable-platformer@3e793f53598a131c53fb82555191cc14b8db07ff`，在临时 checkout 加入 deterministic
+dirty/untracked/nested-project/addon/secondary-target overlay，完成 init → run/observation → new-Session reuse，
+再用一处 source mutation 证明 `review_required`。默认 CI 用 deterministic fake Agent；切片完成前另需一次 opt-in
+real Pi。该 Gate 不要求所有 target 的三阶段 matrix、独立 bundle validator 或 product-subject archive。
+
+以下 §11.3–§11.7 是完整 V1 晋升的累计 Gate，不是 PE-C 的单切片 DoD。
 
 ### 11.3 Release Candidate 默认离线与 Host Gate
 
@@ -680,7 +711,7 @@ adapter 示例不得按其身份分支。PE-A 的 characterization fixture 证�
 
 ### 11.5 Project Environment Host-boundary Gate
 
-必须覆盖 dirty snapshot + 显式 untracked、多源 closure、失败 attempt resume、revision materialization/current-pointer
+完整 V1 晋升必须累计覆盖 dirty snapshot + 显式 untracked、多源 closure、失败 attempt resume、revision materialization/current-pointer
 crash consistency、source review、逐 Build compatibility、并发 CAS conflict、multi-Session pin、Host drift/refresh、
 conflict-safe game patch apply、bundle
 import/export、storage degradation 与 cleanup failure。初始化 attempt 的 resume 不得被描述成已经实现跨命令 open-

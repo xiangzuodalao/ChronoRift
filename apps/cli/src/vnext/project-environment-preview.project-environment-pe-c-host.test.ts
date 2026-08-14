@@ -311,18 +311,9 @@ const authoredAdapterFiles = async (
 
   const files = new Map<string, string>([
     ["schemas/launch.params.json", launchParametersSchema],
-    [
-      "schemas/entity.scene_runtime.json",
-      schemaDocument("entity.scene_runtime", 0, 3),
-    ],
-    [
-      "schemas/state.scene_runtime.json",
-      schemaDocument("state.scene_runtime", 0, 3),
-    ],
-    [
-      "schemas/event.scene_phase_changed.json",
-      schemaDocument("event.scene_phase_changed", 1, 3),
-    ],
+    ["schemas/entity.json", schemaDocument("entity.scene_runtime", 0, 3)],
+    ["schemas/state.json", schemaDocument("state.scene_runtime", 0, 3)],
+    ["schemas/event.json", schemaDocument("event.scene_phase_changed", 1, 3)],
     ["src/project_adapter.gd", adapterScript],
   ]);
   const reference = JSON.parse(
@@ -337,9 +328,9 @@ const authoredAdapterFiles = async (
   reference.adapterId = adapterId;
   reference.schemas = [
     ["launch.params", "schemas/launch.params.json"],
-    ["entity.scene_runtime", "schemas/entity.scene_runtime.json"],
-    ["state.scene_runtime", "schemas/state.scene_runtime.json"],
-    ["event.scene_phase_changed", "schemas/event.scene_phase_changed.json"],
+    ["entity.scene_runtime", "schemas/entity.json"],
+    ["state.scene_runtime", "schemas/state.json"],
+    ["event.scene_phase_changed", "schemas/event.json"],
   ].map(([schemaId, path]) => ({
     schemaVersion: 2,
     schemaId,
@@ -482,12 +473,9 @@ const createFakePiDependencies = (
         contract,
       );
       for (const [path, content] of authoredFiles) {
-        if (
-          path === "manifest.json" &&
-          content.includes("dynamic-placeholder")
-        ) {
+        if (content.includes("dynamic-placeholder")) {
           throw new Error(
-            "fake Pi authored a manifest that retained placeholder semantics",
+            `fake Pi authored ${path} with retained placeholder semantics`,
           );
         }
         const written = await invoke("write", {

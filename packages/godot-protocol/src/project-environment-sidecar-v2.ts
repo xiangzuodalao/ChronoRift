@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ProjectAdapterResourceReferenceV1Schema } from "./project-environment-values.js";
+
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/u);
 const resourceId = z
   .string()
@@ -44,6 +46,7 @@ export const GodotProjectEnvironmentVanillaSmokeLaunchV2Schema = z
   .object({
     ...common,
     operation: z.literal("vanilla_smoke"),
+    launchScene: ProjectAdapterResourceReferenceV1Schema.optional(),
     importTimeoutMs: z.number().int().min(1_000).max(120_000),
     vanillaTimeoutMs: z.number().int().min(2_001).max(60_000),
     stabilityWindowMs: z.literal(2_000),
@@ -63,6 +66,7 @@ export const GodotProjectEnvironmentSidecarLaunchV2Schema = z
     overlayHash: sha256,
     addonHash: sha256,
     expectedMainScene: z.string().min(7).max(1_024).startsWith("res://"),
+    launchScene: ProjectAdapterResourceReferenceV1Schema.optional(),
     instrumentationMode: z.enum(["bridge_only", "instrumented"]),
     sourceClosureId: resourceId,
     environmentRevisionId: resourceId,

@@ -20,10 +20,20 @@ import type { LoadedProjectAdapterPackageV1 } from "./project-adapter-package.js
 
 export interface ProjectAdapterPackageValidationOptionsV2 {
   readonly requireSingleLaunchTarget?: boolean | undefined;
+  readonly selectedLaunchTargetId?: string | undefined;
   readonly expectedMainScene?: string | undefined;
   readonly requireEmptyLaunchParameters?: boolean | undefined;
   readonly requiredImplementedModules?:
     readonly ProjectAdapterCapabilityModuleV2[] | undefined;
+}
+
+export type ProjectAdapterLaunchTargetV2 =
+  ProjectAdapterManifestV2["launchTargets"][number];
+
+export interface ProjectAdapterLaunchTargetSelectionV2 {
+  readonly defaultTarget: ProjectAdapterLaunchTargetV2;
+  readonly selectedTarget: ProjectAdapterLaunchTargetV2;
+  readonly targetsToValidate: readonly ProjectAdapterLaunchTargetV2[];
 }
 
 export interface ProjectAdapterPackageBytesV2 {
@@ -36,6 +46,7 @@ export interface LoadedProjectAdapterPackageV2 {
   readonly candidateSha256: string;
   readonly manifestSha256: string;
   readonly manifest: ProjectAdapterManifestV2;
+  readonly launchTargetSelection: ProjectAdapterLaunchTargetSelectionV2;
   readonly schemas: readonly ProjectAdapterPayloadSchemaDocumentV2[];
   readonly files: readonly {
     readonly path: string;
@@ -47,7 +58,42 @@ export interface LoadedProjectAdapterPackageV2 {
 
 export class ProjectAdapterPackageV2ValidationError extends Error {
   public override readonly name = "ProjectAdapterPackageV2ValidationError";
+
+  public constructor(
+    message: string,
+    public readonly code?: "target_not_validated",
+  ) {
+    super(message);
+  }
 }
+
+export const resolveProjectAdapterLaunchTargetSelectionV2 = (
+  manifest: ProjectAdapterManifestV2,
+  selectedLaunchTargetId?: string,
+): ProjectAdapterLaunchTargetSelectionV2 => {
+  const defaultTarget =
+    manifest.launchTargets.find((value) => value.default) ??
+    fail("adapter manifest has no default target");
+  const selectedTarget =
+    selectedLaunchTargetId === undefined
+      ? defaultTarget
+      : (manifest.launchTargets.find(
+          (value) => value.targetId === selectedLaunchTargetId,
+        ) ??
+        fail(
+          `adapter manifest does not declare launch target: ${selectedLaunchTargetId}`,
+          "target_not_validated",
+        ));
+  return Object.freeze({
+    defaultTarget,
+    selectedTarget,
+    targetsToValidate: Object.freeze(
+      defaultTarget.targetId === selectedTarget.targetId
+        ? [defaultTarget]
+        : [defaultTarget, selectedTarget],
+    ),
+  });
+};
 
 interface LoadedFileV2 {
   readonly relativePath: string;
@@ -55,8 +101,8 @@ interface LoadedFileV2 {
   readonly sha256: string;
 }
 
-const fail = (message: string): never => {
-  throw new ProjectAdapterPackageV2ValidationError(message);
+const fail = (message: string, code?: "target_not_validated"): never => {
+  throw new ProjectAdapterPackageV2ValidationError(message, code);
 };
 const decode = (bytes: Uint8Array, path: string): string => {
   try {
@@ -166,9 +212,11 @@ const validateFiles = (
     manifest.launchTargets.length !== 1
   )
     fail("PE-B requires exactly one launch target");
-  const target =
-    manifest.launchTargets.find((value) => value.default) ??
-    fail("adapter manifest has no default target");
+  const launchTargetSelection = resolveProjectAdapterLaunchTargetSelectionV2(
+    manifest,
+    options.selectedLaunchTargetId,
+  );
+  const target = launchTargetSelection.defaultTarget;
   if (
     options.expectedMainScene !== undefined &&
     target.scene !==
@@ -177,15 +225,20 @@ const validateFiles = (
     fail("adapter default target does not match the realized main scene");
   const schemaById = new Map(schemas.map((value) => [value.schemaId, value]));
   if (options.requireEmptyLaunchParameters === true) {
-    const parameters = schemaById.get(target.parametersSchemaId);
-    if (
-      parameters === undefined ||
-      !("type" in parameters.root) ||
-      parameters.root.type !== "object" ||
-      Object.keys(parameters.root.properties).length !== 0 ||
-      parameters.root.required.length !== 0
-    )
-      fail("PE-B requires strict empty launch parameters");
+    for (const launchTarget of manifest.launchTargets) {
+      const parameters = schemaById.get(launchTarget.parametersSchemaId);
+      if (
+        parameters === undefined ||
+        !("type" in parameters.root) ||
+        parameters.root.type !== "object" ||
+        Object.keys(parameters.root.properties).length !== 0 ||
+        parameters.root.required.length !== 0 ||
+        parameters.root.additionalProperties !== false
+      )
+        fail(
+          `PE-C requires strict empty launch parameters for target ${launchTarget.targetId}`,
+        );
+    }
   }
   for (const module of options.requiredImplementedModules ??
     PROJECT_ADAPTER_REQUIRED_MODULES_V2) {
@@ -207,6 +260,7 @@ const validateFiles = (
     candidateSha256: identity.digest("hex"),
     manifestSha256: manifestFile.sha256,
     manifest,
+    launchTargetSelection,
     schemas: Object.freeze(schemas),
     files: Object.freeze(
       files.map((file) =>

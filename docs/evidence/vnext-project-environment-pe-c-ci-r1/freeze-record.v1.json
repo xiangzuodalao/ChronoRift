@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "chronorift-project-environment-pe-c-ci-post-gate-freeze",
+  "recordTiming": "post_gate",
+  "classification": "project_environment_pe_c_narrow_external_project_ci_host_gate",
+  "archiveStatus": "unprotected_push_workflow_metadata_archive",
+  "recordedAt": "2026-08-14T07:47:42Z",
+  "freezeAnchor": {
+    "tagName": "vnext-project-environment-pe-c-ci-gate-r1-freeze",
+    "requiredObjectType": "tag",
+    "targetKind": "freeze_record_commit",
+    "productSubjectMustBeAncestor": true,
+    "statusAtRecordCreation": "planned_pending_archive_commit"
+  },
+  "productSubject": {
+    "repositoryCommit": "a119ec4f7a9a203d32db740b3dc4ffba7fc69ad0",
+    "repositoryTree": "17d3cadff45b3cf23826efb59f8ead94cc81ca15",
+    "gitObjectFormat": "sha1",
+    "productGitBundleArchived": false,
+    "completeProductTreeArchived": false
+  },
+  "gate": {
+    "workflowRunId": 31779574638,
+    "workflowRunAttempt": 1,
+    "workflowEvent": "push",
+    "conclusion": "success",
+    "jobId": 94702187428,
+    "jobName": "external-project",
+    "deterministicFakeAgent": true,
+    "realProviderContacted": false,
+    "nodeVersion": "v22.23.1",
+    "godotVersion": "4.7.1.stable.official.a13da4feb",
+    "runnerImage": "ubuntu-24.04",
+    "runnerImageVersion": "20260720.247.2",
+    "externalProject": {
+      "repository": "endlessm/moddable-platformer",
+      "commit": "3e793f53598a131c53fb82555191cc14b8db07ff",
+      "tree": "a013bd677c712dbf354e8e2f6e8ff7c53d5684c6",
+      "disposableOverlay": [
+        "tracked_dirty",
+        "explicit_untracked",
+        "nested_project",
+        "project_local_addon_and_tool",
+        "default_and_selected_launch_target"
+      ]
+    },
+    "observedCoverage": [
+      "init_to_stable_source_id",
+      "adapter_publication_with_default_and_selected_target",
+      "default_and_selected_target_run_and_observation",
+      "unchanged_source_new_session_environment_revision_reuse",
+      "tracked_source_change_review_required_before_pi_or_game_execution"
+    ],
+    "companionStandardCiRunId": 31779574707,
+    "companionStandardCiConclusion": "success",
+    "localRegressionAtProductSubject": {
+      "defaultGateTestFilesPassed": 167,
+      "defaultGateTestsPassed": 1298,
+      "godotGateTestFilesPassed": 11,
+      "godotGateTestsPassed": 27
+    }
+  },
+  "productInterfaces": [
+    {
+      "path": ".github/workflows/project-environment-pe-c.yml",
+      "sha256": "ac1bfccf169e516ed74920e0faa346a7ab7f334fd8c0018c3b0f69615291ffa4"
+    },
+    {
+      "path": ".github/scripts/run-vnext-project-environment-pe-c-conformance.sh",
+      "sha256": "6263afca1a29334be82196dfa23ee51515b355618b7521665e540420ed313a57"
+    },
+    {
+      "path": "testdata/vnext/pe-c/moddable-platformer.contract.v1.json",
+      "sha256": "2ab29bc14f1ae50b23d7dafd04d8f19aa12006f89a77622b31aa345050e636f3"
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-preview.project-environment-pe-c-host.test.ts",
+      "sha256": "a273d8deaaed83698cbc2474429005e6ca3ec38508f21259895f166866a527f7"
+    }
+  ],
+  "archiveInventory": {
+    "fixedAllowlist": [
+      "README.md",
+      "SHA256SUMS",
+      "freeze-record.v1.json",
+      "github-actions-run.v1.json"
+    ],
+    "regularFileCount": 4,
+    "symlinkCount": 0,
+    "nonRegularEntryCount": 0,
+    "sha256SumsCoversEveryFileExceptItself": true
+  },
+  "trustBoundary": {
+    "protectedWorkflowArtifact": false,
+    "workflowTriggerWasUnprotectedBranchPush": true,
+    "runnerLogsArchived": false,
+    "standaloneValidatorArchived": false,
+    "hashesAreSignatures": false,
+    "runToProductCommitExternallyAttested": false,
+    "independentAcceptance": false,
+    "completeProjectEnvironmentV1Conformance": false,
+    "claimsExcluded": [
+      "arbitrary_project_support",
+      "real_pi_adapter_generation",
+      "agent_debugging_success",
+      "adapter_semantic_correctness",
+      "checkpoint_or_restore_equivalence",
+      "patch_correctness",
+      "generalization",
+      "reliability",
+      "success_rate",
+      "independent_acceptance",
+      "external_attestation"
+    ]
+  }
+}

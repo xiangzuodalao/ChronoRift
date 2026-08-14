@@ -1,5 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import type { Stats } from "node:fs";
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+} from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import {
   EnvironmentPublicationIntentV1Schema,
@@ -18,7 +29,6 @@ import {
   asProjectSessionId,
   asProjectToolchainReceiptId,
   asSha256DigestV1,
-  asSourceId,
   asWorkspaceId,
   taskNamespaceDigestV1,
   type ProjectCapabilitySetV1,
@@ -35,6 +45,7 @@ import {
 import {
   ProjectEnvironmentStoreV1,
   ProjectEnvironmentTaskStoreV1,
+  canonicalJson,
   contentHash,
 } from "@chronorift/json-artifacts";
 import {
@@ -100,11 +111,13 @@ import { preflightManagedGodotProjectEnvironmentRuntimeV1 } from "./managed-godo
 import { GodotProjectEnvironmentSidecarPortV2 } from "./project-environment-sidecar-port-v2.js";
 import { preflightManagedGodotProjectEnvironmentRuntimeV2 } from "./managed-godot-project-environment-runtime-v2-preflight.js";
 import {
+  assertReusableProjectEnvironmentRuntimeDigestsV2,
   inspectReusableProjectEnvironmentRevisionV2,
   type InspectedReusableProjectEnvironmentV2,
 } from "./project-environment-reuse-v2.js";
 import {
   createDuplexBwrapCgroupTaskSandbox,
+  sandboxManagedRuntimePolicyTargets,
   type DuplexTaskSandboxBrokerV1,
 } from "./sandbox-broker.js";
 import {
@@ -116,7 +129,11 @@ import {
   preflightSandboxHost,
 } from "./sandbox-preflight.js";
 import { inspectSandboxToolchain } from "./sandbox-toolchain.js";
-import { preflightCleanProjectEnvironmentV1 } from "./source-preflight.js";
+import {
+  preflightCleanProjectEnvironmentV1,
+  refreezeProjectEnvironmentSourceV1,
+  type VerifiedProjectEnvironmentSourceV1,
+} from "./source-preflight.js";
 import { createProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
 
@@ -138,8 +155,249 @@ const hash = (label: string, value: unknown): string =>
     value: JSON.parse(JSON.stringify(value)) as never,
   });
 
+const canonicalRecordBytes = (value: unknown): Uint8Array =>
+  Buffer.from(
+    `${canonicalJson(JSON.parse(JSON.stringify(value)) as never)}\n`,
+    "utf8",
+  );
+
+type PreviewTaskLayoutV1 = Awaited<
+  ReturnType<typeof createProjectEnvironmentTaskDirectoryLayout>
+>;
+
+const previewTaskLayoutChildrenV1 = (
+  layout: PreviewTaskLayoutV1,
+): readonly (readonly [name: string, path: string])[] =>
+  Object.freeze([
+    ["records", layout.taskRecordDirectory],
+    ["runtime-records", layout.runtimeRecordDirectory],
+    ["workspace", layout.workspaceDirectory],
+    ["tmp", layout.sandboxTemporaryDirectory],
+    ["sandbox-artifacts", layout.sandboxArtifactScratchDirectory],
+    ["pi-sessions", layout.piSessionDirectory],
+    ["host-baseline.git", layout.hostBaselineGitDirectory],
+    ["host-tmp", layout.hostOperationTemporaryDirectory],
+    ["project-environment-records", layout.projectEnvironmentRecordDirectory],
+  ]);
+
+const sameFileIdentity = (
+  left: { readonly dev: number; readonly ino: number },
+  right: { readonly dev: number; readonly ino: number },
+): boolean => left.dev === right.dev && left.ino === right.ino;
+
+const assertPrivateOwnedDirectory = async (
+  path: string,
+  label: string,
+): Promise<Stats> => {
+  const statistics = await lstat(path);
+  const effectiveUserId = process.geteuid?.();
+  if (
+    effectiveUserId === undefined ||
+    statistics.isSymbolicLink() ||
+    !statistics.isDirectory() ||
+    statistics.uid !== effectiveUserId ||
+    (statistics.mode & 0o7777) !== 0o700
+  ) {
+    throw new Error(`${label} is no longer a private owned directory`);
+  }
+  return statistics;
+};
+
+const assertExactPreviewTaskChildren = async (
+  taskRootDirectory: string,
+  expectedChildren: readonly (readonly [name: string, path: string])[],
+): Promise<ReadonlyMap<string, Stats>> => {
+  const expectedNames = expectedChildren.map(([name]) => name).sort();
+  const actualNames = (await readdir(taskRootDirectory, { encoding: "buffer" }))
+    .map((entry) => entry.toString("utf8"))
+    .sort();
+  if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
+    throw new Error(
+      "Project Environment Task root contains an unowned top-level entry",
+    );
+  }
+
+  const identities = new Map<string, Stats>();
+  for (const [name, path] of expectedChildren) {
+    if (dirname(path) !== taskRootDirectory || basename(path) !== name) {
+      throw new Error(
+        "Project Environment Task layout child escaped its owned root",
+      );
+    }
+    identities.set(
+      name,
+      await assertPrivateOwnedDirectory(
+        path,
+        `Task lifecycle directory ${name}`,
+      ),
+    );
+  }
+  return identities;
+};
+
+/**
+ * Materialization is the last point before Preview transfers this fresh random
+ * Task namespace to its durable Task store. A failed materialization therefore
+ * rolls back only the exact private layout created by this invocation. The
+ * root is atomically moved under a new private quarantine before recursive
+ * removal, and any unknown top-level entry makes cleanup fail closed.
+ */
+const rollbackUncommittedPreviewTaskLayoutV1 = async (input: {
+  readonly taskId: ReturnType<typeof asProjectEnvironmentTaskId>;
+  readonly layout: PreviewTaskLayoutV1;
+}): Promise<void> => {
+  const taskRootDirectory = input.layout.taskRootDirectory;
+  const expectedTaskName = taskNamespaceDigestV1(input.taskId);
+  if (
+    !isAbsolute(taskRootDirectory) ||
+    resolve(taskRootDirectory) !== taskRootDirectory ||
+    basename(taskRootDirectory) !== expectedTaskName
+  ) {
+    throw new Error(
+      "Project Environment Task rollback refused a mismatched Task namespace",
+    );
+  }
+  const tasksDirectory = dirname(taskRootDirectory);
+  if ((await realpath(tasksDirectory)) !== tasksDirectory) {
+    throw new Error(
+      "Project Environment Task rollback requires a canonical Task parent",
+    );
+  }
+  await assertPrivateOwnedDirectory(
+    tasksDirectory,
+    "Project Environment Tasks directory",
+  );
+
+  const rootIdentity = await assertPrivateOwnedDirectory(
+    taskRootDirectory,
+    "Project Environment Task root",
+  );
+  const expectedChildren = previewTaskLayoutChildrenV1(input.layout);
+  const childIdentities = await assertExactPreviewTaskChildren(
+    taskRootDirectory,
+    expectedChildren,
+  );
+
+  const quarantineDirectory = await mkdtemp(
+    join(tasksDirectory, ".preview-rollback-"),
+  );
+  let taskRootWasMoved = false;
+  let retainedDirectories: string[] = [taskRootDirectory, quarantineDirectory];
+  try {
+    await chmod(quarantineDirectory, 0o700);
+    await assertPrivateOwnedDirectory(
+      quarantineDirectory,
+      "Project Environment Task rollback quarantine",
+    );
+    const quarantinedTaskRoot = join(quarantineDirectory, expectedTaskName);
+    await rename(taskRootDirectory, quarantinedTaskRoot);
+    taskRootWasMoved = true;
+    retainedDirectories = [quarantinedTaskRoot];
+
+    const movedRootIdentity = await assertPrivateOwnedDirectory(
+      quarantinedTaskRoot,
+      "Quarantined Project Environment Task root",
+    );
+    if (!sameFileIdentity(rootIdentity, movedRootIdentity)) {
+      throw new Error(
+        "Project Environment Task root identity changed during rollback",
+      );
+    }
+    const movedChildren = expectedChildren.map(
+      ([name]) => [name, join(quarantinedTaskRoot, name)] as const,
+    );
+    const movedChildIdentities = await assertExactPreviewTaskChildren(
+      quarantinedTaskRoot,
+      movedChildren,
+    );
+    for (const [name, identity] of childIdentities) {
+      const movedIdentity = movedChildIdentities.get(name);
+      if (
+        movedIdentity === undefined ||
+        !sameFileIdentity(identity, movedIdentity)
+      ) {
+        throw new Error(
+          `Task lifecycle directory ${name} changed identity during rollback`,
+        );
+      }
+    }
+
+    await rm(quarantinedTaskRoot, { recursive: true, force: false });
+    retainedDirectories = [quarantineDirectory];
+    await rmdir(quarantineDirectory);
+    retainedDirectories = [];
+  } catch (error) {
+    let rollbackError = error;
+    if (!taskRootWasMoved) {
+      try {
+        await rmdir(quarantineDirectory);
+        retainedDirectories = [taskRootDirectory];
+      } catch (quarantineError) {
+        rollbackError = new AggregateError(
+          [error, quarantineError],
+          "Project Environment Task rollback also failed to remove its empty quarantine",
+        );
+      }
+    }
+    throw Object.assign(
+      new Error(
+        `Project Environment Task rollback retained state at ${retainedDirectories.join(", ")}`,
+        { cause: rollbackError },
+      ),
+      { retainedTaskDirectories: Object.freeze([...retainedDirectories]) },
+    );
+  }
+};
+
+const materializePreviewTaskWorkspaceV1 = async (input: {
+  readonly taskId: ReturnType<typeof asProjectEnvironmentTaskId>;
+  readonly source: VerifiedProjectEnvironmentSourceV1;
+  readonly layout: PreviewTaskLayoutV1;
+}) => {
+  try {
+    const materialized = await materializePrivateTaskWorkspace(input);
+    if (materialized.receipt.schemaVersion !== 2) {
+      throw new Error(
+        "Project Environment Preview requires a V2 source materialization receipt",
+      );
+    }
+    return materialized;
+  } catch (materializationError) {
+    try {
+      await rollbackUncommittedPreviewTaskLayoutV1({
+        taskId: input.taskId,
+        layout: input.layout,
+      });
+    } catch (rollbackError) {
+      const retainedTaskDirectories =
+        rollbackError instanceof Error &&
+        "retainedTaskDirectories" in rollbackError &&
+        Array.isArray(rollbackError.retainedTaskDirectories) &&
+        rollbackError.retainedTaskDirectories.every(
+          (path: unknown): path is string => typeof path === "string",
+        )
+          ? rollbackError.retainedTaskDirectories
+          : [input.layout.taskRootDirectory];
+      throw Object.assign(
+        new AggregateError(
+          [materializationError, rollbackError],
+          `Project Environment materialization failed and Task rollback was not completed; retained Task state: ${retainedTaskDirectories.join(", ")}`,
+        ),
+        {
+          code: "artifact_write_failed" as const,
+          retainedTaskDirectories: Object.freeze([...retainedTaskDirectories]),
+        },
+      );
+    }
+    throw materializationError;
+  }
+};
+
 export interface ProjectEnvironmentPreviewRequestV1 {
   readonly projectPath: string;
+  readonly projectRoot?: string | undefined;
+  readonly includeUntrackedPaths?: readonly string[] | undefined;
+  readonly launchTargetId?: string | undefined;
   readonly provider: string;
   readonly model: string;
   readonly thinkingLevel: PiThinkingLevel;
@@ -158,6 +416,11 @@ export interface ProjectEnvironmentPreviewResultV1 {
   readonly sessionId: string;
   readonly sessionFile: string | null;
   readonly environmentId: string;
+  readonly sourceId: string;
+  /** Canonical path relative to the enclosing Git root; empty means root. */
+  readonly projectRoot: string;
+  readonly launchTargetId: string | null;
+  readonly validatedLaunchTargetIds: readonly string[];
   readonly environmentRevisionId: string | null;
   readonly adapterRevisionId: string | null;
   readonly buildId: string | null;
@@ -213,28 +476,6 @@ const mapPiTurn = (
   errorMessage: result.errorMessage,
 });
 
-const managedRuntimeTargets = (runtime: {
-  readonly capability: {
-    readonly toolchain: {
-      readonly files: readonly { readonly target: string }[];
-    };
-    readonly fontconfigTarget: string;
-    readonly addonParentTarget: string;
-    readonly addonTarget: string;
-    readonly overlayTarget: string;
-    readonly adapterParentTarget: string;
-    readonly adapterTarget: string;
-  };
-}): readonly string[] => [
-  ...runtime.capability.toolchain.files.map((file) => file.target),
-  runtime.capability.fontconfigTarget,
-  runtime.capability.addonParentTarget,
-  runtime.capability.addonTarget,
-  runtime.capability.overlayTarget,
-  runtime.capability.adapterParentTarget,
-  runtime.capability.adapterTarget,
-];
-
 /**
  * Explicit Preview composition. It does not replace the default ChronoRift
  * entry point and it publishes only after the Pi turn returns and Host
@@ -253,14 +494,25 @@ export async function runProjectEnvironmentPreviewV1(
   );
   const source = await preflightCleanProjectEnvironmentV1({
     projectPath: request.projectPath,
+    ...(request.projectRoot === undefined
+      ? {}
+      : { projectRoot: request.projectRoot }),
+    ...(request.includeUntrackedPaths === undefined
+      ? {}
+      : { includeUntrackedPaths: request.includeUntrackedPaths }),
     sourceRepositoryExclusionRoots: [hostConfig.taskStorageRoot],
   });
+  if (source.sourceClosure === undefined) {
+    throw new Error(
+      "Project Environment Preview requires a versioned Project Source Closure",
+    );
+  }
   const project = await prepareProjectEnvironmentProjectStoreV1(source);
   const environmentIdentity = hash("project-environment", source.projectRoot);
   const environmentId = asProjectEnvironmentId(
     `environment:v1:${environmentIdentity}`,
   );
-  const sourceId = asSourceId(`source:v1:${source.projectSourceIdentity}`);
+  const sourceId = source.sourceClosure.sourceId;
   const adapterId = asAdapterId(
     `adapter.pea.${environmentIdentity.slice(0, 48)}`,
   );
@@ -284,6 +536,10 @@ export async function runProjectEnvironmentPreviewV1(
       sessionId: recovery.authority.sessionId,
       sessionFile: null,
       environmentId,
+      sourceId,
+      projectRoot: source.projectPrefix,
+      launchTargetId: null,
+      validatedLaunchTargetIds: Object.freeze([]),
       environmentRevisionId: committed
         ? recovery.authority.targetEnvironmentRevisionId
         : null,
@@ -321,6 +577,26 @@ export async function runProjectEnvironmentPreviewV1(
     });
   }
 
+  const currentPointer = await projectStore.readCurrent();
+  const currentRevision =
+    currentPointer === null
+      ? null
+      : await projectStore.readRevision(
+          currentPointer.environmentRevisionId,
+          currentPointer.publicationOperationId,
+        );
+  if (
+    currentRevision !== null &&
+    currentRevision.payload.sourceId !== sourceId
+  ) {
+    throw Object.assign(
+      new Error(
+        "review_required: current Project Environment source closure differs from the selected source",
+      ),
+      { code: "review_required" as const },
+    );
+  }
+
   const sandbox = await preflightSandboxHost({
     delegatedCgroupRoot: hostConfig.delegatedCgroupRoot,
     bwrapPath: hostConfig.bwrapPath,
@@ -353,69 +629,17 @@ export async function runProjectEnvironmentPreviewV1(
     sourceRepositoryRoot: source.repositoryRoot,
     taskId,
   });
-  await materializePrivateTaskWorkspace({ taskId, source, layout });
+  const materialized = await materializePreviewTaskWorkspaceV1({
+    taskId,
+    source,
+    layout,
+  });
 
   const taskStore = new ProjectEnvironmentTaskStoreV1({
     storeRoot: layout.projectEnvironmentRecordDirectory,
     taskId,
   });
   await taskStore.create();
-
-  const codingToolchain = await inspectSandboxToolchain({
-    lddPath: hostConfig.lddPath,
-    commands: [
-      { target: "/bin/bash", hostPath: hostConfig.bashPath },
-      { target: "/usr/bin/rg", hostPath: hostConfig.rgPath },
-      { target: "/usr/bin/find", hostPath: hostConfig.findPath },
-      { target: "/usr/bin/ls", hostPath: hostConfig.lsPath },
-    ],
-  });
-  const codingPolicy = createSandboxPolicyV1(
-    sandbox.capability.runtimeIdentity,
-    {
-      toolchainId: codingToolchain.capability.toolchainId,
-      targets: codingToolchain.capability.files.map((file) => file.target),
-    },
-  );
-  const securityEvents: SecurityEventV1[] = [];
-  let broker: DuplexTaskSandboxBrokerV1 =
-    await createDuplexBwrapCgroupTaskSandbox({
-      taskId,
-      capability: sandbox.capability,
-      hostBinding: sandbox.binding,
-      policy: codingPolicy,
-      toolchain: codingToolchain,
-      layout,
-      securityEvents: (event) => {
-        securityEvents.push(event);
-        return Promise.resolve();
-      },
-    });
-  let sessionFile: string | undefined;
-  let validationCapabilitySet: ProjectCapabilitySetV1 | undefined;
-  let validationRuntime:
-    | Awaited<
-        ReturnType<typeof preflightManagedGodotProjectEnvironmentRuntimeV1>
-      >
-    | undefined;
-  let validationRuntimeV2:
-    | Awaited<
-        ReturnType<typeof preflightManagedGodotProjectEnvironmentRuntimeV2>
-      >
-    | undefined;
-  let authoritative: ProjectEnvironmentAuthoritativeValidationV1 | undefined;
-  let gameRuntime:
-    | ProjectEnvironmentGameRuntimeV1
-    | ProjectEnvironmentGameRuntimeV2
-    | undefined;
-  let activeBuild:
-    | ProjectEnvironmentRuntimeBuildV1
-    | ProjectEnvironmentRuntimeBuildV2
-    | undefined;
-  let runtimeObservationReceiptId: string | undefined;
-  let validatedAdapterPackageV2: LoadedProjectAdapterPackageV2 | undefined;
-  let boundEnvironmentRevision: ProjectEnvironmentRevisionV1 | undefined;
-  let boundAdapterRevision: ProjectAdapterRevisionV1 | undefined;
 
   const toolchainIdentity = {
     schemaVersion: 1 as const,
@@ -450,6 +674,79 @@ export async function runProjectEnvironmentPreviewV1(
   });
   await taskStore.putToolchainReceiptOnce(toolchainReceipt);
 
+  const codingToolchain = await inspectSandboxToolchain({
+    lddPath: hostConfig.lddPath,
+    commands: [
+      { target: "/bin/bash", hostPath: hostConfig.bashPath },
+      { target: "/usr/bin/rg", hostPath: hostConfig.rgPath },
+      { target: "/usr/bin/find", hostPath: hostConfig.findPath },
+      { target: "/usr/bin/ls", hostPath: hostConfig.lsPath },
+    ],
+  });
+  const codingPolicy = createSandboxPolicyV1(
+    sandbox.capability.runtimeIdentity,
+    {
+      toolchainId: codingToolchain.capability.toolchainId,
+      targets: codingToolchain.capability.files.map((file) => file.target),
+    },
+  );
+  const securityEvents: SecurityEventV1[] = [];
+  let broker: DuplexTaskSandboxBrokerV1 =
+    await createDuplexBwrapCgroupTaskSandbox({
+      taskId,
+      capability: sandbox.capability,
+      hostBinding: sandbox.binding,
+      policy: codingPolicy,
+      toolchain: codingToolchain,
+      layout,
+      securityEvents: (event) => {
+        securityEvents.push(event);
+        return Promise.resolve();
+      },
+    });
+  const cleanupBrokerAfterEarlyFailure = async (
+    error: unknown,
+    context: string,
+  ): Promise<never> => {
+    const cleanup = await broker.cleanup();
+    if (
+      !cleanup.processGroupTerminated ||
+      cleanup.cgroupPopulated ||
+      !cleanup.scopeRemoved ||
+      (sandbox.capability.taskStorage !== undefined &&
+        cleanup.storageReconciled !== true)
+    )
+      throw new Error(context, { cause: error });
+    throw error;
+  };
+  let sessionFile: string | undefined;
+  let validationCapabilitySet: ProjectCapabilitySetV1 | undefined;
+  let validationRuntime:
+    | Awaited<
+        ReturnType<typeof preflightManagedGodotProjectEnvironmentRuntimeV1>
+      >
+    | undefined;
+  let validationRuntimeV2:
+    | Awaited<
+        ReturnType<typeof preflightManagedGodotProjectEnvironmentRuntimeV2>
+      >
+    | undefined;
+  let authoritative: ProjectEnvironmentAuthoritativeValidationV1 | undefined;
+  let gameRuntime:
+    | ProjectEnvironmentGameRuntimeV1
+    | ProjectEnvironmentGameRuntimeV2
+    | undefined;
+  let activeBuild:
+    | ProjectEnvironmentRuntimeBuildV1
+    | ProjectEnvironmentRuntimeBuildV2
+    | undefined;
+  let runtimeObservationReceiptId: string | undefined;
+  let validatedAdapterPackageV2: LoadedProjectAdapterPackageV2 | undefined;
+  let resolvedLaunchTargetId: string | undefined;
+  let validatedLaunchTargetIds: readonly string[] = Object.freeze([]);
+  let boundEnvironmentRevision: ProjectEnvironmentRevisionV1 | undefined;
+  let boundAdapterRevision: ProjectAdapterRevisionV1 | undefined;
+
   const activateManagedRuntime = async (
     adapterFiles: readonly {
       readonly relativePath: string;
@@ -483,7 +780,7 @@ export async function runProjectEnvironmentPreviewV1(
         godot: {
           toolchainId: validationRuntime.capability.toolchain.toolchainId,
           managedRuntimeId: validationRuntime.capability.managedRuntimeId,
-          targets: managedRuntimeTargets(validationRuntime),
+          targets: sandboxManagedRuntimePolicyTargets(validationRuntime),
         },
       },
     );
@@ -536,7 +833,7 @@ export async function runProjectEnvironmentPreviewV1(
         godot: {
           toolchainId: validationRuntimeV2.capability.toolchain.toolchainId,
           managedRuntimeId: validationRuntimeV2.capability.managedRuntimeId,
-          targets: managedRuntimeTargets(validationRuntimeV2),
+          targets: sandboxManagedRuntimePolicyTargets(validationRuntimeV2),
         },
       },
     );
@@ -556,52 +853,79 @@ export async function runProjectEnvironmentPreviewV1(
     return managedPolicy;
   };
 
-  const currentPointer = await projectStore.readCurrent();
-  const currentRevision =
-    currentPointer === null
-      ? null
-      : await projectStore.readRevision(
-          currentPointer.environmentRevisionId,
-          currentPointer.publicationOperationId,
-        );
   const currentIsV2 =
     currentRevision?.files.some(
       (file) => file.path === "records/conformance-receipt.v2.json",
     ) ?? false;
-  const reusableV2: InspectedReusableProjectEnvironmentV2 | null =
-    currentRevision === null || !currentIsV2
-      ? null
-      : inspectReusableProjectEnvironmentRevisionV2({
-          revision: currentRevision.payload,
-          files: currentRevision.files,
-          expectedSourceId: sourceId,
-          expectedToolchainReceiptId: toolchainReceipt.receiptId,
-          expectedAdapterId: adapterId,
-          expectedMainScene: source.mainScene,
-        });
-  const reusable =
-    currentRevision === null || currentIsV2
-      ? null
-      : inspectReusableProjectEnvironmentRevisionV1({
-          revision: currentRevision.payload,
-          files: currentRevision.files,
-          expectedSourceId: sourceId,
-          expectedToolchainReceiptId: toolchainReceipt.receiptId,
-          expectedAdapterId: adapterId,
-          expectedMainScene: source.mainScene,
-        });
-  if (currentRevision !== null && reusable === null && reusableV2 === null)
-    throw new Error(
-      "review_required: current adapter protocol version or evidence layout is unsupported",
+  let reusableV2: InspectedReusableProjectEnvironmentV2 | null = null;
+  let reusable: ReturnType<
+    typeof inspectReusableProjectEnvironmentRevisionV1
+  > | null = null;
+  try {
+    if (
+      currentRevision !== null &&
+      !currentIsV2 &&
+      request.launchTargetId !== undefined
+    )
+      throw Object.assign(
+        new Error(
+          "target_not_validated: a selected launch target requires a Project Adapter V2 revision",
+        ),
+        { code: "target_not_validated" as const },
+      );
+    reusableV2 =
+      currentRevision === null || !currentIsV2
+        ? null
+        : inspectReusableProjectEnvironmentRevisionV2({
+            revision: currentRevision.payload,
+            files: currentRevision.files,
+            expectedSourceId: sourceId,
+            expectedToolchainReceiptId: toolchainReceipt.receiptId,
+            expectedAdapterId: adapterId,
+            expectedMainScene: source.mainScene,
+            ...(request.launchTargetId === undefined
+              ? {}
+              : { selectedLaunchTargetId: request.launchTargetId }),
+          });
+    reusable =
+      currentRevision === null || currentIsV2
+        ? null
+        : inspectReusableProjectEnvironmentRevisionV1({
+            revision: currentRevision.payload,
+            files: currentRevision.files,
+            expectedSourceId: sourceId,
+            expectedToolchainReceiptId: toolchainReceipt.receiptId,
+            expectedAdapterId: adapterId,
+            expectedMainScene: source.mainScene,
+          });
+    if (currentRevision !== null && reusable === null && reusableV2 === null)
+      throw Object.assign(
+        new Error(
+          "review_required: current adapter protocol version or evidence layout is unsupported",
+        ),
+        { code: "review_required" as const },
+      );
+  } catch (error) {
+    return cleanupBrokerAfterEarlyFailure(
+      error,
+      "Project Environment sandbox cleanup failed while rejecting current revision",
     );
+  }
   if (reusable === null && reusableV2 === null) {
-    await initializeProjectAdapterCandidateWorkspaceV2({
-      workspaceDirectory: layout.workspaceDirectory,
-      taskId,
-      projectSourceIdentity: source.projectSourceIdentity,
-      adapterId,
-      mainScene: source.mainScene,
-    });
+    try {
+      await initializeProjectAdapterCandidateWorkspaceV2({
+        workspaceDirectory: layout.workspaceDirectory,
+        taskId,
+        projectSourceIdentity: source.projectSourceIdentity,
+        adapterId,
+        mainScene: source.mainScene,
+      });
+    } catch (error) {
+      return cleanupBrokerAfterEarlyFailure(
+        error,
+        "Project Environment sandbox cleanup failed after candidate workspace initialization failed",
+      );
+    }
   }
 
   const createCompatibleGameRuntime = async (input: {
@@ -739,6 +1063,8 @@ export async function runProjectEnvironmentPreviewV1(
     readonly adapterPackage: LoadedProjectAdapterPackageV2;
     readonly bindingEpochId: ReturnType<typeof asEnvironmentBindingEpochId>;
     readonly policyProfileDigest: ReturnType<typeof asSha256DigestV1>;
+    readonly launchTargetId: string;
+    readonly validatedLaunchTargetIds: readonly string[];
   }): Promise<{
     readonly build: ProjectEnvironmentRuntimeBuildV2;
     readonly runtime: ProjectEnvironmentGameRuntimeV2;
@@ -749,10 +1075,17 @@ export async function runProjectEnvironmentPreviewV1(
         "managed Project Environment V2 runtime was not retained",
       );
     const target = input.adapterPackage.manifest.launchTargets.find(
-      (candidate) => candidate.default,
+      (candidate) => candidate.targetId === input.launchTargetId,
     );
     if (target === undefined)
-      throw new Error("validated V2 adapter lost its default target");
+      throw new Error("validated V2 adapter lost its selected launch target");
+    if (!input.validatedLaunchTargetIds.includes(target.targetId))
+      throw Object.assign(
+        new Error(
+          `target_not_validated: launch target ${target.targetId} is not validated`,
+        ),
+        { code: "target_not_validated" as const },
+      );
     const prepareBuild = () =>
       prepareProjectEnvironmentGodotBuildV1({
         taskId,
@@ -789,6 +1122,8 @@ export async function runProjectEnvironmentPreviewV1(
         environmentRevisionId: input.revision.environmentRevisionId,
         adapterRevisionId: input.adapterRevision.adapterRevisionId,
         adapterPackage: input.adapterPackage,
+        validatedLaunchTargetIds: input.validatedLaunchTargetIds,
+        compatibleLaunchTargetId: target.targetId,
         capabilitySet: input.adapterRevision.capabilitySet,
         managedRuntime: managedRuntime.capability,
         sidecar: new GodotProjectEnvironmentSidecarPortV2({
@@ -863,7 +1198,13 @@ export async function runProjectEnvironmentPreviewV1(
         toolCallAdmission,
         projectAdapterFinalizeV2:
           turn.purpose === "environment_initialization"
-            ? { adapterId, mainScene: source.mainScene }
+            ? {
+                adapterId,
+                mainScene: source.mainScene,
+                ...(request.launchTargetId === undefined
+                  ? {}
+                  : { selectedLaunchTargetId: request.launchTargetId }),
+              }
             : undefined,
       },
     );
@@ -974,13 +1315,28 @@ export async function runProjectEnvironmentPreviewV1(
     },
     runTurn,
     assertGameSourceUnchanged: async () => {
-      const observed = await preflightCleanProjectEnvironmentV1({
-        projectPath: source.projectRoot,
-        sourceRepositoryExclusionRoots: [hostConfig.taskStorageRoot],
-      });
-      if (observed.projectSourceIdentity !== source.projectSourceIdentity) {
-        throw new Error(
-          "Host project source changed during PE-A initialization",
+      let observed: VerifiedProjectEnvironmentSourceV1;
+      try {
+        observed = await refreezeProjectEnvironmentSourceV1(source);
+      } catch (error) {
+        throw Object.assign(
+          new Error(
+            "source_drift: Host project source could not be re-frozen during Project Environment initialization",
+            { cause: error },
+          ),
+          { code: "source_drift" as const },
+        );
+      }
+      if (
+        observed.sourceClosure?.sourceId !== sourceId ||
+        observed.projectPrefix !== source.projectPrefix ||
+        observed.projectSourceIdentity !== source.projectSourceIdentity
+      ) {
+        throw Object.assign(
+          new Error(
+            "source_drift: Host project source changed during Project Environment initialization",
+          ),
+          { code: "source_drift" as const },
         );
       }
     },
@@ -1022,7 +1378,9 @@ export async function runProjectEnvironmentPreviewV1(
       const loaded = await loadProjectAdapterPackageV2(
         `${layout.workspaceDirectory}/.chronorift/adapter-candidate`,
         {
-          requireSingleLaunchTarget: true,
+          ...(request.launchTargetId === undefined
+            ? {}
+            : { selectedLaunchTargetId: request.launchTargetId }),
           expectedMainScene: source.mainScene,
           requireEmptyLaunchParameters: true,
         },
@@ -1063,12 +1421,25 @@ export async function runProjectEnvironmentPreviewV1(
         {
           candidateDirectory: `${layout.workspaceDirectory}/.chronorift/adapter-candidate`,
           candidateFiles,
+          sourceRecords: [
+            {
+              path: "records/source-closure.v1.json",
+              bytes: canonicalRecordBytes(source.sourceClosure),
+            },
+            {
+              path: "records/source-materialization-receipt.v2.json",
+              bytes: canonicalRecordBytes(materialized.receipt),
+            },
+          ],
           candidate,
           adapterId,
           environmentId,
           publicationOperationId: operationId,
           toolchainReceiptId: toolchainReceipt.receiptId,
           expectedMainScene: source.mainScene,
+          ...(request.launchTargetId === undefined
+            ? {}
+            : { selectedLaunchTargetId: request.launchTargetId }),
           sdkDigest: validationRuntimeV2.sdkDigest,
           bridgeDigest: validationRuntimeV2.bridgeDigest,
           policyProfileDigest: asSha256DigestV1(
@@ -1078,6 +1449,13 @@ export async function runProjectEnvironmentPreviewV1(
         driver,
       );
       const completedAt = validated.conformance.completedAt;
+      resolvedLaunchTargetId =
+        validated.loaded.launchTargetSelection.selectedTarget.targetId;
+      validatedLaunchTargetIds = Object.freeze(
+        validated.launchTargetValidation.targets
+          .filter((target) => target.status === "validated")
+          .map((target) => target.targetId),
+      );
       validationCapabilitySet = validated.adapterRevision.capabilitySet;
       await Promise.all([
         taskStore.putConformanceReceiptV2Once(validated.conformance),
@@ -1132,6 +1510,11 @@ export async function runProjectEnvironmentPreviewV1(
         adapterPackage: validatedAdapterPackageV2,
         bindingEpochId,
         policyProfileDigest: validation.environmentRevision.policyProfileDigest,
+        launchTargetId:
+          resolvedLaunchTargetId ??
+          validatedAdapterPackageV2.launchTargetSelection.selectedTarget
+            .targetId,
+        validatedLaunchTargetIds,
       });
       const binding = await bindPublishedProjectEnvironmentV1({
         taskStore,
@@ -1211,6 +1594,9 @@ export async function runProjectEnvironmentPreviewV1(
           thinkingLevel: request.thinkingLevel,
           budget: request.budget ?? DEFAULT_BUDGET,
           queuedGoal: request.goal,
+          ...(request.launchTargetId === undefined
+            ? {}
+            : { selectedLaunchTargetId: request.launchTargetId }),
           adapterContractVersion: 2,
           ids: {
             attemptId,
@@ -1248,15 +1634,19 @@ export async function runProjectEnvironmentPreviewV1(
       const policyProfileDigest = asSha256DigestV1(
         contentHash(managedPolicy as never),
       );
-      if (
-        validationRuntimeV2.sdkDigest !== reusableV2.revision.sdkDigest ||
-        validationRuntimeV2.bridgeDigest !== reusableV2.revision.bridgeDigest ||
-        policyProfileDigest !== reusableV2.revision.policyProfileDigest
-      )
-        throw new Error(
-          "review_required: V2 SDK, bridge, or sandbox policy changed",
-        );
+      assertReusableProjectEnvironmentRuntimeDigestsV2({
+        revision: reusableV2.revision,
+        sdkDigest: validationRuntimeV2.sdkDigest,
+        bridgeDigest: validationRuntimeV2.bridgeDigest,
+        policyProfileDigest,
+      });
       validatedAdapterPackageV2 = reusableV2.adapterPackage;
+      resolvedLaunchTargetId = reusableV2.selectedLaunchTarget.targetId;
+      validatedLaunchTargetIds = Object.freeze(
+        reusableV2.launchTargetValidation.targets
+          .filter((target) => target.status === "validated")
+          .map((target) => target.targetId),
+      );
       validationCapabilitySet = reusableV2.adapterRevision.capabilitySet;
       const compatible = await createCompatibleGameRuntimeV2({
         revision: reusableV2.revision,
@@ -1264,6 +1654,8 @@ export async function runProjectEnvironmentPreviewV1(
         adapterPackage: reusableV2.adapterPackage,
         bindingEpochId,
         policyProfileDigest,
+        launchTargetId: reusableV2.selectedLaunchTarget.targetId,
+        validatedLaunchTargetIds,
       });
       const buildBinding = await taskStore.readBuildBinding(
         asBuildId(compatible.build.buildId),
@@ -1483,6 +1875,10 @@ export async function runProjectEnvironmentPreviewV1(
     sessionId,
     sessionFile: sessionFile ?? null,
     environmentId,
+    sourceId,
+    projectRoot: source.projectPrefix,
+    launchTargetId: resolvedLaunchTargetId ?? null,
+    validatedLaunchTargetIds: Object.freeze([...validatedLaunchTargetIds]),
     environmentRevisionId:
       boundEnvironmentRevision?.environmentRevisionId ?? null,
     adapterRevisionId: boundAdapterRevision?.adapterRevisionId ?? null,
@@ -1501,7 +1897,8 @@ export async function runProjectEnvironmentPreviewV1(
     model: request.model,
     thinkingLevel: request.thinkingLevel,
     limitations: Object.freeze([
-      "PE-B Preview currently accepts only clean repository-root Godot 4.7.1 GDScript projects with one default launch target.",
+      "PE-C Preview freezes tracked working-tree bytes plus explicitly selected untracked files for one chosen Godot 4.7.1 GDScript project; ignored and unselected untracked files remain outside the closure.",
+      "Only the default and current selected launch target are publication-validated; other declared targets remain unavailable until a later reviewed revision validates them.",
       "Dynamic traces prove observation order and entity binding, not Signal causality or adapter semantic correctness.",
       "A changed workspace becomes launchable only after game_capabilities or game_launch freezes the exact candidate Build and its Adapter compatibility smoke succeeds.",
       ...(securityEvents.length === 0

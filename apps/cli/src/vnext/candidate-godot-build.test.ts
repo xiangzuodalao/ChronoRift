@@ -115,7 +115,7 @@ describe("Project Environment candidate collection", () => {
     expect(files.map((file) => file.relativePath)).toEqual(["project.godot"]);
   });
 
-  it.each(["native.so", "Logic.cs", "override.cfg", "addons/plugin.gd"])(
+  it.each(["native.so", "Logic.cs", "override.cfg"])(
     "rejects unsupported PE-A game path %s",
     async (relativePath) => {
       const workspace = await mkdtemp(
@@ -136,12 +136,6 @@ describe("Project Environment candidate collection", () => {
   it.each([
     ["credential path", ".env.production", "SECRET=value\n"],
     ["private key path", "config/service.pem", "private\n"],
-    ["tool script", "tool_script.gd", "@tool\nextends Node\n"],
-    [
-      "editor plugin",
-      "editor_plugin.gd",
-      "extends EditorPlugin\nfunc _enter_tree():\n\tpass\n",
-    ],
     ["toolchain drift", ".godot-version", "4.8.0\n"],
   ])("rejects PE-A post-edit %s", async (_label, relativePath, contents) => {
     const workspace = await mkdtemp(
@@ -156,6 +150,40 @@ describe("Project Environment candidate collection", () => {
     await expect(
       collectCandidateGodotSourceV1(workspace, "project-environment"),
     ).rejects.toBeInstanceOf(Error);
+  });
+
+  it("includes project-local addons and @tool scripts but reserves the managed bridge subtree", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-candidate-"),
+    );
+    roots.push(workspace);
+    await writeFile(join(workspace, "project.godot"), "[application]\n");
+    await mkdir(join(workspace, "addons", "local"), { recursive: true });
+    await writeFile(
+      join(workspace, "addons", "local", "plugin.gd"),
+      "@tool\nextends EditorPlugin\nfunc _enter_tree():\n\tpass\n",
+    );
+
+    await expect(
+      collectCandidateGodotSourceV1(workspace, "project-environment"),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relativePath: "addons/local/plugin.gd",
+        }),
+      ]),
+    );
+
+    await mkdir(join(workspace, "addons", "chronorift_project_environment"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(workspace, "addons", "chronorift_project_environment", "bridge.gd"),
+      "extends Node\n",
+    );
+    await expect(
+      collectCandidateGodotSourceV1(workspace, "project-environment"),
+    ).rejects.toThrow(/reserved managed addon subtree/u);
   });
 });
 

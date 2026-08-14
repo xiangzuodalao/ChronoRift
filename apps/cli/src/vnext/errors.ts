@@ -2,6 +2,7 @@ export const M1_ERROR_CODES = [
   "unsupported_platform",
   "sandbox_preflight_failed",
   "source_not_clean",
+  "source_drift",
   "source_feature_unsupported",
   "source_configuration_mismatch",
   "path_denied",

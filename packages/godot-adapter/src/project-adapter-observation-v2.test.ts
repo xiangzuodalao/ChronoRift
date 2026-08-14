@@ -156,6 +156,11 @@ const loaded: LoadedProjectAdapterPackageV2 = {
   candidateSha256: "a".repeat(64),
   manifestSha256: "b".repeat(64),
   manifest,
+  launchTargetSelection: {
+    defaultTarget: manifest.launchTargets[0]!,
+    selectedTarget: manifest.launchTargets[0]!,
+    targetsToValidate: [manifest.launchTargets[0]!],
+  },
   schemas,
   files: [],
   totalBytes: 1,

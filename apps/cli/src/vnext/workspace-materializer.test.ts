@@ -32,7 +32,7 @@ import {
   createTaskDirectoryLayout,
 } from "./task-paths.js";
 import {
-  ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema,
+  ProjectEnvironmentWorkspaceMaterializationReceiptV2Schema,
   materializePrivateTaskWorkspace,
 } from "./workspace-materializer.js";
 
@@ -135,6 +135,7 @@ describe("materializePrivateTaskWorkspace", () => {
       projectPath: root,
       sourceRepositoryExclusionRoots: [runtimeRoot],
     });
+    expect(source.sourceKind).toBe("project-environment-v1-clean-git");
     const taskId = asTaskId("task_materialize_project_environment");
     const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot,
@@ -149,11 +150,17 @@ describe("materializePrivateTaskWorkspace", () => {
     });
 
     expect(materialized.sourceKind).toBe("project-environment-v1-clean-git");
-    expect(
-      ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema.parse(
+    const parsedReceipt =
+      ProjectEnvironmentWorkspaceMaterializationReceiptV2Schema.parse(
         materialized.receipt,
-      ),
-    ).toEqual(materialized.receipt);
+      );
+    expect(parsedReceipt).toEqual(materialized.receipt);
+    expect(() =>
+      ProjectEnvironmentWorkspaceMaterializationReceiptV2Schema.parse({
+        ...parsedReceipt,
+        sourceId: `source:v1:${"0".repeat(64)}`,
+      }),
+    ).toThrow(/projectSourceIdentity/u);
     expect(JSON.stringify(materialized.receipt)).not.toContain(root);
     expect(materialized.projectSourceIdentity).toBe(
       source.projectSourceIdentity,
@@ -161,6 +168,238 @@ describe("materializePrivateTaskWorkspace", () => {
     expect(
       await git(layout.workspaceDirectory, ["status", "--porcelain"]),
     ).toBe("");
+  });
+
+  it("materializes nested tracked-dirty and explicit-untracked final bytes", async () => {
+    const container = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-dirty-materializer-"),
+    );
+    temporaryRoots.push(container);
+    const root = join(container, "repository");
+    const project = join(root, "games", "selected");
+    const runtimeRoot = join(container, "runtime");
+    await Promise.all([
+      mkdir(project, { recursive: true }),
+      mkdir(runtimeRoot),
+    ]);
+    await writeFile(
+      join(project, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(project, "main.tscn"), "[gd_scene format=3]\n");
+    await git(root, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(root, "nested project");
+    await writeFile(
+      join(project, "main.tscn"),
+      '[gd_scene format=3]\n[node name="Dirty" type="Node"]\n',
+    );
+    await writeFile(join(project, "explicit.txt"), "operator input\n");
+    await writeFile(join(project, "excluded.txt"), "not selected\n");
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: root,
+      projectRoot: "games/selected",
+      includeUntrackedPaths: ["explicit.txt"],
+      sourceRepositoryExclusionRoots: [runtimeRoot],
+    });
+    expect(source.sourceKind).toBe("project-environment-v1-source-closure");
+    const taskId = asTaskId("task_materialize_dirty_project_environment");
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot: root,
+      taskId,
+    });
+
+    const materialized = await materializePrivateTaskWorkspace({
+      taskId,
+      source,
+      layout,
+    });
+
+    expect(materialized.sourceKind).toBe(
+      "project-environment-v1-source-closure",
+    );
+    expect(
+      await readFile(join(layout.workspaceDirectory, "main.tscn"), "utf8"),
+    ).toContain("Dirty");
+    expect(
+      await readFile(join(layout.workspaceDirectory, "explicit.txt"), "utf8"),
+    ).toBe("operator input\n");
+    await expect(
+      access(join(layout.workspaceDirectory, "excluded.txt")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(materialized.receipt).toMatchObject({
+      schemaVersion: 2,
+      sourceId: source.sourceClosure?.sourceId,
+      projectPrefix: "games/selected",
+      copyRule: "verified-source-closure-v1",
+      sourcePostflight: {
+        status: "stable",
+        observedProjectSourceIdentity: source.projectSourceIdentity,
+      },
+    });
+  });
+
+  it("rejects source drift after closure freeze", async () => {
+    const container = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-drift-materializer-"),
+    );
+    temporaryRoots.push(container);
+    const root = join(container, "repository");
+    const runtimeRoot = join(container, "runtime");
+    await Promise.all([mkdir(root), mkdir(runtimeRoot)]);
+    await writeFile(
+      join(root, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(root, "main.tscn"), "[gd_scene format=3]\n");
+    await git(root, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(root, "project");
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: root,
+      sourceRepositoryExclusionRoots: [runtimeRoot],
+    });
+    await writeFile(join(root, "main.tscn"), "changed after freeze\n");
+    const taskId = asTaskId("task_materialize_drifted_project_environment");
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot: root,
+      taskId,
+    });
+
+    await expect(
+      materializePrivateTaskWorkspace({ taskId, source, layout }),
+    ).rejects.toMatchObject({ code: "source_drift" });
+  });
+
+  it("reports a deleted closure entry as source_drift", async () => {
+    const container = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-deleted-source-"),
+    );
+    temporaryRoots.push(container);
+    const root = join(container, "repository");
+    const runtimeRoot = join(container, "runtime");
+    await Promise.all([mkdir(root), mkdir(runtimeRoot)]);
+    await writeFile(
+      join(root, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(root, "main.tscn"), "[gd_scene format=3]\n");
+    await git(root, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(root, "project");
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: root,
+      sourceRepositoryExclusionRoots: [runtimeRoot],
+    });
+    await rm(join(root, "main.tscn"));
+    const taskId = asTaskId("task_materialize_deleted_project_environment");
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot: root,
+      taskId,
+    });
+
+    await expect(
+      materializePrivateTaskWorkspace({ taskId, source, layout }),
+    ).rejects.toMatchObject({ code: "source_drift" });
+  });
+
+  it("reports a postflight Git metadata failure as source_drift", async () => {
+    class PostflightStatusFailingGit extends NodeHostGitPort {
+      public override async statusPorcelain(): Promise<Uint8Array> {
+        throw new Error("injected source metadata failure");
+      }
+    }
+
+    const container = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-git-drift-"),
+    );
+    temporaryRoots.push(container);
+    const root = join(container, "repository");
+    const runtimeRoot = join(container, "runtime");
+    await Promise.all([mkdir(root), mkdir(runtimeRoot)]);
+    await writeFile(
+      join(root, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(root, "main.tscn"), "[gd_scene format=3]\n");
+    await git(root, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(root, "project");
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: root,
+      sourceRepositoryExclusionRoots: [runtimeRoot],
+    });
+    const taskId = asTaskId("task_materialize_git_metadata_drift");
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot: root,
+      taskId,
+    });
+
+    await expect(
+      materializePrivateTaskWorkspace(
+        { taskId, source, layout },
+        { git: new PostflightStatusFailingGit() },
+      ),
+    ).rejects.toMatchObject({
+      code: "source_drift",
+      message:
+        "source_drift: source checkout could not be re-frozen after materialization",
+    });
+  });
+
+  it("materializes a clean direct submodule from the selected closure", async () => {
+    const container = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-submodule-materializer-"),
+    );
+    temporaryRoots.push(container);
+    const root = join(container, "repository");
+    const dependency = join(container, "dependency");
+    const runtimeRoot = join(container, "runtime");
+    await Promise.all([mkdir(root), mkdir(dependency), mkdir(runtimeRoot)]);
+    await writeFile(
+      join(root, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(root, "main.tscn"), "[gd_scene format=3]\n");
+    await writeFile(join(dependency, "shared.gd"), "extends Node\n");
+    await git(root, ["init", "--quiet", "--initial-branch=main"]);
+    await git(dependency, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(root, "project");
+    await commitAll(dependency, "dependency");
+    await git(root, [
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "add",
+      "--quiet",
+      dependency,
+      "addons/local_dependency",
+    ]);
+    await commitAll(root, "submodule");
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: root,
+      sourceRepositoryExclusionRoots: [runtimeRoot],
+    });
+    const taskId = asTaskId("task_materialize_project_submodule");
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
+      runtimeRoot,
+      sourceRepositoryRoot: root,
+      taskId,
+    });
+
+    await materializePrivateTaskWorkspace({ taskId, source, layout });
+
+    expect(
+      await readFile(
+        join(
+          layout.workspaceDirectory,
+          "addons",
+          "local_dependency",
+          "shared.gd",
+        ),
+        "utf8",
+      ),
+    ).toBe("extends Node\n");
   });
 
   it("materializes an external project while keeping descriptor and source checkout outside the candidate", async () => {

@@ -147,6 +147,13 @@ describe("vNext broker-only Pi coding tools", () => {
             {
               targetId: "main",
               scene: "res://changed.tscn",
+              default: true,
+              renderer: "other",
+              parametersSchemaId: "state.actor",
+            },
+            {
+              targetId: "challenge",
+              scene: "res://challenge.tscn",
               default: false,
               renderer: "other",
               parametersSchemaId: "state.actor",
@@ -172,6 +179,7 @@ describe("vNext broker-only Pi coding tools", () => {
       projectAdapterFinalizeV2: {
         adapterId: "adapter.bound",
         mainScene: "res://main.tscn",
+        selectedLaunchTargetId: "challenge",
       },
     });
     expect(tools.map((tool) => tool.name)).toContain(
@@ -210,6 +218,13 @@ describe("vNext broker-only Pi coding tools", () => {
         targetId: "main",
         scene: "res://main.tscn",
         default: true,
+        parametersSchemaId: "state.actor",
+        renderer: "headless",
+      },
+      {
+        targetId: "challenge",
+        scene: "res://challenge.tscn",
+        default: false,
         parametersSchemaId: "state.actor",
         renderer: "headless",
       },
@@ -288,6 +303,77 @@ describe("vNext broker-only Pi coding tools", () => {
     ]);
   });
 
+  it("rejects an undeclared selected V2 launch target before freezing", async () => {
+    const port = new MemoryPort();
+    port.files.set(
+      ".chronorift/adapter-candidate/manifest.json",
+      Buffer.from(
+        JSON.stringify({
+          schemaVersion: 2,
+          sdk: {},
+          engine: {},
+          schemas: [],
+          launchTargets: [
+            {
+              targetId: "main",
+              scene: "res://main.tscn",
+              default: true,
+            },
+          ],
+        }),
+      ),
+    );
+    const finalize = createVNextCodingToolDefinitions(port, {
+      projectAdapterFinalizeV2: {
+        adapterId: "adapter.bound",
+        mainScene: "res://main.tscn",
+        selectedLaunchTargetId: "missing",
+      },
+    }).find((tool) => tool.name === "project_adapter_finalize_v2");
+    if (finalize === undefined) throw new Error("missing V2 finalizer");
+
+    await expect(
+      finalize.execute("call:finalize", {}, undefined, undefined, {} as never),
+    ).rejects.toThrow(
+      "ProjectAdapter V2 selected launch target is not declared: missing",
+    );
+    expect(port.calls).toEqual([
+      "read:.chronorift/adapter-candidate/manifest.json",
+    ]);
+  });
+
+  it("requires exactly one default across V2 launch targets", async () => {
+    const port = new MemoryPort();
+    port.files.set(
+      ".chronorift/adapter-candidate/manifest.json",
+      Buffer.from(
+        JSON.stringify({
+          schemaVersion: 2,
+          sdk: {},
+          engine: {},
+          schemas: [],
+          launchTargets: [
+            { targetId: "main", default: true },
+            { targetId: "challenge", default: true },
+          ],
+        }),
+      ),
+    );
+    const finalize = createVNextCodingToolDefinitions(port, {
+      projectAdapterFinalizeV2: {
+        adapterId: "adapter.bound",
+        mainScene: "res://main.tscn",
+      },
+    }).find((tool) => tool.name === "project_adapter_finalize_v2");
+    if (finalize === undefined) throw new Error("missing V2 finalizer");
+
+    await expect(
+      finalize.execute("call:finalize", {}, undefined, undefined, {} as never),
+    ).rejects.toThrow(
+      "ProjectAdapter V2 manifest must declare exactly one default launch target",
+    );
+  });
+
   it("rebuilds declarations from the exact physical schema inventory", async () => {
     const port = new MemoryPort();
     port.files.set(
@@ -318,7 +404,7 @@ describe("vNext broker-only Pi coding tools", () => {
             {
               targetId: "main",
               scene: "res://changed.tscn",
-              default: false,
+              default: true,
               renderer: "other",
               parametersSchemaId: "state.actor",
             },

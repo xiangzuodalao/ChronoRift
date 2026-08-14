@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { asSha256DigestV1 } from "@chronorift/domain";
 import {
   connectGodotProjectEnvironmentRuntimeV2,
+  type ProjectAdapterLaunchTargetV2,
   type LoadedProjectAdapterPackageV2,
 } from "@chronorift/godot-adapter";
 import type { GodotProjectEnvironmentObservationRecordV2 } from "@chronorift/godot-protocol";
@@ -28,6 +29,24 @@ const LIMITS = Object.freeze({
   startupTimeoutMs: 30_000,
   executionTimeoutMs: 120_000,
 });
+const MANAGED_HANDSHAKE_TIMEOUT_MS =
+  LIMITS.importTimeoutMs + LIMITS.startupTimeoutMs;
+
+const boundedDiagnosticSummary = (
+  diagnostics: readonly { readonly kind: string }[],
+): string =>
+  JSON.stringify(
+    diagnostics.slice(-32).map((diagnostic) => {
+      const record = diagnostic as unknown as Record<string, unknown>;
+      return Object.fromEntries(
+        ["kind", "phase", "outcome", "code", "message", "exitCode", "signal"]
+          .filter((key) =>
+            ["string", "number", "boolean"].includes(typeof record[key]),
+          )
+          .map((key) => [key, record[key]]),
+      );
+    }),
+  );
 
 export interface ProjectEnvironmentInstrumentedObservationV2 extends ProjectEnvironmentInstrumentedObservationV1 {
   readonly rawRecords: readonly GodotProjectEnvironmentObservationRecordV2[];
@@ -41,12 +60,38 @@ export interface ProjectEnvironmentInstrumentedObservationV2 extends ProjectEnvi
 }
 
 export interface ProjectEnvironmentConformanceDriverV2 {
-  runVanilla(): Promise<ProjectEnvironmentProcessObservationV1>;
-  runBridgeOnly(): Promise<ProjectEnvironmentProcessObservationV1>;
+  runVanilla(
+    target?: ProjectAdapterLaunchTargetV2,
+  ): Promise<ProjectEnvironmentProcessObservationV1>;
+  runBridgeOnly(
+    target?: ProjectAdapterLaunchTargetV2,
+  ): Promise<ProjectEnvironmentProcessObservationV1>;
   runInstrumented(
     loaded: LoadedProjectAdapterPackageV2,
+    target?: ProjectAdapterLaunchTargetV2,
   ): Promise<ProjectEnvironmentInstrumentedObservationV2>;
 }
+
+export interface ProjectAdapterLaunchTargetConformanceRunV2 {
+  readonly target: ProjectAdapterLaunchTargetV2;
+  readonly vanilla: ProjectEnvironmentProcessObservationV1;
+  readonly bridgeOnly: ProjectEnvironmentProcessObservationV1;
+  readonly instrumented: ProjectEnvironmentInstrumentedObservationV2;
+}
+
+export const runProjectAdapterLaunchTargetConformanceV2 = async (
+  loaded: LoadedProjectAdapterPackageV2,
+  driver: ProjectEnvironmentConformanceDriverV2,
+): Promise<readonly ProjectAdapterLaunchTargetConformanceRunV2[]> => {
+  const runs: ProjectAdapterLaunchTargetConformanceRunV2[] = [];
+  for (const target of loaded.launchTargetSelection.targetsToValidate) {
+    const vanilla = await driver.runVanilla(target);
+    const bridgeOnly = await driver.runBridgeOnly(target);
+    const instrumented = await driver.runInstrumented(loaded, target);
+    runs.push(Object.freeze({ target, vanilla, bridgeOnly, instrumented }));
+  }
+  return Object.freeze(runs);
+};
 
 export interface ProjectEnvironmentConformanceDriverOptionsV2 {
   readonly sidecar: GodotProjectEnvironmentSidecarPortV2;
@@ -133,13 +178,13 @@ const baseObservation = (
 export const createProjectEnvironmentConformanceDriverV2 = (
   options: ProjectEnvironmentConformanceDriverOptionsV2,
 ): ProjectEnvironmentConformanceDriverV2 => {
-  const common = (suffix: string) => ({
+  const common = (suffix: string, target?: ProjectAdapterLaunchTargetV2) => ({
     schemaVersion: 2 as const,
     runtimeProfile: "chronorift-managed-godot-project-environment-v2" as const,
     taskId: options.taskId,
     buildId: options.buildId,
-    runtimeId: `runtime.v2.${suffix}`,
-    executionId: `execution.v2.${suffix}`,
+    runtimeId: `runtime.v2.${suffix}${target === undefined ? "" : `.${target.targetId}`}`,
+    executionId: `execution.v2.${suffix}${target === undefined ? "" : `.${target.targetId}`}`,
     managedRuntimeId: options.managedRuntime.managedRuntimeId,
     candidateSourceHash: options.candidateSourceHash,
     diagnosticFrameMaxBytes: LIMITS.diagnosticFrameMaxBytes,
@@ -150,13 +195,18 @@ export const createProjectEnvironmentConformanceDriverV2 = (
   const managed = async (
     mode: "bridge_only" | "instrumented",
     loaded?: LoadedProjectAdapterPackageV2,
+    target?: ProjectAdapterLaunchTargetV2,
   ): Promise<
     | ProjectEnvironmentProcessObservationV1
     | ProjectEnvironmentInstrumentedObservationV2
   > => {
     const token = randomBytes(32).toString("hex");
+    const launchScene =
+      target !== undefined && target.scene !== options.expectedMainScene
+        ? target.scene
+        : undefined;
     const launch = {
-      ...common(mode),
+      ...common(mode, target),
       operation: "managed_lifecycle" as const,
       protocolProfile: "chronorift-godot-project-environment-v2" as const,
       protocolVersion: 2 as const,
@@ -164,6 +214,7 @@ export const createProjectEnvironmentConformanceDriverV2 = (
       overlayHash: options.managedRuntime.overlayHash,
       addonHash: options.managedRuntime.addonHash,
       expectedMainScene: options.expectedMainScene,
+      ...(launchScene === undefined ? {} : { launchScene }),
       instrumentationMode: mode,
       sourceClosureId: options.sourceClosureId,
       environmentRevisionId: options.environmentRevisionId,
@@ -209,9 +260,19 @@ export const createProjectEnvironmentConformanceDriverV2 = (
           expectedMainScene: options.expectedMainScene,
           expectedAdapterManifestSha256: options.adapterManifestSha256,
           observationWindowBatches: 8,
-          handshakeTimeoutMs: LIMITS.startupTimeoutMs,
+          // The managed sidecar performs the bounded first import before it
+          // launches Godot and can emit the bridge hello.
+          handshakeTimeoutMs: MANAGED_HANDSHAKE_TIMEOUT_MS,
         },
       );
+      const realizedScene = target?.scene ?? options.expectedMainScene;
+      if (client.ready.currentScene !== realizedScene)
+        throw Object.assign(
+          new Error(
+            `target_not_realized: expected ${realizedScene} but Godot reported ${client.ready.currentScene ?? "no current scene"}`,
+          ),
+          { code: "target_not_realized" },
+        );
       if (mode === "instrumented") {
         if (loaded === undefined)
           throw new Error(
@@ -248,15 +309,17 @@ export const createProjectEnvironmentConformanceDriverV2 = (
       await ring?.stop();
       await client.shutdown();
     } catch (error) {
-      const diagnostics = opened.sidecar
-        .diagnostics()
-        .slice(-8)
-        .map((entry) => JSON.stringify(entry))
-        .join(" | ");
       await opened.sidecar.terminate().catch(() => undefined);
-      await opened.sidecar.completion.catch(() => undefined);
+      const completion = await opened.sidecar.completion.catch(() => null);
+      const completionFact =
+        completion?.kind === "executed"
+          ? `${completion.receipt.status}/exit=${String(completion.receipt.exitCode)}/signal=${String(completion.receipt.signal)}`
+          : (completion?.kind ?? "completion-unavailable");
+      const diagnostics = boundedDiagnosticSummary(
+        opened.sidecar.diagnostics(),
+      );
       throw new Error(
-        `PE-B ${mode} conformance failed: ${error instanceof Error ? error.message : String(error)}; diagnostics=${diagnostics || "none"}`,
+        `PE-B ${mode} conformance failed: ${error instanceof Error ? error.message : String(error)}; completion=${completionFact}; diagnostics=${diagnostics}`,
         { cause: error },
       );
     } finally {
@@ -334,10 +397,15 @@ export const createProjectEnvironmentConformanceDriverV2 = (
     };
   };
   return Object.freeze({
-    runVanilla: async () => {
+    runVanilla: async (target?: ProjectAdapterLaunchTargetV2) => {
+      const launchScene =
+        target !== undefined && target.scene !== options.expectedMainScene
+          ? target.scene
+          : undefined;
       const result = await options.sidecar.runVanilla({
-        ...common("vanilla"),
+        ...common("vanilla", target),
         operation: "vanilla_smoke",
+        ...(launchScene === undefined ? {} : { launchScene }),
         importTimeoutMs: LIMITS.importTimeoutMs,
         vanillaTimeoutMs: 10_000,
         stabilityWindowMs: 2_000,
@@ -346,12 +414,20 @@ export const createProjectEnvironmentConformanceDriverV2 = (
         throw new Error("PE-B vanilla sandbox was denied");
       return baseObservation(result.result, true, "vanilla");
     },
-    runBridgeOnly: () =>
-      managed("bridge_only") as Promise<ProjectEnvironmentProcessObservationV1>,
-    runInstrumented: (loaded: LoadedProjectAdapterPackageV2) =>
+    runBridgeOnly: (target?: ProjectAdapterLaunchTargetV2) =>
+      managed(
+        "bridge_only",
+        undefined,
+        target,
+      ) as Promise<ProjectEnvironmentProcessObservationV1>,
+    runInstrumented: (
+      loaded: LoadedProjectAdapterPackageV2,
+      target?: ProjectAdapterLaunchTargetV2,
+    ) =>
       managed(
         "instrumented",
         loaded,
+        target,
       ) as Promise<ProjectEnvironmentInstrumentedObservationV2>,
   });
 };

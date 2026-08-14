@@ -208,6 +208,20 @@ export const ProjectEnvironmentToolAvailabilityOutputV1Schema = Type.Object(
   strictObject,
 );
 
+export const ProjectEnvironmentLaunchTargetOutputV1Schema = Type.Object(
+  {
+    schemaVersion: Type.Literal(1),
+    targetId: stableId,
+    scene: Type.String({ minLength: 7, maxLength: 1_024 }),
+    default: Type.Boolean(),
+    validationStatus: Type.Union([
+      Type.Literal("validated"),
+      Type.Literal("declared_unvalidated"),
+    ]),
+  },
+  strictObject,
+);
+
 export const ProjectEnvironmentGameCapabilitiesOutputV1Schema = Type.Object(
   {
     schemaVersion: Type.Literal(1),
@@ -220,6 +234,12 @@ export const ProjectEnvironmentGameCapabilitiesOutputV1Schema = Type.Object(
       ProjectEnvironmentGameRuntimeIdV1Schema,
     ]),
     modules: capabilities,
+    launchTargets: Type.Optional(
+      Type.Array(ProjectEnvironmentLaunchTargetOutputV1Schema, {
+        minItems: 1,
+        maxItems: 32,
+      }),
+    ),
     tools: Type.Array(ProjectEnvironmentToolAvailabilityOutputV1Schema, {
       minItems: 16,
       maxItems: 16,

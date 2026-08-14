@@ -42,6 +42,7 @@ import {
 } from "./sandbox-policy.js";
 import { createManagedGodotRuntimeV1 } from "./managed-godot-runtime.js";
 import { createManagedGodotLifecycleRuntimeV1 } from "./managed-godot-lifecycle-runtime.js";
+import { createManagedGodotProjectEnvironmentRuntimeV2 } from "./managed-godot-project-environment-runtime-v2.js";
 import type { SandboxToolchainBindingV1 } from "./sandbox-toolchain.js";
 import type {
   SandboxBootstrapLaunchPlan,
@@ -54,6 +55,7 @@ import {
   createDuplexBwrapCgroupTaskSandbox,
   createRetryableResourceCloser,
   rethrowAfterBoundedSetupCleanup,
+  sandboxManagedRuntimePolicyTargets,
   SandboxBrokerSetupCleanupError,
   SandboxExecutionScratchCreationError,
   type SandboxBrokerBoundResources,
@@ -222,6 +224,29 @@ const managedLifecycleRuntime = createManagedGodotLifecycleRuntimeV1({
     },
   ],
 });
+const managedProjectEnvironmentRuntime =
+  createManagedGodotProjectEnvironmentRuntimeV2({
+    doctorVersion: "4.7.1.stable.official.a13da4feb",
+    nodeTarget: "/opt/chronorift/bin/node",
+    godotTarget: "/opt/chronorift/bin/godot",
+    toolchain: {
+      capability: managedRuntimeCapability,
+      binding: managedRuntimeBinding,
+    },
+    vanillaSidecarSource: "trusted vanilla sidecar source",
+    projectEnvironmentSidecarSource:
+      "trusted project environment sidecar source",
+    adapterFiles: [
+      {
+        relativePath: "manifest.json",
+        bytes: Buffer.from('{"schemaVersion":2}\n'),
+      },
+      {
+        relativePath: "src/project_adapter.gd",
+        bytes: Buffer.from("extends Node\n"),
+      },
+    ],
+  });
 const validRequest: SandboxExecutionRequestV1 = {
   schemaVersion: 1,
   operationId: "operation_fixture",
@@ -794,6 +819,26 @@ function createFakeBrokerHarness(options: HarnessOptions = {}) {
 }
 
 describe("Task-bound sandbox broker", () => {
+  it("leaves the Project Environment addon parent writable while pinning managed runtime children", () => {
+    const targets = sandboxManagedRuntimePolicyTargets(
+      managedProjectEnvironmentRuntime,
+    );
+    expect(targets).not.toContain(
+      managedProjectEnvironmentRuntime.capability.addonParentTarget,
+    );
+    expect(targets).toEqual(
+      expect.arrayContaining([
+        managedProjectEnvironmentRuntime.capability.addonTarget,
+        managedProjectEnvironmentRuntime.capability.overlayTarget,
+        managedProjectEnvironmentRuntime.capability.adapterParentTarget,
+        managedProjectEnvironmentRuntime.capability.adapterTarget,
+      ]),
+    );
+    expect(
+      sandboxManagedRuntimePolicyTargets(managedLifecycleRuntime),
+    ).toContain(managedLifecycleRuntime.capability.addonParentTarget);
+  });
+
   it("allocates concurrent Host-only scratch roots and removes mode-000 candidate trees", async () => {
     const root = await mkdtemp(join(tmpdir(), "chronorift-scratch-test-"));
     const hostOnlyParent = join(root, "host-tmp");

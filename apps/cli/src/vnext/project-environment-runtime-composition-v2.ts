@@ -81,7 +81,8 @@ export function composeProjectEnvironmentCompatibleRuntimeV2(options: {
           receipt.outcome !== "compatible" ||
           receipt.buildId !== prepared.build.buildId ||
           receipt.environmentRevisionId !==
-            options.revision.environmentRevisionId
+            options.revision.environmentRevisionId ||
+          receipt.launchTargetId !== options.launchTargetId
         )
           throw new Error(
             "stored V2 compatibility receipt crossed its Build binding",

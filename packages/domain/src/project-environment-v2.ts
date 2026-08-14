@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   AdapterCompatibilityReceiptV1Schema,
+  AdapterConformanceReceiptIdSchema,
   AdapterConformanceReceiptV1Schema,
   ProjectEnvironmentPinnedCaptureV1Schema,
   ProjectEnvironmentRuntimeObservationReceiptV1Schema,
@@ -16,6 +17,159 @@ const opaqueId = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u)
   .refine((value) => !value.includes(".."));
 const counter = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+
+const launchTargetValidation = z
+  .object({
+    schemaVersion: z.literal(1),
+    targetId: opaqueId,
+    status: z.enum(["validated", "declared_unvalidated"]),
+    conformanceReceiptId: AdapterConformanceReceiptIdSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      (value.status === "validated") !==
+      (value.conformanceReceiptId !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["conformanceReceiptId"],
+        message:
+          "validated launch targets must bind conformance and unvalidated targets cannot claim it",
+      });
+    }
+  });
+
+export const ProjectAdapterLaunchTargetValidationV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    recordKind: z.literal(
+      "chronorift-project-adapter-launch-target-validation",
+    ),
+    defaultTargetId: opaqueId,
+    selectedTargetId: opaqueId,
+    targets: z.array(launchTargetValidation).min(1).max(32),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const byId = new Map(
+      value.targets.map((target) => [target.targetId, target]),
+    );
+    if (byId.size !== value.targets.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["targets"],
+        message: "launch-target validation identities must be unique",
+      });
+    }
+    for (const [field, targetId] of [
+      ["defaultTargetId", value.defaultTargetId],
+      ["selectedTargetId", value.selectedTargetId],
+    ] as const) {
+      if (byId.get(targetId)?.status !== "validated") {
+        context.addIssue({
+          code: "custom",
+          path: [field],
+          message: `${field} must reference a validated launch target`,
+        });
+      }
+    }
+  });
+export type ProjectAdapterLaunchTargetValidationV1 = z.infer<
+  typeof ProjectAdapterLaunchTargetValidationV1Schema
+>;
+
+const selectedTargetObservationRecordsPath =
+  "records/dynamic-projection-conformance.v2.json" as const;
+const selectedTargetObservationChainPath =
+  "records/dynamic-projection-chain.v2.json" as const;
+const defaultTargetObservationRecordsPath =
+  "records/dynamic-projection-conformance.default.v2.json" as const;
+const defaultTargetObservationChainPath =
+  "records/dynamic-projection-chain.default.v2.json" as const;
+
+const launchTargetConformanceEvidence = z
+  .object({
+    schemaVersion: z.literal(1),
+    targetId: opaqueId,
+    vanillaDigest: Sha256DigestV1Schema,
+    bridgeOnlyDigest: Sha256DigestV1Schema,
+    instrumentedDigest: Sha256DigestV1Schema,
+    rawObservationRecordsPath: z.enum([
+      selectedTargetObservationRecordsPath,
+      defaultTargetObservationRecordsPath,
+    ]),
+    rawObservationRecordsSha256: Sha256DigestV1Schema,
+    rawObservationChainPath: z.enum([
+      selectedTargetObservationChainPath,
+      defaultTargetObservationChainPath,
+    ]),
+    rawObservationChainSha256: Sha256DigestV1Schema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const expectedChainPath =
+      value.rawObservationRecordsPath === selectedTargetObservationRecordsPath
+        ? selectedTargetObservationChainPath
+        : defaultTargetObservationChainPath;
+    if (value.rawObservationChainPath !== expectedChainPath) {
+      context.addIssue({
+        code: "custom",
+        path: ["rawObservationChainPath"],
+        message:
+          "launch-target conformance record and chain paths must use the same path pair",
+      });
+    }
+  });
+
+export const ProjectAdapterLaunchTargetConformanceEvidenceV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    recordKind: z.literal(
+      "chronorift-project-adapter-launch-target-conformance",
+    ),
+    conformanceReceiptId: AdapterConformanceReceiptIdSchema,
+    defaultTargetId: opaqueId,
+    selectedTargetId: opaqueId,
+    targets: z.array(launchTargetConformanceEvidence).min(1).max(2),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const targetIds = new Set(value.targets.map((target) => target.targetId));
+    if (targetIds.size !== value.targets.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["targets"],
+        message: "launch-target conformance identities must be unique",
+      });
+    }
+    const paths = value.targets.flatMap((target) => [
+      target.rawObservationRecordsPath,
+      target.rawObservationChainPath,
+    ]);
+    if (new Set(paths).size !== paths.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["targets"],
+        message: "launch-target conformance artifact paths must be unique",
+      });
+    }
+    for (const [field, targetId] of [
+      ["defaultTargetId", value.defaultTargetId],
+      ["selectedTargetId", value.selectedTargetId],
+    ] as const) {
+      if (!targetIds.has(targetId)) {
+        context.addIssue({
+          code: "custom",
+          path: [field],
+          message: `${field} must reference retained launch-target conformance evidence`,
+        });
+      }
+    }
+  });
+export type ProjectAdapterLaunchTargetConformanceEvidenceV1 = z.infer<
+  typeof ProjectAdapterLaunchTargetConformanceEvidenceV1Schema
+>;
 const dynamicTrace = z
   .object({
     schemaVersion: z.literal(2),
@@ -120,6 +274,7 @@ export const AdapterCompatibilityReceiptV2Schema = z
   .object({
     ...AdapterCompatibilityReceiptV1Schema.shape,
     schemaVersion: z.literal(2),
+    launchTargetId: opaqueId,
     observationProtocolVersion: z.literal(2),
     adapterSdkVersion: z.literal(2),
     eventQueryObserved: z.boolean(),
@@ -130,6 +285,7 @@ export const AdapterCompatibilityReceiptV2Schema = z
   .strict()
   .superRefine((value, context) => {
     const base = withoutKeys(value, [
+      "launchTargetId",
       "observationProtocolVersion",
       "adapterSdkVersion",
       "eventQueryObserved",

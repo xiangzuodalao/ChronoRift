@@ -73,8 +73,9 @@ export const composeProjectEnvironmentInitializationPromptV2 = (input: {
   readonly mainScene: string;
   readonly requestedGodotVersion: "4.7.1";
   readonly sourceIdentity: string;
-}): string =>
-  composeProjectEnvironmentInitializationPromptV1(input)
+  readonly selectedLaunchTargetId?: string | undefined;
+}): string => {
+  const base = composeProjectEnvironmentInitializationPromptV1(input)
     .replace("adapter-sdk-v1", "adapter-sdk-v2")
     .replace("loaded project-adapter skill", "loaded project-adapter-v2 skill")
     .replace(
@@ -84,6 +85,16 @@ export const composeProjectEnvironmentInitializationPromptV2 = (input: {
     .concat(
       "\nAuthor a manifest/SDK/observation V2 adapter. Inspect project source first, replace every dynamic-placeholder identifier, and implement only source-derived node and Signal semantics. Keep the existing schema files and change each document's schemaId as needed; preserve their small payload shapes when they honestly represent the project and do not invent extra fields. Once the semantic declarations and GDScript agree, call project_adapter_finalize_v2 once. It rebuilds the manifest schema inventory and hashes from the actual schema documents, restores Host-bound adapter, launch, SDK, and engine fields, and freezes the candidate for the rest of this turn. If that call rejects a semantic reference, fix exactly that reference and retry once; do not manually repair hashes or schema declaration paths. After it succeeds, do not call bash, edit, write, or finalize again; finish immediately. Ready requires one lossless declared dynamic trace with entity-bound state and event observations across exactly consecutive incarnations. Do not run Godot or perform conformance yourself because the Host performs authoritative validation after this turn.",
     );
+  if (input.selectedLaunchTargetId === undefined) return base;
+  const selected = cleanText(
+    input.selectedLaunchTargetId,
+    "selectedLaunchTargetId",
+    128,
+  );
+  return base.concat(
+    `\nThe operator selected launch targetId exactly: ${selected}. The manifest may declare additional targets, but the Host publishes validation only for the default target and this selected target when they differ; do not claim other targets are validated.`,
+  );
+};
 
 interface ProjectEnvironmentPiTurnResultFieldsV1 {
   readonly status: "completed" | "failed" | "cancelled";
@@ -259,6 +270,7 @@ export interface InitializeProjectEnvironmentV1Request {
   readonly thinkingLevel: string;
   readonly budget: ProjectTurnBudgetV1;
   readonly queuedGoal: string | null;
+  readonly selectedLaunchTargetId?: string | undefined;
   readonly adapterContractVersion?: 1 | 2 | undefined;
   readonly ids: ProjectEnvironmentInitializationIdsV1;
 }

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "chronorift-github-actions-run-metadata",
+  "recordedAt": "2026-08-14T07:47:42Z",
+  "repository": "xiangzuodalao/ChronoRift",
+  "productSubject": {
+    "commit": "a119ec4f7a9a203d32db740b3dc4ffba7fc69ad0",
+    "tree": "17d3cadff45b3cf23826efb59f8ead94cc81ca15",
+    "branch": "feat/project-environment-pe-c"
+  },
+  "projectEnvironmentPeC": {
+    "workflowPath": ".github/workflows/project-environment-pe-c.yml",
+    "workflowId": 334095901,
+    "runId": 31779574638,
+    "runAttempt": 1,
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "createdAt": "2026-08-14T07:20:51Z",
+    "startedAt": "2026-08-14T07:20:51Z",
+    "updatedAt": "2026-08-14T07:23:22Z",
+    "url": "https://github.com/xiangzuodalao/ChronoRift/actions/runs/31779574638",
+    "job": {
+      "id": 94702187428,
+      "name": "external-project",
+      "runnerLabel": "ubuntu-24.04",
+      "runnerImageVersion": "20260720.247.2",
+      "runnerVersion": "2.336.0",
+      "startedAt": "2026-08-14T07:20:55Z",
+      "completedAt": "2026-08-14T07:23:21Z",
+      "conclusion": "success",
+      "conformanceStepStartedAt": "2026-08-14T07:21:28Z",
+      "conformanceStepCompletedAt": "2026-08-14T07:23:16Z",
+      "conformanceStepConclusion": "success"
+    }
+  },
+  "standardCi": {
+    "workflowPath": ".github/workflows/ci.yml",
+    "runId": 31779574707,
+    "runAttempt": 1,
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "createdAt": "2026-08-14T07:20:51Z",
+    "startedAt": "2026-08-14T07:20:51Z",
+    "updatedAt": "2026-08-14T07:24:25Z",
+    "url": "https://github.com/xiangzuodalao/ChronoRift/actions/runs/31779574707",
+    "jobs": [
+      { "id": 94702187738, "name": "godot", "conclusion": "success" },
+      {
+        "id": 94702187759,
+        "name": "vnext-godot-sandbox",
+        "conclusion": "success"
+      },
+      {
+        "id": 94702187766,
+        "name": "vnext-external-project",
+        "conclusion": "success"
+      },
+      { "id": 94702187802, "name": "offline", "conclusion": "success" },
+      { "id": 94702187828, "name": "sandbox", "conclusion": "success" }
+    ]
+  },
+  "captureBoundary": {
+    "source": "GitHub Actions API metadata and retained runner log observations",
+    "runnerLogsArchived": false,
+    "workflowArtifactsArchived": false,
+    "githubMetadataExternallyAttested": false,
+    "retentionControlledByGitHub": true
+  }
+}

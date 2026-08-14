@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   GodotProjectEnvironmentObservationBatchV2Schema,
   GodotProjectEnvironmentObservationRecordV2Schema,
+  GodotProjectEnvironmentSidecarLaunchV2Schema,
+  GodotProjectEnvironmentVanillaSmokeLaunchV2Schema,
   PROJECT_ADAPTER_CAPABILITY_MODULES_V2,
   ProjectAdapterEntityRefV2Schema,
   ProjectAdapterManifestV2Schema,
@@ -37,6 +39,66 @@ const record = (recordSequence = 0) => ({
 });
 
 describe("Project Environment V2 contracts", () => {
+  it("accepts a normalized optional launch scene on both sidecar operations", () => {
+    const common = {
+      schemaVersion: 2,
+      runtimeProfile: "chronorift-managed-godot-project-environment-v2",
+      taskId: "task.v2.scene",
+      buildId: "build.v2.scene",
+      runtimeId: "runtime.v2.scene",
+      executionId: "execution.v2.scene",
+      managedRuntimeId: `managed-godot-project-environment:v2:${"a".repeat(64)}`,
+      candidateSourceHash: "b".repeat(64),
+      diagnosticFrameMaxBytes: 64 * 1_024,
+      diagnosticTotalMaxBytes: 1_024 * 1_024,
+      diagnosticMaxCount: 256,
+      outputCaptureMaxBytes: 256 * 1_024,
+      launchScene: "res://levels/secondary.tscn",
+    } as const;
+    expect(
+      GodotProjectEnvironmentVanillaSmokeLaunchV2Schema.parse({
+        ...common,
+        operation: "vanilla_smoke",
+        importTimeoutMs: 120_000,
+        vanillaTimeoutMs: 10_000,
+        stabilityWindowMs: 2_000,
+      }).launchScene,
+    ).toBe(common.launchScene);
+    expect(
+      GodotProjectEnvironmentSidecarLaunchV2Schema.parse({
+        ...common,
+        operation: "managed_lifecycle",
+        protocolProfile: "chronorift-godot-project-environment-v2",
+        protocolVersion: 2,
+        token: "c".repeat(64),
+        overlayHash: "d".repeat(64),
+        addonHash: "e".repeat(64),
+        expectedMainScene: "res://main.tscn",
+        instrumentationMode: "bridge_only",
+        sourceClosureId: "source.v2.scene",
+        environmentRevisionId: "environment.v2.scene",
+        adapterRevisionId: "adapter.v2.scene",
+        adapterManifestSha256: "f".repeat(64),
+        sdkSha256: "1".repeat(64),
+        bridgeSha256: "2".repeat(64),
+        toolchainSha256: "3".repeat(64),
+        importTimeoutMs: 120_000,
+        startupTimeoutMs: 30_000,
+        executionTimeoutMs: 120_000,
+      }).launchScene,
+    ).toBe(common.launchScene);
+    expect(() =>
+      GodotProjectEnvironmentVanillaSmokeLaunchV2Schema.parse({
+        ...common,
+        launchScene: "res://../outside.tscn",
+        operation: "vanilla_smoke",
+        importTimeoutMs: 120_000,
+        vanillaTimeoutMs: 10_000,
+        stabilityWindowMs: 2_000,
+      }),
+    ).toThrow();
+  });
+
   it("binds entity references to an execution and incarnation", () => {
     expect(ProjectAdapterEntityRefV2Schema.parse(entity)).toEqual(entity);
     expect(() =>

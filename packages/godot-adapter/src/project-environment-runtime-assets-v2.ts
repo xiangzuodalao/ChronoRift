@@ -224,8 +224,16 @@ func _coverage() -> Dictionary:
 	return {"status": "partial" if _overwritten_records > 0 or _total_dropped_records > 0 else "complete", "firstAvailableRecordSequence": first, "lastAvailableRecordSequence": last, "droppedRecordCount": _total_dropped_records, "overwriteCount": _overwritten_records, "semanticCoverage": _semantic_coverage if _instrumentation_mode == "instrumented" else "unknown"}
 
 
+func _current_scene_path() -> Variant:
+	var current := get_tree().current_scene
+	if current == null:
+		return null
+	var scene_path := str(current.scene_file_path)
+	return _configured_main_scene if scene_path.is_empty() else scene_path
+
+
 func _status() -> Dictionary:
-	return {"running": not _stopping, "configuredMainScene": _configured_main_scene, "currentScene": _configured_main_scene if get_tree().current_scene != null else null, "clock": _clock(), "nextObservationRecordSequence": _next_record_sequence, "coverage": _coverage()}
+	return {"running": not _stopping, "configuredMainScene": _configured_main_scene, "currentScene": _current_scene_path(), "clock": _clock(), "nextObservationRecordSequence": _next_record_sequence, "coverage": _coverage()}
 
 
 func _append_record(kind: String, payload: Dictionary) -> void:

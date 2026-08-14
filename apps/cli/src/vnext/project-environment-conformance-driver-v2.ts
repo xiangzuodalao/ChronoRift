@@ -39,7 +39,7 @@ const boundedDiagnosticSummary = (
     diagnostics.slice(-32).map((diagnostic) => {
       const record = diagnostic as unknown as Record<string, unknown>;
       return Object.fromEntries(
-        ["kind", "phase", "outcome", "code", "exitCode", "signal"]
+        ["kind", "phase", "outcome", "code", "message", "exitCode", "signal"]
           .filter((key) =>
             ["string", "number", "boolean"].includes(typeof record[key]),
           )

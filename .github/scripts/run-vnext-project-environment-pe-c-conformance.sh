@@ -360,6 +360,8 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	pass
 EOF
+printf '%s\n' 'uid://b7m4p2q9x6k3n' \
+  >"${fixture_root}/addons/pe_c_import_probe/plugin.gd.uid"
 
 cat >"${fixture_root}/pe-c-secondary.tscn" <<'EOF'
 [gd_scene load_steps=2 format=3]
@@ -424,6 +426,8 @@ func _run_fixture() -> void:
 		second.queue_free()
 		await second.tree_exited
 EOF
+printf '%s\n' 'uid://c8n5q3r0y7l4m' \
+  >"${fixture_root}/pe-c-runtime-probe.gd.uid"
 
 cat >"${fixture_root}/pe-c-alternate-project/project.godot" <<'EOF'
 config_version=5
@@ -452,9 +456,11 @@ EOF
 git -C "${fixture_root}" add -- \
   addons/pe_c_import_probe/plugin.cfg \
   addons/pe_c_import_probe/plugin.gd \
+  addons/pe_c_import_probe/plugin.gd.uid \
   pe-c-alternate-project/main.tscn \
   pe-c-alternate-project/project.godot \
   pe-c-runtime-probe.gd \
+  pe-c-runtime-probe.gd.uid \
   pe-c-secondary.tscn
 
 mapfile -t staged_paths < <(
@@ -463,9 +469,11 @@ mapfile -t staged_paths < <(
 expected_staged_paths=(
   addons/pe_c_import_probe/plugin.cfg
   addons/pe_c_import_probe/plugin.gd
+  addons/pe_c_import_probe/plugin.gd.uid
   pe-c-alternate-project/main.tscn
   pe-c-alternate-project/project.godot
   pe-c-runtime-probe.gd
+  pe-c-runtime-probe.gd.uid
   pe-c-secondary.tscn
 )
 [[ "${staged_paths[*]}" == "${expected_staged_paths[*]}" ]] ||
@@ -486,9 +494,11 @@ expected_final_status=(
   ' M project.godot'
   'A  addons/pe_c_import_probe/plugin.cfg'
   'A  addons/pe_c_import_probe/plugin.gd'
+  'A  addons/pe_c_import_probe/plugin.gd.uid'
   'A  pe-c-alternate-project/main.tscn'
   'A  pe-c-alternate-project/project.godot'
   'A  pe-c-runtime-probe.gd'
+  'A  pe-c-runtime-probe.gd.uid'
   'A  pe-c-secondary.tscn'
   '?? pe-c-input.json'
 )

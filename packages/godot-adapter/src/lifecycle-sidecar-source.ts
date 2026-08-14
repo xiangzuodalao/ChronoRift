@@ -539,7 +539,12 @@ const verifyStagedCandidate = async (expectedStage) => {
   actual.sort((left, right) => Buffer.compare(Buffer.from(left.relativePath, "utf8"), Buffer.from(right.relativePath, "utf8")));
   const actualManifest = actual.map(({ bytes, ...entry }) => entry);
   if (JSON.stringify(actualManifest) !== JSON.stringify(stagedCandidateManifest)) {
-    const mismatch = new Error("Godot execution changed the staged candidate source tree");
+    const expectedByPath = new Map(stagedCandidateManifest.map((entry) => [entry.relativePath, entry]));
+    const actualByPath = new Map(actualManifest.map((entry) => [entry.relativePath, entry]));
+    const changedPaths = [...new Set([...expectedByPath.keys(), ...actualByPath.keys()])]
+      .filter((relativePath) => JSON.stringify(expectedByPath.get(relativePath)) !== JSON.stringify(actualByPath.get(relativePath)))
+      .sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
+    const mismatch = new Error("Godot execution changed the staged candidate source tree: " + JSON.stringify(changedPaths.slice(0, 8)));
     mismatch.code = "BUILD_IDENTITY_MISMATCH";
     throw mismatch;
   }

@@ -21,6 +21,7 @@
     "test:vnext:godot-sandbox": "vitest run --config vitest.godot-sandbox.config.ts",
     "test:vnext:external-project": "vitest run --config vitest.external-project.config.ts",
     "test:vnext:external-semantic": "vitest run --config vitest.external-semantic.config.ts",
+    "test:vnext:project-environment-pe-c-host": "vitest run --config vitest.project-environment-pe-c-host.config.ts",
     "validate:project-environment:pe-a": "node .github/scripts/validate-project-environment-pe-a-evidence.mjs",
     "validate:project-environment:pe-b": "node .github/scripts/validate-project-environment-pe-b-evidence.mjs",
     "lint": "eslint .",

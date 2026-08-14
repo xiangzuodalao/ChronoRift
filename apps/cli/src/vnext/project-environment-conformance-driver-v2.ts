@@ -32,6 +32,22 @@ const LIMITS = Object.freeze({
 const MANAGED_HANDSHAKE_TIMEOUT_MS =
   LIMITS.importTimeoutMs + LIMITS.startupTimeoutMs;
 
+const boundedDiagnosticSummary = (
+  diagnostics: readonly { readonly kind: string }[],
+): string =>
+  JSON.stringify(
+    diagnostics.slice(-32).map((diagnostic) => {
+      const record = diagnostic as unknown as Record<string, unknown>;
+      return Object.fromEntries(
+        ["kind", "phase", "outcome", "code", "exitCode", "signal"]
+          .filter((key) =>
+            ["string", "number", "boolean"].includes(typeof record[key]),
+          )
+          .map((key) => [key, record[key]]),
+      );
+    }),
+  );
+
 export interface ProjectEnvironmentInstrumentedObservationV2 extends ProjectEnvironmentInstrumentedObservationV1 {
   readonly rawRecords: readonly GodotProjectEnvironmentObservationRecordV2[];
   readonly dynamicTraces: readonly {
@@ -293,15 +309,17 @@ export const createProjectEnvironmentConformanceDriverV2 = (
       await ring?.stop();
       await client.shutdown();
     } catch (error) {
-      const diagnostics = opened.sidecar
-        .diagnostics()
-        .slice(-8)
-        .map((entry) => JSON.stringify(entry))
-        .join(" | ");
       await opened.sidecar.terminate().catch(() => undefined);
-      await opened.sidecar.completion.catch(() => undefined);
+      const completion = await opened.sidecar.completion.catch(() => null);
+      const completionFact =
+        completion?.kind === "executed"
+          ? `${completion.receipt.status}/exit=${String(completion.receipt.exitCode)}/signal=${String(completion.receipt.signal)}`
+          : (completion?.kind ?? "completion-unavailable");
+      const diagnostics = boundedDiagnosticSummary(
+        opened.sidecar.diagnostics(),
+      );
       throw new Error(
-        `PE-B ${mode} conformance failed: ${error instanceof Error ? error.message : String(error)}; diagnostics=${diagnostics || "none"}`,
+        `PE-B ${mode} conformance failed: ${error instanceof Error ? error.message : String(error)}; completion=${completionFact}; diagnostics=${diagnostics}`,
         { cause: error },
       );
     } finally {

@@ -481,10 +481,24 @@ const createFakePiDependencies = (
         options.prompt,
         contract,
       )) {
-        await invoke("write", {
+        if (
+          path === "manifest.json" &&
+          content.includes("dynamic-placeholder")
+        ) {
+          throw new Error(
+            "fake Pi authored a manifest that retained placeholder semantics",
+          );
+        }
+        const written = await invoke("write", {
           path: `.chronorift/adapter-candidate/${path}`,
           content,
         });
+        const writeOutput = toolText(written);
+        if (!writeOutput.includes("Successfully wrote")) {
+          throw new Error(
+            `fake Pi failed to author ProjectAdapter file ${path}: ${writeOutput}`,
+          );
+        }
       }
       const finalized = await invoke("project_adapter_finalize_v2", {});
       if (!toolText(finalized).includes("Updated 4 exact schema SHA-256")) {

@@ -29,6 +29,8 @@ const LIMITS = Object.freeze({
   startupTimeoutMs: 30_000,
   executionTimeoutMs: 120_000,
 });
+const MANAGED_HANDSHAKE_TIMEOUT_MS =
+  LIMITS.importTimeoutMs + LIMITS.startupTimeoutMs;
 
 export interface ProjectEnvironmentInstrumentedObservationV2 extends ProjectEnvironmentInstrumentedObservationV1 {
   readonly rawRecords: readonly GodotProjectEnvironmentObservationRecordV2[];
@@ -242,7 +244,9 @@ export const createProjectEnvironmentConformanceDriverV2 = (
           expectedMainScene: options.expectedMainScene,
           expectedAdapterManifestSha256: options.adapterManifestSha256,
           observationWindowBatches: 8,
-          handshakeTimeoutMs: LIMITS.startupTimeoutMs,
+          // The managed sidecar performs the bounded first import before it
+          // launches Godot and can emit the bridge hello.
+          handshakeTimeoutMs: MANAGED_HANDSHAKE_TIMEOUT_MS,
         },
       );
       const realizedScene = target?.scene ?? options.expectedMainScene;

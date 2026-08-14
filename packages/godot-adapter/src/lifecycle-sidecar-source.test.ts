@@ -10,6 +10,7 @@ import {
   GodotLifecycleVanillaSmokeDiagnosticV1Schema,
   GodotLifecycleVanillaSmokeLaunchV1Schema,
   GodotProjectEnvironmentVanillaSmokeLaunchV1Schema,
+  GodotProjectEnvironmentVanillaSmokeLaunchV2Schema,
   WireFrameDecoder,
   encodeWireFrame,
 } from "@chronorift/godot-protocol";
@@ -20,6 +21,7 @@ import {
   createLifecycleRuntimeSidecarSource,
   createLifecycleVanillaSmokeSidecarSource,
   createProjectEnvironmentVanillaSmokeSidecarSource,
+  createProjectEnvironmentVanillaSmokeSidecarSourceV2,
 } from "./lifecycle-sidecar-source.js";
 
 const roots: string[] = [];
@@ -111,6 +113,93 @@ const commonLaunch = (candidateSourceHash: string) => ({
 });
 
 describe("Godot lifecycle sidecar sources", () => {
+  it("passes an explicit V2 launch scene to the vanilla Godot process", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chronorift-pe-v2-target-"));
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    const runtime = join(root, "runtime");
+    await Promise.all([mkdir(workspace), mkdir(runtime)]);
+    const projectBytes = Buffer.from(
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    const mainBytes = Buffer.from(
+      '[gd_scene format=3]\n\n[node name="Main" type="Node"]\n',
+    );
+    const secondaryBytes = Buffer.from(
+      '[gd_scene format=3]\n\n[node name="Secondary" type="Node"]\n',
+    );
+    await Promise.all([
+      writeFile(join(workspace, "project.godot"), projectBytes),
+      writeFile(join(workspace, "main.tscn"), mainBytes),
+      writeFile(join(workspace, "secondary.tscn"), secondaryBytes),
+    ]);
+    const fakeGodot = join(root, "fake-godot.cjs");
+    await writeFile(
+      fakeGodot,
+      [
+        'if (process.argv.includes("--import")) process.exit(0);',
+        'if (process.argv.at(-1) !== "res://secondary.tscn") process.exit(12);',
+        'process.on("SIGTERM", () => process.exit(0));',
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    const source = createProjectEnvironmentVanillaSmokeSidecarSourceV2({
+      godotExecutable: process.execPath,
+      godotArgsPrefix: [fakeGodot],
+      workspaceRoot: workspace,
+      runtimeRoot: runtime,
+    });
+    const sidecar = spawn(
+      process.execPath,
+      ["--input-type=commonjs", "--eval", source],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const stderr: Buffer[] = [];
+    sidecar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const launch = GodotProjectEnvironmentVanillaSmokeLaunchV2Schema.parse({
+      schemaVersion: 2,
+      runtimeProfile: "chronorift-managed-godot-project-environment-v2",
+      taskId: "task:pe-v2-target",
+      buildId: "build:pe-v2-target",
+      runtimeId: "runtime:pe-v2-target",
+      executionId: "execution:pe-v2-target",
+      managedRuntimeId: `managed-godot-project-environment:v2:${"a".repeat(64)}`,
+      candidateSourceHash: selectedTreeDigest([
+        { relativePath: "main.tscn", mode: "100644", bytes: mainBytes },
+        {
+          relativePath: "project.godot",
+          mode: "100644",
+          bytes: projectBytes,
+        },
+        {
+          relativePath: "secondary.tscn",
+          mode: "100644",
+          bytes: secondaryBytes,
+        },
+      ]),
+      diagnosticFrameMaxBytes: 64 * 1024,
+      diagnosticTotalMaxBytes: 1024 * 1024,
+      diagnosticMaxCount: 128,
+      outputCaptureMaxBytes: 1_024,
+      operation: "vanilla_smoke",
+      launchScene: "res://secondary.tscn",
+      importTimeoutMs: 5_000,
+      vanillaTimeoutMs: 5_000,
+      stabilityWindowMs: 2_000,
+    });
+    sidecar.stdin.end(encodeWireFrame(JSON.stringify(launch)));
+
+    await expect(waitForExit(sidecar)).resolves.toEqual({
+      code: 0,
+      signal: null,
+    });
+    expect(
+      decode(Buffer.concat(stderr), (value) =>
+        GodotLifecycleVanillaSmokeDiagnosticV1Schema.parse(value),
+      ).map((record) => record.kind),
+    ).toContain("smoke_complete");
+  });
+
   it("accepts the Project Environment vanilla launch without managed-only identity fields", async () => {
     const root = await mkdtemp(join(tmpdir(), "chronorift-pe-vanilla-smoke-"));
     roots.push(root);

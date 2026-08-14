@@ -56,6 +56,13 @@ describe("Project Environment Preview CLI", () => {
       "high",
       "--host-config",
       "/etc/chronorift/pe.json",
+      "--project-root",
+      "game",
+      "--include-untracked",
+      "local-input.json",
+      "--include-untracked=local-addon.gd",
+      "--launch-target",
+      "secondary",
       "--json",
     ]);
 
@@ -65,6 +72,9 @@ describe("Project Environment Preview CLI", () => {
       model: "gpt-5.6-luna",
       thinkingLevel: "high",
       goal: "add a pause menu",
+      projectRoot: "game",
+      includeUntrackedPaths: ["local-input.json", "local-addon.gd"],
+      launchTargetId: "secondary",
       interactive: false,
       hostConfigPath: "/etc/chronorift/pe.json",
     });
@@ -86,6 +96,23 @@ describe("Project Environment Preview CLI", () => {
         "m",
       ]),
     ).rejects.toThrow(/at most one goal/u);
+    expect(runPreview).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate singleton flags instead of silently overwriting them", async () => {
+    await expect(
+      main([
+        "project",
+        "preview",
+        "goal",
+        "--provider",
+        "first",
+        "--provider",
+        "second",
+        "--model",
+        "model",
+      ]),
+    ).rejects.toThrow(/Duplicate --provider/u);
     expect(runPreview).not.toHaveBeenCalled();
   });
 
@@ -165,6 +192,33 @@ describe("Project Environment Preview CLI", () => {
       goalDelivered: false,
       failureCode: "project_preview_failed",
       failureMessage: "Pi model provider/missing is not registered",
+    });
+  });
+
+  it("preserves a structured review-required failure code", async () => {
+    runPreview.mockRejectedValueOnce(
+      Object.assign(new Error("source closure changed"), {
+        code: "review_required",
+      }),
+    );
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+
+    await main([
+      "project",
+      "preview",
+      "queued goal",
+      "--provider",
+      "provider",
+      "--model",
+      "model",
+      "--json",
+    ]);
+
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toMatchObject({
+      failureCode: "review_required",
+      failureMessage: "source closure changed",
     });
   });
 });

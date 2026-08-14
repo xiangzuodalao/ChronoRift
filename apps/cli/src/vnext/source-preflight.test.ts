@@ -11,15 +11,17 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { NodeHostGitPort } from "./host-git.js";
+import { EXTERNAL_GODOT_MAX_BYTES_V1 } from "./external-godot-source-policy.js";
 import { readGodotProjectDescriptorSnapshotV1 } from "./godot-project-descriptor.js";
 import {
+  ProjectSourceClosureV1Schema,
   parseGitTreeListing,
   preflightCleanGitSubtree,
   preflightCleanExternalGodotProject,
@@ -61,6 +63,17 @@ const commitAll = async (root: string, message = "fixture"): Promise<void> => {
     message,
   ]);
 };
+
+class RecordingBlobGit extends NodeHostGitPort {
+  public streamedBlobCount = 0;
+
+  public override streamBlob(
+    input: Parameters<NodeHostGitPort["streamBlob"]>[0],
+  ): ReturnType<NodeHostGitPort["streamBlob"]> {
+    this.streamedBlobCount += 1;
+    return super.streamBlob(input);
+  }
+}
 
 const createCommittedFixtureRepository = async (options?: {
   readonly projectDirectory?: string | undefined;
@@ -547,14 +560,14 @@ describe("preflightCleanProjectEnvironmentV1", () => {
 
   it.each([
     ["credential-like source", ".env.production", "SECRET=value\n"],
-    ["tool script", "tool_script.gd", "@tool\nextends Node\n"],
     [
-      "editor plugin",
-      "editor_plugin.gd",
-      "extends EditorPlugin\nfunc _enter_tree():\n\tpass\n",
+      "reserved managed addon",
+      "addons/chronorift_project_environment/plugin.gd",
+      "extends Node\n",
     ],
   ])("rejects %s", async (_label, relativePath, contents) => {
     const repo = await createProject();
+    await mkdir(join(repo.root, relativePath, ".."), { recursive: true });
     await writeFile(join(repo.root, relativePath), contents);
     await commitAll(repo.root, `add ${relativePath}`);
 
@@ -566,22 +579,403 @@ describe("preflightCleanProjectEnvironmentV1", () => {
     ).rejects.toBeInstanceOf(Error);
   });
 
-  it("rejects a nested project and a dirty worktree", async () => {
+  it("accepts a nested project and tracked dirty final bytes", async () => {
     const nested = await createCommittedFixtureRepository();
     await expect(
       preflightCleanProjectEnvironmentV1({
         projectPath: nested.project,
         sourceRepositoryExclusionRoots: [nested.runtimeRoot],
       }),
-    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+    ).resolves.toMatchObject({ projectPrefix: "game" });
 
     const dirty = await createProject();
+    const clean = await preflightCleanProjectEnvironmentV1({
+      projectPath: dirty.root,
+      sourceRepositoryExclusionRoots: [dirty.runtimeRoot],
+    });
     await appendFile(join(dirty.root, "project.godot"), "\n# dirty\n");
+    const frozen = await preflightCleanProjectEnvironmentV1({
+      projectPath: dirty.root,
+      sourceRepositoryExclusionRoots: [dirty.runtimeRoot],
+    });
+    expect(frozen.projectSourceIdentity).not.toBe(clean.projectSourceIdentity);
+    expect(frozen.sourceClosure?.entries).toContainEqual(
+      expect.objectContaining({
+        relativePath: "project.godot",
+        provenance: "tracked",
+      }),
+    );
+  });
+
+  it("requires an explicit project root when the repository has multiple Godot projects", async () => {
+    const repo = await createProject();
+    await mkdir(join(repo.root, "nested"));
+    await writeFile(
+      join(repo.root, "nested", "project.godot"),
+      '[application]\nrun/main_scene="res://nested.tscn"\n',
+    );
+    await writeFile(
+      join(repo.root, "nested", "nested.tscn"),
+      "[gd_scene format=3]\n",
+    );
+    await commitAll(repo.root, "add nested project");
+
     await expect(
       preflightCleanProjectEnvironmentV1({
-        projectPath: dirty.root,
-        sourceRepositoryExclusionRoots: [dirty.runtimeRoot],
+        projectPath: repo.root,
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
       }),
-    ).rejects.toMatchObject({ code: "source_not_clean" });
+    ).rejects.toThrow(/multiple Godot projects/u);
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: repo.root,
+        projectRoot: "nested",
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+      }),
+    ).resolves.toMatchObject({
+      projectPrefix: "nested",
+      mainScene: "res://nested.tscn",
+    });
+  });
+
+  it("includes only explicitly repeated exact untracked files", async () => {
+    const repo = await createProject();
+    await writeFile(join(repo.root, "included.txt"), "one\n");
+    await writeFile(join(repo.root, "excluded.txt"), "outside closure\n");
+
+    const withoutUntracked = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    const included = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      includeUntrackedPaths: ["included.txt"],
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    expect(included.projectSourceIdentity).not.toBe(
+      withoutUntracked.projectSourceIdentity,
+    );
+    expect(withoutUntracked.sourceKind).toBe(
+      "project-environment-v1-source-closure",
+    );
+    expect(included.sourceKind).toBe("project-environment-v1-source-closure");
+    expect(included.entries.map((entry) => entry.relativePath)).toContain(
+      "included.txt",
+    );
+    expect(included.entries.map((entry) => entry.relativePath)).not.toContain(
+      "excluded.txt",
+    );
+    expect(included.sourceClosure?.includedUntrackedPaths).toEqual([
+      "included.txt",
+    ]);
+
+    await writeFile(join(repo.root, ".gitignore"), "ignored.txt\n");
+    await commitAll(repo.root, "ignore one path");
+    await writeFile(join(repo.root, "ignored.txt"), "ignored\n");
+    for (const invalid of [
+      "/absolute.txt",
+      "../escape.txt",
+      ".git/config",
+      ".chronorift/state.json",
+      "ignored.txt",
+      ".",
+    ]) {
+      await expect(
+        preflightCleanProjectEnvironmentV1({
+          projectPath: repo.root,
+          includeUntrackedPaths: [invalid],
+          sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+        }),
+      ).rejects.toBeInstanceOf(Error);
+    }
+  });
+
+  it("allows project-local addons and @tool scripts", async () => {
+    const repo = await createProject();
+    await mkdir(join(repo.root, "addons", "local"), { recursive: true });
+    await writeFile(
+      join(repo.root, "addons", "local", "plugin.gd"),
+      "@tool\nextends EditorPlugin\nfunc _enter_tree():\n\tpass\n",
+    );
+    await commitAll(repo.root, "add local addon");
+
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: repo.root,
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+      }),
+    ).resolves.toMatchObject({ requestedGodotVersion: "4.7.1" });
+  });
+
+  it("derives a path-independent SourceId from the same checkout bytes", async () => {
+    const repo = await createProject();
+    const cloneRoot = join(repo.container, "clone");
+    await git(repo.container, [
+      "clone",
+      "--quiet",
+      "--no-hardlinks",
+      repo.root,
+      cloneRoot,
+    ]);
+    const first = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    const second = await preflightCleanProjectEnvironmentV1({
+      projectPath: cloneRoot,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+
+    expect(second.projectSourceIdentity).toBe(first.projectSourceIdentity);
+    expect(second.sourceClosure?.sourceId).toBe(first.sourceClosure?.sourceId);
+  });
+
+  it("rejects a persisted closure whose identity content was tampered", async () => {
+    const repo = await createProject();
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    if (source.sourceClosure === undefined) {
+      throw new Error("test preflight omitted its source closure");
+    }
+
+    expect(() =>
+      ProjectSourceClosureV1Schema.parse({
+        ...source.sourceClosure,
+        mainScene: "res://tampered.tscn",
+      }),
+    ).toThrow(/canonical closure identity/u);
+  });
+
+  it("rejects non-canonical closure ordering and untracked provenance", async () => {
+    const repo = await createProject();
+    await Promise.all([
+      writeFile(join(repo.root, "a.txt"), "a\n"),
+      writeFile(join(repo.root, "b.txt"), "b\n"),
+    ]);
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      includeUntrackedPaths: ["b.txt", "a.txt"],
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    if (source.sourceClosure === undefined) {
+      throw new Error("test preflight omitted its source closure");
+    }
+
+    const reordered = ProjectSourceClosureV1Schema.safeParse({
+      ...source.sourceClosure,
+      entries: [...source.sourceClosure.entries].reverse(),
+    });
+    expect(reordered.success).toBe(false);
+    if (!reordered.success) {
+      expect(reordered.error.issues.map((issue) => issue.message)).toContain(
+        "entries must be uniquely sorted by UTF-8 bytes",
+      );
+    }
+
+    const mismatched = ProjectSourceClosureV1Schema.safeParse({
+      ...source.sourceClosure,
+      includedUntrackedPaths: ["a.txt"],
+    });
+    expect(mismatched.success).toBe(false);
+    if (!mismatched.success) {
+      expect(mismatched.error.issues.map((issue) => issue.message)).toContain(
+        "includedUntrackedPaths must exactly match explicit_untracked entries",
+      );
+    }
+
+    const firstEntry = source.sourceClosure.entries[0];
+    if (firstEntry === undefined) {
+      throw new Error("test closure omitted tracked entries");
+    }
+    const reserved = ProjectSourceClosureV1Schema.safeParse({
+      ...source.sourceClosure,
+      entries: [
+        { ...firstEntry, relativePath: ".chronorift/persisted.json" },
+        ...source.sourceClosure.entries.slice(1),
+      ],
+    });
+    expect(reserved.success).toBe(false);
+    if (!reserved.success) {
+      expect(reserved.error.issues.map((issue) => issue.message)).toContain(
+        "path must be normalized, relative, and must not enter .git or .chronorift",
+      );
+    }
+  });
+
+  it("binds the selected project path when nested projects have identical bytes", async () => {
+    const repo = await createProject();
+    await mkdir(join(repo.root, "first"));
+    await mkdir(join(repo.root, "second"));
+    const projectBytes = '[application]\nrun/main_scene="res://main.tscn"\n';
+    for (const project of ["first", "second"]) {
+      await writeFile(join(repo.root, project, "project.godot"), projectBytes);
+      await writeFile(
+        join(repo.root, project, "main.tscn"),
+        "[gd_scene format=3]\n",
+      );
+    }
+    await commitAll(repo.root, "identical nested projects");
+
+    const first = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      projectRoot: "first",
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    const second = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      projectRoot: "second",
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+
+    expect(first.selectedTreeSha256).toBe(second.selectedTreeSha256);
+    expect(first.projectSourceIdentity).not.toBe(second.projectSourceIdentity);
+  });
+
+  it("includes clean materialized direct submodule lineage and rejects dirty submodules", async () => {
+    const repo = await createProject();
+    const dependency = join(repo.container, "dependency");
+    await mkdir(dependency);
+    await writeFile(join(dependency, "shared.gd"), "extends Node\n");
+    await git(dependency, ["init", "--quiet", "--initial-branch=main"]);
+    await commitAll(dependency, "dependency");
+    await git(repo.root, [
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "add",
+      "--quiet",
+      dependency,
+      "addons/local_dependency",
+    ]);
+    await commitAll(repo.root, "materialized submodule");
+
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    expect(source.sourceClosure?.submodules).toEqual([
+      expect.objectContaining({ mountPath: "addons/local_dependency" }),
+    ]);
+    expect(source.entries.map((entry) => entry.relativePath)).toContain(
+      "addons/local_dependency/shared.gd",
+    );
+
+    await writeFile(
+      join(repo.root, "addons", "local_dependency", "shared.gd"),
+      "extends Node\n# dirty\n",
+    );
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: repo.root,
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+      }),
+    ).rejects.toThrow(/submodule must be clean/u);
+  });
+
+  it.each([
+    [
+      "reserved source",
+      ".chronorift/private.bin",
+      "private\n",
+      "source_feature_unsupported",
+    ],
+    [
+      "credential-like source",
+      ".env.production",
+      "SECRET=value\n",
+      "path_denied",
+    ],
+    [
+      "native source",
+      "native/libgame.so",
+      "native\n",
+      "source_feature_unsupported",
+    ],
+  ] as const)(
+    "rejects submodule-local %s before reading any source blob",
+    async (_label, relativePath, contents, errorCode) => {
+      const repo = await createProject();
+      const dependency = join(repo.container, "dependency");
+      await mkdir(dirname(join(dependency, relativePath)), { recursive: true });
+      await writeFile(join(dependency, relativePath), contents);
+      await git(dependency, ["init", "--quiet", "--initial-branch=main"]);
+      await commitAll(dependency, "dependency");
+      await git(repo.root, [
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "--quiet",
+        dependency,
+        "addons/local_dependency",
+      ]);
+      await commitAll(repo.root, "materialized submodule");
+      const recordingGit = new RecordingBlobGit();
+
+      await expect(
+        preflightCleanProjectEnvironmentV1(
+          {
+            projectPath: repo.root,
+            sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+          },
+          { git: recordingGit },
+        ),
+      ).rejects.toMatchObject({ code: errorCode });
+      expect(recordingGit.streamedBlobCount).toBe(0);
+    },
+  );
+
+  it("enforces the byte budget across direct submodules before reading blobs", async () => {
+    const repo = await createProject();
+    const submoduleRoots = new Set<string>();
+    for (const name of ["first", "second"]) {
+      const dependency = join(repo.container, `dependency-${name}`);
+      await mkdir(dependency);
+      await writeFile(join(dependency, "shared.gd"), "extends Node\n");
+      await git(dependency, ["init", "--quiet", "--initial-branch=main"]);
+      await commitAll(dependency, `dependency ${name}`);
+      const mountPath = `addons/${name}`;
+      await git(repo.root, [
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "--quiet",
+        dependency,
+        mountPath,
+      ]);
+      submoduleRoots.add(join(repo.root, mountPath));
+    }
+    await commitAll(repo.root, "two materialized submodules");
+
+    const perSubmoduleBytes = Math.floor(EXTERNAL_GODOT_MAX_BYTES_V1 / 2) + 1;
+    class InflatedSubmoduleTreeGit extends RecordingBlobGit {
+      public override async listTree(
+        input: Parameters<NodeHostGitPort["listTree"]>[0],
+      ): Promise<Uint8Array> {
+        const listing = await super.listTree(input);
+        if (!submoduleRoots.has(input.context.cwd)) return listing;
+        return Buffer.from(
+          Buffer.from(listing)
+            .toString("utf8")
+            .replace(/ [0-9]+\t/gu, ` ${String(perSubmoduleBytes)}\t`),
+          "utf8",
+        );
+      }
+    }
+    const recordingGit = new InflatedSubmoduleTreeGit();
+
+    await expect(
+      preflightCleanProjectEnvironmentV1(
+        {
+          projectPath: repo.root,
+          sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+        },
+        { git: recordingGit },
+      ),
+    ).rejects.toThrow(/source closure exceeds its bounded profile/u);
+    expect(recordingGit.streamedBlobCount).toBe(0);
   });
 });

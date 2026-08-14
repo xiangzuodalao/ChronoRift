@@ -204,6 +204,7 @@ export async function runProjectEnvironmentCompatibilitySmokeV2(input: {
     environmentRevisionId: input.revision.environmentRevisionId,
     adapterRevisionId: input.adapterRevision.adapterRevisionId,
     toolchainReceiptId: input.toolchainReceiptId,
+    launchTargetId: input.launchTargetId,
     bridgeHandshakeObserved: launch.outcome === "success",
     instrumentedLaunchObserved: launch.outcome === "success",
     queryObservations: {

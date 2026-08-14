@@ -6,7 +6,7 @@ import {
   realpath,
   type FileHandle,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { M1Error } from "./errors.js";
 import { NodeHostGitPort, type HostGitPort } from "./host-git.js";
@@ -119,17 +119,30 @@ export async function prepareProjectEnvironmentProjectStoreV1(
   git: HostGitPort = new NodeHostGitPort(),
 ): Promise<PreparedProjectEnvironmentProjectStoreV1> {
   const projectRoot = resolve(source.projectRoot);
+  const repositoryRoot = resolve(source.repositoryRoot);
   if (
     projectRoot !== source.projectRoot ||
-    projectRoot !== source.repositoryRoot ||
-    source.projectPrefix !== ""
+    repositoryRoot !== source.repositoryRoot
   ) {
     throw new M1Error(
       "path_denied",
-      "PE-A project store requires the verified repository-root project",
+      "Project Environment store requires canonical verified roots",
     );
   }
+  await assertCanonicalDirectory(repositoryRoot, "Repository root");
   await assertCanonicalDirectory(projectRoot, "Project root");
+  const observedPrefix = relative(repositoryRoot, projectRoot);
+  if (
+    observedPrefix === ".." ||
+    observedPrefix.startsWith(`..${sep}`) ||
+    isAbsolute(observedPrefix) ||
+    (observedPrefix === "." ? "" : observedPrefix) !== source.projectPrefix
+  ) {
+    throw new M1Error(
+      "path_denied",
+      "Project Environment project root escaped or mismatched its repository",
+    );
+  }
   if (
     source.entries.some(
       (entry) =>
@@ -142,6 +155,8 @@ export async function prepareProjectEnvironmentProjectStoreV1(
       "tracked .chronorift content prevents local Project Environment initialization",
     );
   }
+
+  const statusBefore = Buffer.from(await git.statusPorcelain(repositoryRoot));
 
   const localRoot = join(projectRoot, PROJECT_ENVIRONMENT_LOCAL_ROOT_V1);
   if (!(await exists(localRoot))) {
@@ -166,11 +181,11 @@ export async function prepareProjectEnvironmentProjectStoreV1(
     "Project Environment revision namespace",
   );
 
-  const status = await git.statusPorcelain(projectRoot);
-  if (status.byteLength !== 0) {
+  const statusAfter = Buffer.from(await git.statusPorcelain(repositoryRoot));
+  if (!statusAfter.equals(statusBefore)) {
     throw new M1Error(
-      "source_not_clean",
-      "local Project Environment setup did not preserve a clean Git worktree",
+      "source_drift",
+      "local Project Environment setup changed Git worktree status",
     );
   }
   return Object.freeze({ projectRoot, localRoot, namespaceRoot });

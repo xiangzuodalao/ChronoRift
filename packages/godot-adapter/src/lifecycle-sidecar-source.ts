@@ -135,6 +135,7 @@ const RESERVED_AUTOLOAD = ${JSON.stringify(managedProfile.reservedAutoload)};
 const REQUIRES_ADAPTER_PROFILE_HASH = ${JSON.stringify(managedProfile.adapterProfileHash)};
 const PROJECT_ENVIRONMENT = ${JSON.stringify(managedProfile.projectEnvironment === true)};
 const LAUNCH_SCHEMA_VERSION = ${JSON.stringify(managedProfile.launchSchemaVersion ?? 1)};
+const SUPPORTS_LAUNCH_SCENE = PROJECT_ENVIRONMENT && LAUNCH_SCHEMA_VERSION === 2;
 const MANAGED_RUNTIME_ID = ${
     managedProfile.projectEnvironment === true
       ? managedProfile.runtimeProfile ===
@@ -224,6 +225,12 @@ const exactKeys = (value, keys) => {
 const assertResourceId = (value) =>
   typeof value === "string" && RESOURCE_ID.test(value) && !value.includes("..");
 
+const assertResourceReference = (value) => {
+  if (typeof value !== "string" || value.length < 7 || value.length > 1024 ||
+      !/^res:\/\/[A-Za-z0-9_./@+ -]+$/u.test(value) || value.includes("\\") || value.includes("\0")) return false;
+  return !value.slice("res://".length).split("/").some((segment) => segment === "" || segment === "." || segment === "..");
+};
+
 const assertDiagnosticBounds = (value) =>
   Number.isInteger(value.diagnosticFrameMaxBytes) && value.diagnosticFrameMaxBytes >= 1024 && value.diagnosticFrameMaxBytes <= 1024 * 1024 &&
   Number.isInteger(value.diagnosticTotalMaxBytes) && value.diagnosticTotalMaxBytes >= 16 * 1024 && value.diagnosticTotalMaxBytes <= 16 * 1024 * 1024 &&
@@ -245,7 +252,8 @@ const parseLaunch = (json) => {
   const operationKeys = OPERATION === "vanilla_smoke"
     ? ["importTimeoutMs", "vanillaTimeoutMs", "stabilityWindowMs"]
     : ["protocolProfile", "protocolVersion", "token", "overlayHash", "addonHash", "expectedMainScene", "importTimeoutMs", "startupTimeoutMs", "executionTimeoutMs", ...projectEnvironmentKeys, ...(REQUIRES_ADAPTER_PROFILE_HASH ? ["adapterProfileSha256"] : [])];
-  if (!exactKeys(value, [...common, ...operationKeys]) || value.schemaVersion !== LAUNCH_SCHEMA_VERSION ||
+  const launchSceneKeys = SUPPORTS_LAUNCH_SCENE && value.launchScene !== undefined ? ["launchScene"] : [];
+  if (!exactKeys(value, [...common, ...operationKeys, ...launchSceneKeys]) || value.schemaVersion !== LAUNCH_SCHEMA_VERSION ||
       value.runtimeProfile !== RUNTIME_PROFILE || value.operation !== OPERATION) {
     throw new Error("launch prelude has an unsupported lifecycle shape or profile");
   }
@@ -259,7 +267,8 @@ const parseLaunch = (json) => {
   if (OPERATION === "vanilla_smoke") {
     if (!Number.isInteger(value.importTimeoutMs) || value.importTimeoutMs < 1000 || value.importTimeoutMs > 120000 ||
         !Number.isInteger(value.vanillaTimeoutMs) || value.vanillaTimeoutMs < 2000 || value.vanillaTimeoutMs > 60000 ||
-        value.stabilityWindowMs !== 2000 || value.vanillaTimeoutMs <= value.stabilityWindowMs) {
+        value.stabilityWindowMs !== 2000 || value.vanillaTimeoutMs <= value.stabilityWindowMs ||
+        (value.launchScene !== undefined && !assertResourceReference(value.launchScene))) {
       throw new Error("vanilla smoke time bounds are invalid");
     }
   } else if (value.protocolProfile !== PROTOCOL_PROFILE || value.protocolVersion !== LAUNCH_SCHEMA_VERSION ||
@@ -269,6 +278,7 @@ const parseLaunch = (json) => {
       (REQUIRES_ADAPTER_PROFILE_HASH && (typeof value.adapterProfileSha256 !== "string" || !HASH.test(value.adapterProfileSha256))) ||
       typeof value.expectedMainScene !== "string" || value.expectedMainScene.length < 1 || value.expectedMainScene.length > 1024 ||
       !["res://", "uid://"].some((prefix) => value.expectedMainScene.startsWith(prefix)) ||
+      (value.launchScene !== undefined && !assertResourceReference(value.launchScene)) ||
       !Number.isInteger(value.importTimeoutMs) || value.importTimeoutMs < 1000 || value.importTimeoutMs > 120000 ||
       !Number.isInteger(value.startupTimeoutMs) || value.startupTimeoutMs < 1000 || value.startupTimeoutMs > 60000 ||
       !Number.isInteger(value.executionTimeoutMs) || value.executionTimeoutMs < 1000 || value.executionTimeoutMs > 600000) {
@@ -404,8 +414,11 @@ const copyCandidate = async () => {
       if (atRoot && (name === ".git" || name === ".godot" || (PROJECT_ENVIRONMENT && name === ".chronorift"))) continue;
       const relativePath = prefix === "" ? name : prefix + "/" + name;
       const normalizedPath = relativePath.toLocaleLowerCase("en-US");
+      const reservedProjectEnvironmentAddon = "addons/" + ADDON_DIRECTORY.toLocaleLowerCase("en-US");
       if ((!PROJECT_ENVIRONMENT && (normalizedPath === ".chronorift" || normalizedPath.startsWith(".chronorift/"))) ||
-          normalizedPath === "addons" || normalizedPath.startsWith("addons/") || normalizedPath === "override.cfg") {
+          (!PROJECT_ENVIRONMENT && (normalizedPath === "addons" || normalizedPath.startsWith("addons/"))) ||
+          (PROJECT_ENVIRONMENT && (normalizedPath === reservedProjectEnvironmentAddon || normalizedPath.startsWith(reservedProjectEnvironmentAddon + "/"))) ||
+          normalizedPath === "override.cfg") {
         const collision = new Error("candidate source collides with the managed lifecycle overlay");
         collision.code = "MANAGED_RUNTIME_COLLISION";
         throw collision;
@@ -420,7 +433,9 @@ const copyCandidate = async () => {
       try {
         if (pinned.stat.dev !== rootDevice) throw new Error("candidate source crossed a filesystem boundary: " + relativePath);
         if (pinned.stat.isDirectory()) {
-          await fsp.mkdir(targetPath, { mode: 0o700 });
+          if (!(PROJECT_ENVIRONMENT && OPERATION === "managed_lifecycle" && relativePath === "addons")) {
+            await fsp.mkdir(targetPath, { mode: 0o700 });
+          }
           await visit(pinned.handle, targetPath, relativePath, false, rootDevice);
         } else if (pinned.stat.isFile()) {
           fileCount += 1;
@@ -488,8 +503,9 @@ const verifyStagedCandidate = async (expectedStage) => {
         }
         continue;
       }
-      if (OPERATION === "managed_lifecycle" && atRoot && (name === "addons" || name === "override.cfg" || (PROJECT_ENVIRONMENT && name === ".chronorift"))) continue;
+      if (OPERATION === "managed_lifecycle" && atRoot && (name === "override.cfg" || (!PROJECT_ENVIRONMENT && name === "addons") || (PROJECT_ENVIRONMENT && name === ".chronorift"))) continue;
       const relativePath = prefix === "" ? name : prefix + "/" + name;
+      if (PROJECT_ENVIRONMENT && OPERATION === "managed_lifecycle" && prefix === "addons" && name === ADDON_DIRECTORY) continue;
       const target = path.join(directory, name);
       const inspected = await fsp.lstat(target, { bigint: true });
       if (inspected.isSymbolicLink()) throw new Error("staged candidate contains a symlink after execution: " + relativePath);
@@ -735,7 +751,7 @@ const runVanillaSmoke = async (launch, stage, remainder) => {
   }
   let vanillaRun;
   try {
-    vanillaRun = await runBoundedProcess("vanilla", launch, ["--headless", "--path", PROJECT_ROOT, "--rendering-method", "gl_compatibility", "--audio-driver", "Dummy"], launch.vanillaTimeoutMs, launch.stabilityWindowMs);
+    vanillaRun = await runBoundedProcess("vanilla", launch, ["--headless", "--path", PROJECT_ROOT, "--rendering-method", "gl_compatibility", "--audio-driver", "Dummy", ...(launch.launchScene === undefined ? [] : [launch.launchScene])], launch.vanillaTimeoutMs, launch.stabilityWindowMs);
   } catch (error) {
     if (error?.processReceipt) {
       error.smokeStage = stage; error.importReceipt = importRun.receipt; error.vanillaReceipt = error.processReceipt;
@@ -841,7 +857,8 @@ const startManagedRuntime = async (launch, stage, remainder) => {
   }, launch.executionTimeoutMs);
   child = childProcess.spawn(GODOT_EXECUTABLE, [
     ...GODOT_ARGS_PREFIX, "--headless", "--path", PROJECT_ROOT,
-    "--rendering-method", "gl_compatibility", "--audio-driver", "Dummy"
+    "--rendering-method", "gl_compatibility", "--audio-driver", "Dummy",
+    ...(launch.launchScene === undefined ? [] : [launch.launchScene])
   ], {
     cwd: PROJECT_ROOT,
     env: processEnvironment(processRoot, {

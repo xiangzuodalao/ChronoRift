@@ -470,6 +470,8 @@ describe("PE-B complete Preview Host integration", () => {
       reused: false,
       goalDelivered: true,
       candidateSourceChanged: false,
+      sourceId: source.sourceClosure?.sourceId,
+      projectRoot: "",
     });
     expect(first.environmentRevisionId).not.toBeNull();
     expect(first.adapterRevisionId).not.toBeNull();
@@ -493,6 +495,8 @@ describe("PE-B complete Preview Host integration", () => {
       goalDelivered: true,
       candidateSourceChanged: false,
       environmentId: first.environmentId,
+      sourceId: first.sourceId,
+      projectRoot: first.projectRoot,
       environmentRevisionId: first.environmentRevisionId,
       adapterRevisionId: first.adapterRevisionId,
     });
@@ -588,6 +592,12 @@ describe("PE-B complete Preview Host integration", () => {
     const revision = await projectStore.readRevision(
       current.environmentRevisionId,
       current.publicationOperationId,
+    );
+    expect(revision.files.map((file) => file.path)).toEqual(
+      expect.arrayContaining([
+        "records/source-closure.v1.json",
+        "records/source-materialization-receipt.v2.json",
+      ]),
     );
     const adapterFiles = revision.files
       .filter((file) => file.path.startsWith("adapter/"))

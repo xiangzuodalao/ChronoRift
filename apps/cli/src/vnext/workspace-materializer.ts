@@ -10,14 +10,16 @@ import {
   rm,
   unlink,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { z } from "zod";
 
 import {
   Sha256DigestV1Schema,
+  SourceIdSchema,
   TaskIdSchema,
   type Sha256DigestV1,
+  type SourceId,
   type TaskId,
 } from "@chronorift/domain";
 
@@ -42,6 +44,7 @@ import {
 } from "./selected-tree.js";
 import {
   parseGitTreeListing,
+  refreezeProjectEnvironmentSourceV1,
   type VerifiedExternalGodotProject,
   type VerifiedGitSubtree,
   type VerifiedProjectEnvironmentSourceV1,
@@ -90,6 +93,29 @@ export interface ProjectEnvironmentWorkspaceMaterializationReceiptV1 {
   };
 }
 
+export interface ProjectEnvironmentWorkspaceMaterializationReceiptV2 {
+  readonly schemaVersion: 2;
+  readonly receiptKind: "project-environment-workspace-materialization";
+  readonly taskId: TaskId;
+  readonly sourceId: SourceId;
+  readonly projectSourceIdentity: Sha256DigestV1;
+  readonly sourceRevision: string;
+  readonly projectPrefix: string;
+  readonly selectedTreeSha256: Sha256DigestV1;
+  readonly agentBaselineCommit: string;
+  readonly hostBaselineCommit: string;
+  readonly copyRule: "verified-source-closure-v1";
+  readonly excludedPaths: readonly [".git", ".godot", ".chronorift"];
+  readonly sourcePostflight: {
+    readonly observedHeadCommit: string;
+    readonly observedSelectedTreeSha256: Sha256DigestV1;
+    readonly observedProjectSourceIdentity: Sha256DigestV1;
+    readonly statusPorcelainSha256: Sha256DigestV1;
+    readonly status: "stable";
+    readonly stagingWorktreeRegistered: false;
+  };
+}
+
 const GitObjectIdSchema = z.string().regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u);
 
 export const ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema: z.ZodType<ProjectEnvironmentWorkspaceMaterializationReceiptV1> =
@@ -120,13 +146,103 @@ export const ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema: z.ZodTyp
     })
     .strict();
 
+const ProjectPrefixSchema = z
+  .string()
+  .max(8_192)
+  .refine(
+    (value) =>
+      value.length === 0 ||
+      (!isAbsolute(value) &&
+        !value.includes("\\") &&
+        !value.includes("\0") &&
+        !value
+          .split("/")
+          .some(
+            (segment) =>
+              segment.length === 0 ||
+              segment === "." ||
+              segment === ".." ||
+              segment === ".git",
+          )),
+    "projectPrefix must be empty or a normalized relative path",
+  );
+
+export const ProjectEnvironmentWorkspaceMaterializationReceiptV2Schema: z.ZodType<ProjectEnvironmentWorkspaceMaterializationReceiptV2> =
+  z
+    .object({
+      schemaVersion: z.literal(2),
+      receiptKind: z.literal("project-environment-workspace-materialization"),
+      taskId: TaskIdSchema,
+      sourceId: SourceIdSchema,
+      projectSourceIdentity: Sha256DigestV1Schema,
+      sourceRevision: GitObjectIdSchema,
+      projectPrefix: ProjectPrefixSchema,
+      selectedTreeSha256: Sha256DigestV1Schema,
+      agentBaselineCommit: GitObjectIdSchema,
+      hostBaselineCommit: GitObjectIdSchema,
+      copyRule: z.literal("verified-source-closure-v1"),
+      excludedPaths: z.tuple([
+        z.literal(".git"),
+        z.literal(".godot"),
+        z.literal(".chronorift"),
+      ]),
+      sourcePostflight: z
+        .object({
+          observedHeadCommit: GitObjectIdSchema,
+          observedSelectedTreeSha256: Sha256DigestV1Schema,
+          observedProjectSourceIdentity: Sha256DigestV1Schema,
+          statusPorcelainSha256: Sha256DigestV1Schema,
+          status: z.literal("stable"),
+          stagingWorktreeRegistered: z.literal(false),
+        })
+        .strict(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (value.sourceId !== `source:v1:${value.projectSourceIdentity}`) {
+        context.addIssue({
+          code: "custom",
+          path: ["sourceId"],
+          message: "sourceId does not match projectSourceIdentity",
+        });
+      }
+      for (const [field, matches] of [
+        [
+          "observedHeadCommit",
+          value.sourcePostflight.observedHeadCommit === value.sourceRevision,
+        ],
+        [
+          "observedSelectedTreeSha256",
+          value.sourcePostflight.observedSelectedTreeSha256 ===
+            value.selectedTreeSha256,
+        ],
+        [
+          "observedProjectSourceIdentity",
+          value.sourcePostflight.observedProjectSourceIdentity ===
+            value.projectSourceIdentity,
+        ],
+      ] as const) {
+        if (!matches) {
+          context.addIssue({
+            code: "custom",
+            path: ["sourcePostflight", field],
+            message: `${field} does not match the frozen source`,
+          });
+        }
+      }
+    });
+
 export interface MaterializedProjectEnvironmentWorkspaceV1 {
-  readonly sourceKind: "project-environment-v1-clean-git";
+  readonly sourceKind:
+    | "project-environment-v1-clean-git"
+    | "project-environment-v1-source-closure";
   readonly workspaceDirectory: string;
   readonly hostBaselineGitDirectory: string;
   readonly agentBaselineCommit: string;
   readonly hostBaselineCommit: string;
-  readonly receipt: ProjectEnvironmentWorkspaceMaterializationReceiptV1;
+  readonly receipt:
+    | ProjectEnvironmentWorkspaceMaterializationReceiptV1
+    | ProjectEnvironmentWorkspaceMaterializationReceiptV2;
   readonly projectSourceIdentity: Sha256DigestV1;
   readonly mainScene: string;
 }
@@ -160,7 +276,8 @@ const isProjectEnvironmentSource = (
   source: MaterializableSource,
 ): source is VerifiedProjectEnvironmentSourceV1 =>
   "sourceKind" in source &&
-  source.sourceKind === "project-environment-v1-clean-git";
+  (source.sourceKind === "project-environment-v1-clean-git" ||
+    source.sourceKind === "project-environment-v1-source-closure");
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
   error instanceof Error && "code" in error;
@@ -259,6 +376,108 @@ const ensureSafeParentDirectories = async (
   }
 };
 
+const materializeVerifiedProjectClosureFile = async (input: {
+  readonly source: VerifiedProjectEnvironmentSourceV1;
+  readonly entry: VerifiedProjectEnvironmentSourceV1["entries"][number];
+  readonly destination: Awaited<ReturnType<typeof open>>;
+}): Promise<void> => {
+  const closureEntry = input.source.sourceClosure?.entries.find(
+    (entry) => entry.relativePath === input.entry.relativePath,
+  );
+  if (closureEntry === undefined) {
+    throw new M1Error(
+      "source_drift",
+      "source_drift: verified Project Source Closure entry disappeared",
+    );
+  }
+  const absolutePath = join(input.source.projectRoot, input.entry.relativePath);
+  const parent = dirname(absolutePath);
+  let canonicalParent: string;
+  try {
+    canonicalParent = await realpath(parent);
+  } catch (error) {
+    throw new M1Error(
+      "source_drift",
+      "source_drift: source closure parent disappeared before materialization",
+      error,
+    );
+  }
+  if (
+    !pathIsWithinOrEqual(input.source.projectRoot, absolutePath) ||
+    canonicalParent !== parent
+  ) {
+    throw new M1Error(
+      "source_drift",
+      "source_drift: source path traversed a symbolic link",
+    );
+  }
+  let expected: Awaited<ReturnType<typeof lstat>>;
+  try {
+    expected = await lstat(absolutePath);
+  } catch (error) {
+    throw new M1Error(
+      "source_drift",
+      "source_drift: source closure entry disappeared before materialization",
+      error,
+    );
+  }
+  if (expected.isSymbolicLink() || !expected.isFile()) {
+    throw new M1Error(
+      "source_drift",
+      "source_drift: source closure entry is no longer a regular file",
+    );
+  }
+  let source: Awaited<ReturnType<typeof open>>;
+  try {
+    source = await open(
+      absolutePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+  } catch (error) {
+    throw new M1Error(
+      "source_drift",
+      "source_drift: source closure entry could not be reopened for materialization",
+      error,
+    );
+  }
+  try {
+    const before = await source.stat();
+    if (
+      before.dev !== expected.dev ||
+      before.ino !== expected.ino ||
+      before.mode !== expected.mode ||
+      before.size !== closureEntry.byteLength ||
+      ((before.mode & 0o111) === 0 ? "100644" : "100755") !== closureEntry.mode
+    ) {
+      throw new M1Error(
+        "source_drift",
+        "source_drift: source closure metadata changed before materialization",
+      );
+    }
+    const bytes = await source.readFile();
+    const after = await source.stat();
+    const observedSha256 = createHash("sha256").update(bytes).digest("hex");
+    if (
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.mode !== before.mode ||
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs ||
+      bytes.byteLength !== closureEntry.byteLength ||
+      observedSha256 !== closureEntry.contentSha256
+    ) {
+      throw new M1Error(
+        "source_drift",
+        "source_drift: source closure bytes changed during materialization",
+      );
+    }
+    await input.destination.writeFile(bytes);
+  } finally {
+    await source.close();
+  }
+};
+
 const materializeSourceFiles = async (input: {
   readonly git: HostGitPort;
   readonly source: MaterializableSource;
@@ -279,16 +498,27 @@ const materializeSourceFiles = async (input: {
       0o600,
     );
     try {
-      const receipt = await input.git.streamBlob({
-        cwd: input.source.repositoryRoot,
-        objectId: entry.objectId,
-        destination,
-      });
-      if (receipt.byteLength !== entry.byteLength) {
-        throw new M1Error(
-          "artifact_write_failed",
-          "materialized blob length does not match verified source metadata",
-        );
+      if (
+        isProjectEnvironmentSource(input.source) &&
+        input.source.sourceClosure !== undefined
+      ) {
+        await materializeVerifiedProjectClosureFile({
+          source: input.source,
+          entry,
+          destination,
+        });
+      } else {
+        const receipt = await input.git.streamBlob({
+          cwd: input.source.repositoryRoot,
+          objectId: entry.objectId,
+          destination,
+        });
+        if (receipt.byteLength !== entry.byteLength) {
+          throw new M1Error(
+            "artifact_write_failed",
+            "materialized blob length does not match verified source metadata",
+          );
+        }
       }
       await destination.chmod(entry.mode === "100755" ? 0o755 : 0o644);
       await destination.sync();
@@ -800,51 +1030,108 @@ export async function materializePrivateTaskWorkspace(
     isProjectEnvironmentSource(request.source)
   ) {
     try {
-      const observedHeadCommit = await git.resolveHeadCommit(
-        request.source.repositoryRoot,
-      );
-      const status = await git.statusPorcelain(request.source.repositoryRoot);
-      if (
-        observedHeadCommit !== request.source.headCommit ||
-        status.byteLength !== 0
-      ) {
-        throw new M1Error(
-          "artifact_write_failed",
-          "source checkout changed during Project Environment materialization",
+      let receipt:
+        | ProjectEnvironmentWorkspaceMaterializationReceiptV1
+        | ProjectEnvironmentWorkspaceMaterializationReceiptV2;
+      if (request.source.sourceClosure !== undefined) {
+        let observed: VerifiedProjectEnvironmentSourceV1;
+        let status: Uint8Array;
+        try {
+          status = await git.statusPorcelain(request.source.repositoryRoot);
+          observed = await refreezeProjectEnvironmentSourceV1(request.source, {
+            git,
+          });
+        } catch (error) {
+          throw new M1Error(
+            "source_drift",
+            "source_drift: source checkout could not be re-frozen after materialization",
+            error,
+          );
+        }
+        if (
+          observed.headCommit !== request.source.headCommit ||
+          observed.projectPrefix !== request.source.projectPrefix ||
+          observed.selectedTreeSha256 !== request.source.selectedTreeSha256 ||
+          observed.projectSourceIdentity !==
+            request.source.projectSourceIdentity
+        ) {
+          throw new M1Error(
+            "source_drift",
+            "source_drift: source checkout changed during Project Environment materialization",
+          );
+        }
+        receipt =
+          ProjectEnvironmentWorkspaceMaterializationReceiptV2Schema.parse({
+            schemaVersion: 2,
+            receiptKind: "project-environment-workspace-materialization",
+            taskId: request.taskId,
+            sourceId: request.source.sourceClosure.sourceId,
+            projectSourceIdentity: request.source.projectSourceIdentity,
+            sourceRevision: request.source.headCommit,
+            projectPrefix: request.source.projectPrefix,
+            selectedTreeSha256: request.source.selectedTreeSha256,
+            agentBaselineCommit: projectEnvironmentPending.agentBaselineCommit,
+            hostBaselineCommit: projectEnvironmentPending.hostBaselineCommit,
+            copyRule: "verified-source-closure-v1",
+            excludedPaths: [".git", ".godot", ".chronorift"],
+            sourcePostflight: {
+              observedHeadCommit: observed.headCommit,
+              observedSelectedTreeSha256: observed.selectedTreeSha256,
+              observedProjectSourceIdentity: observed.projectSourceIdentity,
+              statusPorcelainSha256: createHash("sha256")
+                .update(status)
+                .digest("hex"),
+              status: "stable",
+              stagingWorktreeRegistered: false,
+            },
+          });
+      } else {
+        const status = await git.statusPorcelain(request.source.repositoryRoot);
+        const observedHeadCommit = await git.resolveHeadCommit(
+          request.source.repositoryRoot,
         );
-      }
-      await verifyBaselineTree({
-        git,
-        context: { cwd: request.source.repositoryRoot },
-        commit: observedHeadCommit,
-        expectedEntries: request.source.entries,
-        expectedSelectedTreeSha256: request.source.selectedTreeSha256,
-        temporaryRoot: request.layout.hostOperationTemporaryDirectory,
-        label: "project-environment-source-postflight",
-      });
-      const receipt =
-        ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema.parse({
-          schemaVersion: 1,
-          receiptKind: "project-environment-workspace-materialization",
-          taskId: request.taskId,
-          projectSourceIdentity: request.source.projectSourceIdentity,
-          sourceRevision: request.source.headCommit,
-          selectedTreeSha256: request.source.selectedTreeSha256,
-          agentBaselineCommit: projectEnvironmentPending.agentBaselineCommit,
-          hostBaselineCommit: projectEnvironmentPending.hostBaselineCommit,
-          copyRule: "git-object-plumbing-v1",
-          excludedPaths: [".git", ".godot", ".chronorift"],
-          sourcePostflight: {
-            observedHeadCommit,
-            observedSelectedTreeSha256: request.source.selectedTreeSha256,
-            statusPorcelainSha256: createHash("sha256")
-              .update(status)
-              .digest("hex"),
-            stagingWorktreeRegistered: false,
-          },
+        if (
+          observedHeadCommit !== request.source.headCommit ||
+          status.byteLength !== 0
+        ) {
+          throw new M1Error(
+            "artifact_write_failed",
+            "source checkout changed during legacy Project Environment materialization",
+          );
+        }
+        await verifyBaselineTree({
+          git,
+          context: { cwd: request.source.repositoryRoot },
+          commit: observedHeadCommit,
+          expectedEntries: request.source.entries,
+          expectedSelectedTreeSha256: request.source.selectedTreeSha256,
+          temporaryRoot: request.layout.hostOperationTemporaryDirectory,
+          label: "project-environment-source-postflight",
         });
+        receipt =
+          ProjectEnvironmentWorkspaceMaterializationReceiptV1Schema.parse({
+            schemaVersion: 1,
+            receiptKind: "project-environment-workspace-materialization",
+            taskId: request.taskId,
+            projectSourceIdentity: request.source.projectSourceIdentity,
+            sourceRevision: request.source.headCommit,
+            selectedTreeSha256: request.source.selectedTreeSha256,
+            agentBaselineCommit: projectEnvironmentPending.agentBaselineCommit,
+            hostBaselineCommit: projectEnvironmentPending.hostBaselineCommit,
+            copyRule: "git-object-plumbing-v1",
+            excludedPaths: [".git", ".godot", ".chronorift"],
+            sourcePostflight: {
+              observedHeadCommit,
+              observedSelectedTreeSha256: request.source.selectedTreeSha256,
+              statusPorcelainSha256: createHash("sha256")
+                .update(status)
+                .digest("hex"),
+              stagingWorktreeRegistered: false,
+            },
+          });
+      }
       result = {
-        sourceKind: "project-environment-v1-clean-git",
+        sourceKind: request.source.sourceKind,
         workspaceDirectory: request.layout.workspaceDirectory,
         hostBaselineGitDirectory: request.layout.hostBaselineGitDirectory,
         agentBaselineCommit: projectEnvironmentPending.agentBaselineCommit,

@@ -86,7 +86,12 @@ export interface VNextCodingToolDefinitionsOptionsV1 {
   readonly toolCallAdmission?:
     ProjectEnvironmentToolCallAdmissionV1 | undefined;
   readonly projectAdapterFinalizeV2?:
-    { readonly adapterId: string; readonly mainScene: string } | undefined;
+    | {
+        readonly adapterId: string;
+        readonly mainScene: string;
+        readonly selectedLaunchTargetId?: string | undefined;
+      }
+    | undefined;
 }
 
 const pathSchema = Type.String({
@@ -281,7 +286,11 @@ const projectAdapterManifestSemanticReferencesV2 = (
 
 const finalizeProjectAdapterManifestV2 = async (
   port: VNextCodingToolPort,
-  binding: { readonly adapterId: string; readonly mainScene: string },
+  binding: {
+    readonly adapterId: string;
+    readonly mainScene: string;
+    readonly selectedLaunchTargetId?: string | undefined;
+  },
   onFinalized: () => void,
   signal?: AbortSignal,
 ) => {
@@ -330,21 +339,43 @@ const finalizeProjectAdapterManifestV2 = async (
   engineRecord["versionRequirement"] = "4.7.x";
   engineRecord["language"] = "gdscript";
   const launchTargets: unknown = manifest["launchTargets"];
-  if (!Array.isArray(launchTargets) || launchTargets.length !== 1)
-    throw new Error(
-      "ProjectAdapter V2 manifest must retain exactly one launch target",
-    );
-  const launchTarget: unknown = launchTargets[0];
   if (
-    typeof launchTarget !== "object" ||
-    launchTarget === null ||
-    Array.isArray(launchTarget)
+    !Array.isArray(launchTargets) ||
+    launchTargets.length < 1 ||
+    launchTargets.length > 32
   )
-    throw new Error("ProjectAdapter V2 launch target is not an object");
-  const launchRecord = launchTarget as Record<string, unknown>;
-  launchRecord["scene"] = binding.mainScene;
-  launchRecord["default"] = true;
-  launchRecord["renderer"] = "headless";
+    throw new Error(
+      "ProjectAdapter V2 manifest must retain between 1 and 32 launch targets",
+    );
+  const launchRecords = launchTargets.map((launchTarget) => {
+    if (
+      typeof launchTarget !== "object" ||
+      launchTarget === null ||
+      Array.isArray(launchTarget)
+    )
+      throw new Error("ProjectAdapter V2 launch target is not an object");
+    return launchTarget as Record<string, unknown>;
+  });
+  const defaultLaunchTargets = launchRecords.filter(
+    (launchTarget) => launchTarget["default"] === true,
+  );
+  if (defaultLaunchTargets.length !== 1)
+    throw new Error(
+      "ProjectAdapter V2 manifest must declare exactly one default launch target",
+    );
+  defaultLaunchTargets[0]!["scene"] = binding.mainScene;
+  for (const launchTarget of launchRecords)
+    launchTarget["renderer"] = "headless";
+  if (
+    binding.selectedLaunchTargetId !== undefined &&
+    !launchRecords.some(
+      (launchTarget) =>
+        launchTarget["targetId"] === binding.selectedLaunchTargetId,
+    )
+  )
+    throw new Error(
+      `ProjectAdapter V2 selected launch target is not declared: ${binding.selectedLaunchTargetId}`,
+    );
   const discovered = await port.find(
     {
       pattern: "*.json",

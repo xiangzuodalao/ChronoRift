@@ -110,6 +110,8 @@ interface ActiveV2 {
 export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameToolPort {
   #active: ActiveV2 | null = null;
   #operation = Promise.resolve();
+  #closed = false;
+  #closeResult: Promise<void> | null = null;
   #lastDynamicTraces: readonly ProjectEnvironmentPinnedCaptureV2["dynamicTraces"][number][] =
     [];
   public get lastDynamicTraces(): readonly ProjectEnvironmentPinnedCaptureV2["dynamicTraces"][number][] {
@@ -121,6 +123,12 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       readonly environmentRevisionId: string;
       readonly adapterRevisionId: string;
       readonly adapterPackage: LoadedProjectAdapterPackageV2;
+      readonly validatedLaunchTargetIds?: readonly string[] | undefined;
+      /**
+       * The target covered by this workspace Build's compatibility smoke.
+       * Publication validation is deliberately broader than Build compatibility.
+       */
+      readonly compatibleLaunchTargetId?: string | undefined;
       readonly capabilitySet: ProjectCapabilitySetV1;
       readonly managedRuntime: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
       readonly sidecar: GodotProjectEnvironmentSidecarPortV2;
@@ -143,9 +151,29 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
     },
   ) {}
 
+  private validatedLaunchTargetIds(): ReadonlySet<string> {
+    return new Set(
+      this.options.validatedLaunchTargetIds ?? [
+        this.options.adapterPackage.launchTargetSelection.defaultTarget
+          .targetId,
+      ],
+    );
+  }
+
   public invoke(
     request: ProjectEnvironmentGameToolPortRequestV1,
   ): Promise<unknown> {
+    if (this.#closed)
+      return Promise.resolve({
+        schemaVersion: 1,
+        toolCallId: request.toolCallId,
+        outcome: "error",
+        error: {
+          code: "runtime_closed",
+          message: "The Project Environment runtime is closed",
+          recoverable: false,
+        },
+      });
     if (
       !validateProjectEnvironmentGameToolInputV1(
         request.toolName,
@@ -185,7 +213,17 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
   }
 
   public async close(): Promise<void> {
-    if (this.#active?.phase === "running") await this.finalize(this.#active);
+    if (this.#closeResult !== null) return this.#closeResult;
+    this.#closed = true;
+    const closeResult = this.#operation.then(async () => {
+      if (this.#active?.phase === "running") await this.finalize(this.#active);
+    });
+    this.#closeResult = closeResult;
+    this.#operation = closeResult.then(
+      () => undefined,
+      () => undefined,
+    );
+    return closeResult;
   }
 
   private async invokeSerialized(
@@ -227,9 +265,13 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
         error: {
           code:
             error instanceof Error &&
-            /unsupported_capability/u.test(error.message)
-              ? "unsupported_capability"
-              : "operation_failed",
+            "code" in error &&
+            typeof error.code === "string"
+              ? error.code
+              : error instanceof Error &&
+                  /unsupported_capability/u.test(error.message)
+                ? "unsupported_capability"
+                : "operation_failed",
           message: error instanceof Error ? error.message : String(error),
           recoverable: true,
         },
@@ -258,6 +300,17 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       buildId: build.buildId,
       runtimeId: this.#active?.runtimeId ?? null,
       modules: this.options.capabilitySet.modules,
+      launchTargets: this.options.adapterPackage.manifest.launchTargets.map(
+        (target) => ({
+          schemaVersion: 1,
+          targetId: target.targetId,
+          scene: target.scene,
+          default: target.default,
+          validationStatus: this.validatedLaunchTargetIds().has(target.targetId)
+            ? "validated"
+            : "declared_unvalidated",
+        }),
+      ),
       tools: PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1.map((tool) => ({
         schemaVersion: 1,
         toolName: tool.name,
@@ -285,7 +338,30 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
     const target = this.options.adapterPackage.manifest.launchTargets.find(
       (value) => value.targetId === input.launchTargetId,
     );
-    if (target === undefined) throw new Error("unknown launch target");
+    if (target === undefined)
+      throw Object.assign(
+        new Error(
+          `target_not_validated: launch target ${String(input.launchTargetId)} is not declared by this adapter revision`,
+        ),
+        { code: "target_not_validated" },
+      );
+    if (!this.validatedLaunchTargetIds().has(target.targetId))
+      throw Object.assign(
+        new Error(
+          `target_not_validated: launch target ${target.targetId} was not validated when this adapter revision was published`,
+        ),
+        { code: "target_not_validated" },
+      );
+    if (
+      this.options.compatibleLaunchTargetId !== undefined &&
+      target.targetId !== this.options.compatibleLaunchTargetId
+    )
+      throw Object.assign(
+        new Error(
+          `target_not_compatible: current Build compatibility covers launch target ${this.options.compatibleLaunchTargetId}, not ${target.targetId}`,
+        ),
+        { code: "target_not_compatible" },
+      );
     const runtimeId = `runtime.v2.${randomUUID()}`;
     const executionId = `execution.v2.${randomUUID()}`;
     const token = randomBytes(32).toString("hex");
@@ -310,6 +386,9 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       overlayHash: this.options.managedRuntime.overlayHash,
       addonHash: this.options.managedRuntime.addonHash,
       expectedMainScene: build.expectedMainScene,
+      ...(target.scene === build.expectedMainScene
+        ? {}
+        : { launchScene: target.scene }),
       instrumentationMode: "instrumented",
       sourceClosureId: build.sourceClosureId,
       environmentRevisionId: this.options.environmentRevisionId,
@@ -371,6 +450,16 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
               ? cause.code
               : "runtime_handshake_failed",
         },
+      );
+    }
+    if (client.ready.currentScene !== target.scene) {
+      await opened.sidecar.terminate().catch(() => undefined);
+      await opened.sidecar.completion.catch(() => undefined);
+      throw Object.assign(
+        new Error(
+          `launch_target_mismatch: requested ${target.scene} but Godot realized ${client.ready.currentScene ?? "no current scene"}`,
+        ),
+        { code: "launch_target_mismatch" },
       );
     }
     const ring = new ProjectEnvironmentValidatedRingV2(

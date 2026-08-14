@@ -117,11 +117,12 @@ import { runProjectEnvironmentPreviewV1 } from "./vnext/project-environment-prev
 
 interface Arguments {
   readonly command: string;
-  readonly flags: ReadonlyMap<string, string | true>;
+  readonly flags: ReadonlyMap<string, string | true | readonly string[]>;
   readonly positionals: readonly string[];
 }
 
 const booleanFlags = new Set(["json"]);
+const repeatableFlags = new Set(["include-untracked"]);
 
 function parseArguments(argv: readonly string[]): Arguments {
   const [rootCommand = "help", ...rootRest] = argv;
@@ -137,8 +138,24 @@ function parseArguments(argv: readonly string[]): Arguments {
     rootCommand === "task" || rootCommand === "project"
       ? rootRest.slice(1)
       : rootRest;
-  const flags = new Map<string, string | true>();
+  const flags = new Map<string, string | true | readonly string[]>();
   const positionals: string[] = [];
+  const putFlag = (name: string, value: string | true): void => {
+    const existing = flags.get(name);
+    if (repeatableFlags.has(name)) {
+      if (value === true) {
+        throw new Error(`Repeatable flag --${name} requires a value`);
+      }
+      const existingValues =
+        existing !== undefined && typeof existing === "object" ? existing : [];
+      flags.set(name, Object.freeze([...existingValues, value]));
+      return;
+    }
+    if (existing !== undefined && command === "project-preview") {
+      throw new Error(`Duplicate --${name}`);
+    }
+    flags.set(name, value);
+  };
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
     if (token === "--") continue;
@@ -152,19 +169,19 @@ function parseArguments(argv: readonly string[]): Arguments {
       if (booleanFlags.has(name)) {
         throw new Error(`Boolean flag --${name} does not accept a value`);
       }
-      flags.set(name, token.slice(equals + 1));
+      putFlag(name, token.slice(equals + 1));
       continue;
     }
     const name = token.slice(2);
     if (booleanFlags.has(name)) {
-      flags.set(name, true);
+      putFlag(name, true);
       continue;
     }
     const value = rest[index + 1];
     if (value === undefined || value.startsWith("--")) {
       throw new Error(`Missing value for ${token}`);
     }
-    flags.set(name, value);
+    putFlag(name, value);
     index += 1;
   }
   if (positionals.length > 0 && command !== "project-preview") {
@@ -190,6 +207,11 @@ function flag(
 
 function hasFlag(args: Arguments, name: string): boolean {
   return args.flags.get(name) === true;
+}
+
+function repeatableFlag(args: Arguments, name: string): readonly string[] {
+  const value = args.flags.get(name);
+  return value !== undefined && typeof value === "object" ? value : [];
 }
 
 function assertOnlyFlags(args: Arguments, allowed: readonly string[]): void {
@@ -1525,6 +1547,9 @@ async function projectPreviewCommand(
     "host-config",
     "timeout-ms",
     "agent-dir",
+    "project-root",
+    "include-untracked",
+    "launch-target",
     "json",
   ]);
   let result: Awaited<ReturnType<typeof runProjectEnvironmentPreviewV1>>;
@@ -1535,6 +1560,13 @@ async function projectPreviewCommand(
       model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
       thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
       goal: args.positionals[0] ?? null,
+      ...(flag(args, "project-root") === undefined
+        ? {}
+        : { projectRoot: flag(args, "project-root")! }),
+      includeUntrackedPaths: repeatableFlag(args, "include-untracked"),
+      ...(flag(args, "launch-target") === undefined
+        ? {}
+        : { launchTargetId: flag(args, "launch-target")! }),
       interactive:
         !hasFlag(args, "json") &&
         process.stdin.isTTY === true &&
@@ -1551,6 +1583,14 @@ async function projectPreviewCommand(
     });
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : String(error);
+    const rawCode =
+      error !== null && typeof error === "object" && "code" in error
+        ? (error as { readonly code?: unknown }).code
+        : null;
+    const failureCode =
+      typeof rawCode === "string" && /^[a-z][a-z0-9_]{0,63}$/u.test(rawCode)
+        ? rawCode
+        : "project_preview_failed";
     const failureMessage =
       rawMessage
         .replace(/[\r\n\0]/gu, " ")
@@ -1560,7 +1600,7 @@ async function projectPreviewCommand(
       schemaVersion: 1 as const,
       status: "failed" as const,
       goalDelivered: false as const,
-      failureCode: "project_preview_failed" as const,
+      failureCode,
       failureMessage,
     };
     if (hasFlag(args, "json")) {
@@ -1586,6 +1626,10 @@ async function projectPreviewCommand(
     [
       `ChronoRift Project Environment Preview — ${result.status}`,
       `project environment: ${result.environmentId}`,
+      `source closure: ${result.sourceId}`,
+      `selected project root: ${result.projectRoot.length === 0 ? "." : result.projectRoot}`,
+      `launch target: ${result.launchTargetId ?? "not resolved"}`,
+      `validated launch targets: ${result.validatedLaunchTargetIds.length === 0 ? "none" : result.validatedLaunchTargetIds.join(", ")}`,
       `revision: ${result.environmentRevisionId ?? "not published"}`,
       `adapter: ${result.adapterRevisionId ?? "not published"}`,
       `environment setup: ${result.reused ? "reused current revision" : "initialized and published"}`,
@@ -1608,10 +1652,10 @@ async function projectPreviewCommand(
 function printHelp(): void {
   process.stdout.write(`ChronoRift v0.4.0\n\n`);
   process.stdout.write(
-    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--thinking LEVEL --host-config PATH]\n`,
+    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--launch-target TARGET_ID] [--thinking LEVEL --host-config PATH]\n`,
   );
   process.stdout.write(
-    `  Project Environment Preview requires a clean repository-root Godot 4.7.1 GDScript project and an explicit Host registry config. It remains separate from the default entry point.\n\n`,
+    `  Project Environment Preview freezes tracked working-tree bytes plus explicitly repeated untracked files for one selected Godot 4.7.1 GDScript project. It remains separate from the default entry point.\n\n`,
   );
   process.stdout.write(
     `  pnpm task start --goal TEXT [--project PATH --provider PROVIDER --model MODEL --thinking LEVEL]\n`,

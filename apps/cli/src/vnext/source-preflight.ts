@@ -2,12 +2,18 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdtemp, open, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+
+import { z } from "zod";
 
 import {
+  asSourceId,
   asSha256DigestV1,
+  Sha256DigestV1Schema,
+  SourceIdSchema,
   type JsonValue,
   type Sha256DigestV1,
+  type SourceId,
 } from "@chronorift/domain";
 import { contentHash } from "@chronorift/json-artifacts";
 
@@ -23,10 +29,7 @@ import {
   isExternalGodotNativeSourcePathV1,
   isExternalGodotReservedSourcePathV1,
 } from "./external-godot-source-policy.js";
-import {
-  hasProjectEnvironmentDeferredGdscriptFeatureV1,
-  isProjectEnvironmentSensitivePathV1,
-} from "./project-environment-source-policy.js";
+import { isProjectEnvironmentSensitivePathV1 } from "./project-environment-source-policy.js";
 import {
   loadTrustedFixtureCatalog,
   resolveTaskFixtureCapability,
@@ -67,6 +70,10 @@ export interface CleanExternalGodotProjectPreflightRequest {
 
 export interface CleanProjectEnvironmentPreflightRequestV1 {
   readonly projectPath: string;
+  /** Relative to the enclosing Git repository. Required when discovery is ambiguous. */
+  readonly projectRoot?: string | undefined;
+  /** Exact untracked files relative to the selected project; never remembered. */
+  readonly includeUntrackedPaths?: readonly string[] | undefined;
   readonly sourceRepositoryExclusionRoots: readonly string[];
 }
 
@@ -75,6 +82,159 @@ export interface VerifiedGitTreeEntry {
   readonly mode: "100644" | "100755";
   readonly objectId: string;
   readonly byteLength: number;
+}
+
+export type ProjectSourceEntryProvenanceV1 = "tracked" | "explicit_untracked";
+
+export interface ProjectSourceClosureEntryV1 {
+  readonly relativePath: string;
+  readonly mode: "100644" | "100755";
+  readonly byteLength: number;
+  readonly contentSha256: Sha256DigestV1;
+  readonly provenance: ProjectSourceEntryProvenanceV1;
+}
+
+export interface ProjectSourceSubmoduleV1 {
+  readonly mountPath: string;
+  readonly headCommit: string;
+  readonly selectedTreeSha256: Sha256DigestV1;
+}
+
+export interface ProjectSourceClosureV1 {
+  readonly schemaVersion: 1;
+  readonly closureKind: "project-source-closure";
+  readonly sourceRevision: string;
+  /** Empty means the repository root. Host absolute paths are never persisted. */
+  readonly projectPath: string;
+  readonly includedUntrackedPaths: readonly string[];
+  readonly submodules: readonly ProjectSourceSubmoduleV1[];
+  readonly entries: readonly ProjectSourceClosureEntryV1[];
+  readonly selectedTreeSha256: Sha256DigestV1;
+  readonly mainScene: string;
+  readonly requestedGodotVersion: "4.7.1";
+  readonly sourceId: SourceId;
+}
+
+const GitRevisionSchema = z.string().regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u);
+const ProjectClosureRelativePathSchema = z
+  .string()
+  .min(1)
+  .max(8_192)
+  .refine(
+    (value) =>
+      !isAbsolute(value) &&
+      !value.includes("\\") &&
+      !value.includes("\0") &&
+      value !== ".chronorift" &&
+      !value.startsWith(".chronorift/") &&
+      !value
+        .split("/")
+        .some(
+          (segment) =>
+            segment.length === 0 ||
+            segment === "." ||
+            segment === ".." ||
+            segment === ".git",
+        ),
+    "path must be normalized, relative, and must not enter .git or .chronorift",
+  );
+
+export const ProjectSourceClosureV1Schema: z.ZodType<ProjectSourceClosureV1> = z
+  .object({
+    schemaVersion: z.literal(1),
+    closureKind: z.literal("project-source-closure"),
+    sourceRevision: GitRevisionSchema,
+    projectPath: z.union([z.literal(""), ProjectClosureRelativePathSchema]),
+    includedUntrackedPaths: z.array(ProjectClosureRelativePathSchema),
+    submodules: z.array(
+      z
+        .object({
+          mountPath: ProjectClosureRelativePathSchema,
+          headCommit: GitRevisionSchema,
+          selectedTreeSha256: Sha256DigestV1Schema,
+        })
+        .strict(),
+    ),
+    entries: z.array(
+      z
+        .object({
+          relativePath: ProjectClosureRelativePathSchema,
+          mode: z.enum(["100644", "100755"]),
+          byteLength: z.number().int().nonnegative(),
+          contentSha256: Sha256DigestV1Schema,
+          provenance: z.enum(["tracked", "explicit_untracked"]),
+        })
+        .strict(),
+    ),
+    selectedTreeSha256: Sha256DigestV1Schema,
+    mainScene: z.string().min(1).max(2_048),
+    requestedGodotVersion: z.literal("4.7.1"),
+    sourceId: SourceIdSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const requireStrictBytewiseOrder = (
+      values: readonly string[],
+      path: "includedUntrackedPaths" | "submodules" | "entries",
+    ): void => {
+      for (let index = 1; index < values.length; index += 1) {
+        if (
+          Buffer.compare(
+            Buffer.from(values[index - 1] ?? "", "utf8"),
+            Buffer.from(values[index] ?? "", "utf8"),
+          ) >= 0
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: [path, index],
+            message: `${path} must be uniquely sorted by UTF-8 bytes`,
+          });
+          break;
+        }
+      }
+    };
+    requireStrictBytewiseOrder(
+      value.includedUntrackedPaths,
+      "includedUntrackedPaths",
+    );
+    requireStrictBytewiseOrder(
+      value.submodules.map((submodule) => submodule.mountPath),
+      "submodules",
+    );
+    requireStrictBytewiseOrder(
+      value.entries.map((entry) => entry.relativePath),
+      "entries",
+    );
+    const explicitUntrackedEntries = value.entries
+      .filter((entry) => entry.provenance === "explicit_untracked")
+      .map((entry) => entry.relativePath);
+    if (
+      explicitUntrackedEntries.length !== value.includedUntrackedPaths.length ||
+      explicitUntrackedEntries.some(
+        (path, index) => path !== value.includedUntrackedPaths[index],
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["includedUntrackedPaths"],
+        message:
+          "includedUntrackedPaths must exactly match explicit_untracked entries",
+      });
+    }
+    const { sourceId, ...identityContent } = value;
+    const expected = asSourceId(`source:v1:${contentHash(identityContent)}`);
+    if (sourceId !== expected) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceId"],
+        message: "sourceId does not match the canonical closure identity",
+      });
+    }
+  });
+
+export interface VerifiedProjectEnvironmentTreeEntryV1 extends VerifiedGitTreeEntry {
+  readonly contentSha256?: Sha256DigestV1 | undefined;
+  readonly provenance?: ProjectSourceEntryProvenanceV1 | undefined;
 }
 
 export interface VerifiedGitSubtree {
@@ -107,16 +267,20 @@ export interface VerifiedExternalGodotProject {
  * composition and must not be copied into a persisted Project Environment DTO.
  */
 export interface VerifiedProjectEnvironmentSourceV1 {
-  readonly sourceKind: "project-environment-v1-clean-git";
+  readonly sourceKind:
+    | "project-environment-v1-clean-git"
+    | "project-environment-v1-source-closure";
   readonly repositoryRoot: string;
   readonly projectRoot: string;
-  readonly projectPrefix: "";
+  readonly projectPrefix: string;
   readonly headCommit: string;
   readonly selectedTreeSha256: Sha256DigestV1;
   readonly projectSourceIdentity: Sha256DigestV1;
-  readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly entries: readonly VerifiedProjectEnvironmentTreeEntryV1[];
   readonly mainScene: string;
   readonly requestedGodotVersion: "4.7.1";
+  /** Present for PE-C freezes; absent only on legacy PE-A test/evidence inputs. */
+  readonly sourceClosure?: ProjectSourceClosureV1 | undefined;
 }
 
 export type VerifiedTaskSource =
@@ -593,50 +757,6 @@ const normalizeSourcePreflightError = (error: unknown): never => {
 
 const PROJECT_ENVIRONMENT_RESERVED_AUTOLOAD = "ChronoRiftProjectEnvironment";
 
-const readVerifiedGitBlob = async (input: {
-  readonly git: HostGitPort;
-  readonly repositoryRoot: string;
-  readonly entry: VerifiedGitTreeEntry;
-}): Promise<Buffer> => {
-  const temporaryDirectory = await mkdtemp(
-    join(tmpdir(), "chronorift-project-environment-blob-"),
-  );
-  const blobPath = join(temporaryDirectory, "blob");
-  try {
-    const destination = await open(
-      blobPath,
-      constants.O_RDWR |
-        constants.O_CREAT |
-        constants.O_EXCL |
-        constants.O_NOFOLLOW,
-      0o600,
-    );
-    let receipt: Awaited<ReturnType<HostGitPort["streamBlob"]>>;
-    try {
-      receipt = await input.git.streamBlob({
-        cwd: input.repositoryRoot,
-        objectId: input.entry.objectId,
-        destination,
-      });
-      await destination.sync();
-    } finally {
-      await destination.close();
-    }
-    const bytes = await readFile(blobPath);
-    if (
-      receipt.byteLength !== input.entry.byteLength ||
-      bytes.byteLength !== input.entry.byteLength
-    ) {
-      return sourceFeatureUnsupported(
-        "Git blob byte length changed during Project Environment inspection",
-      );
-    }
-    return bytes;
-  } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
-  }
-};
-
 const projectEnvironmentMainScene = (input: Uint8Array): string => {
   let text: string;
   try {
@@ -666,58 +786,886 @@ const projectEnvironmentMainScene = (input: Uint8Array): string => {
   return mainScene;
 };
 
-const assertProjectEnvironmentSourceProfileV1 = async (input: {
-  readonly git: HostGitPort;
-  readonly repositoryRoot: string;
-  readonly entries: readonly VerifiedGitTreeEntry[];
-}): Promise<"4.7.1"> => {
-  let requestedVersion = "4.7.1" as const;
-  for (const entry of input.entries) {
-    if (isExternalGodotReservedSourcePathV1(entry.relativePath)) {
+interface GitStatusEntryV1 {
+  readonly indexStatus: string;
+  readonly worktreeStatus: string;
+  readonly relativePath: string;
+  readonly sourcePath?: string | undefined;
+}
+
+const assertNormalizedRepositoryPath = (
+  value: string,
+  label: string,
+): string => {
+  if (
+    value.length === 0 ||
+    isAbsolute(value) ||
+    /^[A-Za-z]:[/\\]/u.test(value) ||
+    value.includes("\\") ||
+    value.includes("\0") ||
+    value
+      .split("/")
+      .some(
+        (segment) =>
+          segment.length === 0 ||
+          segment === "." ||
+          segment === ".." ||
+          segment === ".git",
+      )
+  ) {
+    return sourceFeatureUnsupported(
+      `${label} must be a normalized relative file path`,
+    );
+  }
+  return value;
+};
+
+const decodeGitPath = (bytes: Buffer, label: string): string => {
+  let value: string;
+  try {
+    value = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    return sourceFeatureUnsupported(`${label} must be canonical UTF-8`, error);
+  }
+  if (!Buffer.from(value, "utf8").equals(bytes)) {
+    return sourceFeatureUnsupported(`${label} must be canonical UTF-8`);
+  }
+  return assertNormalizedRepositoryPath(value, label);
+};
+
+const parseGitStatusPorcelainV1 = (
+  status: Uint8Array,
+): readonly GitStatusEntryV1[] => {
+  const bytes = Buffer.from(status);
+  if (bytes.byteLength === 0) return [];
+  if (bytes.at(-1) !== 0) {
+    return sourceFeatureUnsupported(
+      "Git status porcelain is not NUL terminated",
+    );
+  }
+  const entries: GitStatusEntryV1[] = [];
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const recordEnd = bytes.indexOf(0, offset);
+    if (recordEnd < 0 || recordEnd === offset) {
       return sourceFeatureUnsupported(
-        "PE-A source collides with a reserved managed root",
+        "Git status porcelain contains a partial record",
       );
     }
-    if (isExternalGodotNativeSourcePathV1(entry.relativePath)) {
+    const record = bytes.subarray(offset, recordEnd);
+    if (record.byteLength < 4 || record[2] !== 0x20) {
       return sourceFeatureUnsupported(
-        "PE-A supports GDScript without native or C# extensions",
+        "Git status porcelain record is malformed",
       );
     }
-    if (isProjectEnvironmentSensitivePathV1(entry.relativePath)) {
-      throw new M1Error(
-        "path_denied",
-        "PE-A source contains a credential-like path",
+    const indexStatus = String.fromCharCode(record[0] ?? 0);
+    const worktreeStatus = String.fromCharCode(record[1] ?? 0);
+    if (
+      !/^[ MADRCUT?!]$/u.test(indexStatus) ||
+      !/^[ MADRCUT?!]$/u.test(worktreeStatus)
+    ) {
+      return sourceFeatureUnsupported(
+        "Git status porcelain has an unsupported state",
       );
     }
     if (
-      entry.relativePath === ".godot-version" ||
-      entry.relativePath.endsWith(".gd")
+      indexStatus === "U" ||
+      worktreeStatus === "U" ||
+      (indexStatus === "A" && worktreeStatus === "A") ||
+      (indexStatus === "D" && worktreeStatus === "D")
     ) {
-      const bytes = await readVerifiedGitBlob({ ...input, entry });
-      let text: string;
-      try {
-        text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      } catch (error) {
+      return sourceFeatureUnsupported(
+        "unmerged Git index state is unsupported by Project Source Closure",
+      );
+    }
+    const relativePath = decodeGitPath(record.subarray(3), "Git status path");
+    offset = recordEnd + 1;
+    let sourcePath: string | undefined;
+    if (
+      indexStatus === "R" ||
+      indexStatus === "C" ||
+      worktreeStatus === "R" ||
+      worktreeStatus === "C"
+    ) {
+      const sourceEnd = bytes.indexOf(0, offset);
+      if (sourceEnd < 0 || sourceEnd === offset) {
+        return sourceFeatureUnsupported("Git rename status has no source path");
+      }
+      sourcePath = decodeGitPath(
+        bytes.subarray(offset, sourceEnd),
+        "Git rename source path",
+      );
+      offset = sourceEnd + 1;
+    }
+    entries.push({
+      indexStatus,
+      worktreeStatus,
+      relativePath,
+      ...(sourcePath === undefined ? {} : { sourcePath }),
+    });
+  }
+  return entries;
+};
+
+const trackedProjectFilesFromTreeListing = (
+  listing: Uint8Array,
+): ReadonlySet<string> => {
+  const bytes = Buffer.from(listing);
+  if (bytes.byteLength !== 0 && bytes.at(-1) !== 0) {
+    return sourceFeatureUnsupported("Git tree listing is not NUL terminated");
+  }
+  const projects = new Set<string>();
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const end = bytes.indexOf(0, offset);
+    if (end < 0 || end === offset) {
+      return sourceFeatureUnsupported(
+        "Git tree listing contains a partial record",
+      );
+    }
+    const record = bytes.subarray(offset, end);
+    const tab = record.indexOf(0x09);
+    if (tab < 0) {
+      return sourceFeatureUnsupported("Git tree record has no path delimiter");
+    }
+    const header = record.subarray(0, tab).toString("ascii");
+    const path = decodeGitPath(record.subarray(tab + 1), "Git tree path");
+    if (
+      /^100(?:644|755) blob /u.test(header) &&
+      path.endsWith("project.godot")
+    ) {
+      const name = path.split("/").at(-1);
+      if (name === "project.godot") projects.add(path);
+    }
+    offset = end + 1;
+  }
+  return projects;
+};
+
+interface ProjectEnvironmentGitlinkV1 {
+  readonly mountPath: string;
+  readonly headCommit: string;
+}
+
+const isProjectEnvironmentReservedPathV1 = (relativePath: string): boolean => {
+  const normalized = relativePath.toLocaleLowerCase("en-US");
+  return (
+    normalized === ".chronorift" ||
+    normalized.startsWith(".chronorift/") ||
+    normalized === ".godot" ||
+    normalized.startsWith(".godot/") ||
+    normalized === "override.cfg" ||
+    normalized === "addons/chronorift_project_environment" ||
+    normalized.startsWith("addons/chronorift_project_environment/")
+  );
+};
+
+const assertProjectEnvironmentSourcePathAdmittedV1 = (
+  relativePath: string,
+): void => {
+  if (isProjectEnvironmentReservedPathV1(relativePath)) {
+    return sourceFeatureUnsupported(
+      "Project Environment source collides with a reserved managed path",
+    );
+  }
+  if (isExternalGodotNativeSourcePathV1(relativePath)) {
+    return sourceFeatureUnsupported(
+      "Project Environment supports GDScript without native or C# extensions",
+    );
+  }
+  if (isProjectEnvironmentSensitivePathV1(relativePath)) {
+    throw new M1Error(
+      "path_denied",
+      "Project Environment source contains a credential-like path",
+    );
+  }
+};
+
+const assertProjectEnvironmentClosureBudgetV1 = (
+  entries: readonly VerifiedGitTreeEntry[],
+): void => {
+  let totalBytes = 0;
+  for (const entry of entries) {
+    totalBytes += entry.byteLength;
+    if (
+      !Number.isSafeInteger(totalBytes) ||
+      totalBytes > EXTERNAL_GODOT_MAX_BYTES_V1
+    ) {
+      return sourceFeatureUnsupported(
+        "Project Environment source closure exceeds its bounded profile",
+      );
+    }
+  }
+  if (entries.length > EXTERNAL_GODOT_MAX_FILES_V1) {
+    return sourceFeatureUnsupported(
+      "Project Environment source closure exceeds its bounded profile",
+    );
+  }
+};
+
+const parseProjectEnvironmentTreeListing = (
+  listing: Uint8Array,
+  projectPrefix: string,
+): {
+  readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly gitlinks: readonly ProjectEnvironmentGitlinkV1[];
+} => {
+  const bytes = Buffer.from(listing);
+  if (bytes.byteLength !== 0 && bytes.at(-1) !== 0) {
+    return sourceFeatureUnsupported("Git tree listing is not NUL terminated");
+  }
+  const prefix = projectPrefix.length === 0 ? "" : `${projectPrefix}/`;
+  const entries: VerifiedGitTreeEntry[] = [];
+  const gitlinks: ProjectEnvironmentGitlinkV1[] = [];
+  let totalBytes = 0;
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const end = bytes.indexOf(0, offset);
+    if (end < 0 || end === offset) {
+      return sourceFeatureUnsupported(
+        "Git tree listing contains a partial record",
+      );
+    }
+    const record = bytes.subarray(offset, end);
+    const tab = record.indexOf(0x09);
+    if (tab < 0) {
+      return sourceFeatureUnsupported("Git tree record has no path delimiter");
+    }
+    const header = record.subarray(0, tab).toString("ascii");
+    const match =
+      /^(?<mode>[0-7]{6}) (?<type>[a-z]+) (?<objectId>(?:[a-f0-9]{40}|[a-f0-9]{64})) +(?<size>[0-9]+|-)$/u.exec(
+        header,
+      );
+    if (match?.groups === undefined) {
+      return sourceFeatureUnsupported("Git tree record header is malformed");
+    }
+    const rawPath = decodeGitPath(record.subarray(tab + 1), "Git tree path");
+    if (prefix.length > 0 && !rawPath.startsWith(prefix)) {
+      return sourceFeatureUnsupported(
+        "Git subtree listing escaped its project root",
+      );
+    }
+    const relativePath =
+      prefix.length === 0 ? rawPath : rawPath.slice(prefix.length);
+    assertNormalizedRepositoryPath(relativePath, "Git project path");
+    const { mode, type, objectId, size } = match.groups;
+    if (
+      mode === undefined ||
+      type === undefined ||
+      objectId === undefined ||
+      size === undefined
+    ) {
+      return sourceFeatureUnsupported("Git tree record fields are missing");
+    }
+    if (mode === "160000" && type === "commit" && size === "-") {
+      gitlinks.push({ mountPath: relativePath, headCommit: objectId });
+    } else if (
+      (mode === "100644" || mode === "100755") &&
+      type === "blob" &&
+      size !== "-"
+    ) {
+      const byteLength = Number(size);
+      if (!Number.isSafeInteger(byteLength) || byteLength < 0) {
+        return sourceFeatureUnsupported("Git blob size is unsupported");
+      }
+      totalBytes += byteLength;
+      if (
+        entries.length + gitlinks.length >= EXTERNAL_GODOT_MAX_FILES_V1 ||
+        !Number.isSafeInteger(totalBytes) ||
+        totalBytes > EXTERNAL_GODOT_MAX_BYTES_V1
+      ) {
         return sourceFeatureUnsupported(
-          `${entry.relativePath} must be valid UTF-8`,
-          error,
+          "Project Environment source closure exceeds its bounded profile",
         );
       }
-      if (entry.relativePath === ".godot-version") {
-        if (text.trim() !== "4.7.1") {
-          return sourceFeatureUnsupported(
-            "PE-A requires .godot-version to request exact Godot 4.7.1",
-          );
-        }
-        requestedVersion = "4.7.1";
-      } else if (hasProjectEnvironmentDeferredGdscriptFeatureV1(text)) {
-        return sourceFeatureUnsupported(
-          "PE-A defers @tool scripts and EditorPlugin to a later source/import slice",
-        );
+      entries.push({ relativePath, mode, objectId, byteLength });
+    } else {
+      return sourceFeatureUnsupported(
+        "Git tree contains a symlink or unsupported entry",
+      );
+    }
+    offset = end + 1;
+  }
+  const byPath =
+    <T extends { readonly [K in P]: string }, P extends string>(field: P) =>
+    (left: T, right: T): number =>
+      Buffer.compare(
+        Buffer.from(left[field], "utf8"),
+        Buffer.from(right[field], "utf8"),
+      );
+  entries.sort(byPath<VerifiedGitTreeEntry, "relativePath">("relativePath"));
+  gitlinks.sort(byPath<ProjectEnvironmentGitlinkV1, "mountPath">("mountPath"));
+  return { entries, gitlinks };
+};
+
+const inspectMaterializedProjectSubmodules = async (input: {
+  readonly git: HostGitPort;
+  readonly projectRoot: string;
+  readonly rootEntries: readonly VerifiedGitTreeEntry[];
+  readonly gitlinks: readonly ProjectEnvironmentGitlinkV1[];
+}): Promise<{
+  readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly submodules: readonly ProjectSourceSubmoduleV1[];
+}> => {
+  interface PendingSubmoduleInspection {
+    readonly gitlink: ProjectEnvironmentGitlinkV1;
+    readonly submoduleRoot: string;
+    readonly observedHead: string;
+    readonly entries: readonly VerifiedGitTreeEntry[];
+  }
+
+  const expandedEntries: VerifiedGitTreeEntry[] = [];
+  const submodules: ProjectSourceSubmoduleV1[] = [];
+  const pendingInspections: PendingSubmoduleInspection[] = [];
+  const closureEntries = [...input.rootEntries];
+  for (const entry of input.rootEntries) {
+    assertProjectEnvironmentSourcePathAdmittedV1(entry.relativePath);
+  }
+  for (const gitlink of input.gitlinks) {
+    assertProjectEnvironmentSourcePathAdmittedV1(gitlink.mountPath);
+    const submoduleRoot = join(input.projectRoot, gitlink.mountPath);
+    let metadata: Awaited<ReturnType<typeof lstat>>;
+    try {
+      metadata = await lstat(submoduleRoot);
+    } catch (error) {
+      return sourceFeatureUnsupported(
+        "Project Environment submodule must already be materialized",
+        error,
+      );
+    }
+    if (
+      metadata.isSymbolicLink() ||
+      !metadata.isDirectory() ||
+      (await realpath(submoduleRoot)) !== submoduleRoot
+    ) {
+      return sourceFeatureUnsupported(
+        "Project Environment submodule mount must be a canonical directory",
+      );
+    }
+    let observedRepositoryRoot: string;
+    try {
+      observedRepositoryRoot = await realpath(
+        await input.git.resolveRepositoryRoot(submoduleRoot),
+      );
+    } catch (error) {
+      return sourceFeatureUnsupported(
+        "Project Environment submodule is not materialized",
+        error,
+      );
+    }
+    if (observedRepositoryRoot !== submoduleRoot) {
+      return sourceFeatureUnsupported(
+        "Project Environment submodule resolved outside its declared mount",
+      );
+    }
+    const observedHead = await input.git.resolveHeadCommit(submoduleRoot);
+    const status = await input.git.statusPorcelain(submoduleRoot);
+    if (observedHead !== gitlink.headCommit || status.byteLength !== 0) {
+      return sourceFeatureUnsupported(
+        "Project Environment submodule must be clean and match its recorded gitlink",
+      );
+    }
+    const listing = await input.git.listTree({
+      context: { cwd: submoduleRoot },
+      treeish: observedHead,
+    });
+    const parsed = parseProjectEnvironmentTreeListing(listing, "");
+    if (parsed.gitlinks.length > 0) {
+      return sourceFeatureUnsupported(
+        "recursive Project Environment submodules are unsupported",
+      );
+    }
+    for (const entry of parsed.entries) {
+      // Apply each source root's policy before adding its mount prefix. A
+      // submodule-local .chronorift, .godot, native binary, or credential must
+      // not become admissible merely because it is mounted below another path.
+      assertProjectEnvironmentSourcePathAdmittedV1(entry.relativePath);
+    }
+    closureEntries.push(...parsed.entries);
+    assertProjectEnvironmentClosureBudgetV1(closureEntries);
+    pendingInspections.push({
+      gitlink,
+      submoduleRoot,
+      observedHead,
+      entries: parsed.entries,
+    });
+  }
+  // Do not read any submodule blobs until admission and the whole-closure
+  // bounds have succeeded for every selected source root.
+  for (const pending of pendingInspections) {
+    const inspected = await inspectAndHashBlobs({
+      git: input.git,
+      repositoryRoot: pending.submoduleRoot,
+      entries: pending.entries,
+      requireFixtureManifest: false,
+    });
+    submodules.push({
+      mountPath: pending.gitlink.mountPath,
+      headCommit: pending.observedHead,
+      selectedTreeSha256: inspected.selectedTreeSha256,
+    });
+    expandedEntries.push(
+      ...pending.entries.map((entry) => ({
+        ...entry,
+        relativePath: `${pending.gitlink.mountPath}/${entry.relativePath}`,
+      })),
+    );
+  }
+  expandedEntries.sort((left, right) =>
+    Buffer.compare(
+      Buffer.from(left.relativePath, "utf8"),
+      Buffer.from(right.relativePath, "utf8"),
+    ),
+  );
+  return {
+    entries: Object.freeze(expandedEntries),
+    submodules: Object.freeze(submodules),
+  };
+};
+
+const pathWithinProject = (
+  repositoryPath: string,
+  projectPrefix: string,
+): string | undefined => {
+  if (projectPrefix.length === 0) return repositoryPath;
+  const prefix = `${projectPrefix}/`;
+  return repositoryPath.startsWith(prefix)
+    ? repositoryPath.slice(prefix.length)
+    : undefined;
+};
+
+const normalizedProjectPrefix = (value: string): string => {
+  if (value === "." || value === "") return "";
+  return assertNormalizedRepositoryPath(value, "project root");
+};
+
+const discoverProjectPrefix = async (input: {
+  readonly repositoryRoot: string;
+  readonly headCommit: string;
+  readonly requestedProjectRoot?: string | undefined;
+  readonly statusEntries: readonly GitStatusEntryV1[];
+  readonly git: HostGitPort;
+}): Promise<string> => {
+  const listing = await input.git.listTree({
+    context: { cwd: input.repositoryRoot },
+    treeish: input.headCommit,
+  });
+  const candidates = new Set(trackedProjectFilesFromTreeListing(listing));
+  for (const status of input.statusEntries) {
+    if (
+      status.sourcePath !== undefined &&
+      (status.indexStatus === "R" || status.worktreeStatus === "R")
+    ) {
+      candidates.delete(status.sourcePath);
+    }
+    if (status.indexStatus === "D") {
+      candidates.delete(status.relativePath);
+    } else if (
+      status.indexStatus !== "?" &&
+      status.relativePath.split("/").at(-1) === "project.godot"
+    ) {
+      candidates.add(status.relativePath);
+    }
+  }
+
+  const realizedCandidates: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const metadata = await lstat(join(input.repositoryRoot, candidate));
+      if (!metadata.isSymbolicLink() && metadata.isFile()) {
+        realizedCandidates.push(candidate);
+      }
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error as NodeJS.ErrnoException).code !== "ENOENT"
+      ) {
+        throw error;
       }
     }
   }
-  return requestedVersion;
+  realizedCandidates.sort((left, right) =>
+    Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+  );
+
+  if (input.requestedProjectRoot !== undefined) {
+    const projectPrefix = normalizedProjectPrefix(input.requestedProjectRoot);
+    const descriptor =
+      projectPrefix.length === 0
+        ? "project.godot"
+        : `${projectPrefix}/project.godot`;
+    if (!realizedCandidates.includes(descriptor)) {
+      return sourceFeatureUnsupported(
+        "selected project root does not contain a tracked project.godot",
+      );
+    }
+    return projectPrefix;
+  }
+  if (realizedCandidates.length === 0) {
+    return sourceFeatureUnsupported(
+      "enclosing Git repository contains no tracked Godot project",
+    );
+  }
+  if (realizedCandidates.length !== 1) {
+    return sourceFeatureUnsupported(
+      "enclosing Git repository contains multiple Godot projects; select project root explicitly",
+    );
+  }
+  return dirname(realizedCandidates[0] ?? "") === "."
+    ? ""
+    : dirname(realizedCandidates[0] ?? "");
+};
+
+const assertCanonicalFileParents = async (
+  projectRoot: string,
+  relativePath: string,
+): Promise<void> => {
+  let current = projectRoot;
+  for (const segment of relativePath.split("/").slice(0, -1)) {
+    current = join(current, segment);
+    const metadata = await lstat(current);
+    if (
+      metadata.isSymbolicLink() ||
+      !metadata.isDirectory() ||
+      (await realpath(current)) !== current
+    ) {
+      return sourceFeatureUnsupported(
+        "Project Environment source contains a symlinked directory",
+      );
+    }
+  }
+};
+
+interface ProjectWorktreeEntryV1 {
+  readonly relativePath: string;
+  readonly provenance: ProjectSourceEntryProvenanceV1;
+  readonly objectId: string;
+}
+
+const selectProjectWorktreeEntries = (input: {
+  readonly projectPrefix: string;
+  readonly headEntries: readonly VerifiedGitTreeEntry[];
+  readonly statusEntries: readonly GitStatusEntryV1[];
+  readonly includeUntrackedPaths: readonly string[];
+  readonly headCommit: string;
+}): readonly ProjectWorktreeEntryV1[] => {
+  const tracked = new Map(
+    input.headEntries.map((entry) => [
+      entry.relativePath,
+      { objectId: entry.objectId },
+    ]),
+  );
+  const untrackedRepositoryPaths = new Set<string>();
+  for (const status of input.statusEntries) {
+    if (status.indexStatus === "?" && status.worktreeStatus === "?") {
+      untrackedRepositoryPaths.add(status.relativePath);
+      continue;
+    }
+    if (
+      status.sourcePath !== undefined &&
+      (status.indexStatus === "R" || status.worktreeStatus === "R")
+    ) {
+      const sourceRelative = pathWithinProject(
+        status.sourcePath,
+        input.projectPrefix,
+      );
+      if (sourceRelative !== undefined) tracked.delete(sourceRelative);
+    }
+    const relativePath = pathWithinProject(
+      status.relativePath,
+      input.projectPrefix,
+    );
+    if (relativePath === undefined) continue;
+    if (status.indexStatus === "D") {
+      tracked.delete(relativePath);
+    } else {
+      tracked.set(relativePath, {
+        objectId:
+          tracked.get(relativePath)?.objectId ??
+          "0".repeat(input.headCommit.length),
+      });
+    }
+  }
+
+  const selected: ProjectWorktreeEntryV1[] = [...tracked].map(
+    ([relativePath, value]) => ({
+      relativePath,
+      provenance: "tracked",
+      objectId: value.objectId,
+    }),
+  );
+  const seenUntracked = new Set<string>();
+  for (const rawPath of input.includeUntrackedPaths) {
+    const relativePath = assertNormalizedRepositoryPath(
+      rawPath,
+      "explicit untracked path",
+    );
+    if (
+      relativePath.split("/").includes(".chronorift") ||
+      seenUntracked.has(relativePath)
+    ) {
+      return sourceFeatureUnsupported(
+        "explicit untracked paths must be unique and must exclude .chronorift",
+      );
+    }
+    seenUntracked.add(relativePath);
+    const repositoryPath =
+      input.projectPrefix.length === 0
+        ? relativePath
+        : `${input.projectPrefix}/${relativePath}`;
+    if (!untrackedRepositoryPaths.has(repositoryPath)) {
+      return sourceFeatureUnsupported(
+        "explicit untracked path is tracked, ignored, missing, or not an exact file",
+      );
+    }
+    selected.push({
+      relativePath,
+      provenance: "explicit_untracked",
+      objectId: "0".repeat(input.headCommit.length),
+    });
+  }
+  selected.sort((left, right) =>
+    Buffer.compare(
+      Buffer.from(left.relativePath, "utf8"),
+      Buffer.from(right.relativePath, "utf8"),
+    ),
+  );
+  return selected;
+};
+
+const freezeProjectEnvironmentWorktree = async (input: {
+  readonly repositoryRoot: string;
+  readonly projectRoot: string;
+  readonly projectPrefix: string;
+  readonly headCommit: string;
+  readonly selectedEntries: readonly ProjectWorktreeEntryV1[];
+  readonly includeUntrackedPaths: readonly string[];
+  readonly submodules: readonly ProjectSourceSubmoduleV1[];
+}): Promise<{
+  readonly entries: readonly VerifiedProjectEnvironmentTreeEntryV1[];
+  readonly selectedTreeSha256: Sha256DigestV1;
+  readonly mainScene: string;
+  readonly requestedGodotVersion: "4.7.1";
+  readonly projectSourceIdentity: Sha256DigestV1;
+  readonly sourceClosure: ProjectSourceClosureV1;
+}> => {
+  const temporaryDirectory = await mkdtemp(
+    join(tmpdir(), "chronorift-project-source-closure-"),
+  );
+  try {
+    const frozenEntries: VerifiedProjectEnvironmentTreeEntryV1[] = [];
+    const sources: SelectedTreeContentSourceV1[] = [];
+    let totalBytes = 0;
+    let projectFileBytes: Buffer | undefined;
+    let requestedGodotVersion = "4.7.1" as const;
+    for (const selected of input.selectedEntries) {
+      assertProjectEnvironmentSourcePathAdmittedV1(selected.relativePath);
+      await assertCanonicalFileParents(
+        input.projectRoot,
+        selected.relativePath,
+      );
+      const absolutePath = join(input.projectRoot, selected.relativePath);
+      let expected: Awaited<ReturnType<typeof lstat>>;
+      try {
+        expected = await lstat(absolutePath);
+      } catch (error) {
+        if (
+          selected.provenance === "tracked" &&
+          error instanceof Error &&
+          "code" in error &&
+          (error as NodeJS.ErrnoException).code === "ENOENT"
+        ) {
+          continue;
+        }
+        throw error;
+      }
+      if (expected.isSymbolicLink() || !expected.isFile()) {
+        return sourceFeatureUnsupported(
+          "Project Environment closure accepts only regular non-symlink files",
+        );
+      }
+      totalBytes += expected.size;
+      if (
+        frozenEntries.length >= EXTERNAL_GODOT_MAX_FILES_V1 ||
+        !Number.isSafeInteger(totalBytes) ||
+        totalBytes > EXTERNAL_GODOT_MAX_BYTES_V1 ||
+        (selected.relativePath === "project.godot" &&
+          expected.size > MAX_PROJECT_CONFIGURATION_BYTES)
+      ) {
+        return sourceFeatureUnsupported(
+          "Project Environment source closure exceeds its bounded profile",
+        );
+      }
+      const source = await open(
+        absolutePath,
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+      const frozenPath = join(
+        temporaryDirectory,
+        frozenEntries.length.toString(16),
+      );
+      const destination = await open(
+        frozenPath,
+        constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW,
+        0o600,
+      );
+      let bytes: Buffer;
+      try {
+        const before = await source.stat();
+        if (
+          !before.isFile() ||
+          before.dev !== expected.dev ||
+          before.ino !== expected.ino ||
+          before.mode !== expected.mode ||
+          before.size !== expected.size
+        ) {
+          return sourceFeatureUnsupported(
+            "Project Environment source changed before freeze",
+          );
+        }
+        bytes = await source.readFile();
+        const after = await source.stat();
+        if (
+          after.dev !== before.dev ||
+          after.ino !== before.ino ||
+          after.mode !== before.mode ||
+          after.size !== before.size ||
+          after.mtimeMs !== before.mtimeMs ||
+          after.ctimeMs !== before.ctimeMs ||
+          bytes.byteLength !== before.size
+        ) {
+          return sourceFeatureUnsupported(
+            "Project Environment source changed during freeze",
+          );
+        }
+        if (
+          bytes
+            .subarray(0, LFS_POINTER_HEADER.byteLength)
+            .equals(LFS_POINTER_HEADER)
+        ) {
+          return sourceFeatureUnsupported(
+            "Git LFS pointer content is unsupported",
+          );
+        }
+        await destination.writeFile(bytes);
+        await destination.sync();
+      } finally {
+        await source.close();
+        await destination.close();
+      }
+      if (selected.relativePath === "project.godot") {
+        projectFileBytes = bytes;
+      }
+      if (selected.relativePath === ".godot-version") {
+        let version: string;
+        try {
+          version = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        } catch (error) {
+          return sourceFeatureUnsupported(
+            ".godot-version must be valid UTF-8",
+            error,
+          );
+        }
+        if (version.trim() !== "4.7.1") {
+          return sourceFeatureUnsupported(
+            "Project Environment requires .godot-version to request exact Godot 4.7.1",
+          );
+        }
+        requestedGodotVersion = "4.7.1";
+      }
+      const mode = (expected.mode & 0o111) === 0 ? "100644" : "100755";
+      const contentSha256 = asSha256DigestV1(
+        createHash("sha256").update(bytes).digest("hex"),
+      );
+      frozenEntries.push({
+        relativePath: selected.relativePath,
+        mode,
+        objectId: selected.objectId,
+        byteLength: bytes.byteLength,
+        contentSha256,
+        provenance: selected.provenance,
+      });
+      sources.push({
+        relativePath: selected.relativePath,
+        mode,
+        byteLength: bytes.byteLength,
+        async *chunks() {
+          const handle = await open(
+            frozenPath,
+            constants.O_RDONLY | constants.O_NOFOLLOW,
+          );
+          try {
+            for await (const chunk of handle.createReadStream({
+              autoClose: false,
+              start: 0,
+            })) {
+              yield Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            }
+          } finally {
+            await handle.close();
+          }
+        },
+      });
+    }
+    if (
+      projectFileBytes === undefined ||
+      frozenEntries.find(
+        (entry) =>
+          entry.relativePath === "project.godot" &&
+          entry.provenance === "tracked",
+      ) === undefined
+    ) {
+      return sourceFeatureUnsupported(
+        "project.godot must remain a tracked regular file",
+      );
+    }
+    const selectedTreeSha256 = await selectedTreeSha256FromSources(sources);
+    const mainScene = projectEnvironmentMainScene(projectFileBytes);
+    const includedUntrackedPaths = [...input.includeUntrackedPaths].sort(
+      (left, right) =>
+        Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+    );
+    const closureEntries = frozenEntries.map((entry) => ({
+      relativePath: entry.relativePath,
+      mode: entry.mode,
+      byteLength: entry.byteLength,
+      contentSha256: entry.contentSha256,
+      provenance: entry.provenance,
+    }));
+    const identityContent = {
+      schemaVersion: 1 as const,
+      closureKind: "project-source-closure" as const,
+      sourceRevision: input.headCommit,
+      projectPath: input.projectPrefix,
+      includedUntrackedPaths,
+      submodules: input.submodules,
+      entries: closureEntries,
+      selectedTreeSha256,
+      mainScene,
+      requestedGodotVersion,
+    };
+    const projectSourceIdentity = asSha256DigestV1(
+      contentHash(identityContent as unknown as JsonValue),
+    );
+    const sourceClosure = ProjectSourceClosureV1Schema.parse({
+      ...identityContent,
+      sourceId: asSourceId(`source:v1:${projectSourceIdentity}`),
+    });
+    return {
+      entries: Object.freeze(frozenEntries),
+      selectedTreeSha256,
+      mainScene,
+      requestedGodotVersion,
+      projectSourceIdentity,
+      sourceClosure: Object.freeze(sourceClosure),
+    };
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 };
 
 export async function preflightCleanGitSubtree(
@@ -895,9 +1843,8 @@ export async function preflightCleanExternalGodotProject(
 }
 
 /**
- * PE-A intentionally accepts only a clean, repository-root Godot project. It
- * does not require an operator-authored descriptor; the realized main scene and
- * exact source identity are derived from tracked Git bytes.
+ * Freezes the selected Godot project's realized worktree. Tracked staged and
+ * unstaged bytes are automatic; untracked files are exact, explicit inputs.
  */
 export async function preflightCleanProjectEnvironmentV1(
   request: CleanProjectEnvironmentPreflightRequestV1,
@@ -905,57 +1852,110 @@ export async function preflightCleanProjectEnvironmentV1(
 ): Promise<VerifiedProjectEnvironmentSourceV1> {
   const git = dependencies?.git ?? new NodeHostGitPort();
   try {
-    const inspected = await inspectCleanGitProject(
-      {
-        projectPath: request.projectPath,
-        sourceRepositoryExclusionRoots: request.sourceRepositoryExclusionRoots,
-        requiredFiles: ["project.godot"],
-        requireFixtureManifest: false,
-        requireRepositoryRootProject: true,
-        captureProjectFile: "project.godot",
-        sourceLimits: {
-          maxEntries: EXTERNAL_GODOT_MAX_FILES_V1,
-          maxBytes: EXTERNAL_GODOT_MAX_BYTES_V1,
-        },
-      },
-      git,
-    );
-    const requestedGodotVersion = await assertProjectEnvironmentSourceProfileV1(
-      {
-        git,
-        repositoryRoot: inspected.repositoryRoot,
-        entries: inspected.entries,
-      },
-    );
-    if (inspected.projectFileBytes === undefined) {
+    const startingPath = await realpath(request.projectPath);
+    const startingMetadata = await lstat(startingPath);
+    if (startingMetadata.isSymbolicLink() || !startingMetadata.isDirectory()) {
       return sourceFeatureUnsupported(
-        "tracked project.godot bytes are unavailable",
+        "project path must be a canonical directory",
       );
     }
-    const mainScene = projectEnvironmentMainScene(inspected.projectFileBytes);
-    const identityContent = {
-      schemaVersion: 1 as const,
-      sourceKind: "project-environment-v1-clean-git" as const,
-      headCommit: inspected.headCommit,
-      selectedTreeSha256: inspected.selectedTreeSha256,
-      mainScene,
-      requestedGodotVersion,
-    };
+    const repositoryRoot = await realpath(
+      await git.resolveRepositoryRoot(startingPath),
+    );
+    await assertNoRepositoryOverlap(
+      repositoryRoot,
+      request.sourceRepositoryExclusionRoots,
+    );
+    const headCommit = await git.resolveHeadCommit(repositoryRoot);
+    const status = await git.statusPorcelain(repositoryRoot);
+    const statusEntries = parseGitStatusPorcelainV1(status);
+    const projectPrefix = await discoverProjectPrefix({
+      repositoryRoot,
+      headCommit,
+      requestedProjectRoot: request.projectRoot,
+      statusEntries,
+      git,
+    });
+    const projectRoot = resolve(repositoryRoot, projectPrefix || ".");
+    if (!pathIsWithinOrEqual(repositoryRoot, projectRoot)) {
+      throw new M1Error(
+        "path_denied",
+        "selected project root escaped its repository",
+      );
+    }
+    const canonicalProjectRoot = await realpath(projectRoot);
+    if (canonicalProjectRoot !== projectRoot) {
+      return sourceFeatureUnsupported(
+        "selected project root must not traverse a symlink",
+      );
+    }
+    const listing = await git.listTree({
+      context: { cwd: repositoryRoot },
+      treeish: headCommit,
+      ...(projectPrefix.length === 0 ? {} : { projectPrefix }),
+    });
+    const parsedTree = parseProjectEnvironmentTreeListing(
+      listing,
+      projectPrefix,
+    );
+    const inspectedSubmodules = await inspectMaterializedProjectSubmodules({
+      git,
+      projectRoot,
+      rootEntries: parsedTree.entries,
+      gitlinks: parsedTree.gitlinks,
+    });
+    const includeUntrackedPaths = request.includeUntrackedPaths ?? [];
+    const repositoryWorktreeIsDirty = statusEntries.length > 0;
+    const selectedEntries = selectProjectWorktreeEntries({
+      projectPrefix,
+      headEntries: [...parsedTree.entries, ...inspectedSubmodules.entries],
+      statusEntries,
+      includeUntrackedPaths,
+      headCommit,
+    });
+    const frozen = await freezeProjectEnvironmentWorktree({
+      repositoryRoot,
+      projectRoot,
+      projectPrefix,
+      headCommit,
+      selectedEntries,
+      includeUntrackedPaths,
+      submodules: inspectedSubmodules.submodules,
+    });
     return Object.freeze({
-      sourceKind: identityContent.sourceKind,
-      repositoryRoot: inspected.repositoryRoot,
-      projectRoot: inspected.projectRoot,
-      projectPrefix: "" as const,
-      headCommit: inspected.headCommit,
-      selectedTreeSha256: inspected.selectedTreeSha256,
-      projectSourceIdentity: asSha256DigestV1(
-        contentHash(identityContent as unknown as JsonValue),
-      ),
-      entries: Object.freeze([...inspected.entries]),
-      mainScene,
-      requestedGodotVersion,
+      sourceKind:
+        repositoryWorktreeIsDirty || includeUntrackedPaths.length > 0
+          ? ("project-environment-v1-source-closure" as const)
+          : ("project-environment-v1-clean-git" as const),
+      repositoryRoot,
+      projectRoot,
+      projectPrefix,
+      headCommit,
+      selectedTreeSha256: frozen.selectedTreeSha256,
+      projectSourceIdentity: frozen.projectSourceIdentity,
+      entries: frozen.entries,
+      mainScene: frozen.mainScene,
+      requestedGodotVersion: frozen.requestedGodotVersion,
+      sourceClosure: frozen.sourceClosure,
     });
   } catch (error) {
     return normalizeSourcePreflightError(error);
   }
+}
+
+/** Re-freezes the same selection without relying on remembered CLI state. */
+export async function refreezeProjectEnvironmentSourceV1(
+  source: VerifiedProjectEnvironmentSourceV1,
+  dependencies?: { readonly git?: HostGitPort },
+): Promise<VerifiedProjectEnvironmentSourceV1> {
+  return preflightCleanProjectEnvironmentV1(
+    {
+      projectPath: source.repositoryRoot,
+      projectRoot:
+        source.projectPrefix.length === 0 ? "." : source.projectPrefix,
+      includeUntrackedPaths: source.sourceClosure?.includedUntrackedPaths ?? [],
+      sourceRepositoryExclusionRoots: [],
+    },
+    dependencies,
+  );
 }

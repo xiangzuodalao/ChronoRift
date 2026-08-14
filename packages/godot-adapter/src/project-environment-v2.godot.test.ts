@@ -88,7 +88,7 @@ const testAdapterFiles = async (): Promise<ProjectAdapterPackageBytesV2[]> => {
 };
 
 describe("Godot Project Environment V2 dynamic projection", () => {
-  it("captures a lossless create/signal/change/destroy/recreate lineage", async () => {
+  it("runs an explicitly selected secondary scene and reports it as current", async () => {
     const godotPath =
       process.env.CHRONORIFT_TEST_GODOT_BIN ??
       join(
@@ -102,6 +102,7 @@ describe("Godot Project Environment V2 dynamic projection", () => {
       root,
       { recursive: true },
     );
+    await cp(join(root, "main.tscn"), join(root, "secondary.tscn"));
     const addonRoot = join(root, "addons/chronorift_project_environment");
     const adapterRoot = join(root, ".chronorift/project-adapter");
     await mkdir(addonRoot, { recursive: true });
@@ -179,6 +180,7 @@ describe("Godot Project Environment V2 dynamic projection", () => {
         "gl_compatibility",
         "--audio-driver",
         "Dummy",
+        "res://secondary.tscn",
       ],
       {
         cwd: root,
@@ -265,6 +267,10 @@ describe("Godot Project Environment V2 dynamic projection", () => {
         recognizeProjectAdapterDynamicTracesV2(loaded, records),
       ).toHaveLength(1);
       const status = await runtime.status();
+      expect(status).toMatchObject({
+        configuredMainScene: "res://main.tscn",
+        currentScene: "res://secondary.tscn",
+      });
       expect(status.coverage).toMatchObject({
         status: "complete",
         semanticCoverage: "declared",

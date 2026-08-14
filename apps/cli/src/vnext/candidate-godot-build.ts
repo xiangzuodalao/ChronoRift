@@ -37,10 +37,7 @@ import {
   isExternalGodotNativeSourcePathV1,
   isExternalGodotReservedSourcePathV1,
 } from "./external-godot-source-policy.js";
-import {
-  hasProjectEnvironmentDeferredGdscriptFeatureV1,
-  isProjectEnvironmentSensitivePathV1,
-} from "./project-environment-source-policy.js";
+import { isProjectEnvironmentSensitivePathV1 } from "./project-environment-source-policy.js";
 import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
 import {
   selectedTreeSha256,
@@ -270,7 +267,22 @@ const collectCandidate = async (
           "Project Environment candidate collides with the managed override",
         );
       }
-      if (relativePath === "addons" || relativePath.startsWith("addons/")) {
+      const normalizedAddonPath = relativePath.toLocaleLowerCase("en-US");
+      if (
+        policy === "project-environment" &&
+        (normalizedAddonPath === "addons/chronorift_project_environment" ||
+          normalizedAddonPath.startsWith(
+            "addons/chronorift_project_environment/",
+          ))
+      ) {
+        throw new TypeError(
+          "Project Environment candidate collides with the reserved managed addon subtree",
+        );
+      }
+      if (
+        policy !== "project-environment" &&
+        (relativePath === "addons" || relativePath.startsWith("addons/"))
+      ) {
         throw new TypeError(
           "candidate source collides with the managed read-only addons mount",
         );
@@ -323,14 +335,6 @@ const collectCandidate = async (
           if (relativePath === ".godot-version" && text.trim() !== "4.7.1") {
             throw new TypeError(
               "Project Environment candidate must keep exact Godot 4.7.1",
-            );
-          }
-          if (
-            relativePath.endsWith(".gd") &&
-            hasProjectEnvironmentDeferredGdscriptFeatureV1(text)
-          ) {
-            throw new TypeError(
-              `Project Environment candidate defers @tool and EditorPlugin scripts: ${relativePath}`,
             );
           }
         }

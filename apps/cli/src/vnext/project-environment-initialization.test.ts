@@ -723,4 +723,18 @@ describe("PE-A initialization sequencing", () => {
     );
     expect(prompt).not.toContain("Create the one ProjectAdapter candidate");
   });
+
+  it("binds an explicitly selected target without claiming every declared target", () => {
+    const prompt = composeProjectEnvironmentInitializationPromptV2({
+      adapterId: ids.adapterId,
+      mainScene: "res://main.tscn",
+      requestedGodotVersion: "4.7.1",
+      sourceIdentity: digest("5"),
+      selectedLaunchTargetId: "secondary",
+    });
+
+    expect(prompt).toContain("targetId exactly: secondary");
+    expect(prompt).toContain("default target and this selected target");
+    expect(prompt).toContain("do not claim other targets are validated");
+  });
 });

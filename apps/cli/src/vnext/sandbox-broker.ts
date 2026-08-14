@@ -191,7 +191,7 @@ const isAnyProjectEnvironmentManagedRuntime = (
 
 const usesManagedAddonParentGuard = (
   runtime: SandboxManagedGodotRuntimeV1,
-): boolean => !isAnyProjectEnvironmentManagedRuntime(runtime);
+): boolean => !isProjectEnvironmentManagedRuntimeV2(runtime);
 
 export const sandboxManagedRuntimePolicyTargets = (
   runtime: SandboxManagedGodotRuntimeV1,

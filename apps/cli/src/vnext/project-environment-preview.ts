@@ -117,6 +117,7 @@ import {
 } from "./project-environment-reuse-v2.js";
 import {
   createDuplexBwrapCgroupTaskSandbox,
+  sandboxManagedRuntimePolicyTargets,
   type DuplexTaskSandboxBrokerV1,
 } from "./sandbox-broker.js";
 import {
@@ -475,28 +476,6 @@ const mapPiTurn = (
   errorMessage: result.errorMessage,
 });
 
-const managedRuntimeTargets = (runtime: {
-  readonly capability: {
-    readonly toolchain: {
-      readonly files: readonly { readonly target: string }[];
-    };
-    readonly fontconfigTarget: string;
-    readonly addonParentTarget: string;
-    readonly addonTarget: string;
-    readonly overlayTarget: string;
-    readonly adapterParentTarget: string;
-    readonly adapterTarget: string;
-  };
-}): readonly string[] => [
-  ...runtime.capability.toolchain.files.map((file) => file.target),
-  runtime.capability.fontconfigTarget,
-  runtime.capability.addonParentTarget,
-  runtime.capability.addonTarget,
-  runtime.capability.overlayTarget,
-  runtime.capability.adapterParentTarget,
-  runtime.capability.adapterTarget,
-];
-
 /**
  * Explicit Preview composition. It does not replace the default ChronoRift
  * entry point and it publishes only after the Pi turn returns and Host
@@ -801,7 +780,7 @@ export async function runProjectEnvironmentPreviewV1(
         godot: {
           toolchainId: validationRuntime.capability.toolchain.toolchainId,
           managedRuntimeId: validationRuntime.capability.managedRuntimeId,
-          targets: managedRuntimeTargets(validationRuntime),
+          targets: sandboxManagedRuntimePolicyTargets(validationRuntime),
         },
       },
     );
@@ -854,7 +833,7 @@ export async function runProjectEnvironmentPreviewV1(
         godot: {
           toolchainId: validationRuntimeV2.capability.toolchain.toolchainId,
           managedRuntimeId: validationRuntimeV2.capability.managedRuntimeId,
-          targets: managedRuntimeTargets(validationRuntimeV2),
+          targets: sandboxManagedRuntimePolicyTargets(validationRuntimeV2),
         },
       },
     );

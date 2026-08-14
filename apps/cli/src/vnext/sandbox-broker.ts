@@ -189,6 +189,27 @@ const isAnyProjectEnvironmentManagedRuntime = (
   isProjectEnvironmentManagedRuntime(runtime) ||
   isProjectEnvironmentManagedRuntimeV2(runtime);
 
+const usesManagedAddonParentGuard = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): boolean => !isAnyProjectEnvironmentManagedRuntime(runtime);
+
+export const sandboxManagedRuntimePolicyTargets = (
+  runtime: SandboxManagedGodotRuntimeV1,
+): readonly string[] => [
+  ...runtime.capability.toolchain.files.map((file) => file.target),
+  runtime.capability.fontconfigTarget,
+  ...(usesManagedAddonParentGuard(runtime)
+    ? [runtime.capability.addonParentTarget]
+    : []),
+  runtime.capability.addonTarget,
+  ...(isOverlayManagedRuntime(runtime)
+    ? [runtime.capability.overlayTarget]
+    : []),
+  ...(isAnyProjectEnvironmentManagedRuntime(runtime)
+    ? [runtime.capability.adapterParentTarget, runtime.capability.adapterTarget]
+    : []),
+];
+
 const isOverlayManagedRuntime = (
   runtime: SandboxManagedGodotRuntimeV1,
 ): runtime is
@@ -2053,6 +2074,10 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
           (this.managedRuntime === undefined ||
             !isOverlayManagedRuntime(this.managedRuntime) ||
             duplex);
+        const includeManagedAddonParent =
+          includeManagedAddon &&
+          this.managedRuntime !== undefined &&
+          usesManagedAddonParentGuard(this.managedRuntime);
         const includeManagedOverlay =
           request.profile === "godot-headless" &&
           this.resources.managedOverlay !== undefined &&
@@ -2077,7 +2102,9 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
             : []),
           ...(includeManagedAddon && this.resources.managedAddon !== undefined
             ? [
-                this.resources.managedAddon.parentTarget,
+                ...(includeManagedAddonParent
+                  ? [this.resources.managedAddon.parentTarget]
+                  : []),
                 this.resources.managedAddon.target,
               ]
             : []),
@@ -2140,7 +2167,9 @@ class BwrapCgroupTaskSandbox implements DuplexTaskSandboxBrokerV1 {
               ...(includeManagedAddon &&
               this.resources.managedAddon !== undefined
                 ? [
-                    this.resources.managedAddon.parentFd,
+                    ...(includeManagedAddonParent
+                      ? [this.resources.managedAddon.parentFd]
+                      : []),
                     this.resources.managedAddon.fd,
                   ]
                 : []),
@@ -2684,21 +2713,7 @@ export async function createDuplexBwrapCgroupTaskSandbox(
       ? ["/bin/busybox"]
       : [
           "/bin/busybox",
-          ...managedRuntime.capability.toolchain.files.map(
-            (file) => file.target,
-          ),
-          managedRuntime.capability.fontconfigTarget,
-          managedRuntime.capability.addonParentTarget,
-          managedRuntime.capability.addonTarget,
-          ...(isOverlayManagedRuntime(managedRuntime)
-            ? [managedRuntime.capability.overlayTarget]
-            : []),
-          ...(isAnyProjectEnvironmentManagedRuntime(managedRuntime)
-            ? [
-                managedRuntime.capability.adapterParentTarget,
-                managedRuntime.capability.adapterTarget,
-              ]
-            : []),
+          ...sandboxManagedRuntimePolicyTargets(managedRuntime),
         ].sort();
   if (policy.schemaVersion === 1) {
     if (managedRuntime !== undefined) {

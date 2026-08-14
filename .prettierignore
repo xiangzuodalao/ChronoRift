@@ -42,3 +42,7 @@ docs/evidence/vnext-e2-public-exposed-r1/chronorift-*.json
 # Preserve exact sanitized PE-A local evidence bytes bound by the freeze record.
 docs/evidence/vnext-project-environment-pe-a-local-r1/evidence/pe-a-evidence.v1.json
 docs/evidence/vnext-project-environment-pe-a-local-r1/validator/validator-result.v1.json
+
+# Preserve exact sanitized PE-B local evidence bytes bound by the freeze record.
+docs/evidence/vnext-project-environment-pe-b-local-r1/evidence/pe-b-evidence.v2.json
+docs/evidence/vnext-project-environment-pe-b-local-r1/validator/validator-result.v2.json

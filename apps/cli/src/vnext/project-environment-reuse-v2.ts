@@ -47,6 +47,20 @@ const DEFAULT_RAW_RECORDS_PATH =
 const DEFAULT_RAW_CHAIN_PATH =
   "records/dynamic-projection-chain.default.v2.json" as const;
 
+const candidateContentDigest = (
+  loaded: LoadedProjectAdapterPackageV2,
+): string =>
+  contentHash({
+    schemaVersion: 1,
+    files: loaded.files
+      .map((file) => ({
+        path: file.path,
+        byteLength: file.bytes,
+        sha256: file.sha256,
+      }))
+      .sort((left, right) => left.path.localeCompare(right.path)),
+  });
+
 const recordBytes = (
   files: readonly ProjectEnvironmentPackageFileInputV1[],
   path: string,
@@ -555,7 +569,7 @@ export function inspectReusableProjectEnvironmentRevisionV2(input: {
     ["conformance-source", conformance.sourceId !== input.revision.sourceId],
     [
       "conformance-candidate",
-      conformance.candidateDigest !== adapterRevision.packageDigest,
+      conformance.candidateDigest !== candidateContentDigest(adapterPackage),
     ],
     [
       "conformance-toolchain",

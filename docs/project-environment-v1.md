@@ -1,7 +1,7 @@
 # Project Environment V1 RFC
 
 > 状态：**设计冻结；PE-B Dynamic Projection implementation present + local Gate passed；PE-C narrow slice
-> implementation present、本 worktree default/Godot checks passed、external Host Gate pending；完整晋升 Gate 未通过**
+> implementation present + CI Host Gate passed/frozen；完整 Project Environment 晋升 Gate 未通过**
 > 决策日期：2026-08-12
 > 目标入口：Project Environment Preview；通过晋升 Gate 后成为默认 `chronorift [goal]` 入口
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
@@ -672,8 +672,7 @@ duplicate/unknown lifecycle、stale incarnation、scope/schema mismatch、跨 Ex
 260.037 秒，完整双 Session case 387.718 秒；默认离线 Gate 为 162 files/1252 tests，Godot Gate 为
 11 files/27 tests，特权 Preview Host 与真实模型 Gate 均为 1/1。归档见
 [`docs/evidence/vnext-project-environment-pe-b-local-r1/`](evidence/vnext-project-environment-pe-b-local-r1/README.md)。
-该 local archive 不是 protected artifact、签名、外部 attestation 或通用 Godot 支持证明；PE-C Source/Import Closure
-是当前正在实现的下一切片。
+该 local archive 不是 protected artifact、签名、外部 attestation 或通用 Godot 支持证明。
 
 PE-C 的离线 Gate 覆盖项目发现、tracked dirty、显式 untracked、canonical `SourceId`、materialize postflight drift、
 addon admission、target validation 状态、reuse/review，以及未 materialize LFS pointer、symlink、dirty/recursive
@@ -681,8 +680,13 @@ submodule 的拒绝。已 materialize 的 LFS 实体 bytes 只作为普通文件
 支持。Godot Gate 只运行 default 与当前 selected target。真实 Host Gate 复用固定
 `endlessm/moddable-platformer@3e793f53598a131c53fb82555191cc14b8db07ff`，在临时 checkout 加入 deterministic
 dirty/untracked/nested-project/addon/secondary-target overlay，完成 init → run/observation → new-Session reuse，
-再用一处 source mutation 证明 `review_required`。默认 CI 用 deterministic fake Agent；切片完成前另需一次 opt-in
-real Pi。该 Gate 不要求所有 target 的三阶段 matrix、独立 bundle validator 或 product-subject archive。
+再用一处 source mutation 证明 `review_required`。GitHub Actions run
+[`31779574638`](https://github.com/xiangzuodalao/ChronoRift/actions/runs/31779574638) 在 product subject
+`a119ec4f7a9a203d32db740b3dc4ffba7fc69ad0` 上成功；记录见
+[PE-C CI r1 freeze](evidence/vnext-project-environment-pe-c-ci-r1/README.md)。该 Gate 使用 deterministic fake Agent，
+不要求所有 target 的三阶段 matrix、独立 bundle validator 或 product-subject archive，也不证明 real-Pi adapter
+生成、Agent 调试、checkpoint/replay 或 patch/evidence 产品闭环。后四项进入 Architecture §20 的 PC-1，而不是继续
+扩大 PE-C。
 
 以下 §11.3–§11.7 是完整 V1 晋升的累计 Gate，不是 PE-C 的单切片 DoD。
 

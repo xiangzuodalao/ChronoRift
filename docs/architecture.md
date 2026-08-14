@@ -371,20 +371,21 @@ domain ← agent-protocol ← pi-harness / optional external bridge
 
 rollout 每次只增加一个主要不确定性维度：
 
-| Slice    | 状态                                          | 单一增量                                                                                     |
-| -------- | --------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| M3       | 实验性实现                                    | 单一 `frame-input-window` 上接通 sandbox、自由 Pi Loop、runtime primitives 和 patch 生命周期 |
-| M4       | 实验性实现                                    | 冻结外部项目的 lifecycle-only onboarding                                                     |
-| E2       | 实验性实现 + frozen plumbing evidence         | 在 M4 上增加 Timer/spawn semantic projection                                                 |
-| PE-A     | implementation present + local Gate passed    | Author → Validate → Publish → Use                                                            |
-| PE-B     | implementation present + local Gate passed    | dynamic entity/state/event identity propagation                                              |
-| **PE-C** | **implementation present；Host Gate pending** | Narrow Source/Import Closure                                                                 |
+| Slice    | 状态                                         | 单一增量                                                                                     |
+| -------- | -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| M3       | 实验性实现                                   | 单一 `frame-input-window` 上接通 sandbox、自由 Pi Loop、runtime primitives 和 patch 生命周期 |
+| M4       | 实验性实现                                   | 冻结外部项目的 lifecycle-only onboarding                                                     |
+| E2       | 实验性实现 + frozen plumbing evidence        | 在 M4 上增加 Timer/spawn semantic projection                                                 |
+| PE-A     | implementation present + local Gate passed   | Author → Validate → Publish → Use                                                            |
+| PE-B     | implementation present + local Gate passed   | dynamic entity/state/event identity propagation                                              |
+| PE-C     | implementation present + CI Host Gate passed | Narrow Source/Import Closure                                                                 |
+| **PC-1** | **当前下一切片；planned / not implemented**  | External Project Debug Closure                                                               |
 
-M3/M4/E2 保持兼容和历史证据，不再作为“每个项目新增一个 profile”的产品扩展方式。Project Environment V1 是当前
-产品主线；PE-A/PE-B 的详细 contract 与 Gate 在
+M3/M4/E2 保持兼容和历史证据，不再作为“每个项目新增一个 profile”的产品扩展方式。PE-A 至 PE-C 已建立下一产品
+闭环所需的 Project Environment 基础；详细 contract 与 Gate 在
 [Project Environment V1 RFC](project-environment-v1.md) 和对应 evidence archive 中。
 
-### 20.1 当前下一切片：PE-C Narrow Source/Import Closure（implementation present；Host Gate pending）
+### 20.1 PE-C 封版边界
 
 PE-C 保持 PE-B 的 exact Godot 4.7.1 GDScript/toolchain identity、headless、默认禁网、ProjectAdapter V2、dynamic observation 和
 publication/binding 语义不变，只扩展主线所需的 source、import 与 target 边界：
@@ -409,7 +410,7 @@ publication/binding 语义不变，只扩展主线所需的 source、import 与 
    同一 environment revision；environment identity 仍是 project-local。`SourceId` 变化返回 `review_required`，不在 PE-C
    自动生成新 adapter revision。
 
-PE-C Gate 必须按该单轴覆盖：
+PE-C Gate 按该单轴覆盖：
 
 - offline 测试覆盖项目发现/选择、dirty/untracked canonicalization、路径无关 `SourceId`、drift、addon admission、target
   validation 状态、reuse/review，以及未 materialize LFS pointer、symlink、dirty/recursive submodule 的明确拒绝；已
@@ -417,16 +418,43 @@ PE-C Gate 必须按该单轴覆盖：
 - Godot Gate 覆盖本地 addon/`@tool` import、default + selected target；未验证 target 必须拒绝；
 - 一个固定的真实外部项目完成 init → closure → adapter → run/observation → new-Session reuse，并在修改一个
   已选 tracked byte 后于 game execution 前返回 `review_required`；
-- 默认 CI 使用 deterministic fake Agent；切片完成前另跑一次 opt-in real Pi。Host receipts 是本切片证据，不要求
-  product-subject bundle、独立 validator、freeze tag 或全量 target × 三阶段 matrix。
+- 默认 CI 使用 deterministic fake Agent；real Pi 不属于本次冻结的 PE-C Gate。Host run metadata 是本切片记录，
+  不包含 product-subject bundle、独立 validator 或全量 target × 三阶段 matrix。
 
-PE-C 到此停止。完整 LFS、dirty/递归 submodule、directory symlink/cycle/race、内容级 secret marker 扫描、完整 quota
-matrix、所有 target 的 vanilla/bridge/instrumented matrix、独立 bundle validator、product-subject git bundle 与全量
-crash-cut 属于后续 hardening/conformance。source/adapter migration（PE-D）、failed-attempt resume（PE-E）、
-multi-writer lease/CAS（PE-F）、Host refresh/apply（PE-G）、bundle（PE-H）和 project network policy（PE-P）仍按独立
-切片推进。
+PE-C 在 product subject `a119ec4f7a9a203d32db740b3dc4ffba7fc69ad0` 上通过固定外部项目的 CI Host Gate；
+[PE-C CI r1 freeze](evidence/vnext-project-environment-pe-c-ci-r1/README.md) 保留 run metadata、精确接口 hash 与 trust
+boundary。该 Gate 使用 deterministic fake Agent，因此不证明 real-Pi adapter 生成、Agent 调试、checkpoint/replay、
+patch correctness、任意项目成功率或外部 attestation。PE-C 到此停止。
 
-### 20.2 后续单轴切片
+### 20.2 当前下一切片：PC-1 External Project Debug Closure（planned / not implemented）
+
+PC-1 不再增加 Project Environment source/import 能力；它只把已经存在但分散的产品原语接成一个用户可审阅闭环：
+
+```text
+冻结外部项目 → init → SourceId → adapter reuse/generation → Agent 调试
+             → checkpoint/replay → candidate patch → evidence
+```
+
+本切片固定一个初始 bytes 中不含 `.chronorift/` 的真实外部 Godot 项目和一个用户目标。Harness 必须：
+
+1. 通过 PE-C closure 建立 `SourceId`，在精确 source 未变化时复用 compatible adapter revision；没有 compatible
+   revision 时，由真实 Pi Session 中的 Agent 生成 candidate，并经过现有 Host validation/publication 后使用。
+2. 保留 Pi 的正常 coding-agent Loop。Agent 可以自由读取、运行、查询、捕获、checkpoint、replay、修改和验证；CLI
+   不规定固定调查顺序，也不生成 canonical diagnosis 或 fix verdict。
+3. 把 checkpoint/replay 接到同一个 Task、Build、adapter、probe 和 runtime lineage。restore/replay 必须报告 fidelity、
+   coverage、loss、first divergence 和 confounders，不能把“无可见差异”写成 equivalent start 或因果证明。
+4. 在 Task-owned workspace 产出可审阅 candidate patch，不直接修改用户 checkout，不自动 commit、merge、push 或 apply。
+5. 封存一份 strict、versioned evidence manifest，至少绑定 source/environment/adapter/build、Agent Session、关键 tool
+   results、checkpoint/replay、candidate diff、execution records、coverage/loss 与已知限制。Agent prose 不能覆盖 raw records。
+
+PC-1 的完成标准只有一个：在该冻结外部项目上，以真实 Pi Agent 完成上述全链路，并由新 Session 证明 unchanged
+`SourceId` 的 adapter reuse；source 变化仍明确进入 review，而不是静默复用。成功只表示产生了可审阅 patch 与执行
+记录，接受权仍属于用户、项目 CI、review 或独立 Eval。
+
+本切片不做多项目 benchmark、任意 Godot 泛化、默认入口晋升、PE-D migration、通用 apply、独立 verdict evaluator、
+全量 crash matrix 或新的 package 拆分。真实链路暴露的第一个阻塞能力才决定后续切片。
+
+### 20.3 延期的 Project Environment hardening
 
 | Slice | 后续增量                                                                                        |
 | ----- | ----------------------------------------------------------------------------------------------- |
@@ -442,25 +470,27 @@ Input、probe、alignment 和 render 等待真实依赖后再成为独立切片�
 
 ## 21. 当前实现映射
 
-本节把 **2026-08-14** 的 `main`/PE-C branch baseline 映射到目标架构。它只描述实际代码和已归档证据；计划仍由
-§20 定义。
+本节把 **2026-08-14** 的 PE-C branch product subject 映射到目标架构。它只描述实际代码和已归档证据；计划仍由
+§20 定义。此处不主张这些分支字节已经进入 `main`。
 
 ### 21.1 路径状态
 
-| 路径     | 产品状态         | 实现与证据状态                                                                                                            | 主要缺口                                                           |
-| -------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| v0.4     | 当前公开 release | 四个 legacy Fixture、真实 Pi Session、固定诊断 workflow 和 Proposal/Verdict artifacts                                     | 与 vNext 自由 Loop 和非裁决契约不兼容                              |
-| M3       | 实验性兼容路径   | 七个 broker-backed coding tools、16 个 game tools、sidecar、capture/checkpoint/fork/replay/index/compare、patch lifecycle | 只支持一个 Fixture；本文不声称 release-only live acceptance 已通过 |
-| M4       | 实验性兼容路径   | external clean checkout、strict descriptor、四个 lifecycle tools、sandbox/import/patch/cleanup plumbing                   | 不提供 gameplay observation 或 acceptance                          |
-| E2       | 实验性兼容路径   | 独立 semantic wire/Addon、11 tools、Timer/spawn projection；Host plumbing evidence 已冻结                                 | public-exposed task，不证明诊断、等价恢复、acceptance 或泛化       |
-| PE-A     | 实验性 Preview   | DTO/store、SDK/wire/loader、initial publication/binding、exact Build、same/new Session use；local Gate passed             | clean single-root/single-target；非 protected evidence             |
-| PE-B     | 实验性 Preview   | V2 manifest/wire、Execution-bound identity/incarnation、validated ring、dynamic trace/pin；local Gate passed              | 只证明一个 dynamic fixture；默认入口未晋升                         |
-| **PE-C** | **下一切片**     | **implementation present；本 worktree default/Godot checks passed；external Host Gate pending**                           | §20.1 的 narrow Source/Import Closure                              |
+| 路径     | 产品状态           | 实现与证据状态                                                                                                            | 主要缺口                                                           |
+| -------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| v0.4     | 当前公开 release   | 四个 legacy Fixture、真实 Pi Session、固定诊断 workflow 和 Proposal/Verdict artifacts                                     | 与 vNext 自由 Loop 和非裁决契约不兼容                              |
+| M3       | 实验性兼容路径     | 七个 broker-backed coding tools、16 个 game tools、sidecar、capture/checkpoint/fork/replay/index/compare、patch lifecycle | 只支持一个 Fixture；本文不声称 release-only live acceptance 已通过 |
+| M4       | 实验性兼容路径     | external clean checkout、strict descriptor、四个 lifecycle tools、sandbox/import/patch/cleanup plumbing                   | 不提供 gameplay observation 或 acceptance                          |
+| E2       | 实验性兼容路径     | 独立 semantic wire/Addon、11 tools、Timer/spawn projection；Host plumbing evidence 已冻结                                 | public-exposed task，不证明诊断、等价恢复、acceptance 或泛化       |
+| PE-A     | 实验性 Preview     | DTO/store、SDK/wire/loader、initial publication/binding、exact Build、same/new Session use；local Gate passed             | clean single-root/single-target；非 protected evidence             |
+| PE-B     | 实验性 Preview     | V2 manifest/wire、Execution-bound identity/incarnation、validated ring、dynamic trace/pin；local Gate passed              | 只证明一个 dynamic fixture；默认入口未晋升                         |
+| **PE-C** | **实验性 Preview** | **implementation present；固定外部项目的 CI Host Gate passed/frozen**                                                     | fake Agent、单一外部项目；不是 full V1 或通用支持                  |
+| **PC-1** | **下一切片**       | **planned / not implemented**                                                                                             | real-Pi debug → checkpoint/replay → patch → evidence 尚未接成闭环  |
 
 M4/E2 evidence 在 [E2 archive](evidence/vnext-e2-public-exposed-r1/README.md)；PE-A 与 PE-B 的 exact bytes、hash、
 timing、validator output 和 trust boundary 分别在 [PE-A archive](evidence/vnext-project-environment-pe-a-local-r1/README.md)
-与 [PE-B archive](evidence/vnext-project-environment-pe-b-local-r1/README.md)。这些 content hashes 不是签名或外部
-attestation。
+与 [PE-B archive](evidence/vnext-project-environment-pe-b-local-r1/README.md)。PE-C 的窄 CI Host Gate metadata 与
+限制在 [PE-C CI r1 freeze](evidence/vnext-project-environment-pe-c-ci-r1/README.md)。这些 content hashes 不是签名或
+外部 attestation。
 
 ### 21.2 当前 package 与 Addon ownership
 
@@ -490,7 +520,8 @@ project 和 live Provider paths 都是额外显式 Gate，命令和前提统一�
 
 当前主要缺口：
 
-- PE-C 实现已接入，但 external Host Gate 尚无实际输出；不能把当前工作树检查写成真实外部项目的已验证能力。
+- PE-C CI r1 只覆盖一个冻结外部项目和 deterministic fake Agent；real-Pi adapter 生成、Agent 调试以及
+  checkpoint/replay → patch → evidence 仍是 PC-1 的未实现目标。
 - M3 的 16 个 game tools 仍只覆盖 `attempt_jump`、60/120 FPS/TPS 和最多 600 ticks，不代表通用输入或运行时支持。
 - M4 的 selected-tree identity 只在 admission 与 operation endpoints 重验，不是 continuous immutable source
   attestation；retrospective phase/process output 使用 `last_sample_before_ingest` 和 Host monotonic envelope，不是逐
@@ -498,7 +529,8 @@ project 和 live Provider paths 都是额外显式 Gate，命令和前提统一�
 - `/tmp` 与 `/artifacts` 仍是 Task-shared writable views，只有 `/run/chronorift` stage 是 operation-private；残留状态
   必须作为 confounder 保留。
 - 默认 `chronorift [goal]`、长期 retention、通用 failed-attempt resume、source migration 和 conflict-safe apply 尚无。
-- Project Environment 只有两个 local real-Pi archives；它们不是 protected artifacts，也未完成三类结构矩阵与完整晋升。
+- Project Environment 只有两个 local real-Pi archives 和一个 unprotected CI metadata freeze；它们未完成三类结构矩阵
+  与完整晋升。
 - 自动 capture trigger、完整 engine snapshot、bit-exact replay、visual/audio/GPU 和其他 Host platforms 尚无。
 - M4 的 crash-before-reconciliation execution 没有跨 command cleanup owner，不能追认 seal。
 - adapter observation 与 game truth 同主体，产品不能证明 adapter 语义完整、fix correctness、success rate 或泛化。
@@ -523,6 +555,7 @@ project 和 live Provider paths 都是额外显式 Gate，命令和前提统一�
 | 2026-08-06 | ChronoRift 拥有 Harness；Pi 拥有 Loop；产品交付可审阅记录而非 canonical verdict；runtime primitives 与 external acceptance 分离               | 本文 §§1–19                                             |
 | 2026-08-12 | 一个 Godot project 对应一个 Project Environment；Agent 生成唯一 ProjectAdapter；Host validation/publication；按单轴 PE slices 推进            | [Project Environment V1 RFC](project-environment-v1.md) |
 | 2026-08-14 | PE-C 收窄到 dirty closure、显式 untracked、项目选择、addon import、default + selected target、稳定 reuse/review boundary；其余 hardening 延期 | 本文 §20.1                                              |
+| 2026-08-14 | PE-C 在窄 CI Host Gate 后封版；主线转向 PC-1 外部项目 Agent 调试、checkpoint/replay、patch 与 evidence 闭环                                   | 本文 §20.2                                              |
 
-这两个决策共同把 ChronoRift 定义为：**让通用 coding Agent 能安全操作、回退、分叉和比较游戏运行世界的专用
+这些决策共同把 ChronoRift 定义为：**让通用 coding Agent 能安全操作、回退、分叉和比较游戏运行世界的专用
 runtime substrate，而不是替 Agent 规定调查方法或替用户宣布真相的诊断 workflow。**

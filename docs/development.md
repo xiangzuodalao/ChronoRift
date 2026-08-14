@@ -78,7 +78,8 @@ tracked dirty, explicit untracked, nested-project, addon/`@tool`, and secondary-
 The wrapper invokes the fixed PE-C Host test and fails if that test is absent or fails; fixture setup alone is not a
 successful Gate. It must itself run below `systemd-run` with `Delegate=yes` and `PrivateNetwork=yes`; the underlying
 pnpm test refuses to mutate a project unless it is the wrapper-marked disposable clone. PE-C external-project
-verification remains pending until actual Host Gate output is retained.
+verification is frozen at [PE-C CI r1](evidence/vnext-project-environment-pe-c-ci-r1/README.md). That archive retains
+the successful GitHub Actions run metadata, not the runner logs or an independently verifiable evidence bundle.
 
 ## Project Environment Preview
 
@@ -97,8 +98,9 @@ corepack pnpm project preview -- [GOAL] \
 
 The three PE-C flags are fail-closed: `--project-root` is relative to the enclosing Git root,
 `--include-untracked` names one exact selected-project-relative file and must be repeated on every Preview/reuse,
-and `--launch-target` selects a declared target (the default is used when omitted). They are branch-under-test
-interfaces until the PE-C Gate produces actual output.
+and `--launch-target` selects a declared target (the default is used when omitted). They remain experimental Preview
+interfaces after the narrow PE-C CI Gate; the Gate did not promote the default command or establish arbitrary-project
+support.
 
 The default Host config is `$XDG_CONFIG_HOME/chronorift/project-environment-host.v1.json`, or
 `~/.config/chronorift/project-environment-host.v1.json` when `XDG_CONFIG_HOME` is unset. Its strict field schema lives

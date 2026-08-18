@@ -81,6 +81,44 @@ export async function waitForCgroupEmpty(
 const resourceError = (message: string, cause?: unknown): M1Error =>
   new M1Error("resource_limit_unavailable", message, cause);
 
+/** A cgroup directory was acquired but its rollback is not yet proven. */
+export class CgroupSetupCleanupErrorV1 extends AggregateError {
+  public readonly cleanupProven = false;
+
+  public constructor(
+    public readonly primaryError: unknown,
+    cleanupError: unknown,
+    private readonly retry: () => Promise<void>,
+  ) {
+    super(
+      [primaryError, cleanupError],
+      "cgroup setup failed without proven resource cleanup",
+    );
+    this.name = "CgroupSetupCleanupErrorV1";
+  }
+
+  public retryCleanup(): Promise<void> {
+    return this.retry();
+  }
+}
+
+const rethrowAfterCgroupSetupCleanup = async (
+  primaryError: unknown,
+  cleanup: () => Promise<void>,
+): Promise<never> => {
+  let lastCleanupError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await cleanup();
+    } catch (error) {
+      lastCleanupError = error;
+      continue;
+    }
+    throw primaryError;
+  }
+  throw new CgroupSetupCleanupErrorV1(primaryError, lastCleanupError, cleanup);
+};
+
 const parseWords = (value: string): ReadonlySet<string> =>
   new Set(
     value
@@ -365,15 +403,15 @@ export class CgroupV2Controller {
       );
       return new CgroupV2Controller(taskDirectory, fs);
     } catch (error) {
-      try {
+      const primaryError =
+        error instanceof M1Error
+          ? error
+          : resourceError("failed to create the task cgroup", error);
+      return rethrowAfterCgroupSetupCleanup(primaryError, async () => {
         if (await fs.pathExists(taskDirectory)) {
           await fs.removeDirectory(taskDirectory);
         }
-      } catch {
-        // Preserve the original failure. A caller must treat the root as tainted.
-      }
-      if (error instanceof M1Error) throw error;
-      throw resourceError("failed to create the task cgroup", error);
+      });
     }
   }
 
@@ -421,15 +459,15 @@ export class CgroupV2Controller {
       this.#scopes.set(segment, scope);
       return scope;
     } catch (error) {
-      try {
+      const primaryError =
+        error instanceof M1Error
+          ? error
+          : resourceError("failed to create the execution cgroup", error);
+      return rethrowAfterCgroupSetupCleanup(primaryError, async () => {
         if (await this.fs.pathExists(directory)) {
           await this.fs.removeDirectory(directory);
         }
-      } catch {
-        // Preserve the primary limit-enforcement error.
-      }
-      if (error instanceof M1Error) throw error;
-      throw resourceError("failed to create the execution cgroup", error);
+      });
     }
   }
 

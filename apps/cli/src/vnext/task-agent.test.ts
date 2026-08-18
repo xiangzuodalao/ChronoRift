@@ -210,6 +210,7 @@ describe("vNext Agent Task composition", () => {
         assistantText: `turn ${calls.length}`,
         errorMessage: null,
         eventsObserved: 4,
+        observedTurnCount: 1,
         stats: { ...stats, sessionFile },
       };
     };
@@ -509,6 +510,7 @@ describe("vNext Agent Task composition", () => {
           assistantText: `m3 turn ${turn}`,
           errorMessage: null,
           eventsObserved: 1,
+          observedTurnCount: 1,
           stats: { ...stats, sessionFile },
         };
       },
@@ -747,6 +749,7 @@ describe("vNext Agent Task composition", () => {
             assistantText: "m4 turn",
             errorMessage: null,
             eventsObserved: 0,
+            observedTurnCount: 1,
             stats: { ...stats, sessionFile },
           };
         },
@@ -853,6 +856,7 @@ describe("vNext Agent Task composition", () => {
             assistantText: "e2 turn",
             errorMessage: null,
             eventsObserved: 0,
+            observedTurnCount: 1,
             stats: { ...stats, sessionFile },
           };
         },

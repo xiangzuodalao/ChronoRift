@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -500,10 +500,10 @@ describe("Godot lifecycle sidecar sources", () => {
       mkdir(addonRoot, { recursive: true }),
     ]);
     const projectBytes = Buffer.from(
-      '[application]\nrun/main_scene="res://main.tscn"\n',
+      '[application]\nrun/main_scene="uid://m6managedmain"\n',
     );
     const sceneBytes = Buffer.from(
-      '[gd_scene format=3]\n\n[node name="Main" type="Node"]\n',
+      '[gd_scene format=3 uid="uid://m6managedmain"]\n\n[node name="Main" type="Node"]\n',
     );
     const addonBytes = Buffer.from("extends Node\n");
     await Promise.all([
@@ -641,6 +641,101 @@ describe("Godot lifecycle sidecar sources", () => {
     expect(managedImport?.receipt.exitCode).toBe(0);
     expect(managedImport?.receipt.signal).toBeNull();
     expect(managedImport?.receipt.timedOut).toBe(false);
+  });
+
+  it("rejects a normalized expected scene whose header does not bind the configured uid", async () => {
+    const root = await mkdtemp(
+      join(tmpdir(), "chronorift-lifecycle-uid-mismatch-"),
+    );
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    const runtime = join(root, "runtime");
+    const overlayProject = join(runtime, "overlay", "project");
+    const addonRoot = join(overlayProject, "addons", "chronorift_lifecycle");
+    await Promise.all([
+      mkdir(workspace),
+      mkdir(addonRoot, { recursive: true }),
+    ]);
+    const projectBytes = Buffer.from(
+      '[application]\nrun/main_scene="uid://m6configuredmain"\n',
+    );
+    const sceneBytes = Buffer.from(
+      '[gd_scene format=3 uid="uid://differentmain"]\n\n[node name="Main" type="Node"]\n',
+    );
+    const addonBytes = Buffer.from("extends Node\n");
+    await Promise.all([
+      writeFile(join(workspace, "project.godot"), projectBytes),
+      writeFile(join(workspace, "main.tscn"), sceneBytes),
+      writeFile(join(addonRoot, "lifecycle_probe.gd"), addonBytes),
+      writeFile(
+        join(overlayProject, "override.cfg"),
+        GODOT_LIFECYCLE_OVERRIDE_SOURCE,
+      ),
+    ]);
+    const marker = join(root, "godot-started");
+    const fakeGodot = join(root, "identity-mismatch-godot.cjs");
+    await writeFile(
+      fakeGodot,
+      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "unexpected"); process.exit(0);\n`,
+    );
+    const source = createLifecycleRuntimeSidecarSource({
+      godotExecutable: process.execPath,
+      godotArgsPrefix: [fakeGodot],
+      workspaceRoot: workspace,
+      runtimeRoot: runtime,
+    });
+    const sidecar = spawn(
+      process.execPath,
+      ["--input-type=commonjs", "--eval", source],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const stderr: Buffer[] = [];
+    sidecar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const candidateSourceHash = selectedTreeDigest([
+      { relativePath: "main.tscn", mode: "100644", bytes: sceneBytes },
+      {
+        relativePath: "project.godot",
+        mode: "100644",
+        bytes: projectBytes,
+      },
+    ]);
+    sidecar.stdin.end(
+      encodeWireFrame(
+        JSON.stringify(
+          GodotLifecycleSidecarLaunchV1Schema.parse({
+            ...commonLaunch(candidateSourceHash),
+            operation: "managed_lifecycle",
+            protocolProfile: "chronorift-godot-lifecycle-v1",
+            protocolVersion: 1,
+            token: "e".repeat(64),
+            overlayHash: sha256(GODOT_LIFECYCLE_OVERRIDE_SOURCE),
+            addonHash: treeDigest([
+              { relativePath: "lifecycle_probe.gd", bytes: addonBytes },
+            ]),
+            expectedMainScene: "res://main.tscn",
+            importTimeoutMs: 5_000,
+            startupTimeoutMs: 5_000,
+            executionTimeoutMs: 10_000,
+          }),
+        ),
+      ),
+    );
+
+    await expect(waitForExit(sidecar)).resolves.toEqual({
+      code: 1,
+      signal: null,
+    });
+    expect(
+      decode(Buffer.concat(stderr), (value) =>
+        GodotLifecycleSidecarDiagnosticV1Schema.parse(value),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        kind: "sidecar_error",
+        code: "BUILD_IDENTITY_MISMATCH",
+      }),
+    );
+    await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("records a failed managed import before starting the lifecycle runtime", async () => {

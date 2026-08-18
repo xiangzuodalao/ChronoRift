@@ -9,6 +9,9 @@ import type { ExecutionCgroupScope } from "./cgroup-v2.js";
 import { M1Error } from "./errors.js";
 import type { SandboxBootstrapSession } from "./sandbox-bootstrap.js";
 import {
+  SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_BYTES_V1,
+  SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_INODES_V1,
+  assertSandboxTaskStorageHeadroomV1,
   assertSandboxTaskStorageBindingMatches,
   assertSandboxTaskStorageLayoutMatches,
   assertRequiredBubblewrapFeatures,
@@ -250,6 +253,56 @@ describe("preflightSandboxHost", () => {
           blockers: [{ code: "resource_limit_unavailable" }],
         },
       });
+    }
+  });
+
+  it("rechecks byte and inode headroom at the execution boundary", async () => {
+    const admittedPort = taskStoragePort({
+      totalBlocks: 262_144n,
+      freeBlocks: 131_072n,
+      totalInodes: 131_072n,
+      freeInodes: 32_768n,
+    });
+    const admitted = await inspectSandboxTaskStorageRoot(
+      boundedStorageRoot,
+      admittedPort,
+    );
+
+    await expect(
+      assertSandboxTaskStorageHeadroomV1(
+        admitted.capability,
+        boundedStorageRoot,
+        admittedPort,
+      ),
+    ).resolves.toEqual({
+      schemaVersion: 1,
+      availableBytes: 512 * 1024 * 1024,
+      availableInodes: 32_768,
+      requiredAvailableBytes: SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_BYTES_V1,
+      requiredAvailableInodes: SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_INODES_V1,
+    });
+
+    for (const exhausted of [
+      taskStoragePort({
+        totalBlocks: 262_144n,
+        freeBlocks: 65_535n,
+        totalInodes: 131_072n,
+        freeInodes: 32_768n,
+      }),
+      taskStoragePort({
+        totalBlocks: 262_144n,
+        freeBlocks: 131_072n,
+        totalInodes: 131_072n,
+        freeInodes: 16_383n,
+      }),
+    ]) {
+      await expect(
+        assertSandboxTaskStorageHeadroomV1(
+          admitted.capability,
+          boundedStorageRoot,
+          exhausted,
+        ),
+      ).rejects.toMatchObject({ code: "resource_limit_unavailable" });
     }
   });
 

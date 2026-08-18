@@ -363,6 +363,7 @@ const createFakePiDependencies =
           "deterministic fake Pi completed the requested Host Gate turn",
         errorMessage: null,
         eventsObserved: toolCalls,
+        observedTurnCount: 1,
         stats: {
           sessionFile,
           sessionId,

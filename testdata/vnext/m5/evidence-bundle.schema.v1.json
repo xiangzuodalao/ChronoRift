@@ -1,0 +1,436 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chronorift.invalid/evidence/m5-public-exposed-behavior-change-bundle.v1.schema.json",
+  "title": "ChronoRift M5 public exposed behavior-change evidence bundle V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceKind",
+    "taskClassification",
+    "taskSpecSha256",
+    "taskId",
+    "claimsExcluded",
+    "agent",
+    "productSubject",
+    "toolchain",
+    "source",
+    "semanticProfile",
+    "patch",
+    "executions",
+    "cleanup",
+    "summaryContentSha256"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceKind": {
+      "const": "chronorift-m5-public-exposed-behavior-change-conformance"
+    },
+    "taskClassification": {
+      "const": "public_exposed_behavior_change_conformance"
+    },
+    "taskSpecSha256": { "$ref": "#/$defs/sha256" },
+    "taskId": { "$ref": "#/$defs/taskId" },
+    "claimsExcluded": {
+      "const": [
+        "correctness",
+        "independent_acceptance",
+        "intelligent_diagnosis",
+        "causality",
+        "generalization",
+        "reliability",
+        "success_rate",
+        "relative_advantage",
+        "arbitrary_project_support",
+        "root_cause_correctness"
+      ]
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "model",
+        "thinkingLevel",
+        "attemptOrdinal",
+        "turnCount",
+        "loopStatus",
+        "requestedTaskSandboxNetworkMode",
+        "hostModelNetworkPolicy",
+        "taskCredentialMountCountMaximum",
+        "totalToolCallCount",
+        "activeTools"
+      ],
+      "properties": {
+        "provider": { "const": "openai-codex" },
+        "model": { "const": "gpt-5.6-luna" },
+        "thinkingLevel": { "const": "max" },
+        "attemptOrdinal": { "const": 1 },
+        "turnCount": { "const": 1 },
+        "loopStatus": { "const": "completed" },
+        "requestedTaskSandboxNetworkMode": { "const": "denied" },
+        "hostModelNetworkPolicy": { "const": "provider_only" },
+        "taskCredentialMountCountMaximum": { "const": 0 },
+        "totalToolCallCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "activeTools": {
+          "const": [
+            "read",
+            "bash",
+            "edit",
+            "write",
+            "grep",
+            "find",
+            "ls",
+            "game_capabilities",
+            "game_launch",
+            "game_status",
+            "game_stop",
+            "game_query",
+            "game_checkpoint_create",
+            "game_checkpoint_restore",
+            "game_fork",
+            "game_trace_create",
+            "game_trace_replay",
+            "game_compare"
+          ]
+        }
+      }
+    },
+    "productSubject": { "$ref": "#/$defs/productSubject" },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeVersion", "godotVersion"],
+      "properties": {
+        "nodeVersion": { "const": "v22.23.1" },
+        "godotVersion": {
+          "const": "4.7.1.stable.official.a13da4feb"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declaredUrl",
+        "headCommit",
+        "gitTreeObjectId",
+        "baselineSelectedTreeSha256",
+        "hostUnchangedAfterTask"
+      ],
+      "properties": {
+        "declaredUrl": {
+          "const": "https://github.com/endlessm/moddable-platformer"
+        },
+        "headCommit": {
+          "const": "3e793f53598a131c53fb82555191cc14b8db07ff"
+        },
+        "gitTreeObjectId": {
+          "const": "a013bd677c712dbf354e8e2f6e8ff7c53d5684c6"
+        },
+        "baselineSelectedTreeSha256": {
+          "const": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8"
+        },
+        "hostUnchangedAfterTask": { "const": true }
+      }
+    },
+    "semanticProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskProfile",
+        "protocolProfile",
+        "adapterProfileSha256",
+        "targetScene"
+      ],
+      "properties": {
+        "taskProfile": { "const": "godot-external-semantic-v1" },
+        "protocolProfile": { "const": "chronorift-godot-semantic-v1" },
+        "adapterProfileSha256": {
+          "const": "2600ae0d42a463d78a7c74b987799e74e7391c254f806ddbcc86b2256591f0e4"
+        },
+        "targetScene": {
+          "const": "res://components/spawner/enemy_spawner_broken.tscn"
+        }
+      }
+    },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "artifact",
+        "exportReceipt",
+        "changedPaths",
+        "roundTripSelectedTreeSha256",
+        "roundTripVerified"
+      ],
+      "properties": {
+        "identity": { "$ref": "#/$defs/patchIdentity" },
+        "artifact": {
+          "allOf": [
+            { "$ref": "#/$defs/artifactReference" },
+            {
+              "type": "object",
+              "properties": {
+                "relativePath": { "const": "candidate.patch" }
+              }
+            }
+          ]
+        },
+        "exportReceipt": {
+          "allOf": [
+            { "$ref": "#/$defs/artifactReference" },
+            {
+              "type": "object",
+              "properties": {
+                "relativePath": { "const": "patch-export-receipt.json" }
+              }
+            }
+          ]
+        },
+        "changedPaths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "roundTripSelectedTreeSha256": { "$ref": "#/$defs/sha256" },
+        "roundTripVerified": { "const": true }
+      }
+    },
+    "executions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "candidate"],
+      "properties": {
+        "baseline": { "$ref": "#/$defs/executionArtifacts" },
+        "candidate": { "$ref": "#/$defs/executionArtifacts" }
+      }
+    },
+    "cleanup": {
+      "allOf": [
+        { "$ref": "#/$defs/artifactReference" },
+        {
+          "type": "object",
+          "properties": {
+            "relativePath": { "const": "cleanup-receipt.json" }
+          }
+        }
+      ]
+    },
+    "summaryContentSha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "taskId": {
+      "type": "string",
+      "pattern": "^task:[A-Za-z0-9][A-Za-z0-9._:-]{0,250}$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*//)(?!.*(?:^|/)(?:\\.|\\.\\.|\\.git)(?:/|$))[A-Za-z0-9._/-]{1,512}$"
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "rawSha256"],
+      "properties": {
+        "relativePath": { "$ref": "#/$defs/relativePath" },
+        "rawSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "bundleKind",
+        "taskSpecSha256",
+        "taskId",
+        "productSubject",
+        "artifacts",
+        "manifestContentSha256"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "bundleKind": { "const": "chronorift-m5-evidence-bundle" },
+        "taskSpecSha256": { "$ref": "#/$defs/sha256" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "productSubject": { "$ref": "#/$defs/productSubject" },
+        "artifacts": {
+          "type": "array",
+          "minItems": 14,
+          "maxItems": 14,
+          "items": { "$ref": "#/$defs/artifactReference" }
+        },
+        "manifestContentSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "productSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryCommit", "repositoryTree", "clean"],
+      "properties": {
+        "repositoryCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "repositoryTree": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "clean": { "const": true }
+      }
+    },
+    "patchIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "patchId",
+        "taskId",
+        "baselineSourceHash",
+        "candidateSourceHash",
+        "patchHash",
+        "byteLength"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "patchId": {
+          "type": "string",
+          "pattern": "^patch:v1:[a-f0-9]{64}$"
+        },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "baselineSourceHash": { "$ref": "#/$defs/sha256" },
+        "candidateSourceHash": { "$ref": "#/$defs/sha256" },
+        "patchHash": { "$ref": "#/$defs/sha256" },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 536870912
+        }
+      }
+    },
+    "patchExportReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "taskId",
+        "patchId",
+        "patchSha256",
+        "outputPath",
+        "byteLength",
+        "exportedAt",
+        "status"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "patchId": {
+          "type": "string",
+          "pattern": "^patch:v1:[a-f0-9]{64}$"
+        },
+        "patchSha256": { "$ref": "#/$defs/sha256" },
+        "outputPath": { "$ref": "#/$defs/relativePath" },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 536870912
+        },
+        "exportedAt": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$"
+        },
+        "status": { "const": "completed" }
+      }
+    },
+    "executionArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedSourceHash",
+        "build",
+        "runtime",
+        "execution",
+        "events",
+        "executionSeal"
+      ],
+      "properties": {
+        "expectedSourceHash": { "$ref": "#/$defs/sha256" },
+        "build": { "$ref": "#/$defs/artifactReference" },
+        "runtime": { "$ref": "#/$defs/artifactReference" },
+        "execution": { "$ref": "#/$defs/artifactReference" },
+        "events": { "$ref": "#/$defs/artifactReference" },
+        "executionSeal": { "$ref": "#/$defs/artifactReference" }
+      }
+    },
+    "cleanupReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptKind",
+        "taskSpecSha256",
+        "taskId",
+        "taskNamespaceDigest",
+        "patchId",
+        "baselineSourceHash",
+        "candidateSourceHash",
+        "baselineExecutionId",
+        "candidateExecutionId",
+        "processGroupTerminated",
+        "cgroupPopulated",
+        "termSent",
+        "killSent",
+        "scopeRemoved",
+        "storageReconciled",
+        "taskRootRemoved",
+        "boundedTaskStorageEmpty",
+        "taskCgroupLeavesEmpty",
+        "sourceUnchanged",
+        "receiptContentSha256"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "receiptKind": {
+          "const": "chronorift-m5-task-discard-cleanup"
+        },
+        "taskSpecSha256": { "$ref": "#/$defs/sha256" },
+        "taskId": { "$ref": "#/$defs/taskId" },
+        "taskNamespaceDigest": { "$ref": "#/$defs/sha256" },
+        "patchId": {
+          "type": "string",
+          "pattern": "^patch:v1:[a-f0-9]{64}$"
+        },
+        "baselineSourceHash": { "$ref": "#/$defs/sha256" },
+        "candidateSourceHash": { "$ref": "#/$defs/sha256" },
+        "baselineExecutionId": { "$ref": "#/$defs/opaqueId" },
+        "candidateExecutionId": { "$ref": "#/$defs/opaqueId" },
+        "processGroupTerminated": { "const": true },
+        "cgroupPopulated": { "const": false },
+        "termSent": { "type": "boolean" },
+        "killSent": { "type": "boolean" },
+        "scopeRemoved": { "const": true },
+        "storageReconciled": { "const": true },
+        "taskRootRemoved": { "const": true },
+        "boundedTaskStorageEmpty": { "const": true },
+        "taskCgroupLeavesEmpty": { "const": true },
+        "sourceUnchanged": { "const": true },
+        "receiptContentSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

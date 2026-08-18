@@ -523,6 +523,51 @@ describe("preflightCleanProjectEnvironmentV1", () => {
     expect(source.projectSourceIdentity).toMatch(/^[a-f0-9]{64}$/u);
   });
 
+  it("resolves a tracked uid main scene to its unique normalized res path", async () => {
+    const repo = await createProject();
+    await writeFile(
+      join(repo.root, "project.godot"),
+      '[application]\nrun/main_scene="uid://m6main1"\n',
+    );
+    await writeFile(
+      join(repo.root, "uid_main.tscn"),
+      '[gd_scene format=3 uid="uid://m6main1"]\n\n[node name="Main" type="Node"]\n',
+    );
+    await commitAll(repo.root, "use tracked UID main scene");
+
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: repo.root,
+        sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+      }),
+    ).resolves.toMatchObject({ mainScene: "res://uid_main.tscn" });
+  });
+
+  it.each(["missing", "ambiguous"] as const)(
+    "rejects a %s tracked uid main scene",
+    async (kind) => {
+      const repo = await createProject();
+      await writeFile(
+        join(repo.root, "project.godot"),
+        '[application]\nrun/main_scene="uid://m6main2"\n',
+      );
+      if (kind === "ambiguous") {
+        const scene =
+          '[gd_scene format=3 uid="uid://m6main2"]\n\n[node name="Main" type="Node"]\n';
+        await writeFile(join(repo.root, "first.tscn"), scene);
+        await writeFile(join(repo.root, "second.tscn"), scene);
+      }
+      await commitAll(repo.root, `${kind} tracked UID main scene`);
+
+      await expect(
+        preflightCleanProjectEnvironmentV1({
+          projectPath: repo.root,
+          sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+        }),
+      ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+    },
+  );
+
   it("accepts only the exact PE-A Godot patch request", async () => {
     const accepted = await createProject();
     await writeFile(join(accepted.root, ".godot-version"), "4.7.1\n");
@@ -564,6 +609,88 @@ describe("preflightCleanProjectEnvironmentV1", () => {
         sourceRepositoryExclusionRoots: [repo.runtimeRoot],
       }),
     ).rejects.toBeInstanceOf(Error);
+  });
+
+  it("admits tracked in-root @tool scripts only with the explicit policy", async () => {
+    const accepted = await createProject();
+    await writeFile(
+      join(accepted.root, "tool_script.gd"),
+      "@tool\nextends Node\n",
+    );
+    await commitAll(accepted.root, "add tracked tool script");
+
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: accepted.root,
+        sourceRepositoryExclusionRoots: [accepted.runtimeRoot],
+      }),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: accepted.root,
+        sourceRepositoryExclusionRoots: [accepted.runtimeRoot],
+        gdscriptPolicy: "tracked-tool-scripts-v1",
+      }),
+    ).resolves.toMatchObject({
+      sourceKind: "project-environment-v1-clean-git",
+    });
+
+    const editorPlugin = await createProject();
+    await writeFile(
+      join(editorPlugin.root, "editor_plugin.gd"),
+      "@tool\nextends EditorPlugin\n",
+    );
+    await commitAll(editorPlugin.root, "add tracked editor plugin");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: editorPlugin.root,
+        sourceRepositoryExclusionRoots: [editorPlugin.runtimeRoot],
+        gdscriptPolicy: "tracked-tool-scripts-v1",
+      }),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+
+  it("does not let tracked-tool-scripts-v1 bypass source containment or cleanliness", async () => {
+    for (const relativePath of ["addons/plugin.gd", "native/bridge.so"]) {
+      const repo = await createProject();
+      const target = join(repo.root, relativePath);
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, "@tool\nextends Node\n");
+      await commitAll(repo.root, `add unsupported ${relativePath}`);
+      await expect(
+        preflightCleanProjectEnvironmentV1({
+          projectPath: repo.root,
+          sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+          gdscriptPolicy: "tracked-tool-scripts-v1",
+        }),
+      ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+    }
+
+    const linked = await createProject();
+    await symlink("main.gd", join(linked.root, "tool-link.gd"));
+    await commitAll(linked.root, "add source link");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: linked.root,
+        sourceRepositoryExclusionRoots: [linked.runtimeRoot],
+        gdscriptPolicy: "tracked-tool-scripts-v1",
+      }),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+
+    const dirty = await createProject();
+    await writeFile(
+      join(dirty.root, "tool_script.gd"),
+      "@tool\nextends Node\n",
+    );
+    await commitAll(dirty.root, "add tracked tool script");
+    await appendFile(join(dirty.root, "project.godot"), "\n# dirty\n");
+    await expect(
+      preflightCleanProjectEnvironmentV1({
+        projectPath: dirty.root,
+        sourceRepositoryExclusionRoots: [dirty.runtimeRoot],
+        gdscriptPolicy: "tracked-tool-scripts-v1",
+      }),
+    ).rejects.toMatchObject({ code: "source_not_clean" });
   });
 
   it("rejects a nested project and a dirty worktree", async () => {

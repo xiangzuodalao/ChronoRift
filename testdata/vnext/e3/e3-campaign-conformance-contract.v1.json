@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "contractKind": "chronorift-e3-campaign-denominator-conformance",
+  "contractStatus": "implementation_profile_trust_root_unselected",
+  "campaignPurpose": "registrar_conformance",
+  "campaign": {
+    "assignmentCount": 1,
+    "claimEligible": false,
+    "modelCalls": 0,
+    "evaluatorRuns": 0,
+    "artifactSinkMode": "configured_external_ci_artifact_directory_v1",
+    "artifactSinkBinding": "create-only-registration-bound-id-and-path-hiding-content-commitment"
+  },
+  "runtime": {
+    "nodeVersion": "22.23.1",
+    "defaultNetworkMode": "denied",
+    "registrarNetworkAuthorization": "explicit_live_gate_only"
+  },
+  "identity": {
+    "hash": "sha256",
+    "canonicalJson": "chronorift-sorted-json-utf8-v1",
+    "campaignId": "sha256-chronorift-e3-campaign-id-v1-nul-canonical-manifest",
+    "assignmentId": "sha256-chronorift-e3-assignment-id-v1-nul-campaign-slot-commitment",
+    "eventId": "sha256-chronorift-e3-event-id-v1-nul-compare-and-append-basis",
+    "revisionId": "sha256-chronorift-e3-revision-id-v1-nul-primary-closure-late-event",
+    "artifactSinkCommitment": "sha256-chronorift-e3-artifact-sink-v1-nul-canonical-namespace-lease-id-sink-id-absolute-path-evidence-file-name"
+  },
+  "signatures": {
+    "algorithm": "ed25519",
+    "encoding": "base64url-no-padding",
+    "signedBytes": "domain-nul-schema-id-nul-version-nul-canonical-bytes",
+    "merkleProof": "rfc6962-sha256-v1",
+    "tls": "ca-hostname-and-pinned-spki"
+  },
+  "eventKinds": [
+    "registrar_assignment_registered",
+    "conformance_actor_started",
+    "conformance_actor_finished",
+    "conformance_cleanup_proven",
+    "registrar_deadline_elapsed",
+    "registrar_primary_closed"
+  ],
+  "primaryOutcomes": [
+    "conformance_complete",
+    "incomplete_unknown",
+    "cleanup_unproven"
+  ],
+  "publicationStates": [
+    "open",
+    "closure_sealed_publication_pending",
+    "closure_published"
+  ],
+  "publicationLeaves": {
+    "registration": "canonical-json-campaign-id-and-deadline",
+    "closure": "canonical-json-campaign-id-and-closure-hash"
+  },
+  "retainedChains": {
+    "primary": "immutable-journal-head-outcome-counts-and-deadline",
+    "revision": "closure-hash-rooted-late-evidence-only"
+  },
+  "signedAttemptMetrics": {
+    "appendAttemptCount": "eventCount-plus-rejectionCount-plus-idempotentReplayCount",
+    "requiredConflictRejections": 6,
+    "requiredIdempotentReplayCount": 1,
+    "responseLossRetryEvidence": "observation-only-inner-unavailable-then-client-byte-identical-success-cross-checked-with-signed-closure-count"
+  },
+  "successSummary": {
+    "viewKind": "latest_known",
+    "publicationState": "closure_published",
+    "registrarKeyIds": "role_named",
+    "artifactSink": "mode-id-and-commitment-only",
+    "trustAnchorHashes": "root-freeze-external-pin",
+    "lifecycle": "primary-outcome-counts-deadline-closed-at",
+    "cleanup": "receipt-hash-or-null",
+    "revision": "signed-checkpoint-hash",
+    "transparency": "registration-and-closure-checkpoints-plus-proof-hashes"
+  },
+  "liveGate": {
+    "command": "corepack pnpm test:vnext:e3-campaign-live",
+    "defaultCi": false,
+    "hostLauncher": {
+      "path": "/opt/chronorift-e3/run-live-suite.mjs",
+      "configPath": "/etc/chronorift-e3/live-suite-host-launch.v1.json",
+      "runnerEntry": "apps/cli/src/evaluation/e3/e3-campaign-live-cli.ts",
+      "descriptorBoundary": "launcher-opens-fd3-through-fd15-then-direct-node22-runner",
+      "integrityBinding": "sealed-config-launcherSha256"
+    },
+    "descriptorSets": {
+      "early_complete": {
+        "registrationCapabilityFd": 3,
+        "actorAppendCapabilityFd": 4,
+        "actorPrivateKeyFd": 5,
+        "preparationFd": 6,
+        "cleanupWitnessMode": "external_auto_append_v1"
+      },
+      "deadline_incomplete": {
+        "registrationCapabilityFd": 7,
+        "actorAppendCapabilityFd": 8,
+        "actorPrivateKeyFd": 9,
+        "preparationFd": 10,
+        "cleanupWitnessMode": "external_deadline_no_finish_v1"
+      },
+      "deadline_cleanup_unproven_with_late_cleanup": {
+        "registrationCapabilityFd": 11,
+        "actorAppendCapabilityFd": 12,
+        "actorPrivateKeyFd": 13,
+        "preparationFd": 14,
+        "cleanupWitnessMode": "external_withhold_cleanup_until_closed_then_revision_v1"
+      }
+    },
+    "hostCleanupWitnessMode": "external_suite_v1",
+    "faultControl": {
+      "fd": 15,
+      "requiredCases": [
+        "registrar_unreachable",
+        "transparency_log_unavailable"
+      ],
+      "policyPath": "testdata/vnext/e3/registrar-fault-control-policy.v1.json",
+      "policyStatus": "absent",
+      "policyAuthorization": "existing-threshold-root-signatures",
+      "faultKeyRole": "independent-non-registrar-non-actor-ed25519",
+      "receiptBinding": "domain-separated-request-bound-content-addressed-and-policy-key-signed-v1",
+      "receiptSignaturePolicy": "threshold-authorized-fault-key-v1",
+      "requiredObservedResult": "nonzero-live-dependency-unavailable-without-final-evidence-or-success-summary"
+    },
+    "prePublicationMutations": [
+      "journal",
+      "signature",
+      "inclusion",
+      "consistency"
+    ],
+    "trustRootStatus": "unselected",
+    "trustRootPath": "testdata/vnext/e3/registrar-trust-root.v1.json",
+    "trustRootFreezePath": "testdata/vnext/e3/registrar-trust-root.v1.freeze.json",
+    "trustRootFreezeStatus": "absent",
+    "externalTrustRootPinStatus": "unselected",
+    "liveMatrixStatus": "full_matrix_v1",
+    "independentRegistrarStatus": "not_configured",
+    "archivedEvidenceStatus": "absent",
+    "missingPrerequisiteBehavior": "fail_closed"
+  },
+  "claimBoundary": {
+    "implementationClaim": "e3_1_implementation_present",
+    "liveClaim": "campaign_denominator_conformance",
+    "liveClaimEstablished": false,
+    "claimsExcluded": [
+      "model_call_gating",
+      "oracle_blindness",
+      "candidate_production",
+      "hidden_evaluation",
+      "independent_acceptance",
+      "success_rate",
+      "reliability",
+      "generalization",
+      "root_cause_correctness",
+      "relative_product_advantage",
+      "host_mount_operator_independence"
+    ]
+  }
+}

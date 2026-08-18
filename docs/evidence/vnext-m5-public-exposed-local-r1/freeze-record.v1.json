@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "chronorift-vnext-m5-local-post-gate-freeze",
+  "recordTiming": "post_gate",
+  "classification": "public_exposed_behavior_change_conformance",
+  "archiveStatus": "local_unprotected_operator_archive",
+  "recordedAt": "2026-08-12T04:18:18.000Z",
+  "gate": {
+    "runLabel": "local-r8",
+    "conclusion": "success",
+    "liveTestDurationMs": 215137,
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "attemptOrdinal": 1,
+    "turnCount": 1,
+    "totalToolCallCount": 37,
+    "nodeVersion": "v22.23.1",
+    "godotVersion": "4.7.1.stable.official.a13da4feb"
+  },
+  "productSubject": {
+    "repositoryCommit": "896eac0b5f8f1dddec952f341f0fe5299d0967ad",
+    "repositoryTree": "892d7bedf094a3179779d614183512556d58ad2d",
+    "cleanBeforeAndAfterGate": true,
+    "bundlePath": "docs/evidence/vnext-m5-public-exposed-local-r1/product-subject.gitbundle",
+    "bundleSha256": "02e4d6225aa7bfa745621878a1fcf6df0e809c9a715b356284a681117073b332",
+    "bundleRef": "refs/heads/vnext-m5-local-r8-product",
+    "bundlePrerequisiteCommit": "174f20f9787139ad0c6c9b1cee0c5ab82244aa7c"
+  },
+  "externalSource": {
+    "declaredUrl": "https://github.com/endlessm/moddable-platformer",
+    "headCommit": "3e793f53598a131c53fb82555191cc14b8db07ff",
+    "gitTreeObjectId": "a013bd677c712dbf354e8e2f6e8ff7c53d5684c6",
+    "selectedTreeSha256": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+    "cleanBeforeAndAfterGate": true,
+    "hostUnchangedAfterTask": true
+  },
+  "frozenInputs": {
+    "taskSpecPath": "testdata/vnext/m5/moddable-platformer.behavior-change-task.v1.json",
+    "taskSpecRawSha256": "c9cb447748b7d4cbd81554fa67c0432e84a9761781de8d7355e5533f16ffb199",
+    "evidenceSchemaPath": "testdata/vnext/m5/evidence-bundle.schema.v1.json",
+    "evidenceSchemaRawSha256": "365ab2b008978e4d3eb987012fdad5411bb658d570770501405d242ef73bfd76",
+    "descriptorRawSha256": "534dcd8aa14aeea74685059f8d66e44e5bebe21742b7a702ee7d78e91e1a955e",
+    "adapterProfileRawSha256": "1ca17b9f3fff8556d5fa260331929126ba54e18518de2d2386562b230327238b",
+    "adapterProfileCanonicalSha256": "2600ae0d42a463d78a7c74b987799e74e7391c254f806ddbcc86b2256591f0e4"
+  },
+  "gateInterfaces": [
+    {
+      "path": ".github/scripts/run-vnext-m5-live-conformance.sh",
+      "sha256": "c2dd24157a04caced00258ab5836c41808699805f44f20d8457fbbc697a24d46"
+    },
+    {
+      "path": ".github/scripts/validate-vnext-m5-evidence.mjs",
+      "sha256": "39f55ea43c8b57c3fd14b8ab934a11c1507b08b36709a30f9c75ae13230785a5"
+    },
+    {
+      "path": ".github/workflows/vnext-m5-live.yml",
+      "sha256": "b6fd2f8ad0d6aabc0023e58a879d0d9ea83a4df491175ed46d580bfc719216cd"
+    },
+    {
+      "path": "apps/cli/src/vnext/moddable-platformer.m5.live.test.ts",
+      "sha256": "663b2f888fb3ce80c5b29c4281fceea9219cedb581a676db06fdfa6c79020156"
+    },
+    {
+      "path": "apps/cli/src/vnext/m5-external-behavior-conformance.ts",
+      "sha256": "dbf25930ed2813a330d5407d4828fda38a78d60e0d1d40a8ed8e4007b57d9415"
+    },
+    {
+      "path": "vitest.m5-live.config.ts",
+      "sha256": "c58c4ef8970d083103d94a91307911016bad1e1e6240c954be462872f54fd4e3"
+    }
+  ],
+  "evidence": {
+    "bundlePath": "docs/evidence/vnext-m5-public-exposed-local-r1/bundle",
+    "regularFileCount": 15,
+    "symlinkCount": 0,
+    "manifestSha256": "ffee5609dc3244a1afbcc3ea85b42862c3a8ea9fb26d8af2aa43d07d1f36a8ef",
+    "summarySha256": "0e44deba94bf1d7911510fbd2b599851fd4f532c340f3d07d35051d187250bbf",
+    "patchSha256": "765ce03210edce79e76188d27ad4ac365f65f4de63133625bf0988add1fbd5ef",
+    "cleanupReceiptSha256": "bf57f63a862e8253d672beb57f4a8c53beba371e4d1e7d3a26368b40b4d77343",
+    "taskId": "task:m5-live-1786508083223",
+    "baselineExecutionId": "execution:semantic:f7fc99d62d4e4b41a92e6a66",
+    "candidateExecutionId": "execution:semantic:a83489dda8df443bb026e220",
+    "allManifestArtifactHashesVerified": true,
+    "resourceAndEventHashChainsVerified": true,
+    "physicalExecutionSealsVerified": true,
+    "hostPathAndCredentialScrubPassed": true
+  },
+  "observedBehavior": {
+    "baseline": {
+      "sourceHash": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+      "timerWaitTimeSeconds": 0.001,
+      "decisiveEndpointRelativeSimulationUs": 8502209,
+      "decisiveEndpointHostMonotonicEndUs": 84349940,
+      "decisiveEndpointSpawnOrdinal": 257,
+      "boundedEntityProjectionMaximum": 256,
+      "droppedEntityLifecycleOrdinals": 1,
+      "runtimeStopped": true,
+      "cleanupProven": true
+    },
+    "candidate": {
+      "sourceHash": "92bda3131e95e5db996db13efbd2758b4d14c50846079cde1df8a3bb4e82566c",
+      "readyEndpointHostMonotonicStartUs": 129569187,
+      "readyEndpointRelativeSimulationUs": 0,
+      "readyEndpointTimerWaitTimeSeconds": 1,
+      "readyEndpointSpawnOrdinal": 0,
+      "laterEndpointRelativeSimulationUs": 32887910,
+      "laterEndpointTimerWaitTimeSeconds": 1,
+      "laterEndpointSpawnOrdinal": 32,
+      "runtimeStopped": true,
+      "cleanupProven": true
+    },
+    "baselineDecisiveEndpointPrecedesCandidateReady": true,
+    "endpointSamplesAreExactSpawnTimestamps": false
+  },
+  "patch": {
+    "patchId": "patch:v1:765ce03210edce79e76188d27ad4ac365f65f4de63133625bf0988add1fbd5ef",
+    "byteLength": 688,
+    "changedPaths": ["components/spawner/spawner_broken.gd"],
+    "baselineSourceHash": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+    "candidateSourceHash": "92bda3131e95e5db996db13efbd2758b4d14c50846079cde1df8a3bb4e82566c",
+    "fullIndexBinaryRoundTripVerified": true,
+    "roundTripSelectedTreeSha256": "92bda3131e95e5db996db13efbd2758b4d14c50846079cde1df8a3bb4e82566c"
+  },
+  "cleanup": {
+    "processGroupTerminated": true,
+    "cgroupPopulated": false,
+    "scopeRemoved": true,
+    "storageReconciled": true,
+    "taskRootRemoved": true,
+    "boundedTaskStorageEmpty": true,
+    "taskCgroupLeavesEmpty": true,
+    "sourceUnchanged": true,
+    "hiddenStagingRootsRemaining": 0,
+    "roundTripRootsRemaining": 0,
+    "taskContainersRemaining": 0,
+    "taskCgroupsRemaining": 0
+  },
+  "validation": {
+    "defaultOfflineGate": "corepack pnpm check",
+    "defaultOfflineTestFileCount": 132,
+    "defaultOfflineTestCount": 1104,
+    "defaultOfflineGatePassed": true,
+    "standaloneValidatorPassedAfterPublication": true,
+    "standaloneValidatorOutput": "validated strict vNext M5 evidence bundle",
+    "validatorBytesMatchProductSubject": true,
+    "productSubjectBundleVerified": true
+  },
+  "operationalProvenance": {
+    "successfulRunHostModelNetworkMode": "direct_container_egress",
+    "taskSandboxNetworkMode": "denied",
+    "taskCredentialMountCountMaximum": 0,
+    "precedingLocalTransportOnlyFailures": 2,
+    "precedingFailureClass": "host_loopback_proxy_inherited_into_bridge_container",
+    "precedingFailuresPublishedEvidence": false,
+    "completeCampaignDenominatorRecorded": false
+  },
+  "trustBoundary": {
+    "protectedWorkflowArtifact": false,
+    "formalM5ConformancePassed": false,
+    "contentHashesAreSignatures": false,
+    "independentHostAttestation": false,
+    "independentAcceptance": false,
+    "publicTaskExposed": true,
+    "claimsExcluded": [
+      "correctness",
+      "independent_acceptance",
+      "intelligent_diagnosis",
+      "causality",
+      "generalization",
+      "reliability",
+      "success_rate",
+      "relative_advantage",
+      "arbitrary_project_support",
+      "root_cause_correctness",
+      "exact_first_spawn_timing"
+    ]
+  }
+}

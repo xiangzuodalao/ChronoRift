@@ -552,10 +552,27 @@ const hashTree = async (root) => {
   return hash.digest("hex");
 };
 
-const configuredMainScene = async () => {
+const configuredMainScene = async (expectedMainScene) => {
   const source = await fsp.readFile(path.join(PROJECT_ROOT, "project.godot"), "utf8");
   const match = /^run\/main_scene\s*=\s*"([^"\r\n]+)"\s*$/mu.exec(source);
-  return match === null ? "" : match[1];
+  const configured = match === null ? "" : match[1];
+  if (configured === expectedMainScene) return configured;
+  if (!/^uid:\/\/[a-z0-9]{1,128}$/u.test(configured) || !/^res:\/\/[A-Za-z0-9_./@+ -]+$/u.test(expectedMainScene)) return configured;
+  const relativeScene = expectedMainScene.slice("res://".length);
+  if (!relativeScene.endsWith(".tscn") || relativeScene.includes("\\") || relativeScene.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) return configured;
+  let sceneSource;
+  try {
+    const sceneBytes = await fsp.readFile(path.join(PROJECT_ROOT, relativeScene));
+    sceneSource = new TextDecoder("utf-8", { fatal: true }).decode(sceneBytes);
+  } catch {
+    return configured;
+  }
+  const firstLineEnd = sceneSource.search(/[\r\n]/u);
+  const header = firstLineEnd < 0 ? sceneSource : sceneSource.slice(0, firstLineEnd);
+  const declaredUid = header.startsWith("[gd_scene ") && header.endsWith("]")
+    ? /(?:^|\s)uid="(uid:\/\/[a-z0-9]{1,128})"(?:\s|\]$)/u.exec(header)?.[1]
+    : undefined;
+  return declaredUid === configured ? expectedMainScene : configured;
 };
 
 const createCapture = (phase, stream, launch) => {
@@ -759,7 +776,7 @@ const listen = (socketServer) => new Promise((resolve, reject) => {
 const startManagedRuntime = async (launch, stage, remainder) => {
   const addonHash = await hashTree(ADDON_ROOT);
   const overlayHash = crypto.createHash("sha256").update(await fsp.readFile(OVERRIDE_FILE)).digest("hex");
-  if (addonHash !== launch.addonHash || overlayHash !== launch.overlayHash || await configuredMainScene() !== launch.expectedMainScene) {
+  if (addonHash !== launch.addonHash || overlayHash !== launch.overlayHash || await configuredMainScene(launch.expectedMainScene) !== launch.expectedMainScene) {
     const mismatch = new Error("managed overlay, addon, or main-scene identity mismatch"); mismatch.code = "BUILD_IDENTITY_MISMATCH"; throw mismatch;
   }
   diagnostic({ kind: "stage_ready", ...stage, overlayHash, addonHash });

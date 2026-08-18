@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "m7-runtime-use-ablation-local-r2-freeze-record",
+  "archiveKind": "local_unprotected_operator_archive",
+  "campaignId": "m7-campaign:c1c1494b62e725605e4f1787",
+  "formalAttempt": {
+    "attemptOrdinal": 1,
+    "armOrder": ["runtime_enabled", "code_only"],
+    "startedAt": "2026-08-14T22:47:41.674Z",
+    "completedAt": "2026-08-14T22:55:39.599Z",
+    "commandExitCode": 0,
+    "campaignTerminalOutcome": "infrastructure_failure",
+    "campaignTerminalReason": "arm_infrastructure_failed",
+    "campaignTerminalRecordContentSha256": "1a46002eb9b0aacf77c2a5f9f7d3c9c6657b852871d6da175c5ac0caa2ee1e00"
+  },
+  "frozenInputs": {
+    "pairedTaskRawSha256": "8681aebe64d1ef281d37750d7ab1083241906757c532b1dd83d86214f00c7bd1",
+    "codeOnlyTaskRawSha256": "68c85184214170f2ff0f80f53931aaf0adf4dd9be4bf9aee3b24c47dc154715d",
+    "sensorFreezeRecordSha256": "a7eabbcb8a8aa0b836d0134ee0d7397de5e1bfbc08c7b903291879f417eeedc2",
+    "mutationSha256": "9e2ede5181cc746dff05d08775ef2e32cf4df2347072105204ddbb137df4d9d3",
+    "mutatedBaselineSelectedTreeSha256": "9299ab6bfc35072c4cc746a1ac5421c67fc2714ed5e9ec8b3a1c35ebaa24a658",
+    "evaluatorImplementationSha256": "bbab3bd7e6382ebfba72ce4db8307e6ca071e0da02eb5c5210ed369c41a7cc75",
+    "evaluatorBundleSha256": "a68fc969dbf325ecb58877b25b0cf1d5e8d76f08d74f9f3b527a1d694aa89988"
+  },
+  "runtimeEnabledArm": {
+    "resultRecordContentSha256": "af0bca9c48141d86d599d2d800675ab5b85cf7ffa0d876af745c6f40a493d98b",
+    "loopOutcome": "infrastructure_failed",
+    "runtimeUseOutcome": "infrastructure_failed",
+    "runtimeUseRecordContentSha256": "69778ad02d1f1b261088dfdcbe4bad0f893a9c0d81d1656732ed80000cb9b927",
+    "runtimeSummaryCount": 0,
+    "candidateOutcome": "no_candidate",
+    "cleanupProven": true
+  },
+  "codeOnlyArm": {
+    "resultRecordContentSha256": "65a041029c4867368a703d362de5f7d384f7cdd813af55cf0995d224e37e1b3e",
+    "runtimeAccessEnabled": false,
+    "candidateOutcome": "valid_candidate",
+    "baselineSelectedTreeSha256": "9299ab6bfc35072c4cc746a1ac5421c67fc2714ed5e9ec8b3a1c35ebaa24a658",
+    "candidateSelectedTreeSha256": "b9c1f673ffa9de119e5c3f7622649639f57e6206e5267b892edf284c628a7d12",
+    "patchSha256": "728f68f8b4e0c3bec94e4cd974618aa1c5b2d676d42165cb264bfcc4f3998be5",
+    "patchByteLength": 1519,
+    "patchRoundTripVerified": true,
+    "evaluatorOutcome": "accepted",
+    "evaluatorRecordContentSha256": "6be768f02a31e5026c3e7f903c0a57579d88ecbfd7251f7146c1ee33449063fd",
+    "freshRunCount": 9,
+    "passedRunCount": 9,
+    "cleanupProven": true
+  },
+  "claimBoundary": {
+    "runtimeUseObserved": false,
+    "runtimeAdvantageEstablished": false,
+    "targetClaimSupported": false,
+    "codeOnlyPatchAcceptedByFrozenEvaluator": true,
+    "commandExitZeroIsCampaignSuccess": false,
+    "contentHashesAreSignatures": false,
+    "externalAttestationEstablished": false
+  },
+  "excludedSensitiveArtifacts": {
+    "hiddenMutationBytesArchived": false,
+    "hiddenEvaluatorImplementationBytesArchived": false,
+    "hiddenEvaluatorBundleBytesArchived": false,
+    "absolutePrivatePathsArchived": false,
+    "credentialsArchived": false,
+    "rawModelRequestsArchived": false,
+    "rawAssistantProseArchived": false,
+    "rawAgentSessionArchived": false
+  },
+  "r1History": {
+    "classification": "two_pre_agent_command_failures_no_agent_no_campaign",
+    "rewrittenForR2": false,
+    "agentLaunchCount": 0,
+    "campaignCreated": false,
+    "rawRecordSha256": {
+      "started.v1.json": "e6a669d07e3bee1b1a44c45037c7f54537f97dde23bbd37617d539ccbd5e53aa",
+      "command-result.v1.json": "2885d365310cdf26dd30b845b070dc9080478e985489afbe120916889946caff",
+      "pre-agent-recovery-started.v1.json": "d153177693083ef5c7979fc25a98bbe4ebc74ff2cdd6a8b6ed055fa637531bb8",
+      "pre-agent-recovery-result.v1.json": "0cc703e0dcc1c10072433a92139af4bfd11c3c5c5e2b32eccc77226f6a9eb099"
+    }
+  },
+  "archiveFiles": {
+    "audit-summary.v1.json": "9ebc0e28a628ee411eb26c9da2867ea04f698535f2d519eda8b965a604c86101",
+    "campaign/m7.code-only-claim.json": "147c494749d3d90f72af0714059e5d92ec2ef1a24f3f17247cdff2b4ec330799",
+    "campaign/m7.code-only-result.json": "8501e66691f5c2e8a420c49356c86178413e01e8d1bcaf2b22ffcfc32673d2ff",
+    "campaign/m7.mutation-registration.json": "b7fc6292809906abe89dcd874827a5799ba7b12f2f498f2e39469ddf07dce431",
+    "campaign/m7.preflight.json": "e0bd21d7883986c125abda0001d1d331bd76d43e5cad6232bc73ef79fdfcdb1a",
+    "campaign/m7.runtime-enabled-claim.json": "deaacd52dfcae17ea795b40f46c6846651281d2e4fc2f4a7443e05528a002b4e",
+    "campaign/m7.runtime-enabled-result.json": "7bf09d5ec3c849dd72a1eed60d5ad9b796d57b50918f93b86883f4c517d476ce",
+    "campaign/m7.sensor-binding.json": "8d3d387c22cb6f122c97ed695f537796cff6d3709d90ea12229c13347b7d146f",
+    "campaign/m7.terminal.json": "a5198a04cea773d86fd9d517902ff1bf28460cb3ab4738713bca9dc48ba495a4",
+    "evidence/code-only-evaluator.json": "d6883283c97bb46957f85d685f8a728fe8fb0cdb020c509e92084fa190db44c8",
+    "evidence/runtime-use.json": "3b21ef881a7c610a43d9826d01ff7ed2897129093a1a057df3a0f13248cebc93",
+    "patches/code-only.patch": "728f68f8b4e0c3bec94e4cd974618aa1c5b2d676d42165cb264bfcc4f3998be5",
+    "public/paired-task.v1.json": "8681aebe64d1ef281d37750d7ab1083241906757c532b1dd83d86214f00c7bd1",
+    "public/task-code-only.json": "68c85184214170f2ff0f80f53931aaf0adf4dd9be4bf9aee3b24c47dc154715d",
+    "run-control/command-result.v1.json": "083c3c09267ecb45ffd02bf88d126d41d0c6e05ebfcc48cedb1cd0a8f9e26f9c",
+    "run-control/started.v1.json": "21d3ad6936aa77af22851d171ba60a95c8ed177a8fa90d0a21167e14cf7f19b3",
+    "run-control-summary.v1.json": "98b8a52bb94d402f74d913cd49688c8b2d30968ca28d6965604845b38fbf7c22"
+  },
+  "frozenAt": "2026-08-14T23:06:56.386Z"
+}

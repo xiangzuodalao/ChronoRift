@@ -42,6 +42,7 @@ var _timer_incarnation := 1
 var _next_spawn_ordinal := 0
 var _entity_by_instance: Dictionary = {}
 var _entity_incarnations: Dictionary = {}
+var _entity_tracking_saturated := false
 var _restoring := false
 var _adapter_request_id := ""
 
@@ -201,14 +202,16 @@ func _find_subject_timer() -> Timer:
 func _on_harness_child_entered(node: Node) -> void:
 	if _restoring or node == _subject or node == _timer:
 		return
-	if _entity_by_instance.size() >= MAX_ENTITIES:
-		push_error("ChronoRiftSemantic entity bound exceeded")
-		return
 	var instance_key := str(node.get_instance_id())
 	if _entity_by_instance.has(instance_key):
 		return
 	var ordinal := _next_spawn_ordinal
 	_next_spawn_ordinal += 1
+	if _entity_tracking_saturated or _entity_by_instance.size() >= MAX_ENTITIES:
+		_entity_tracking_saturated = true
+		if is_instance_valid(_timer):
+			_timer.stop()
+		return
 	var stable_id := "semantic:spawn:%d" % ordinal
 	var incarnation := int(_entity_incarnations.get(stable_id, 0)) + 1
 	_entity_incarnations[stable_id] = incarnation
@@ -329,6 +332,7 @@ func _restore_projection(projection: Dictionary) -> void:
 	await get_tree().process_frame
 	_entity_by_instance.clear()
 	_next_spawn_ordinal = int(projection.get("nextSpawnOrdinal", 0))
+	_entity_tracking_saturated = _next_spawn_ordinal > MAX_ENTITIES
 	var entities: Array = projection.get("entities", [])
 	for state_value in entities:
 		var state: Dictionary = state_value

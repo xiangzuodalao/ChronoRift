@@ -429,6 +429,26 @@ const queryObservation = (
   });
 
 describe("ProjectEnvironmentGameRuntimeV1", () => {
+  it("exposes the exact validated fingerprint only while its execution is running", async () => {
+    const { runtime } = completingRuntime();
+
+    expect(() => runtime.activeFingerprint()).toThrow(
+      "fingerprint is unavailable",
+    );
+    const launched = await launchForObservation(runtime);
+    expect(runtime.activeFingerprint()).toBe(fakeClient.fingerprint);
+    await expect(
+      invoke(runtime, "game_stop", {
+        schemaVersion: 1,
+        taskId,
+        runtimeId: launched.runtimeId,
+      }),
+    ).resolves.toMatchObject({ outcome: "success" });
+    expect(() => runtime.activeFingerprint()).toThrow(
+      "fingerprint is unavailable",
+    );
+  });
+
   it("serializes concurrent launches so one execution cannot overwrite another", async () => {
     const { runtime } = completingRuntime();
     const launchInput = {
@@ -798,14 +818,25 @@ describe("ProjectEnvironmentGameRuntimeV1", () => {
 
   it("persists the exact raw batch before acknowledging and reporting a pinned capture", async () => {
     const order: string[] = [];
+    let outstandingObservationCredits = 8;
     const captures: {
       readonly capture: ProjectEnvironmentPinnedCaptureV1;
       readonly records: readonly JsonValue[];
     }[] = [];
     const client = {
       ...fakeClient,
-      acknowledgeObservationBatch: () => {
+      nextObservationBatch: () => {
+        outstandingObservationCredits -= 1;
+        return Promise.resolve(observationBatch);
+      },
+      acknowledgeObservationBatch: (_batch: unknown, nextWindowBatches = 1) => {
         order.push("acknowledged");
+        outstandingObservationCredits += nextWindowBatches;
+        if (outstandingObservationCredits > 8) {
+          return Promise.reject(
+            new Error("observation acknowledgement amplified credits"),
+          );
+        }
         return Promise.resolve();
       },
     } as unknown as GodotProjectEnvironmentRuntimeClientV1;
@@ -840,6 +871,7 @@ describe("ProjectEnvironmentGameRuntimeV1", () => {
       (pinned.output as { readonly captureWindowId: string }).captureWindowId,
     ).toMatch(/^capture-window\.v1\.[0-9a-f-]{36}$/u);
     expect(order).toEqual(["persisted", "acknowledged"]);
+    expect(outstandingObservationCredits).toBe(8);
     expect(captures).toHaveLength(1);
     expect(captures[0]?.capture).toMatchObject({
       taskId,

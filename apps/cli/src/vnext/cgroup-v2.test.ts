@@ -4,6 +4,7 @@ import { asTaskId } from "@chronorift/domain";
 import { describe, expect, it } from "vitest";
 
 import {
+  CgroupSetupCleanupErrorV1,
   CgroupV2Controller,
   type CgroupFsPort,
   type CgroupRootIdentity,
@@ -113,6 +114,33 @@ class FakeCgroupFs implements CgroupFsPort {
   }
 }
 
+class FaultInjectedCgroupFs extends FakeCgroupFs {
+  public failTaskSetup = false;
+  public failScopeSetup = false;
+  public failRemoval = false;
+
+  public override writeText(path: string, value: string): Promise<void> {
+    if (
+      (this.failTaskSetup &&
+        path.includes("/task-") &&
+        path.endsWith("/cgroup.subtree_control")) ||
+      (this.failScopeSetup &&
+        path.includes("/execution-") &&
+        path.endsWith("/cpu.max"))
+    ) {
+      return Promise.reject(new Error("injected cgroup setup failure"));
+    }
+    return super.writeText(path, value);
+  }
+
+  public override removeDirectory(path: string): Promise<void> {
+    if (this.failRemoval) {
+      return Promise.reject(new Error("injected cgroup cleanup failure"));
+    }
+    return super.removeDirectory(path);
+  }
+}
+
 const limits = {
   cpuMax: "200000 100000",
   memoryMaxBytes: 2_147_483_648,
@@ -211,6 +239,58 @@ describe("CgroupV2Controller", () => {
       ),
     ).toBe(true);
     await expect(scope.remove()).resolves.toBeUndefined();
+    await expect(controller.cleanup()).resolves.toBeUndefined();
+  });
+
+  it("exports retryable cleanup truth for a partially acquired controller", async () => {
+    const fs = new FaultInjectedCgroupFs();
+    fs.failTaskSetup = true;
+    fs.failRemoval = true;
+    let failure: unknown;
+
+    try {
+      await CgroupV2Controller.create(
+        "/delegated",
+        asTaskId("task_setup_failure"),
+        fs,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(CgroupSetupCleanupErrorV1);
+    expect(failure).toMatchObject({ cleanupProven: false });
+    fs.failRemoval = false;
+    await expect(
+      (failure as CgroupSetupCleanupErrorV1).retryCleanup(),
+    ).resolves.toBeUndefined();
+    expect(
+      [...fs.directories].filter((path) => path.includes("/task-")),
+    ).toEqual([]);
+  });
+
+  it("exports retryable cleanup truth for a partially acquired execution scope", async () => {
+    const fs = new FaultInjectedCgroupFs();
+    const controller = await CgroupV2Controller.create(
+      "/delegated",
+      asTaskId("task_scope_setup_failure"),
+      fs,
+    );
+    fs.failScopeSetup = true;
+    fs.failRemoval = true;
+    let failure: unknown;
+
+    try {
+      await controller.createExecutionScope("operation_failure", limits);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(CgroupSetupCleanupErrorV1);
+    fs.failRemoval = false;
+    await expect(
+      (failure as CgroupSetupCleanupErrorV1).retryCleanup(),
+    ).resolves.toBeUndefined();
     await expect(controller.cleanup()).resolves.toBeUndefined();
   });
 });

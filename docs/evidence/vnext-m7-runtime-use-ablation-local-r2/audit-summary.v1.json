@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "m7-runtime-use-ablation-local-r2-audit-summary",
+  "classification": "sanitized_operator_read_only_audit",
+  "campaignId": "m7-campaign:c1c1494b62e725605e4f1787",
+  "naturalTask": {
+    "goal": "Some enemies that are configured to patrol platforms walk off the edge and fall instead of turning around. Investigate and fix the behavior without changing enemies that are intentionally configured to fall from edges. Leave a reviewable candidate change.",
+    "pairedTaskRawSha256": "8681aebe64d1ef281d37750d7ab1083241906757c532b1dd83d86214f00c7bd1",
+    "codeOnlyTaskRawSha256": "68c85184214170f2ff0f80f53931aaf0adf4dd9be4bf9aee3b24c47dc154715d",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "armOrder": ["runtime_enabled", "code_only"],
+    "runtimeUseRequiredByPrompt": false
+  },
+  "formalTerminal": {
+    "outcome": "infrastructure_failure",
+    "reason": "arm_infrastructure_failed",
+    "recordContentSha256": "1a46002eb9b0aacf77c2a5f9f7d3c9c6657b852871d6da175c5ac0caa2ee1e00"
+  },
+  "runtimeEnabledArm": {
+    "loopOutcome": "infrastructure_failed",
+    "runtimeUseOutcome": "infrastructure_failed",
+    "infrastructureFailureCode": "paired_attempt_unavailable",
+    "runtimeSummaryCount": 0,
+    "baselineFallWitnessCount": 0,
+    "candidateOutcome": "no_candidate",
+    "patchSha256": null,
+    "cleanupProven": true,
+    "resultRecordContentSha256": "af0bca9c48141d86d599d2d800675ab5b85cf7ffa0d876af745c6f40a493d98b"
+  },
+  "codeOnlyArm": {
+    "runtimeAccessEnabled": false,
+    "gameToolSetSha256": null,
+    "observedTurnCount": 1,
+    "loopOutcome": "completed",
+    "candidateOutcome": "valid_candidate",
+    "baselineSelectedTreeSha256": "9299ab6bfc35072c4cc746a1ac5421c67fc2714ed5e9ec8b3a1c35ebaa24a658",
+    "candidateSelectedTreeSha256": "b9c1f673ffa9de119e5c3f7622649639f57e6206e5267b892edf284c628a7d12",
+    "patchSha256": "728f68f8b4e0c3bec94e4cd974618aa1c5b2d676d42165cb264bfcc4f3998be5",
+    "patchByteLength": 1519,
+    "patchRoundTripVerified": true,
+    "evaluatorOutcome": "accepted",
+    "cleanupProven": true,
+    "cleanupReceiptSha256": "b6548f2eb814b5fa91c8ec468b58c61f41ba9a387dc5ab9e643eb67f063d1301",
+    "resultRecordContentSha256": "65a041029c4867368a703d362de5f7d384f7cdd813af55cf0995d224e37e1b3e"
+  },
+  "codeOnlyEvaluator": {
+    "outcome": "accepted",
+    "plannedRunCount": 9,
+    "completedRunCount": 9,
+    "passedRunCount": 9,
+    "publicReproductionPassed": 3,
+    "hiddenVariantPassed": 3,
+    "regressionControlPassed": 3,
+    "uniqueFreshCopyCount": 9,
+    "uniqueObservationSha256Count": 9,
+    "allFreshWorkspacesCreated": true,
+    "allFreshImportCachesCreated": true,
+    "allFreshProcessesStarted": true,
+    "allRunCleanupProven": true,
+    "evaluatorCleanupProven": true,
+    "recordContentSha256": "6be768f02a31e5026c3e7f903c0a57579d88ecbfd7251f7146c1ee33449063fd"
+  },
+  "claimAssessment": {
+    "codeOnlyFixedFrozenHiddenBug": true,
+    "runtimeUseObserved": false,
+    "runtimeAdvantageEstablished": false,
+    "targetClaimSupported": false,
+    "reason": "The runtime-enabled arm produced no runtime summary or candidate, while the code-only arm produced an accepted patch under the same natural task. This campaign cannot establish that runtime information was seen or used, and this mutation did not discriminate against code-only repair."
+  },
+  "evidenceRetentionLimitations": {
+    "rawAgentSessionArchived": false,
+    "rawModelRequestArchived": false,
+    "rawAssistantProseArchived": false,
+    "rawRuntimeTaskRecordsArchived": false,
+    "rawArmCleanupReceiptArchived": false,
+    "armCleanupReceiptHashRetained": true,
+    "evaluatorRunObjectsEmbedded": true,
+    "rawEvaluatorObservationsArchived": false,
+    "evaluatorObservationHashesRetained": true
+  },
+  "auditedAt": "2026-08-14T23:06:56.386Z"
+}

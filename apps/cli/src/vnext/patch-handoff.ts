@@ -57,6 +57,11 @@ import {
   selectedTreeSha256FromSources,
   type SelectedTreeContentSourceV1,
 } from "./selected-tree.js";
+import {
+  hasProjectEnvironmentEditorPluginV1,
+  hasProjectEnvironmentToolAnnotationV1,
+  isProjectEnvironmentSensitivePathV1,
+} from "./project-environment-source-policy.js";
 import { assertExternalGodotProjectConfigurationV1 } from "./source-preflight.js";
 
 const PATCH_BYTE_LIMIT = 512 * 1024 * 1024;
@@ -112,8 +117,16 @@ export interface ExtractExternalGodotTaskPatchRequest extends ExtractTaskPatchRe
   readonly projectCapability: TaskGodotProjectCapabilityV1;
 }
 
+export interface ExtractProjectEnvironmentTaskPatchRequest extends ExtractTaskPatchRequestCommon {
+  readonly sourceKind: "project-environment-v1";
+  readonly fixtureCapability?: undefined;
+  readonly projectCapability?: undefined;
+}
+
 export type ExtractTaskPatchRequest =
-  ExtractFixtureTaskPatchRequest | ExtractExternalGodotTaskPatchRequest;
+  | ExtractFixtureTaskPatchRequest
+  | ExtractExternalGodotTaskPatchRequest
+  | ExtractProjectEnvironmentTaskPatchRequest;
 
 interface ExtractionDependencies {
   readonly git?: PatchGitPort | undefined;
@@ -869,6 +882,157 @@ const parseBaselineTree = (bytes: Uint8Array): readonly BaselineTreeEntry[] => {
   return entries;
 };
 
+const isProjectEnvironmentPatchForbiddenPath = (
+  relativePath: string,
+): boolean => {
+  const normalized = relativePath.toLocaleLowerCase("en-US");
+  const segments = normalized.split("/");
+  return (
+    normalized === ".godot" ||
+    normalized.startsWith(".godot/") ||
+    segments.some((segment) =>
+      [
+        ".cache",
+        ".deps",
+        "cache",
+        "caches",
+        "dependencies",
+        "deps",
+        "node_modules",
+      ].includes(segment),
+    ) ||
+    isExternalGodotReservedSourcePathV1(relativePath) ||
+    isExternalGodotNativeSourcePathV1(relativePath) ||
+    isProjectEnvironmentSensitivePathV1(relativePath)
+  );
+};
+
+const readProjectEnvironmentPatchGdscript = async (
+  root: FileHandle,
+  entry: CandidateEntry,
+): Promise<string> => {
+  const handle = await openRelativeFile(root, entry.relativePath);
+  try {
+    assertRegularFingerprint(
+      entry.fingerprint,
+      await handle.stat(),
+      "Project Environment patch GDScript changed during policy inspection",
+    );
+    const content = await readAndHashFile(
+      handle,
+      true,
+      entry.byteLength,
+      entry.byteLength,
+    );
+    if (
+      content.bytes === undefined ||
+      content.byteLength !== entry.byteLength ||
+      content.sha256 !== entry.contentSha256
+    ) {
+      throw new M1Error(
+        "artifact_write_failed",
+        "Project Environment patch GDScript changed during policy inspection",
+      );
+    }
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(content.bytes);
+    } catch (error) {
+      throw new M1Error(
+        "source_feature_unsupported",
+        "Project Environment patch GDScript must be valid UTF-8",
+        error,
+      );
+    }
+  } finally {
+    await handle.close();
+  }
+};
+
+const assertProjectEnvironmentCandidatePolicy = async (input: {
+  readonly root: FileHandle;
+  readonly baselineEntries: readonly BaselineTreeEntry[];
+  readonly candidateEntries: readonly CandidateEntry[];
+}): Promise<void> => {
+  for (const entry of [...input.baselineEntries, ...input.candidateEntries]) {
+    if (isProjectEnvironmentPatchForbiddenPath(entry.relativePath)) {
+      throw new M1Error(
+        "source_feature_unsupported",
+        "Project Environment patch contains managed, native, or sensitive source",
+      );
+    }
+  }
+
+  const baselineByPath = new Map(
+    input.baselineEntries.map((entry) => [entry.relativePath, entry]),
+  );
+  const candidateByPath = new Map(
+    input.candidateEntries.map((entry) => [entry.relativePath, entry]),
+  );
+  const changed: CandidateEntry[] = [];
+  for (const baseline of input.baselineEntries) {
+    const candidate = candidateByPath.get(baseline.relativePath);
+    if (candidate === undefined) {
+      throw new M1Error(
+        "source_feature_unsupported",
+        "Project Environment patch may modify tracked source but may not delete it",
+      );
+    }
+    if (
+      candidate.objectId !== baseline.objectId ||
+      candidate.mode !== baseline.mode
+    ) {
+      changed.push(candidate);
+    }
+  }
+  if (
+    input.candidateEntries.some(
+      (entry) => !baselineByPath.has(entry.relativePath),
+    )
+  ) {
+    throw new M1Error(
+      "source_feature_unsupported",
+      "Project Environment patch may modify only source tracked by the assignment baseline",
+    );
+  }
+
+  const allowedSuffixes = [".gd", ".tscn", ".tres"] as const;
+  if (
+    changed.length === 0 ||
+    changed.some((entry) => {
+      const normalized = entry.relativePath.toLocaleLowerCase("en-US");
+      return !allowedSuffixes.some((suffix) => normalized.endsWith(suffix));
+    })
+  ) {
+    throw new M1Error(
+      "source_feature_unsupported",
+      "Project Environment patch changes are limited to tracked .gd, .tscn, and .tres source",
+    );
+  }
+
+  let hasNonToolGdscript = false;
+  for (const entry of changed) {
+    if (!entry.relativePath.toLocaleLowerCase("en-US").endsWith(".gd")) {
+      continue;
+    }
+    const source = await readProjectEnvironmentPatchGdscript(input.root, entry);
+    if (hasProjectEnvironmentEditorPluginV1(source)) {
+      throw new M1Error(
+        "source_feature_unsupported",
+        "Project Environment patch may not modify an EditorPlugin script",
+      );
+    }
+    if (!hasProjectEnvironmentToolAnnotationV1(source)) {
+      hasNonToolGdscript = true;
+    }
+  }
+  if (!hasNonToolGdscript) {
+    throw new M1Error(
+      "source_feature_unsupported",
+      "Project Environment patch must modify at least one tracked non-@tool .gd file",
+    );
+  }
+};
+
 const createUniqueName = (prefix: string, suffix = ""): string =>
   `${prefix}-${randomBytes(16).toString("hex")}${suffix}`;
 
@@ -1065,6 +1229,8 @@ export async function extractTaskPatch(
     );
   }
   const externalProfile = request.sourceKind === "godot-external-lifecycle-v1";
+  const projectEnvironmentProfile =
+    request.sourceKind === "project-environment-v1";
   let fixtureCapability: TaskFixtureCapabilityV1 | undefined;
   let projectCapability: TaskGodotProjectCapabilityV1 | undefined;
   if (externalProfile) {
@@ -1087,7 +1253,7 @@ export async function extractTaskPatch(
         "patch baseline does not match the frozen external Godot project capability",
       );
     }
-  } else {
+  } else if (!projectEnvironmentProfile) {
     const parsedFixtureCapability = TaskFixtureCapabilityV1Schema.safeParse(
       request.fixtureCapability,
     );
@@ -1101,19 +1267,27 @@ export async function extractTaskPatch(
     fixtureCapability = parsedFixtureCapability.data;
   }
   const ignoredRoots = validateIgnoredRoots(request.ignoredCachePaths);
-  const frozenIgnoredCachePaths = externalProfile
-    ? projectCapability!.ignoredCachePaths
-    : fixtureCapability!.ignoredCachePaths;
-  if (
-    ignoredRoots.length !== frozenIgnoredCachePaths.length ||
-    ignoredRoots.some(
-      (value, index) => value !== frozenIgnoredCachePaths[index],
-    )
-  ) {
+  if (projectEnvironmentProfile && ignoredRoots.length !== 0) {
     throw new M1Error(
       "source_configuration_mismatch",
-      "ignored cache paths do not match the frozen Task source capability",
+      "Project Environment patch handoff does not admit cache or dependency exclusions",
     );
+  }
+  if (!projectEnvironmentProfile) {
+    const frozenIgnoredCachePaths = externalProfile
+      ? projectCapability!.ignoredCachePaths
+      : fixtureCapability!.ignoredCachePaths;
+    if (
+      ignoredRoots.length !== frozenIgnoredCachePaths.length ||
+      ignoredRoots.some(
+        (value, index) => value !== frozenIgnoredCachePaths[index],
+      )
+    ) {
+      throw new M1Error(
+        "source_configuration_mismatch",
+        "ignored cache paths do not match the frozen Task source capability",
+      );
+    }
   }
 
   const opened: OpenedDirectory[] = [];
@@ -1177,7 +1351,7 @@ export async function extractTaskPatch(
       ignoredRoots,
       git,
       candidateContext,
-      !externalProfile,
+      !externalProfile && !projectEnvironmentProfile,
       externalProfile ? projectCapability?.projectFile : undefined,
     );
     if (externalProfile) {
@@ -1189,6 +1363,18 @@ export async function extractTaskPatch(
       }
       assertExternalGodotCandidatePolicy(candidate.entries, projectCapability);
       assertExternalGodotProjectConfigurationV1(candidate.projectFileBytes);
+    } else if (projectEnvironmentProfile) {
+      const baselineEntries = parseBaselineTree(
+        await git.listTree({
+          context: baselineContext,
+          treeish: request.hostBaselineCommit,
+        }),
+      );
+      await assertProjectEnvironmentCandidatePolicy({
+        root: workspace.handle,
+        baselineEntries,
+        candidateEntries: candidate.entries,
+      });
     } else {
       if (candidate.manifestBytes === undefined) {
         throw new M1Error(

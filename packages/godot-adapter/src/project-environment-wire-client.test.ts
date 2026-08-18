@@ -115,6 +115,7 @@ describe("Godot Project Environment wire client V1", () => {
     const decoder = new WireFrameDecoder();
     let incomingSequence = 1;
     let acknowledged = false;
+    let acknowledgedWindowBatches: number | undefined;
     let closeCount = 0;
     const transport: GodotByteTransport = {
       readable,
@@ -148,6 +149,7 @@ describe("Godot Project Environment wire client V1", () => {
             );
           } else if (message.kind === "observation_ack") {
             acknowledged = message.payload.batchId === "batch:1";
+            acknowledgedWindowBatches = message.payload.nextWindowBatches;
           } else if (message.kind === "status") {
             readable.write(
               frame(
@@ -299,6 +301,7 @@ describe("Godot Project Environment wire client V1", () => {
     expect(batch.records[0]).toMatchObject({ kind: "state_sample" });
     await runtime.acknowledgeObservationBatch(batch);
     expect(acknowledged).toBe(true);
+    expect(acknowledgedWindowBatches).toBe(1);
     await expect(runtime.status()).resolves.toMatchObject({
       nextObservationRecordSequence: 1,
     });

@@ -174,6 +174,17 @@ export interface SandboxTaskStorageInspection {
   readonly usage: AggregateStorageUsageV1;
 }
 
+export const SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_BYTES_V1 = 256 * 1024 * 1024;
+export const SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_INODES_V1 = 16_384;
+
+export interface SandboxTaskStorageHeadroomV1 {
+  readonly schemaVersion: 1;
+  readonly availableBytes: number;
+  readonly availableInodes: number;
+  readonly requiredAvailableBytes: typeof SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_BYTES_V1;
+  readonly requiredAvailableInodes: typeof SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_INODES_V1;
+}
+
 const nodeHostPathTrustPort: SandboxHostPathTrustPort = {
   currentUid: () => process.getuid?.(),
   canonicalize: (path) => realpath(path),
@@ -696,6 +707,41 @@ export async function assertSandboxTaskStorageBindingMatches(
     );
   }
   return current.usage;
+}
+
+/**
+ * Rechecks the frozen Task-storage mount immediately before an expensive Host
+ * boundary. A successful initial preflight is intentionally not treated as a
+ * promise that earlier Task activity left enough capacity for a later Agent or
+ * evaluator process.
+ */
+export async function assertSandboxTaskStorageHeadroomV1(
+  capability: SandboxTaskStorageCapabilityV1,
+  taskStorageRoot: string,
+  inspection: SandboxTaskStorageInspectionPort = nodeTaskStorageInspectionPort,
+): Promise<SandboxTaskStorageHeadroomV1> {
+  const usage = await assertSandboxTaskStorageBindingMatches(
+    capability,
+    taskStorageRoot,
+    inspection,
+  );
+  const availableBytes = capability.totalBytes - usage.usedBytes;
+  const availableInodes = capability.totalInodes - usage.usedInodes;
+  if (
+    availableBytes < SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_BYTES_V1 ||
+    availableInodes < SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_INODES_V1
+  ) {
+    throw taskStorageError(
+      "task storage lacks the required 256 MiB and 16384 inode execution headroom",
+    );
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    availableBytes,
+    availableInodes,
+    requiredAvailableBytes: SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_BYTES_V1,
+    requiredAvailableInodes: SANDBOX_TASK_STORAGE_MINIMUM_HEADROOM_INODES_V1,
+  });
 }
 
 export async function assertSandboxTaskStorageLayoutMatches(

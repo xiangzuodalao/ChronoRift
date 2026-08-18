@@ -686,7 +686,7 @@ export async function runProjectEnvironmentPreviewV1(
                 `- environmentRevisionId: ${boundEnvironmentRevision.environmentRevisionId}`,
                 `- adapterRevisionId: ${boundAdapterRevision.adapterRevisionId}`,
                 `- compatibleBuildIdAtTurnStart: ${activeBuild?.buildId ?? "unavailable"}`,
-                "- All 16 game tools are registered. Launch/status/stop/capture/query and negotiated Adapter controls run against a Task-owned instrumented Godot process.",
+                "- The game tools declared by the frozen ProjectAdapter capability set and admitted by Host policy are registered for this Task.",
                 "- When no game runtime is active, game_capabilities freezes the current workspace, runs the exact Adapter compatibility smoke if this Build is new, persists its receipt, and returns the buildId that game_launch accepts.",
                 "- After editing source, call game_capabilities and use its returned exact buildId; compatibility failure is reported instead of silently launching changed bytes.",
               ].join("\n")

@@ -1,0 +1,45 @@
+{
+  "assignmentCreated": true,
+  "attemptRecords": 1,
+  "candidate": {
+    "byteLength": 476,
+    "candidateEqualsPristineSelectedTree": true,
+    "candidateSelectedTreeSha256": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+    "patchSha256": "750cd0dbc8a694d14c0288416bba6836606821e5525ec993b79119db4bac0230"
+  },
+  "command": ".chronorift/m6-live/run.sh --live",
+  "completedAt": "2026-08-14T17:15:42.465Z",
+  "durationMs": 549920,
+  "evaluator": {
+    "plannedRunCount": 9,
+    "processesStarted": 0,
+    "records": 0,
+    "temporaryEntriesAfterExit": 0
+  },
+  "exitCode": 1,
+  "liveContainerMatchesAfterExit": 0,
+  "outcome": "workflow_rejected",
+  "rawOperatorLog": {
+    "archived": false,
+    "byteLength": 2464,
+    "sha256": "fe2ffc6b6a4b3ba81e033eaa2bc928e9cab4cda61e53a24798cd4fe121ea1db6"
+  },
+  "recordKind": "m6-local-live-command-result",
+  "schemaVersion": 1,
+  "sourceAuthoritiesAfterExit": {
+    "mutatedGitStatus": "clean",
+    "pristineGitStatus": "clean"
+  },
+  "terminalCreateOnceWritten": true,
+  "terminalRecords": 1,
+  "testDurationMs": 547771,
+  "testFiles": {
+    "failed": 1,
+    "passed": 0
+  },
+  "tests": {
+    "failed": 1,
+    "passed": 0
+  },
+  "workflowRecords": 1
+}

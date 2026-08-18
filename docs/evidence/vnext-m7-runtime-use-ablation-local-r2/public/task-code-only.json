@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskKind": "external-hidden-fix",
+  "taskId": "task:m7-moddable-platformer-code-only-r1",
+  "subjectCommit": "3e793f53598a131c53fb82555191cc14b8db07ff",
+  "goal": "Some enemies that are configured to patrol platforms walk off the edge and fall instead of turning around. Investigate and fix the behavior without changing enemies that are intentionally configured to fall from edges. Leave a reviewable candidate change.",
+  "publicExecutionClassifier": {
+    "schemaVersion": 1,
+    "classifierId": "chronorift.generic-patrol-sequence.v1",
+    "implementationSha256": "62d890e6ae10adf3d11bfbe453d0f61e76ab0a84718f8758bf1290c1c5261bbb"
+  },
+  "agentBudget": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "attemptsMaximum": 1,
+    "userTurnsPerAttemptMaximum": 1,
+    "toolCallsMaximum": 128,
+    "wallTimeMsMaximum": 900000,
+    "taskSandboxNetworkMode": "denied",
+    "taskCredentialMountCountMaximum": 0
+  },
+  "evaluatorBudget": {
+    "plannedRunCount": 9,
+    "scenarioClasses": [
+      "public_reproduction",
+      "hidden_variant",
+      "regression_control"
+    ],
+    "repetitionsPerScenario": 3,
+    "freshWorkspacePerRun": true,
+    "freshImportCachePerRun": true,
+    "freshEvaluatorProcessPerRun": true,
+    "evaluatorProcessAttemptsPerRunMaximum": 1,
+    "agentRelaunchCountMaximum": 0,
+    "wallTimeMsPerRunMaximum": 120000
+  }
+}

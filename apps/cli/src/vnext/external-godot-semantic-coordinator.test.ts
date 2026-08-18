@@ -126,7 +126,11 @@ const createStore = (
   };
 };
 
-const projection = (frame: number, entities = Math.floor(frame / 3)) => ({
+const projection = (
+  frame: number,
+  entities = Math.floor(frame / 3),
+  nextSpawnOrdinal = entities,
+) => ({
   schemaVersion: 1 as const,
   stateSchemaVersion: "chronorift.timer-spawn:v1" as const,
   subject: {
@@ -147,7 +151,7 @@ const projection = (frame: number, entities = Math.floor(frame / 3)) => ({
     autostart: false,
     processCallback: "idle" as const,
     ignoreTimeScale: false,
-    timeoutOrdinal: entities,
+    timeoutOrdinal: nextSpawnOrdinal,
   },
   entities: Array.from({ length: entities }, (_, ordinal) => ({
     stableId: `semantic:spawn:${ordinal}`,
@@ -164,7 +168,7 @@ const projection = (frame: number, entities = Math.floor(frame / 3)) => ({
     processMode: 0,
     velocity: null,
   })),
-  nextSpawnOrdinal: entities,
+  nextSpawnOrdinal,
   capturedAt: {
     processFrame: frame,
     physicsTick: frame,
@@ -212,6 +216,7 @@ describe("external Godot semantic coordinator", () => {
     let nextFrame = 1;
     let failExecutionPut = false;
     let statusFailureAfter: number | undefined;
+    let saturatedProjection = false;
     const clients: Array<{ frame: number }> = [];
     const options: ExternalGodotSemanticCoordinatorOptions = {
       taskId: asTaskId("task:semantic"),
@@ -277,7 +282,9 @@ describe("external Godot semantic coordinator", () => {
         clients.push(state);
         const observe = () => {
           state.frame += 1;
-          const observedProjection = projection(state.frame);
+          const observedProjection = saturatedProjection
+            ? projection(state.frame, 256, 257)
+            : projection(state.frame);
           return {
             sample: {
               processFrames: state.frame,
@@ -354,6 +361,40 @@ describe("external Godot semantic coordinator", () => {
       executionId: string;
     };
     await invoke("game_status", { runtimeId: baselineRuntime.runtimeId });
+    saturatedProjection = true;
+    const saturatedStatus = await invoke("game_status", {
+      runtimeId: baselineRuntime.runtimeId,
+    });
+    const saturatedRuntime = saturatedStatus["runtime"] as {
+      coverage: Array<{
+        channel: string;
+        droppedRecords: number;
+        limitations: string[];
+      }>;
+      loss: Array<{
+        channel: string;
+        kind: string;
+        count: number;
+        reason: string;
+      }>;
+    };
+    const saturatedCoverage = saturatedRuntime.coverage.find(
+      (entry) => entry.channel === "entity_lifecycle",
+    );
+    expect(saturatedCoverage?.droppedRecords).toBe(1);
+    expect(saturatedCoverage?.limitations).toContain(
+      "The bounded semantic projection saturated at 256 entity ordinals; later spawned-entity states were omitted.",
+    );
+    const saturationLoss = saturatedRuntime.loss.find(
+      (entry) => entry.kind === "dropped",
+    );
+    expect(saturationLoss).toEqual({
+      channel: "entity_lifecycle",
+      kind: "dropped",
+      count: 1,
+      reason:
+        "The bounded semantic projection saturated at 256 entity ordinals; later spawned-entity states were omitted.",
+    });
     const checkpointOutput = await invoke("game_checkpoint_create", {
       runtimeId: baselineRuntime.runtimeId,
       barrier: "adapter_process_tail",
@@ -379,7 +420,29 @@ describe("external Godot semantic coordinator", () => {
       },
     });
     expect(interruptedStop.outcome).toBe("error");
-    await invoke("game_stop", { runtimeId: baselineRuntime.runtimeId });
+    const stoppedBaseline = await invoke("game_stop", {
+      runtimeId: baselineRuntime.runtimeId,
+    });
+    expect(stoppedBaseline["sealed"]).toBe(true);
+    expect(stoppedBaseline["cleanupProven"]).toBe(true);
+    const stoppedRuntime = stoppedBaseline["runtime"] as {
+      status: string;
+      coverage: Array<{ channel: string; droppedRecords: number }>;
+      loss: Array<{ channel: string; kind: string; count: number }>;
+    };
+    expect(stoppedRuntime.status).toBe("stopped");
+    expect(
+      stoppedRuntime.coverage.find(
+        (entry) => entry.channel === "entity_lifecycle",
+      )?.droppedRecords,
+    ).toBe(1);
+    expect(
+      stoppedRuntime.loss.find((entry) => entry.kind === "dropped"),
+    ).toMatchObject({
+      channel: "entity_lifecycle",
+      kind: "dropped",
+      count: 1,
+    });
     const queried = await invoke("game_query", {
       source: {
         kind: "execution",

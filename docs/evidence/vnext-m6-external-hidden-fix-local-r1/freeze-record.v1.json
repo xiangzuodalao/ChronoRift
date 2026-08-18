@@ -1,0 +1,101 @@
+{
+  "archiveFiles": {
+    "assignment-summary.v1.json": "f57bcbd8825630269fb9062040871fec9810f9da385b4667be6a42e6729be8ae",
+    "attempt.json": "08e2e555386ac4b9f037a374ee637214f86b7cb5ef874e87a475d408f6341c87",
+    "candidate.patch": "750cd0dbc8a694d14c0288416bba6836606821e5525ec993b79119db4bac0230",
+    "operator-command-result.v1.json": "ef9678dd5963789090bf6f3e1bae6ed2aefbacc004a3b289dfbc53554f5d179b",
+    "post-terminal-diagnostic-summary.v1.json": "4366577df9d7c41f1b6fc74153f31e7971ed2917312688ee28d140588fe756db",
+    "public-classifier.mjs": "ce2e64b72df69c892b095f02da363c699d49fa72c3e2620dab969c782243a132",
+    "public-task.json": "ea1fbdfa69391db4d4be76616d4e929c21737ef7e553858ca84aeaaa91e696e6",
+    "terminal.json": "443422d46fca8dcb29f167d719745fd0a23c35202d53f0783c884fbf749537ee",
+    "workflow.json": "b8f7c25dbdc0949f4a9a717278b9d104c4762fc88f5c28edb28a8d44bc62af59"
+  },
+  "assignmentId": "m6-assignment:346413c0071fb0492b6f4368",
+  "candidate": {
+    "baselineSelectedTreeSha256": "57d93349c41eb47917f4d361300151a1703e4260679bcef87cd977adfbc077fc",
+    "byteLength": 476,
+    "candidateEqualsPristineSelectedTree": true,
+    "candidateSelectedTreeSha256": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+    "patchSha256": "750cd0dbc8a694d14c0288416bba6836606821e5525ec993b79119db4bac0230",
+    "roundTripVerified": true
+  },
+  "completedAt": "2026-08-14T17:15:42.465Z",
+  "evaluator": {
+    "evaluatorReceiptSha256": null,
+    "plannedRunCount": 9,
+    "processesStarted": 0,
+    "records": 0
+  },
+  "hiddenInputs": {
+    "bytesArchived": false,
+    "evaluatorBundleSha256": "ee3546ea519c3e382f22e2fed24dfcaa774ef91769f2618d3a01f5b99e879243",
+    "evaluatorImplementationSha256": "e97461cf0011280894715ff3be92e2428b27fa99f8b2eed105b3c886b52753b5",
+    "mutationSha256": "497af4ea057f3a2a1fdf15124e99612a4e36adc6ca8dce39eeefa7ec2bb73a42"
+  },
+  "outcome": "workflow_rejected",
+  "postTerminalDiagnostic": {
+    "agentRelaunched": false,
+    "allEvaluatorOutcomesPassed": true,
+    "allNineFreshRunsCompleted": true,
+    "classification": "diagnostic_not_gate_acceptance",
+    "cleanupProven": true,
+    "formalEvaluatorRecordsPresentAfter": false,
+    "formalEvaluatorRecordsPresentBefore": false,
+    "formalTerminalOutcome": "workflow_rejected",
+    "outcome": "passed",
+    "sourceTerminalContentSha256": "02661e9ed60719b0e6f485e0a8a56e2506b2a816a99d17ac34c13d45092c4748",
+    "sourceTerminalRawSha256": "0b45ff0ef2961051d442a5de5cca4268fd3765b07def150e9e4e607ec903191f"
+  },
+  "recordKind": "m6-external-hidden-fix-local-freeze-record",
+  "runtimeEvidenceRetention": {
+    "candidateExecutionEvidenceSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "qualifiedCandidateExecutionCount": 0,
+    "rawTaskAndRuntimeRecordsArchived": false,
+    "reason": "Task/runtime records were held in the formal container's tmpfs task storage and were removed with the container; only workflow check outcomes and evidence hashes remain durable."
+  },
+  "schemaVersion": 1,
+  "sourceArtifacts": {
+    "assignmentFileSha256": "551f7e31dc466264c5a06da4d188e580d7b609ce0b15887bbac8935f3e0378c2",
+    "attemptFileSha256": "08e2e555386ac4b9f037a374ee637214f86b7cb5ef874e87a475d408f6341c87",
+    "operatorLogSha256": "fe2ffc6b6a4b3ba81e033eaa2bc928e9cab4cda61e53a24798cd4fe121ea1db6",
+    "postTerminalDiagnosticFileSha256": "0b45ff0ef2961051d442a5de5cca4268fd3765b07def150e9e4e607ec903191f",
+    "terminalFileSha256": "443422d46fca8dcb29f167d719745fd0a23c35202d53f0783c884fbf749537ee",
+    "workflowFileSha256": "b8f7c25dbdc0949f4a9a717278b9d104c4762fc88f5c28edb28a8d44bc62af59"
+  },
+  "sourceAuthorities": {
+    "mutated": {
+      "commit": "b63aff41872bf95ddd99a0e39725e056184a56fe",
+      "gitStatusAfterExit": "clean",
+      "gitTree": "250e352ac0f67c6d2fdedfbb198ee94f93fdd8e0",
+      "selectedTreeSha256": "57d93349c41eb47917f4d361300151a1703e4260679bcef87cd977adfbc077fc"
+    },
+    "pristine": {
+      "commit": "3e793f53598a131c53fb82555191cc14b8db07ff",
+      "gitStatusAfterExit": "clean",
+      "gitTree": "a013bd677c712dbf354e8e2f6e8ff7c53d5684c6",
+      "selectedTreeSha256": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8"
+    }
+  },
+  "trustBoundary": {
+    "archiveKind": "local_unprotected_operator_archive",
+    "contentHashesAreSignatures": false,
+    "hiddenEvaluatorAcceptanceEstablished": false,
+    "piCredentialsOrRequestsArchived": false,
+    "postTerminalPatchDiagnosticPassed": true,
+    "productSubjectCommitArchived": false
+  },
+  "workflow": {
+    "failedChecks": [
+      "baseline_execution_before_host_observed_source_change",
+      "candidate_rerun_observed",
+      "execution_lineage_valid",
+      "cleanup_proven"
+    ],
+    "passedChecks": [
+      "single_agent_turn",
+      "candidate_patch_frozen",
+      "patch_round_trip_verified"
+    ],
+    "receiptContentSha256": "cef69862d9ec926b8a9fc5102229c3d22144acc1cadf673516eee2acbb7feead"
+  }
+}

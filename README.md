@@ -12,27 +12,148 @@ checkpoint、fork、replay、query 和 compare 原语。
 > release，也不证明候选修复正确或能力可泛化到任意 Godot 项目；本文不会把尚未实际运行的 Gate 或 live
 > acceptance 写成已通过。
 >
-> 仓库还定义实验性 **M4 external-project lifecycle-only slice**：Operator 提供本地 clean Git checkout 和
-> strict descriptor，Agent 只获得 capabilities/launch/status/stop 四项生命周期能力。M4 的代码入口和 required Host Gate
-> 即使已经存在，也必须以 `test:vnext:external-project` 的实际输出为准；没有该输出时只能写“已实现路径”，
-> 不能写成外部项目接入已经得到证明。
+> 仓库还定义已冻结完成的实验性 **M4 external-project lifecycle-only slice**：Operator 提供本地 clean Git
+> checkout 和 strict descriptor，Agent 只获得 capabilities/launch/status/stop 四项生命周期能力。冻结 product subject
+> `f8ccb183eb7db21c1737b60a9f4970dce5ff17f0` 已在 run `31416348238` 通过 required Host Gate；归档证据绑定
+> 固定 `moddable-platformer` checkout、candidate patch round-trip、Host source unchanged 与完整 cleanup。它只证明
+> 该 lifecycle-only conformance，不证明真实 provider Agent 能修复游戏、支持任意项目或已经形成公开 release。
 >
 > 源码还包含实验性 **E2 external semantic slice**：它在 M4 source/sandbox 基础上增加独立 Task V4、独立
 > semantic wire/Addon、data-only adapter profile，以及 Timer + spawned-entity 的 query/checkpoint/restore/fork/
 > trace/replay/compare。所有状态操作都明确是 `descriptive_only`；public exposed task Gate 只验证 plumbing，
 > 不证明智能诊断、等价恢复、修复正确性、独立验收或泛化。
 >
-> **Project Environment V1 / PE-A Preview 已达到 implementation present + local Gate passed；当前下一实现切片是 PE-B Dynamic
-> Projection（planned，尚未实现）**。PE-A 在 Godot 4.7 GDScript 项目目录启动 ChronoRift，由同一个可见 Pi
-> Session 生成、验证并发布唯一 ProjectAdapter，然后进入独立用户目标 turn。Harness 提供 bridge、协议、Adapter
-> SDK、sandbox、loader、validator 和 publication broker；项目 entity/state/event/capture 语义由 Agent 生成。
-> 显式 `project preview` 路由、三阶段 conformance、crash reconciliation、post-edit exact Build、new-Session
-> reuse、durable runtime evidence、snapshot characterization 与独立 validator 已实现。默认离线、真实 Godot、
-> 下层 Linux Host 与 deterministic fake-Pi Gate 已通过。冻结 product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b`
-> 又通过本地 `openai-codex/gpt-5.6-luna/max` one-shot，create-new bundle content hash 为
+> 实验性 **M5 public-exposed behavior-change conformance** 复用 M4 sandbox/lifecycle 与
+> E2 semantic tools，让一次真实 Luna/max Agent turn 在固定 `enemy_spawner_broken` 上记录 baseline、修改实际
+> `.gd` 游戏代码、运行不同 source identity 的 candidate、导出非空 round-trip patch，并保留最小原始 runtime
+> evidence 与 cleanup receipt。该公开问题不能证明独立验收、修复正确性、可靠性、泛化或任意项目支持。
+> 2026-08-12 的本地 `r8` 真实 Luna/max Gate 已通过，15-file sanitized bundle 与可恢复 product subject 保存在
+> `docs/evidence/vnext-m5-public-exposed-local-r1/` 并经 standalone validator 复验；它是未受保护的本地 Operator
+> archive，不替代 protected-ref workflow artifact，因此仓库状态仍是 **M5 implementation present + local Gate
+> passed**，不是永久的 **M5 conformance passed**。
+>
+> 源码现还包含实验性 **M6 external hidden-fix local Gate**：固定第三方
+> `moddable-platformer@3e793f53598a131c53fb82555191cc14b8db07ff`，在 Host-only assignment 中冻结 mutation、
+> evaluator 与 pristine 上已 conformed 的 ProjectAdapter；一次真实 Pi Agent turn 结束后冻结唯一 patch，再由
+> 3 类 × 3 次全新 workspace/cache/evaluator process 的本地隐藏 oracle 验收。正式入口已经接线；2026-08-15 的唯一
+> 正式 Luna/max attempt 留下了 round-trip patch，candidate selected tree 精确等于 pristine，但公开 workflow 缺少合格的
+> baseline/candidate runtime evidence，终态为 `workflow_rejected`，formal hidden evaluator 未启动（`0/9`）。失败证据保存在
+> [`docs/evidence/vnext-m6-external-hidden-fix-local-r1/`](docs/evidence/vnext-m6-external-hidden-fix-local-r1/README.md)。
+> terminal 冻结后，一次不重启 Agent、不写 formal evaluator records 的 `diagnostic_not_gate_acceptance` 对同一 patch
+> 取得 3×3 fresh-copy `9/9` 与完整 cleanup；它只说明 patch 后来通过了 oracle，不能补回缺失的 Agent runtime workflow
+> 或改写正式终态。
+> 当前准确状态是 **M6 implementation present + one retained failed live attempt; local Gate not passed**，不是“修复能力
+> 已通过”或通用项目支持。
+>
+> 源码还包含实验性 **M7 runtime-use paired ablation local Gate**：两臂获得相同的自然用户需求、mutated
+> baseline、Provider/model/thinking/budget、coding surface 与 sandbox profile；唯一预期 treatment 是
+> runtime-enabled 臂获得 mutation 选择前已冻结的通用 patrol runtime surface，code-only 臂不获得 game tools 或
+> runtime access。2026-08-15 的唯一正式 R2 campaign 按 `runtime-enabled → cleanup → code-only` 执行并保留
+> create-once claim/result/terminal，但终态是 **`infrastructure_failure / arm_infrastructure_failed`**。runtime-enabled
+> 臂没有保留 runtime summary、baseline witness 或冻结 candidate，因此不能证明 Agent 看见或利用了 runtime 信息；反而
+> code-only 臂在同一自然 prompt 下产生了 patch，并由正式 hidden evaluator 以 3 类 × 3 次 fresh-copy `9/9`
+> accepted。因此这个 mutation/run **不支持 runtime-use 或相对 code-only 优势的目标 claim**。R2 的 `exit 0` 只表示
+> wrapper 完成并持久化 terminal，不表示实验通过。sanitized evidence 见
+> [`docs/evidence/vnext-m7-runtime-use-ablation-local-r2/`](docs/evidence/vnext-m7-runtime-use-ablation-local-r2/README.md)；
+> R1 仅留下两次 pre-Agent failure、`agentLaunchCount=0`，没有被 R2 改写。
+>
+> 同日唯一正式 **R3** 两例 portfolio command 也没有进入 Agent：它在 shared no-Agent preflight 准备阶段以
+> `failed_before_agent_in_shared_no_agent_preflight` 失败，留下 2 个 construction receipt 和 1 个 portfolio freeze，
+> 但 preflight/case reference/campaign/arm records 均为 0；Agent/Pi/provider 计数均为 0。两次 compatibility-only
+> Godot launch 已有 receipt，scoped preparation/unstarted-arm cleanup 已证明；shared no-Agent preflight 的 cleanup 与
+> sandbox-security closure 未证明，且留下 4 个空的 `root:root` mode-`0755` mountpoint stub。R3 没有形成 runtime-use
+> evidence、candidate 或 paired comparison，不能支持目标 claim，也不改变 R2 code-only formal 9/9 的反证。脱敏归档见
+> [`docs/evidence/vnext-m7-runtime-use-ablation-local-r3/`](docs/evidence/vnext-m7-runtime-use-ablation-local-r3/README.md)。
+>
+> 唯一正式 **R4** command 的 `exit 0` 也只表示 workflow 完成：shared no-Agent preflight 为 `2/2 passed`，但两例随后都在
+> `campaign_gate`、claim/Agent 前记为 `campaign_infrastructure_failure`；Agent/Pi/provider、arm claim/result、candidate、
+> trajectory-use 与 candidate-evaluator evidence 均为 0。cleanup 均 proven、事后活动残留为 0，同时保留 4 个空的 `root:root`
+> mode-`0755` mountpoint stub。静态 repair diff 把根因定位为 preparation 曾把 claim 的 paired-public-contract hash
+> 错填为 arm-specific Task hash；retained failure 本身只保存 `Error` 类 hash，不能独立给出该归因。R4 没有形成 paired
+> differential，不支持目标 claim，也不覆盖 R2/R3。脱敏归档见
+> [`docs/evidence/vnext-m7-runtime-use-ablation-local-r4/`](docs/evidence/vnext-m7-runtime-use-ablation-local-r4/README.md)。
+>
+> 唯一正式 **R5** command 先通过 `2/2` formal no-Agent preflight，并让 case-01 正确持久化绑定 paired public
+> contract 的 runtime claim；但 Pi wrapper 边界后没有可观察 Pi result/event/Agent turn/delivery 或持久 Session，原始
+> 异常与 provider 是否实际调用不可恢复。`runner_result_invalid` 是 trace/sidecar matcher 的二次错配；真实 arm cleanup
+> `eaba88bb…` 已 proven，但无效 envelope 让 Gate/terminal 错记 `cleanup_failed`，随后 residual safety-summary DTO 错配又
+> 产生 `ZodError`。case-02 safety-stop、两例 code-only 均未启动，也没有 candidate、patch、post-Agent candidate evaluator
+> 或 paired comparison。因此 R5 不支持目标 claim；`exit 0` 只表示 workflow 已终结并持久化。脱敏归档见
+> [`docs/evidence/vnext-m7-runtime-use-ablation-local-r5/`](docs/evidence/vnext-m7-runtime-use-ablation-local-r5/README.md)。
+> R5 之后的离线修复只收窄两处记录边界：failed attempt 可保留并由 envelope 严格绑定已持久化 trace，formal
+> cleanup callback 复用既有 preparation→residual projector。对应全仓离线 Gate 已通过；没有运行新的 live，也不改写 R5。
+> 唯一正式 **R6** command 已成功写入 create-once `formal.started`，因此该科学轮次已永久消费。此前的 freeze、
+> admission、dry 与 `2/2` no-Agent preflight 均通过，但它们本身不是消费点；四个正式 arm 都在 Pi turn 边界保留
+> `runner_threw / operation_threw`，没有可观察 Pi event、Agent turn、result、delivery 或持久
+> Session；provider 是否实际调用不可从留存记录判定。两例 terminal 均为 `infrastructure_failure / arm_infrastructure_failed`，
+> 四臂 cleanup 与两例 aggregate cleanup 均 proven，因此 R6 仍没有 candidate、paired differential 或 runtime-use 证据。
+> 事后静态审计定位到 writable-state 边界：Pi 读取 auth/model store 时也需要同目录 lock，而 R6 把整个 `/pi-agent`
+> 只读挂载；该归因来自实现审计，不是 formal failure record 内生的错误文本。
+>
+> **R7 infrastructure revision 已冻结，但首次 admission 在 Docker create 前因 frozen wrapper 的非法 bind-mount
+> `,rw` 选项失败；dry、no-Agent、provider canary 与 formal live 均未启动。** 旧 Operator 当时没有重试该 revision，
+> 其 frozen bytes 与失败事实仍保持不可变；但它没有 create-once `formal.started` 或正式实验 provider request，按当前
+> 边界只是 pre-formal infrastructure attempt，并未消费科学意义上的 R7 round。它使用只含目标
+> provider/model 的私有可写 credential projection（Host 凭据仍只读且不进入 Task/Godot），并增加 atomic one-shot lease/
+> result 与 crash repair、冻结 workspace、真实 Pi lifecycle/failure receipt、prepare acquisition owner、pre-Pi storage headroom
+> receipt、按 arm 的 evaluator cgroup+tmpfs、R7 outer/R4 inner 双 manifest，以及 create-once
+> admission→dry→no-Agent→provider-canary attestation chain。每阶段的 command-result、原始 work tree
+> 与 strict terminal 都持久保留并在后继阶段重读；published freeze 损坏时只 fail-closed，不由 repair 删除。
+> 源码已移除该 mount 选项，但不会改写 R7 的历史 revision。这是基础设施结果，
+> 不是新的实验结果，也不追认 R3–R6。
+>
+> 目标 lifecycle 把 **scientific round** 与 **immutable infrastructure revision** 分离。freeze 只发布不可覆盖的 build
+> artifact，不消费 round；qualification、admission、dry、no-Agent 与 provider canary 都是 pre-formal infrastructure
+> evidence。只有成功以 `O_EXCL` 创建 `formal.started`，或首个承载实验内容的正式 provider request 开始（二者取先），
+> 才永久消费 round；provider canary 是非实验 readiness probe，不在这个边界内。消费后无论成功、失败、崩溃、超时或
+> 网络错误都不得 retry/reroll。消费前的基础设施失败必须原样追加保留；修复只能发布新的、完整重做 qualification 的
+> infrastructure revision，并保持 case、prompt、seed、provider/model、evaluator、budget 等实验设计绑定逐字节不变。
+> 当前 Operator 已实现独立于 revision state 的 round authority：legacy flat revision 只读 adoption，successor
+> reservation/seal append-only，唯一 consumption marker 位于 round scope。已有 R7/R8 state 本身仍不是重试授权；只有
+> authority 中 sealed、unconsumed 的 head revision 才可运行。
+>
+> 后续 round 不应承担集成测试职责。仓库现在提供不占用 round namespace 的 formal-exact rehearsal：每次从当前
+> 源码生成 disposable freeze，并复用正式 Docker 参数、mount、entrypoint、目标 provider/model 的私有 credential
+> projection、Pi bootstrap、cgroup、四份 source clone 与 formal-evidence writer，但任务固定为 `modelInvocations=0`。
+> 2026-08-16 已完成两次连续正常演练，以及 half-write、credential-lock、storage-exhaustion、TERM、SIGKILL 五种
+> 故障演练；全部通过且无容器、凭据 tmpfs、cgroup、进程或 Host-state 残留。它只证明当前基础设施链可重复，
+> 不是实验结果。事后审计确认这份 qualification 覆盖共享 inner R7 operator，却没有真实重走冻结后的薄 round wrapper
+> 与复制 descriptor；因此不能把它单独当作下一 revision 的完整 freeze prerequisite。每个 revision 的 freeze bytes 仍不可
+> 修改；若 pre-formal 修复导致新 revision，必须重新完成包含 frozen thin-wrapper re-entry 的 qualification。
+> 正常演练必须通过真实、无凭据的 bridge DNS/TLS probe；TERM/SIGKILL 专项在相同 storage、Pi-bootstrap、containment
+> 之后隔离该外部探针，避免第三方 TLS 波动掩盖 owner/evidence recovery 的故障结论。
+> 八步固定资格序列会把 strict raw evidence 持久保存在非 round readiness store，并要求最后两步是连续 normal；
+> future freeze 必须绑定同一 workspace aggregate 与 Docker-layout digest 的资格记录。
+>
+> **R8 infrastructure revision 1 已冻结，但首次 admission 在薄 wrapper 校验冻结 workspace descriptor 时失败：snapshot
+> 将该副本保存为 mode `0644`，identity reader 要求 `0600`。** 失败发生在任何 admission-stage lease、Docker create、Pi/
+> Agent、provider request 与 `formal.started` 之前；revision 1 保持不可变，没有产生实验结果，也没有消费科学 R8 round。
+> revision-rollover authority 与 frozen thin-wrapper qualification binding 现已实现并有离线测试。revision 2 随后以相同
+> scientific subject 完成 freeze/seal，但没有运行 admission、dry、no-Agent、canary 或 formal；它保持 sealed-but-unused，
+> 也不是实验结果。当前源码又收窄了 authority atomic publication 与 Docker created-only recovery，并把 qualification
+> 升级为八步 outer-wrapper lifecycle；这些新 bytes 必须取得新的 matching qualification 并发布 successor revision，不能
+> 回写或继续使用 revision 2。
+>
+> **Project Environment V1 / PE-A Preview 已达到 implementation present + local Gate passed；当前下一实现切片是
+> PE-B Dynamic Projection（planned，尚未实现）**。PE-A 在 Godot 4.7
+> GDScript 项目目录启动 ChronoRift，由同一个可见 Pi Session 生成、验证并发布唯一 ProjectAdapter，然后直接进入
+> 用户工作。Harness 只提供 bridge、协议、Adapter SDK、sandbox、loader、validator 和 publication broker；项目
+> entity/state/event/capture 与可选 snapshot/restore 语义由 Agent 生成。源码现在包含显式 `project preview` 路由、
+> SDK/wire/loader、Task/project store、三阶段 conformance、publication/binding、跨命令 publication crash reconciliation、同 Session goal turn、post-edit exact
+> Build、new-Session reuse、durable runtime evidence、snapshot characterization、独立 evidence validator、官方 Pi TUI
+> 和 Task-bound runtime tools。本地默认离线 Gate 与真实 Godot 4.7.1 bridge/SDK/observation/snapshot 测试已通过；
+> 下层 Linux sandbox/Godot Host conformance，以及 deterministic fake-Pi 驱动的完整 Preview（初始化、publication、
+> 同 Session goal 与新 Session reuse）已在本地隔离容器实际通过。2026-08-13 的本地真实
+> `openai-codex/gpt-5.6-luna/max` Gate 也在冻结 product subject
+> `5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 上通过；create-new bundle content hash 为
 > `ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`，并由 standalone validator 复验和
-> [local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md) 冻结。它不是 protected-ref
-> artifact、签名或外部 attestation，仍不证明通用外部项目支持或默认入口已经切换。
+> [local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md) 冻结。该 archive 不是
+> protected-ref artifact、签名或外部 attestation，也只覆盖一个冻结 clean/single-root fixture；因此仍不能描述成
+> 已经支持通用外部项目或默认入口。
+>
+> **E3.1 Campaign Denominator Conformance 当前暂停在 implementation-only。** event、registrar port/client、
+> projector、独立 validator 与显式 live 入口已经存在，但没有真实独立 registrar/trust root 的归档 live evidence；
+> 它不是当前产品主线，也不能被描述成 hidden acceptance 已建立。
 
 ## 产品契约（vNext 目标）
 
@@ -164,7 +285,7 @@ Project Environment V1 不再为每个外部项目新增 lifecycle/semantic prod
 [Project Environment V1 RFC](docs/project-environment-v1.md)。当前源码已有 PE-A 的 DTO、SDK、loader、wire、
 bounded stores、初始化协调、三阶段 conformance、publication/binding、broker-only 跨命令 publication reconciliation、post-edit exact Build compatibility、new-Session
 reuse、durable runtime evidence、snapshot characterization、独立 validator、显式 CLI、官方 Pi TUI 与 Task-bound core
-runtime tools。精确 baseline product tree 已取得 create-new real-Pi bundle并由 standalone validator 复验，状态是
+runtime tools。精确 baseline product tree 已取得 create-new real-Pi bundle 并由 standalone validator 复验，状态是
 `implementation present + local Gate passed`；该 local archive 不是 protected-ref conformance 或默认入口晋升。
 
 初始化 workspace 中的 minimal package 只是结构参考；权威 validator 要求 candidate 至少声明一个非
@@ -181,12 +302,11 @@ source/adapter migration、并发 publication、Host refresh/apply、bundle和�
 smoke，并只让后续 runtime 使用该 Build；新 Task/Session 对 unchanged source 会重验已发布 bytes 和 quick smoke 后复用，
 不会伪造本 Task publication。冻结 characterization fixture 也已完成 snapshot → mutation → restore → read-back。
 下层 Linux sandbox/Godot Host conformance 与 deterministic fake-Pi 完整 Preview Host integration 已在本地隔离容器
-实际通过；双 Session、published receipt、raw pinned capture、Task ledger/inventory、physical seal 与 byte-pinned
-standalone validator 的实现和离线回归也已通过。2026-08-13 针对精确 baseline product tree 的 Luna/max Gate 用时
-505.21 秒：初始化 Agent turn 为 348.638 秒，含 authoritative conformance/publication 的 attempt ready 为
-363.322 秒；随后完成同 Session goal 与新 Session reuse。证据见
-[local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md)。仍未完成的是 protected-ref 长期
-证据 artifact、更多结构类别，以及 PE-B 的动态节点、自定义 Signal 与状态变化投影。Dirty/untracked、
+实际通过。2026-08-13 的精确 baseline Luna/max Gate 完成双 Session、published receipt、raw pinned capture、Task
+ledger/inventory 与 physical seal：初始化 Agent turn 为 348.638 秒，含 authoritative conformance/publication 的
+attempt ready 为 363.322 秒，完整 case 为 505.21 秒。证据见
+[local r1 archive](docs/evidence/vnext-project-environment-pe-a-local-r1/README.md)。仍未完成的是 protected-ref 长期证据
+artifact、更多结构类别，以及 PE-B 的动态节点、自定义 Signal 与状态变化投影。Dirty/untracked、
 materialized dependency、addon/import 和 multi-target source closure 属于后续 PE-C，不混入 PE-B。
 
 ### 实验性 M3 vNext 入口
@@ -222,7 +342,7 @@ materialized dependency、addon/import 和 multi-target source closure 属于后
 这仍是实验性入口，没有发布 vNext 版本。它实现的是单一 Fixture 的 game-task 闭环，不应被描述成任意
 Godot 项目的通用支持、Bug 修复证明或 provider attestation。
 
-### 实验性 M4 external-project lifecycle-only 入口
+### 实验性 M4 external-project lifecycle-only 入口（冻结完成）
 
 M4 在 M3 之外新增一个独立、严格版本化的 profile，不放宽 `frame-input-window` 的 manifest、Protocol v2、
 16 工具 catalog、runtime artifacts 或 evaluator 语义。Operator 在 Host 侧预置外部项目的 clean checkout，
@@ -260,6 +380,10 @@ corepack pnpm task -- start \
 
 `continue/show/export/discard` 沿用统一 Task 生命周期；M4 Task 从持久化 profile 选择 lifecycle-only runtime，
 不会把旧 Task 或 M3 capability 静默迁移成新语义。
+
+M4 冻结范围还包括一次真实 Provider Agent handoff：Agent 留下候选修改，Harness 完成非空 patch
+export/round-trip，并在 discard 后保留 cleanup receipt。M4 没有要求 Agent 复现公开 gameplay 行为或运行修改后
+candidate，所以该 handoff 不能写成 Bug 已修复；这正是 M5 新增的单一行为闭环。
 
 ### 实验性 E2 external semantic 入口
 
@@ -316,9 +440,256 @@ product-subject checkout receipt；`invalid_candidate` 只有在保留并绑定 
 产生并保留；validator 只能验证内容、绑定和相互一致性，不能独立证明 receipt 来源或测量真实性。工具、retry 和
 storage 观测上限是 evaluator 的事后 eligibility，产品 subject 只强制已有的 timeout、sandbox、storage 与 runtime
 profile 上限。
-holdout 仍未选择，外部 evaluator 实现和跨 assignment 的 create-only denominator store 仍不存在；这个 V1 只描述
-一个确定性 single-assignment bundle，不能证明没有另一份 assignment 被替换，也不是独立 preregistration、签名、
-acceptance、完整 denominator、成功率或泛化证据。
+holdout 仍未选择，外部 evaluator 实现也不存在；E2 V1 里跨 assignment create-only denominator store 的
+`not_implemented` 字段保持冻结字节和当时语义。这个 V1 只描述一个确定性 single-assignment bundle，不能证明
+没有另一份 assignment 被替换，也不是独立 preregistration、签名、acceptance、完整 denominator、成功率或泛化
+证据。后续 E3.1 使用独立 namespace 实现 campaign registrar conformance，不修改或重解释该 E2 artifact。
+
+### 实验性 M5 public-exposed behavior-change conformance
+
+M5 只增加“真实外部项目行为修改闭环”这一条不确定性轴。它复用 M4 的外部 source、隔离
+workspace、sandbox、lifecycle、patch 与 cleanup，也复用 E2 的 `godot-external-semantic-v1` profile、11-tool
+catalog 和 Timer/spawn 投影；不新增 Task profile、Godot wire、semantic adapter、固定调查流程或产品 verdict。
+冻结分类是 `public_exposed_behavior_change_conformance`。
+
+首个任务继续固定 `moddable-platformer` checkout 和公开的 `enemy_spawner_broken`。一次
+`openai-codex/gpt-5.6-luna/max` Agent attempt 只允许一个 turn、最多 900 秒，并必须在该 turn 内：
+
+- 产生一次 baseline-source execution，投影保持不超过 0.01 s 的 Timer，且某个采样端点呈现 spawn；
+- 修改 tracked `.gd` 游戏代码，再产生一次不同 source identity 的 candidate execution，投影约 1 s Timer、
+  ready/记录到的 0.25 s 内端点不呈现 spawn，且至少 0.9 s 后的某个后续端点呈现 spawn；
+- 导出非空 full-index/binary patch，至少包含一个 tracked `.gd` 文件，并从冻结 baseline 精确 round-trip 到
+  final candidate selected tree；
+- 保留引用所需 build/runtime/execution envelopes、raw event ledgers、physical seals、patch/export receipt 与
+  path-free cleanup receipt，证明 Host checkout 未变化且 discard 后 Task process/cgroup/storage 均为空。
+
+M5 evidence 先写 create-new staging bundle，再由不导入产品 TypeScript 的独立 validator 重算 patch/tree、resource
+identity、raw hash chain、seal、baseline/candidate 观测、引用闭包和 cleanup binding；validator 还拒绝 symlink、
+额外文件、孤儿资源与覆盖写。只有验证和 cleanup 都成功才原子发布 sanitized success bundle。bundle 不保留 Pi
+session、prompt、assistant prose、Host path、provider request 或 credential。M5 外层 orchestrator 不在 Agent turn 后补调
+semantic game tool；若 turn 结束时仍有 active runtime，沿用的 Task turn cleanup 负责停止并封口，因此 Gate 验证的是
+baseline/candidate 的持久化效果，而不是一条固定的 `game_stop` 调用序列。
+
+```bash
+corepack pnpm test:vnext:external-behavior-live
+```
+
+这是需要显式 Provider/network/Host 授权的非默认 Gate，不属于 `corepack pnpm check`。`M5 implementation
+present` 只表示入口、严格 schema、behavior/patch/staging/cleanup 与独立 validator 的离线覆盖已经接线；只有该真实 Gate 取得成功输出并另行
+归档、逐字节复验后，才能写 `M5 conformance passed`。2026-08-12 的本地 `r8` 已取得一次真实成功输出，原始
+15-file bundle、freeze record 与可恢复 product subject 保存在
+[`docs/evidence/vnext-m5-public-exposed-local-r1/`](docs/evidence/vnext-m5-public-exposed-local-r1/README.md)，并由
+standalone validator 逐字节复验；因为它不是 protected-ref workflow artifact，只能写 **local Gate passed**，不能
+升级为永久的 `M5 conformance passed`。该输出支持的最强结论只是在这个固定公开任务的一次真实
+Luna/max turn 中，Agent 先在 unchanged source 观察到短 Timer 与 spawn-present 投影，留下实际 `.gd` 修改，并让
+final-source Godot execution 满足冻结的一秒 Timer 与 spawn-absence/presence 端点契约。它不证明精确 spawn 时刻、
+根因、一般逻辑 correctness、独立 acceptance、可靠性、成功率、泛化、相对产品优势或任意项目支持。
+
+仓库内的手动 workflow 只接受 protected ref，并绑定 checkout 到 `github.sha`；Operator 还必须在仓库外为
+`vnext-m5-live` environment 配置 deployment branch/tag rule 与 required reviewers，并只在授权窗口开放专用
+self-hosted runner。仓库侧检查不能替代这些外部控制。
+
+### 实验性 M6 external hidden-fix local Gate
+
+M6 只回答一个窄问题：在固定的真实第三方 Godot 项目和一次预登记的隐藏 mutation 上，ChronoRift 能否让一个
+真实 Agent 自主调查公开症状、修改代码、重跑，并让冻结 patch 在干净副本中通过 Agent 看不到的本地 evaluator。
+它不引入云服务、签名、独立账号或外部 trust root。
+
+assignment 在 Agent 启动前 create-once 冻结：固定 commit、mutated selected-tree、公开 task/model/budget、pristine
+ProjectAdapterRevision 及其 conformance receipt、mutation hash、evaluator implementation/bundle hash。身份链明确是
+`pristine AdapterRevision → exact Build compatibility → mutant/candidate Build(source:<selected-tree hash>)`；运行时协议
+内部需要的 Adapter-overlay namespace 不作为 mutant EnvironmentRevision。Agent 只获得冻结 Adapter 声明且 Host
+admitted 的 game tools，数量不写死。
+
+正式 Gate 只有一个 assignment、一个 Agent attempt、一个 user turn 和一个 candidate，不 retry、不 reroll。公开
+workflow checker 只读普通 Task/runtime 与 Host 工具边界证据，要求 baseline Execution 在 Host 首次观察到 source
+identity 改变前完成，并要求 candidate rerun、patch round-trip、lineage 与 cleanup；它不声称看见单次 coding/bash
+调用内部的“修改 → 运行 → 改回”。task-specific public classifier 的 identity 和 implementation hash 属于公开 task，
+它只负责标记公开症状，不参与最终 acceptance。
+
+workflow 通过后，evaluator request 只携带 `assignmentId + frozen patch ref + expected candidate tree`。evaluator 自己从
+Host-only store 取得 mutated baseline；正式入口只允许 bubblewrap oracle，它看不到 Agent Task/runtime records、
+ProjectAdapter、mutation diff 或 Host credentials。固定计划是 `public_reproduction`、`hidden_variant`、
+`regression_control` 各 3 次；每次只创建新的 evaluator workspace/import cache/process，绝不再次启动 Agent，且
+candidate 必须 9/9。workflow、request、receipt 与 terminal 均绑定同一 patch/tree；终态严格只有
+`accepted | no_candidate | agent_failed | workflow_rejected | evaluator_rejected | infrastructure_failed | cleanup_failed`。
+
+```bash
+corepack pnpm test:vnext:external-hidden-fix-live
+```
+
+这是显式、非默认、fail-closed 的真实 Provider/Godot Gate。它要求 Operator 提供四类仓库外输入：pristine/mutated
+clean checkout；公开 task root/spec/classifier；Host-only Adapter revision/conformance/package、mutation 与 evaluator
+bytes；以及 private assignment/patch/evaluator-temp roots 和 Project Environment Host config。具体环境变量名以
+`moddable-platformer.m6.live.test.ts` 中的 `CHRONORIFT_TEST_M6_*` 为准。失败记录不会换 mutation 重跑；create-once
+store 也拒绝第二次 Agent/evaluator/terminal。2026-08-15 已对冻结 assignment 执行唯一一次正式 live：Agent 留下的
+476-byte GDScript patch 通过 round-trip，candidate selected tree 等于 pristine；但 workflow 的合格 baseline、candidate
+rerun、execution lineage 与 execution-level cleanup 检查未形成完整闭包，终态为 `workflow_rejected`。因此 formal
+evaluator 没有启动，fresh-copy 结果是 `0/9`，不能写 local Gate passed；失败记录见
+[`docs/evidence/vnext-m6-external-hidden-fix-local-r1/`](docs/evidence/vnext-m6-external-hidden-fix-local-r1/README.md)。同一
+assignment 不会重启 Agent 或换 mutation 重跑。正式 terminal 之后，Operator 另用同一 frozen patch 和 evaluator 做了
+一次明确标为 `diagnostic_not_gate_acceptance` 的 3×3 检查：不重启 Agent、不创建 formal evaluator request/result，9 个
+全新 workspace/cache/process 均 PASS 且 cleanup 成立。这是“patch 本身后来通过 oracle”的旁证，不是正式 Gate 的
+evaluator `9/9`，也不能补回 Agent turn 中缺失的 runtime workflow。未来若用新的预登记 assignment 取得单次正式 9/9，
+它也只证明该 assignment 的本地 conformance，不证明成功率、可靠性、泛化、任意项目支持、第三方独立验收或防
+ChronoRift 作者篡改；content hash 不是签名。
+
+### 实验性 M7 runtime-use paired ablation local Gate
+
+M7 把问题收窄到一项 treatment：在相同的真实第三方 Godot mutation 和自然用户需求下，runtime-enabled Agent 是否
+实际看见并使用 ChronoRift runtime 信息，而 code-only Agent 是否难以仅靠源码完成同一修复。两臂不收到“必须先复现”
+或“修改后必须验证”之类不对称提示。通用 patrol sensor contract、ProjectAdapter 与 freeze record 在 mutation 选择前
+冻结；mutation 和 hidden evaluator 保持 Host-only，不能被 Agent 的 read/find/bash 访问。
+
+正式 campaign 在任何 Agent 启动前绑定 sensor、mutation、18-run preflight、公共 task 与 paired attempt。两臂共享
+mutated baseline、自然 prompt、Provider/model/thinking、单 turn budget、coding tools 与 sandbox profile；runtime-enabled
+臂额外获得冻结 ProjectAdapter 声明并验证通过的 game tools，code-only 臂没有 managed runtime、game tools 或 runtime
+resources。顺序固定为 `runtime-enabled → cleanup barrier → code-only`；每臂 claim 都在对应 Agent 前 create-once
+持久化，失败不换 mutation、不重试 Agent。候选 patch 分臂冻结，最终 acceptance 由 Host-only baseline 与固定
+bubblewrap evaluator 在 fresh copy 中执行 `public_reproduction | hidden_variant | regression_control` 各 3 次。
+
+```bash
+corepack pnpm test:vnext:runtime-use-ablation-live
+```
+
+这是显式、非默认、需要仓库外冻结输入和 Host model 授权的 live 入口。2026-08-15 的唯一正式 R2 campaign 没有完成
+有效 paired comparison：runtime-enabled 臂以 `paired_attempt_unavailable` 结束，保留零 runtime summary、零 baseline
+fall witness、没有可验证的 source-change evidence，也没有冻结 candidate；cleanup 成立。code-only 臂明确记录
+`runtimeAccessEnabled=false`，却在
+相同自然 prompt 下产生 1,519-byte round-trip patch
+`728f68f8b4e0c3bec94e4cd974618aa1c5b2d676d42165cb264bfcc4f3998be5`。正式 hidden evaluator 对该 candidate 的
+3×3 九个独立 fresh workspace/cache/process 全部 PASS，结果为 `accepted`，evaluator 与 arm cleanup 均成立。
+
+campaign terminal 因 runtime-enabled 基础设施失败而是
+`infrastructure_failure / arm_infrastructure_failed`。这次运行支持“code-only patch 修复了冻结 hidden bug”这一窄结论，
+但不支持“runtime Agent 看见/利用了 runtime 信息”，也不支持 runtime treatment 相对 code-only 的优势；这个 mutation
+没有形成预期区分度。wrapper 的 `exit 0` 只表示正式 failure 被完整 terminalize。R2 的 byte-exact records、sanitized
+summary、freeze record 和 SHA-256 清单保存在
+[`docs/evidence/vnext-m7-runtime-use-ablation-local-r2/`](docs/evidence/vnext-m7-runtime-use-ablation-local-r2/README.md)。
+R1 的 initial/recovery 两次 invocation 都在 Agent 与 campaign 前失败，`agentLaunchCount=0`；其四个 run-control
+record 保持原字节，没有被 R2 重写。该 archive 是本地未受保护的 Operator evidence，不是签名、外部 attestation 或
+对一般 Agent 能力的证明。
+
+R3 把 design 扩为两个预先冻结的 case，但 2026-08-15 的唯一正式 R3 command 在任何 Agent 前即失败。它完成并保留
+2 个 construction receipt、1 个 portfolio freeze 和 2 次 compatibility-only Godot receipt；shared no-Agent preflight
+准备随后失败，故 preflight receipt、case reference、campaign terminal、arm claim/result、runtime-use evidence、patch
+和 evaluator evidence 均为 0，Agent/Pi/provider 计数也均为 0。pre-Agent operational/topology seal 只对各自观测时点
+作证；其后的零计数是由失败位置和 retained filesystem inventory 支持的较窄 Operator projection，不是连续 lifecycle
+attestation。no-Agent public launch 的精确次数未知，只能保留 `0..2`；hidden evaluator process 则可收窄为 0，因为
+两个 preflight evaluator-temp 目录为空且 mtime 早于 formal command，而 evaluator 路径必须先创建 fresh temp directory。
+
+两例 preparation cleanup summary 与四个 unstarted-arm cleanup receipt 都把 scoped cleanup 记为 proven；这不能补成
+shared no-Agent preflight 的 cleanup 或 sandbox-security closure。事后仍有 4 个空的 `root:root` mode-`0755`
+mountpoint stub，所以整体 cleanup/security 保持 unknown，而不是擅自写成通过或违规。R3 没有启动任何一臂，也没有
+形成 paired comparison，因而同样不支持 runtime-use/advantage claim；R2 code-only formal evaluator 9/9 的反证仍须并列
+保留。R3 的 path-free sanitized projection、freeze record 与 SHA-256 清单在
+[`docs/evidence/vnext-m7-runtime-use-ablation-local-r3/`](docs/evidence/vnext-m7-runtime-use-ablation-local-r3/README.md)。
+
+formal terminal 之后，一次不启动 Agent/Pi/provider、也不调用 hidden evaluator 的 disposable public-observation diagnostic
+复现了 `patrol_motion_timeline_unavailable`：`game_query` 与随后 zero-window pin 消费相邻 transport batch，旧 validator 却要求
+至少两个相同 `recordSequence`。现在 trajectory 只使用 Agent 实际可见的 query rows；pinned batch 继续独立接受 schema、
+lineage、content seal 与 cleanup 校验。focused 回归与真实 pristine/mutant public observation 均越过该 blocker，并在 synthetic
+hidden boundary 停止；这项事后诊断不改写 R3 formal failure，也不授权重跑它。
+
+随后一次独立、完整的 no-Agent smoke 使用固定 5 秒/6-query 公共观察窗，并修正了 observation ACK 的 credit：每消费
+1 个 batch 只补 1 个 credit，避免积压批次在 pin 后放大并撞上 256 KiB queue bound。四次 public runtime 的
+coverage/loss/cleanup 均成立，Agent/Pi/provider 仍为 0；case-02 的 public `grounded_stall` 与 9/0/0/3 hidden matrix
+通过。case-01 的 hidden matrix 也为 9/0/0/3，但 public pristine/mutant 都只有 `direction_recovery` 与
+`sustained_grounded_motion`，没有冻结 case spec 要求的 `ground_contact_loss`/`grounded_speed_deviation`，所以它被判为
+`preflight_failed`。这说明 case-01 不适合作为下一次 runtime-use case；不能事后收紧通用 classifier 来制造区分度。
+
+case-01 随后被一个新案例替换：自然 prompt 只描述巡逻敌人不能维持配置速度，hidden mutation 把每 tick 的水平速度赋值改成
+随 `delta` 累加；它不改 Adapter、classifier、关卡、ray 或 wall 行为。替换材料通过了同一套完整 disposable no-Agent
+preflight：mutant public observation 在固定 5 秒窗口内产生预先声明的 `grounded_speed_deviation`，pristine 没有该
+witness；fresh hidden matrix 为 pristine 9/9、mutant public+hidden 0/6、mutant regression 3/3。case-02 同轮继续通过，
+36/36 hidden runs 都是 fresh workspace/cache/process 且 cleanup proven，四次 public observation 都 complete、loss-free、
+security event count 为 0；Agent/Pi/provider 为 0，formal Gate 未调用。这只证明替换案例具备进入下一轮的构造条件，不是
+新的 formal paired-Agent 结果，也不改写 R2/R3 结论。
+
+该 portfolio 的唯一 R4 formal command 后来完成 `2/2` no-Agent preflight，却在两例 `campaign_gate` 中都于 claim/Agent
+前保留 infrastructure failure；两臂均无 result/candidate/trajectory/candidate-evaluator evidence，所以 `exit 0` 只是 workflow
+完成，不是实验 verdict。pre-fix preparation 把 claim 所需的 paired public contract hash 错映射成 arm-specific Task
+hash；这个精确归因来自静态 repair diff，retained record 只含 `Error` 类 hash。cleanup proven、活动残留为 0，另有 4 个
+空 root-owned mode-0755 stub。R4 归档见
+[`docs/evidence/vnext-m7-runtime-use-ablation-local-r4/`](docs/evidence/vnext-m7-runtime-use-ablation-local-r4/README.md)；R2
+code-only 9/9 与 R3 pre-Agent failure 仍须并列保留。
+
+### 实验性 E3.1 Campaign Denominator Conformance
+
+E3.1 把“已分配但被遗漏的运行”收进一个独立的 campaign lifecycle，不增加新的产品 verdict。当前状态是
+**E3.1 implementation present**：源码已实现严格 event/schema、窄 `registrar-port`、验证 TLS/签名/proof 的
+`registrar-client`、由原始事件重建的 projector、独立 artifact validator 和显式 live conformance 入口；离线
+故障测试使用 fake registrar，仓库没有本地 registrar server 或 denominator store。六类事件为
+`registrar_assignment_registered`、
+`conformance_actor_started`、`conformance_actor_finished`、`conformance_cleanup_proven`、
+`registrar_deadline_elapsed` 与 `registrar_primary_closed`；registrar-owned event 不能由被测 actor 自报。
+projector 只产生 `conformance_complete`、`incomplete_unknown` 或 `cleanup_unproven` lifecycle 终态，不推断
+Agent、候选或场景失败的原因。
+
+primary journal/head/outcome/计数与截止时间在 closure 时永久封存；deadline 后证据只能进入以 `closureHash` 为根、
+不改写 primary outcome 或指标的 revision chain。签名 closure 同时保留 `appendAttemptCount`、
+`rejectionCount` 与 `idempotentReplayCount`；独立 closure-key 签名的 revision checkpoint 再绑定 latest-known
+revision head/count/as-of，删掉晚到证据会使验证失败。独立 validator 不导入产品 TypeScript：它严格检查 UTF-8/JSON、
+字段与预算，重算 identity、event/head/closure/revision hash，检查 ACL、ordinal/previous-hash chain、Ed25519 role
+signatures，并验证 campaign-registration leaf 的 RFC 6962 inclusion proof、closure leaf 的 inclusion proof，以及
+registration checkpoint 到 closure checkpoint 的 consistency proof。这些机制验证给定证据的绑定；没有真实外部
+registrar 的运行输出时，不能据此声称原子提交、可信 deadline、cleanup 测量或 transparency publication 已发生。
+early-complete 的 response-loss wrapper 只观察 inner transport 首次真实返回 `unavailable` 和 client 随后的完整
+transport request bytes 相同；它不丢弃成功响应或自行制造故障，并要求已验签 closure 的
+`idempotentReplayCount=1` 与该观测一致。
+client 也能验证 registrar clock/closure 双签名的 public pending-status feed，但该 feed 只提供可观察的发布状态，
+绝不替代 closure transparency inclusion/consistency proof。
+
+untrusted registration proposal 还携带
+`artifactSinkMode=configured_external_ci_artifact_directory_v1`、`artifactSinkId` 与内容寻址的
+`artifactSinkCommitment`。preflight 会先把空的仓库外 evidence 目录解析为 canonical absolute path，再以
+namespace、lease ID、sink ID、该路径和固定 evidence 文件名重算 commitment；不一致时在 campaign 登记前
+fail closed。opaque create-only registration capability 只允许外部 registrar 接受其预授权的精确 manifest；
+成功后由签名 registration receipt 和 transparency proof 绑定包含 sink commitment 的 campaign ID。manifest 与
+sanitized summary 只保留 mode、ID 和 commitment，不公开 Host 路径。这个机制只证明 runner 使用了 registrar
+接受的 configured sink binding；它不是 Host attestation，也不证明目录位于独立 mount、CI operator 无法控制该
+目录或 artifact storage 具有物理独立性。receipt key 不签 proposal，也没有扩张其 append-receipt ACL。
+
+```bash
+corepack pnpm test:vnext:e3-campaign-live
+```
+
+这是必须显式配置的非默认 live registrar conformance，不属于 `corepack pnpm check`。正式脚本只调用固定路径且由
+sealed config 绑定 SHA-256 的独立 Host launcher；launcher 打开 FD 3–15 后直接启动仓库内单进程 Node CLI，不让
+descriptor 经过 package lifecycle 或 Vitest worker。缺少该独立 Host 部署时命令会 fail closed。runner 只接受固定路径
+`testdata/vnext/e3/registrar-trust-root.v1.json` 和
+`testdata/vnext/e3/registrar-trust-root.v1.freeze.json`；CI 只能选择该 root 预授权的 service ID/namespace，不能注入
+trust-root bytes、CA、hostname、SPKI 或角色 key。当前两个固定文件尚未由独立评估方发布，contract 对应状态为
+`trustRootStatus=unselected`、`trustRootFreezeStatus=absent`、`externalTrustRootPinStatus=unselected`、
+`liveMatrixStatus=full_matrix_v1`、`independentRegistrarStatus=not_configured` 与
+`archivedEvidenceStatus=absent`，所以缺少前提时 fail closed；当前 live 命令也会在登记 campaign 前拒绝把
+仓库侧编排冒充已经由外部 Host fault controller 完成的故障矩阵。`full_matrix_v1` 只表示三 campaign、两类故障和
+四类篡改的 runner 编排已接通，不表示任何外部依赖已配置或 Gate 已通过。V1 freeze record 仅接受
+`predecessor=null` 的初始
+threshold root；轮换尚未实现，必须由后续新 policy/schema 验证旧、新 threshold root 交叉签名及生效区间，并且
+只能作用于固定新 trust-root version 的新 campaign，不能重解释旧 evidence。
+发布 root 的 release 还必须把其文件 SHA-256 固定为不可由 CI/env/argv 覆盖的 external pin；freeze record、固定
+root bytes 与该 pin 三者不一致时 runner 和独立 validator 都 fail closed。
+
+仓库侧已有三 campaign 正向编排：先保留 early closure、server-side `incomplete_unknown`、
+`cleanup_unproven` 与 late-cleanup revision，再对同一 pending suite bytes 分别进行 journal、signature、
+inclusion 与 consistency 最小篡改；独立 validator 必须逐一拒绝后才允许无覆盖发布最终文件。正向编排之前还
+要求 FD 15 上的外部 fault controller 返回 registrar-unreachable 与 log-unavailable 子进程非零退出、无 final
+evidence、无 success summary 的 receipt。receipt 由 threshold-root 预授权且与 registrar/actor keys 分离的
+Ed25519 fault key 签名，并通过签名 `requestId` 绑定本次 canonical request、evidence sink 与文件名，禁止跨运行
+replay。严格有界的双工协议与完整 matrix runner 已实现；固定 fault-control policy、独立 Host controller 部署、
+该命令对独立 trust-root registrar 的成功输出和冻结 artifact 仍不存在。因此当前只能写
+**E3.1 implementation present**，不能写
+**E3.1 live registrar conformance passed**。该 synthetic
+campaign 固定
+`claimEligible=false`、`modelCalls=0`、`evaluatorRuns=0`，不启动真实 Agent，不生成或选择候选，也不执行 hidden
+scenario；它明确排除 model-call gating、oracle blindness、candidate production、hidden evaluation、independent
+acceptance、success rate、reliability、generalization、root-cause correctness 与 relative product advantage 等
+claim。
+
+E3.1 live 阶段已延期，不是当前下一切片；恢复时才需要独立 registrar/trust root 和归档 conformance evidence。
+E3.2 才计划增加 model capability broker、`IsolationClosureReceipt`、泄漏 canary 与 Host attestation。
+**E3.3 holdout evaluator not implemented；independent acceptance not established。**
 
 Linux Host 必须先提供受委派的 cgroup v2 root，以及由当前用户拥有、mode `0700` 的独立 Task storage
 mount；mount 只接受精确识别的 `tmpfs`、`ext4` 或 `xfs`，总容量不得超过 1 GiB、总 inode 不得超过 131072。
@@ -478,25 +849,47 @@ Godot 根因 taxonomy。
 
 ## 常用命令
 
-| 命令                                                | 当前作用                                                      |
-| --------------------------------------------------- | ------------------------------------------------------------- |
-| `corepack pnpm check`                               | lint、格式、strict typecheck 和离线测试                       |
-| `corepack pnpm test:godot`                          | legacy Godot 集成与 M3 Fixture checkpoint characterization    |
-| `corepack pnpm test:sandbox`                        | 真实 Host coding sandbox conformance；需要 delegated cgroup   |
-| `corepack pnpm test:vnext:godot-sandbox`            | M3 Godot + sidecar + sandbox 联合 conformance                 |
-| `corepack pnpm test:vnext:external-project`         | M4 冻结外部项目 lifecycle-only Host conformance               |
-| `corepack pnpm test:vnext:external-semantic`        | E2 Timer/spawn 11-tool public-exposed Host conformance        |
-| `corepack pnpm test:vnext:pi-live`                  | 真实 Luna/max 的 vNext Pi Session/tool smoke；非 release Gate |
-| `corepack pnpm test:vnext:live`                     | release-only Luna/max + 外部 13 场景 acceptance；非默认 CI    |
-| `corepack pnpm demo:v04`                            | v0.4 固定 workflow 的离线完整诊断                             |
-| `corepack pnpm diagnose:v04`                        | v0.4 固定 workflow 的真实 provider 诊断                       |
-| `corepack pnpm demo:v03` / `diagnose:v03`           | v0.3 兼容路径                                                 |
-| `corepack pnpm fixtures`                            | 列出当前 Fixture                                              |
-| `corepack pnpm godot:install` / `godot:doctor`      | 安装或检查 Godot                                              |
-| `corepack pnpm pi` / `models`                       | 启动固定版本 Pi CLI 或查询模型目录                            |
-| `corepack pnpm benchmark`                           | deterministic fake-model smoke；不代表产品优势                |
-| `corepack pnpm benchmark:verify` / `benchmark:gate` | 重验历史报告完整性或冻结 Gate                                 |
-| `corepack pnpm test:live`                           | v0.1 Mock switch-door 真实 provider smoke；不属于默认 Gate    |
+| 命令                                                                                            | 当前作用                                                                                                      |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `corepack pnpm check`                                                                           | lint、格式、strict typecheck 和离线测试                                                                       |
+| `corepack pnpm test:godot`                                                                      | legacy Godot 集成与 M3 Fixture checkpoint characterization                                                    |
+| `corepack pnpm test:sandbox`                                                                    | 真实 Host coding sandbox conformance；需要 delegated cgroup                                                   |
+| `corepack pnpm test:vnext:godot-sandbox`                                                        | M3 Godot + sidecar + sandbox 联合 conformance                                                                 |
+| `corepack pnpm test:vnext:external-project`                                                     | M4 冻结外部项目 lifecycle-only Host conformance                                                               |
+| `corepack pnpm test:vnext:external-semantic`                                                    | E2 Timer/spawn 11-tool public-exposed Host conformance                                                        |
+| `corepack pnpm test:vnext:external-behavior-live`                                               | M5 真实 Luna/max 的公开行为修改闭环；显式、非默认                                                             |
+| `corepack pnpm test:vnext:external-hidden-fix-live`                                             | M6 单次 Agent + 本地隐藏 3×3 Gate；formal workflow rejected；事后 patch diagnostic 9/9，不是 acceptance       |
+| `corepack pnpm test:vnext:runtime-use-ablation-live`                                            | M7 runtime/code-only paired Gate；R2 infrastructure failure，code-only formal 9/9，目标 claim 不成立          |
+| `corepack pnpm test:vnext:runtime-use-ablation-r3-live`                                         | M7 两例 R3 Gate；唯一 formal command 在 shared no-Agent preflight、Agent 前失败，未形成 paired comparison     |
+| `corepack pnpm test:vnext:runtime-use-ablation-r4-static`                                       | M7 R4 Operator shell 的离线静态检查                                                                           |
+| `corepack pnpm test:vnext:runtime-use-ablation-r4-live`                                         | M7 两例 R4 一次性 formal entry；唯一 command 已保留两例 pre-Agent campaign infrastructure failure             |
+| `corepack pnpm test:vnext:runtime-use-ablation-r5-static`                                       | M7 R5 独立 one-shot Operator shell、outer manifest 与 run-control 的离线静态检查                              |
+| `corepack pnpm test:vnext:runtime-use-ablation-r5-live`                                         | M7 两例 R5 一次性 formal entry；仅在 freeze、admission、dry 与 no-Agent preflight 分别通过后执行              |
+| `corepack pnpm test:vnext:runtime-use-ablation-r6-static`                                       | M7 R6 独立 Operator、修复后 source binding 与 run-control 的离线静态检查；不创建 Host state                   |
+| `corepack pnpm test:vnext:runtime-use-ablation-r6-live`                                         | M7 两例 R6 一次性 formal entry；唯一 command 已保留四臂 Pi-boundary infrastructure failure                    |
+| `corepack pnpm test:vnext:runtime-use-ablation-r7-static`                                       | M7 R7 freezer、dual manifest、atomic operator、credential/workspace 与阶段链的离线检查                        |
+| `corepack pnpm test:vnext:runtime-use-ablation-r7-live`                                         | 历史 R7 live wrapper；admission 在 Docker 前失败并保留，未触发 scientific-round consumption                   |
+| `corepack pnpm test:vnext:runtime-use-ablation-r8-static`                                       | R8 descriptor、freezer、dual manifest、thin wrapper 与 Operator 的离线静态检查                                |
+| `corepack pnpm adopt:vnext:runtime-use-ablation-r8`                                             | 只读导入 legacy flat revision 1 到独立 round authority；不修改旧 state，也不消费 round                        |
+| `corepack pnpm prepare:vnext:runtime-use-ablation-r8`                                           | 在 unconsumed authority 下 create-once 预留 successor physical root；保持 scientific subject 不变             |
+| `CHRONORIFT_M7_INFRASTRUCTURE_REVISION_ID=… corepack pnpm freeze:vnext:runtime-use-ablation-r8` | 将匹配 qualification 的 prepared successor 原子 freeze、验证并 seal；不覆盖 revision 1                        |
+| `corepack pnpm inspect:vnext:runtime-use-ablation-r8`                                           | 严格重读 revision/consumption authority；不运行 Docker、Pi、Agent 或 provider                                 |
+| `corepack pnpm test:vnext:runtime-use-ablation-r8-live`                                         | R8 sealed successor entry；revision 1 的 pre-formal failure 保留且永不作为执行入口                            |
+| `corepack pnpm rehearse:vnext:runtime-use-formal-exact -- 2`                                    | 不占 round 的 Docker/Pi-bootstrap/cgroup/evidence 无模型连续演练；旧资格未覆盖 frozen thin wrapper            |
+| `corepack pnpm qualify:vnext:runtime-use-formal-exact`                                          | 八步 durable readiness qualification；每次均从 frozen thin wrapper 进入共享 outer lifecycle并绑定 raw receipt |
+| `corepack pnpm fault:vnext:runtime-use-formal-exact -- <fault>`                                 | 半写、凭据锁、存储耗尽、TERM 或 SIGKILL 的 disposable 故障演练                                                |
+| `corepack pnpm test:vnext:e3-campaign-live`                                                     | E3.1 外部 registrar live conformance；显式、非默认、尚无证据                                                  |
+| `corepack pnpm test:vnext:pi-live`                                                              | 真实 Luna/max 的 vNext Pi Session/tool smoke；非 release Gate                                                 |
+| `corepack pnpm test:vnext:live`                                                                 | release-only Luna/max + 外部 13 场景 acceptance；非默认 CI                                                    |
+| `corepack pnpm demo:v04`                                                                        | v0.4 固定 workflow 的离线完整诊断                                                                             |
+| `corepack pnpm diagnose:v04`                                                                    | v0.4 固定 workflow 的真实 provider 诊断                                                                       |
+| `corepack pnpm demo:v03` / `diagnose:v03`                                                       | v0.3 兼容路径                                                                                                 |
+| `corepack pnpm fixtures`                                                                        | 列出当前 Fixture                                                                                              |
+| `corepack pnpm godot:install` / `godot:doctor`                                                  | 安装或检查 Godot                                                                                              |
+| `corepack pnpm pi` / `models`                                                                   | 启动固定版本 Pi CLI 或查询模型目录                                                                            |
+| `corepack pnpm benchmark`                                                                       | deterministic fake-model smoke；不代表产品优势                                                                |
+| `corepack pnpm benchmark:verify` / `benchmark:gate`                                             | 重验历史报告完整性或冻结 Gate                                                                                 |
+| `corepack pnpm test:live`                                                                       | v0.1 Mock switch-door 真实 provider smoke；不属于默认 Gate                                                    |
 
 Formal benchmark 的冻结命令、退出码、恢复规则和证据 identity 不再复制到产品入口；见
 [r4 reproduction](docs/benchmarks/v0.3.2-luna-r4/reproduction.md)。
@@ -574,9 +967,9 @@ fixtures/godot-*                 四个受支持的真实 Godot Fixture
 
 - Project Environment V1 的 PE-A Preview 已有显式项目目录初始化、Agent-generated ProjectAdapter、环境
   revision/CAS publication、通用 entity/state/event/capture SDK、交互 Session、post-edit exact Build、new-Session reuse、
-  snapshot characterization 与 durable runtime evidence。精确 baseline 已有一个冻结 clean/single-root fixture 的
-  local-only real-Pi r1 archive；尚无 protected-ref artifact、PE-B dynamic projection、PE-C source/import closure 或
-  Host refresh/apply。`chronorift [goal]`
+  snapshot characterization 与 durable runtime evidence，并已有一个冻结 clean/single-root fixture 的 local-only
+  real-Pi r1 archive；尚无 protected-ref artifact、PE-B dynamic projection、PE-C source/import closure 或 Host
+  refresh/apply。`chronorift [goal]`
   仍不是当前可执行入口。
 - v0.4 是四个小型、显式插桩 Fixture 的诊断 workflow，不支持任意外部 Godot 项目。
 - v0.4 覆盖 Pi 默认 prompt，禁用 built-in tools、skills/context，要求固定工具序列；这与 vNext 契约冲突。
@@ -588,6 +981,11 @@ fixtures/godot-*                 四个受支持的真实 Godot Fixture
   conformance target 外推成跨项目兼容性或相对 coding agent 优势。
 - E2 只增加声明式 Timer/spawn 投影；它仍不支持任意项目语义、input、step、capture、视觉、音频或 GPU。
   checkpoint/restore/fork/replay/compare 全部是 `descriptive_only`，public exposed spawner task 不能证明诊断能力。
+- M5 只在同一个公开 `enemy_spawner_broken` 上要求真实 Agent 留下 baseline/candidate 行为观测和非空 `.gd`
+  patch。文件名、注释与 FIXME 已暴露问题，行为变化也不等于独立验收或 correctness；单次 attempt 不能外推
+  成可靠性、成功率、泛化、任意项目支持或相对产品优势。spawn 是在 semantic tool response 时采样，而非连续
+  记录其发生瞬间；baseline/candidate 的 spawn-present observation 都只证明采样时已经 spawn，不能推出精确
+  first-spawn latency。
 - M4 不把 Host checkout 挂入 sandbox；它先物化 Task-owned candidate，Godot 对该 `/workspace` view 只读，
   再使用 writable operation-stage 容纳 import。stage 在 lifecycle
   endpoints 重验；同一 Godot 进程在窗口内修改、加载再恢复源码的行为仍不可排除，因此当前 slice 不提供
@@ -717,11 +1115,26 @@ Godot `/workspace` 只读 admission、零 credential-like mount、receipt count/
 `["/tmp","/artifacts"]` 的 Task-shared scope；这些是 validated launch-plan facts，不是内核 mount
 attestation。summary 也不是签名、provider attestation 或产品 verdict。本文列出命令
 中的 `taskLifecycle.lifecycleOperationsObserved` 只表示 conformance 直接调用并观察到 Task service lifecycle，
-不声称另起 CLI 进程或单独证明 CLI argv parsing。本文列出命令不代表当前 checkout 已产生通过输出。
+不声称另起 CLI 进程或单独证明 CLI argv parsing。冻结 subject 的实际通过输出已归档在
+`docs/evidence/vnext-e2-public-exposed-r1/`；本文列出命令本身不证明其他 checkout 或任意外部项目也会通过。
 clock/probe 当前只保留 lifecycle endpoint samples，并明确记录中间位置
 未采样及 observer effect 未知；健康运行不能被描述成逐帧完整观测。
 E2 evidence 另固定标注 `public_exposed_plumbing_conformance` 和排除的五类 claim；该 evidence 同样不是签名、
 外部 attestation、修复验收或跨项目能力证明。
+
+M5 live Gate 复用同一 frozen checkout、descriptor、semantic Addon/profile、精确 toolchain、delegated cgroup 和
+fresh bounded storage，但改用一次真实 Luna/max Agent turn，并要求不同 source identity 的 baseline/candidate
+sealed executions、非空 `.gd` patch、独立验证的最小 runtime bundle 和最终 cleanup：
+
+```bash
+corepack pnpm test:vnext:external-behavior-live
+```
+
+该命令必须显式授权 Host model path 使用 Provider network/credential；Task coding/Godot sandbox 仍保持禁网且
+不继承凭据。失败、超时、没有合格 candidate、行为观测不完整、patch round-trip 失败或 cleanup 未证明时均不得
+发布 success bundle。2026-08-12 的本地 `r8` 已运行通过并发布一份经独立复验的 local Operator archive；它证明
+该次本地 Gate，而不证明 protected workflow 已通过。取得并冻结 protected-ref artifact 前仍只能声明
+`M5 implementation present + local Gate passed`，不能声明永久的 `M5 conformance passed`。
 
 Godot、checkpoint、replay、schema、canonicalization、branching 或 storage 变更还应运行相应成功、失败、
 corruption、reference-integrity 和 determinism/nondeterminism 覆盖；需要本机 Godot 的改动再运行

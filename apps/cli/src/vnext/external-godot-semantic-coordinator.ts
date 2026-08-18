@@ -74,7 +74,26 @@ const LIMITATIONS = Object.freeze([
 const COVERAGE_LIMITATION =
   "Semantic state is sampled at command endpoints; intermediate transitions may be unobserved.";
 
-const coverage = (observationCount: number) => [
+const entitySaturationLimitation = (entityMaximum: number) =>
+  `The bounded semantic projection saturated at ${entityMaximum} entity ordinals; later spawned-entity states were omitted.`;
+
+const saturatedEntityRecordCount = (
+  events: readonly VNextSemanticObservationEventV1[],
+  entityMaximum: number,
+): number =>
+  events.reduce(
+    (maximum, event) =>
+      event.projection.entities.length === entityMaximum
+        ? Math.max(maximum, event.projection.nextSpawnOrdinal - entityMaximum)
+        : maximum,
+    0,
+  );
+
+const coverage = (
+  observationCount: number,
+  entityMaximum: number,
+  droppedEntityRecords: number,
+) => [
   {
     channel: "clock" as const,
     status: "partial" as const,
@@ -93,8 +112,13 @@ const coverage = (observationCount: number) => [
     channel: "entity_lifecycle" as const,
     status: "partial" as const,
     emittedRecords: observationCount,
-    droppedRecords: 0,
-    limitations: [COVERAGE_LIMITATION],
+    droppedRecords: droppedEntityRecords,
+    limitations: [
+      COVERAGE_LIMITATION,
+      ...(droppedEntityRecords > 0
+        ? [entitySaturationLimitation(entityMaximum)]
+        : []),
+    ],
   },
   {
     channel: "log" as const,
@@ -116,7 +140,7 @@ const coverage = (observationCount: number) => [
   },
 ];
 
-const loss = () => [
+const loss = (entityMaximum: number, droppedEntityRecords: number) => [
   {
     channel: "clock/state/entity_lifecycle",
     kind: "observer_effect" as const,
@@ -124,6 +148,16 @@ const loss = () => [
     reason:
       "Endpoint observation executes adapter serialization and omits intermediate positions.",
   },
+  ...(droppedEntityRecords > 0
+    ? [
+        {
+          channel: "entity_lifecycle",
+          kind: "dropped" as const,
+          count: droppedEntityRecords,
+          reason: entitySaturationLimitation(entityMaximum),
+        },
+      ]
+    : []),
   {
     channel: "log/error",
     kind: "unavailable" as const,
@@ -131,6 +165,20 @@ const loss = () => [
     reason: "This semantic index does not ingest project log/error content.",
   },
 ];
+
+const captureEvidence = (
+  events: readonly VNextSemanticObservationEventV1[],
+  entityMaximum: number,
+) => {
+  const droppedEntityRecords = saturatedEntityRecordCount(
+    events,
+    entityMaximum,
+  );
+  return {
+    coverage: coverage(events.length, entityMaximum, droppedEntityRecords),
+    loss: loss(entityMaximum, droppedEntityRecords),
+  };
+};
 
 const processCleanupProven = (cleanup: {
   readonly processGroupTerminated: boolean;
@@ -781,6 +829,10 @@ export class ExternalGodotSemanticCoordinator {
   }
 
   private runtimeOutput(context: ActiveSemanticRuntime) {
+    const capture = captureEvidence(
+      context.events,
+      this.options.adapterProfile.limits.entityMaximum,
+    );
     return {
       schemaVersion: 1,
       taskId: this.options.taskId,
@@ -792,8 +844,8 @@ export class ExternalGodotSemanticCoordinator {
       adapterId: asAdapterId(`adapter:${this.options.adapterProfileSha256}`),
       adapterProfileSha256: this.options.adapterProfileSha256,
       clocks: semanticClock(context.latest),
-      coverage: coverage(context.events.length),
-      loss: loss(),
+      coverage: capture.coverage,
+      loss: capture.loss,
     };
   }
 
@@ -879,6 +931,10 @@ export class ExternalGodotSemanticCoordinator {
         context.executionId,
       );
       const finalProjection = context.latest.sample.projection;
+      const capture = captureEvidence(
+        context.events,
+        this.options.adapterProfile.limits.entityMaximum,
+      );
       const runtimeRecord = VNextSemanticRuntimeRecordV1Schema.parse({
         schemaVersion: 1,
         runtimeKind: "godot_external_semantic",
@@ -891,8 +947,8 @@ export class ExternalGodotSemanticCoordinator {
         status: context.state,
         finalProjectionSha256: asSha256DigestV1(contentHash(finalProjection)),
         finalProjection,
-        coverage: coverage(context.events.length),
-        loss: loss(),
+        coverage: capture.coverage,
+        loss: capture.loss,
         cleanupProven: true,
       });
       const executionRecord = VNextSemanticExecutionRecordV1Schema.parse({
@@ -1166,13 +1222,17 @@ export class ExternalGodotSemanticCoordinator {
       cursor + consumedEvents < events.length
         ? String(cursor + consumedEvents)
         : null;
+    const capture = captureEvidence(
+      events,
+      this.options.adapterProfile.limits.entityMaximum,
+    );
     return {
       schemaVersion: 1,
       indexId: `index:semantic:${source.kind}:${source.runtimeId ?? source.executionId}`,
       executionId: events[0]?.executionId ?? (source.executionId as string),
       rows,
-      coverage: coverage(events.length),
-      loss: loss(),
+      coverage: capture.coverage,
+      loss: capture.loss,
       incomplete: true,
       nextCursor: next,
     };

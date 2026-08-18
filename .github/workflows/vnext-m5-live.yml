@@ -1,0 +1,247 @@
+name: vNext M5 Live Conformance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vnext-m5-live
+  cancel-in-progress: false
+
+jobs:
+  m5-live:
+    name: Public-exposed behavior-change Gate
+    runs-on: [self-hosted, linux, x64, chronorift-m5-live]
+    environment: vnext-m5-live
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Bind privileged Gate to a protected product ref
+        env:
+          EXPECTED_PRODUCT_COMMIT: ${{ github.sha }}
+          PRODUCT_REF_PROTECTED: ${{ github.ref_protected }}
+        run: |
+          set -euo pipefail
+          test "${PRODUCT_REF_PROTECTED}" = "true"
+          [[ "${EXPECTED_PRODUCT_COMMIT}" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse 'HEAD^{commit}')" = "${EXPECTED_PRODUCT_COMMIT}"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - name: Install Host runtime dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap busybox-static fontconfig ripgrep xdg-user-dirs
+          corepack pnpm godot:install
+      - name: Stage immutable managed runtime executables
+        run: |
+          set -euo pipefail
+          toolchain_root="/usr/lib/chronorift-m5-live-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "${toolchain_root}"
+          cleanup_failed_stage() {
+            stage_status="$?"
+            trap - EXIT
+            if ((stage_status != 0)) && [[ -d "${toolchain_root}" ]]; then
+              sudo rm -f -- \
+                "${toolchain_root}/bin/node" \
+                "${toolchain_root}/bin/node-22.23.1" \
+                "${toolchain_root}/bin/godot-4.7.1"
+              sudo rmdir "${toolchain_root}/bin" "${toolchain_root}" || true
+            fi
+            exit "${stage_status}"
+          }
+          trap cleanup_failed_stage EXIT
+          node_source="$(realpath -e "$(command -v node)")"
+          godot_source="$(realpath -e .tools/godot/4.7.1/Godot_v4.7.1-stable_linux.x86_64)"
+          sudo install -d -o root -g root -m 0755 "${toolchain_root}/bin"
+          sudo install -o root -g root -m 0755 "${node_source}" "${toolchain_root}/bin/node-22.23.1"
+          sudo install -o root -g root -m 0755 "${godot_source}" "${toolchain_root}/bin/godot-4.7.1"
+          sudo ln "${toolchain_root}/bin/node-22.23.1" "${toolchain_root}/bin/node"
+          test "$("${toolchain_root}/bin/node-22.23.1" --version)" = "v22.23.1"
+          test "$("${toolchain_root}/bin/godot-4.7.1" --version)" = "4.7.1.stable.official.a13da4feb"
+          printf 'CHRONORIFT_M5_TOOLCHAIN_ROOT=%s\n' "${toolchain_root}" >>"${GITHUB_ENV}"
+          trap - EXIT
+      - name: Provision frozen external project
+        env:
+          FROZEN_COMMIT: 3e793f53598a131c53fb82555191cc14b8db07ff
+          FROZEN_TREE: a013bd677c712dbf354e8e2f6e8ff7c53d5684c6
+        run: |
+          set -euo pipefail
+          source_root="${RUNNER_TEMP}/chronorift-m5-external-project-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "${source_root}"
+          install -d -m 0700 "${source_root}"
+          cleanup_failed_source() {
+            source_status="$?"
+            trap - EXIT
+            if ((source_status != 0)); then
+              case "${source_root}" in
+                "${RUNNER_TEMP}"/chronorift-m5-external-project-*) rm -rf -- "${source_root}" ;;
+                *) printf 'refusing failed-provision cleanup for %s\n' "${source_root}" >&2 ;;
+              esac
+            fi
+            exit "${source_status}"
+          }
+          trap cleanup_failed_source EXIT
+          git -C "${source_root}" init --quiet --initial-branch=main
+          GIT_TERMINAL_PROMPT=0 git -C "${source_root}" \
+            -c protocol.version=2 \
+            -c protocol.file.allow=never \
+            fetch --quiet --no-tags --depth=1 \
+            https://github.com/endlessm/moddable-platformer.git "${FROZEN_COMMIT}"
+          git -C "${source_root}" checkout --quiet --detach FETCH_HEAD
+          git -C "${source_root}" remote remove origin || true
+          test "$(git -C "${source_root}" rev-parse HEAD)" = "${FROZEN_COMMIT}"
+          test "$(git -C "${source_root}" rev-parse 'HEAD^{tree}')" = "${FROZEN_TREE}"
+          test -z "$(git -C "${source_root}" status --porcelain=v1 --untracked-files=all --ignored=matching)"
+          printf 'CHRONORIFT_M5_SOURCE_ROOT=%s\n' "${source_root}" >>"${GITHUB_ENV}"
+          trap - EXIT
+      - name: Configure ephemeral runner user namespaces
+        run: |
+          set -euo pipefail
+          original_userns_clone="$(sysctl -n kernel.unprivileged_userns_clone)"
+          original_apparmor_userns="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)"
+          [[ "${original_userns_clone}" =~ ^[0-9]+$ ]]
+          [[ "${original_apparmor_userns}" =~ ^[0-9]+$ ]]
+          printf 'CHRONORIFT_M5_ORIGINAL_USERNS_CLONE=%s\n' "${original_userns_clone}" >>"${GITHUB_ENV}"
+          printf 'CHRONORIFT_M5_ORIGINAL_APPARMOR_USERNS=%s\n' "${original_apparmor_userns}" >>"${GITHUB_ENV}"
+          sudo sysctl --write kernel.unprivileged_userns_clone=1
+          sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run explicit M5 real-Provider Gate
+        run: |
+          set -euo pipefail
+          storage_root="/mnt/chronorift-m5-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          evidence_root="${RUNNER_TEMP}/chronorift-m5-evidence"
+          test ! -e "${storage_root}"
+          test ! -e "${evidence_root}"
+          cleanup_storage() {
+            main_status="$?"
+            cleanup_status=0
+            trap - EXIT
+            set +e
+            if mountpoint -q "${storage_root}"; then
+              sudo umount "${storage_root}" || cleanup_status=1
+            fi
+            sudo rmdir "${storage_root}" || cleanup_status=1
+            if ((main_status != 0)); then
+              exit "${main_status}"
+            fi
+            exit "${cleanup_status}"
+          }
+          trap cleanup_storage EXIT
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 "${storage_root}"
+          sudo mount -t tmpfs \
+            -o "size=1G,nr_inodes=131072,mode=0700,uid=$(id -u),gid=$(id -g)" \
+            chronorift-m5-task-storage "${storage_root}"
+          sudo systemd-run --quiet --wait --pipe --collect \
+            --unit="chronorift-vnext-m5-live-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --property=Delegate=yes \
+            --property=User="$(id -un)" \
+            --property=WorkingDirectory="${GITHUB_WORKSPACE}" \
+            --setenv=PATH="${PATH}" \
+            --setenv=HOME="${HOME}" \
+            --setenv=RUNNER_TEMP="${RUNNER_TEMP}" \
+            --setenv=GITHUB_WORKSPACE="${GITHUB_WORKSPACE}" \
+            --setenv=CHRONORIFT_TEST_NODE_BIN="${CHRONORIFT_M5_TOOLCHAIN_ROOT}/bin/node-22.23.1" \
+            --setenv=CHRONORIFT_TEST_GODOT_BIN="${CHRONORIFT_M5_TOOLCHAIN_ROOT}/bin/godot-4.7.1" \
+            --setenv=CHRONORIFT_TEST_GODOT_SEMANTIC_ADDON_ROOT="${GITHUB_WORKSPACE}/godot/addons/chronorift_semantic" \
+            --setenv=CHRONORIFT_TEST_TASK_STORAGE_ROOT="${storage_root}" \
+            --setenv=CHRONORIFT_TEST_BWRAP_BIN=/usr/bin/bwrap \
+            --setenv=CHRONORIFT_TEST_PRLIMIT_BIN=/usr/bin/prlimit \
+            --setenv=CHRONORIFT_TEST_BUSYBOX_BIN=/usr/bin/busybox \
+            --setenv=CHRONORIFT_TEST_LDD_BIN=/usr/bin/ldd \
+            --setenv=CHRONORIFT_TEST_FONTCONFIG_PROBE_BIN=/usr/bin/fc-match \
+            --setenv=CHRONORIFT_TEST_XDG_USER_DIR_BIN=/usr/bin/xdg-user-dir \
+            --setenv=CHRONORIFT_TEST_BASH_BIN=/usr/bin/bash \
+            --setenv=CHRONORIFT_TEST_RG_BIN=/usr/bin/rg \
+            --setenv=CHRONORIFT_TEST_FIND_BIN=/usr/bin/find \
+            --setenv=CHRONORIFT_TEST_LS_BIN=/usr/bin/ls \
+            --setenv=CHRONORIFT_TEST_EXTERNAL_PROJECT_ROOT="${CHRONORIFT_M5_SOURCE_ROOT}" \
+            --setenv=CHRONORIFT_TEST_EXTERNAL_PROJECT_DESCRIPTOR="${GITHUB_WORKSPACE}/testdata/vnext/external-project/moddable-platformer.project.v1.json" \
+            --setenv=CHRONORIFT_TEST_EXTERNAL_SEMANTIC_ADAPTER_PROFILE="${GITHUB_WORKSPACE}/testdata/vnext/external-project/moddable-platformer.semantic-adapter.v1.json" \
+            --setenv=CHRONORIFT_TEST_M5_TASK_SPEC="${GITHUB_WORKSPACE}/testdata/vnext/m5/moddable-platformer.behavior-change-task.v1.json" \
+            --setenv=CHRONORIFT_TEST_M5_EVIDENCE_SCHEMA="${GITHUB_WORKSPACE}/testdata/vnext/m5/evidence-bundle.schema.v1.json" \
+            --setenv=CHRONORIFT_TEST_M5_EVIDENCE_ROOT="${evidence_root}" \
+            /bin/bash .github/scripts/run-vnext-m5-live-conformance.sh
+      - name: Upload validated M5 evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronorift-m5-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/chronorift-m5-evidence
+          if-no-files-found: error
+          retention-days: 30
+      - name: Restore runner user namespace policy
+        if: always()
+        run: |
+          set -euo pipefail
+          restore_status=0
+          if [[ -n "${CHRONORIFT_M5_ORIGINAL_USERNS_CLONE:-}" ]]; then
+            [[ "${CHRONORIFT_M5_ORIGINAL_USERNS_CLONE}" =~ ^[0-9]+$ ]]
+            sudo sysctl --write \
+              kernel.unprivileged_userns_clone="${CHRONORIFT_M5_ORIGINAL_USERNS_CLONE}" || restore_status=1
+          fi
+          if [[ -n "${CHRONORIFT_M5_ORIGINAL_APPARMOR_USERNS:-}" ]]; then
+            [[ "${CHRONORIFT_M5_ORIGINAL_APPARMOR_USERNS}" =~ ^[0-9]+$ ]]
+            sudo sysctl --write \
+              kernel.apparmor_restrict_unprivileged_userns="${CHRONORIFT_M5_ORIGINAL_APPARMOR_USERNS}" || restore_status=1
+          fi
+          exit "${restore_status}"
+      - name: Remove M5 Host inputs
+        if: always()
+        run: |
+          set -euo pipefail
+          evidence_root="${RUNNER_TEMP}/chronorift-m5-evidence"
+          if [[ -e "${evidence_root}" || -L "${evidence_root}" ]]; then
+            rm -rf -- "${evidence_root}"
+          fi
+          shopt -s nullglob
+          for staging_root in "${RUNNER_TEMP}"/.chronorift-m5-evidence.staging-*; do
+            case "${staging_root}" in
+              "${RUNNER_TEMP}"/.chronorift-m5-evidence.staging-*) rm -rf -- "${staging_root}" ;;
+              *) printf 'refusing to remove unexpected M5 staging root: %s\n' "${staging_root}" >&2; exit 1 ;;
+            esac
+          done
+          for validator_root in "${RUNNER_TEMP}"/chronorift-m5-roundtrip-*; do
+            case "${validator_root}" in
+              "${RUNNER_TEMP}"/chronorift-m5-roundtrip-*) rm -rf -- "${validator_root}" ;;
+              *) printf 'refusing to remove unexpected M5 validator root: %s\n' "${validator_root}" >&2; exit 1 ;;
+            esac
+          done
+          storage_root="/mnt/chronorift-m5-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if mountpoint -q "${storage_root}"; then
+            sudo umount "${storage_root}"
+          fi
+          if [[ -d "${storage_root}" && ! -L "${storage_root}" ]]; then
+            sudo rmdir "${storage_root}"
+          elif [[ -e "${storage_root}" || -L "${storage_root}" ]]; then
+            printf 'refusing to remove unexpected M5 storage root: %s\n' "${storage_root}" >&2
+            exit 1
+          fi
+          source_root="${CHRONORIFT_M5_SOURCE_ROOT:-}"
+          if [[ -n "${source_root}" ]]; then
+            case "${source_root}" in
+              "${RUNNER_TEMP}"/chronorift-m5-external-project-*) rm -rf -- "${source_root}" ;;
+              *) printf 'refusing to remove unexpected M5 source root: %s\n' "${source_root}" >&2; exit 1 ;;
+            esac
+          fi
+          toolchain_root="${CHRONORIFT_M5_TOOLCHAIN_ROOT:-}"
+          if [[ -n "${toolchain_root}" ]]; then
+            case "${toolchain_root}" in
+              /usr/lib/chronorift-m5-live-*)
+                sudo rm -f -- \
+                  "${toolchain_root}/bin/node" \
+                  "${toolchain_root}/bin/node-22.23.1" \
+                  "${toolchain_root}/bin/godot-4.7.1"
+                sudo rmdir "${toolchain_root}/bin" "${toolchain_root}"
+                ;;
+              *) printf 'refusing to remove unexpected M5 toolchain root: %s\n' "${toolchain_root}" >&2; exit 1 ;;
+            esac
+          fi

@@ -41,10 +41,12 @@ import { NodeHostGitPort } from "./host-git.js";
 import {
   exportTaskPatch,
   extractTaskPatch,
+  type ExtractFixtureTaskPatchRequest,
   type ExtractTaskPatchRequest,
   type ExtractedTaskPatch,
 } from "./patch-handoff.js";
 import { readTrustedSelectedTree } from "./selected-tree.js";
+import { preflightCleanProjectEnvironmentV1 } from "./source-preflight.js";
 
 const executeFile = promisify(execFile);
 const trustedFixtureRoot = fileURLToPath(
@@ -61,7 +63,7 @@ interface PreparedFixture {
   readonly exportRoot: string;
   readonly hostBaselineCommit: string;
   readonly fixtureCapability: TaskFixtureCapabilityV1;
-  readonly request: ExtractTaskPatchRequest;
+  readonly request: ExtractFixtureTaskPatchRequest;
 }
 
 const git = async (cwd: string, args: readonly string[]): Promise<string> => {
@@ -148,6 +150,18 @@ const prepareFixture = async (): Promise<PreparedFixture> => {
     hostBaselineCommit,
     fixtureCapability,
     request,
+  };
+};
+
+const projectEnvironmentRequest = (
+  prepared: PreparedFixture,
+): ExtractTaskPatchRequest => {
+  const { fixtureCapability: _fixtureCapability, ...common } = prepared.request;
+  void _fixtureCapability;
+  return {
+    ...common,
+    sourceKind: "project-environment-v1",
+    ignoredCachePaths: [],
   };
 };
 
@@ -271,6 +285,139 @@ describe("extractTaskPatch", () => {
     await expect(extractTaskPatch(request)).rejects.toMatchObject({
       code: "source_feature_unsupported",
     });
+  });
+
+  it("round-trips a Project Environment patch with tracked GDScript, scene, and resource changes", async () => {
+    const prepared = await prepareFixture();
+    const resourcePath = join(
+      prepared.workspaceDirectory,
+      "gameplay_settings.tres",
+    );
+    await writeFile(
+      resourcePath,
+      "[gd_resource format=3]\n\n[resource]\nmetadata/value = 1\n",
+    );
+    await git(prepared.workspaceDirectory, ["add", "gameplay_settings.tres"]);
+    await git(prepared.workspaceDirectory, [
+      "commit",
+      "--quiet",
+      "-m",
+      "tracked resource baseline",
+    ]);
+    const hostBaselineCommit = (
+      await git(prepared.workspaceDirectory, ["rev-parse", "HEAD"])
+    ).trim();
+    await rm(prepared.hostBaselineGitDirectory, {
+      recursive: true,
+      force: true,
+    });
+    await git(prepared.root, [
+      "clone",
+      "--quiet",
+      "--bare",
+      prepared.workspaceDirectory,
+      prepared.hostBaselineGitDirectory,
+    ]);
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: prepared.workspaceDirectory,
+      sourceRepositoryExclusionRoots: [],
+    });
+
+    await appendFile(
+      join(prepared.workspaceDirectory, "frame_input_window.gd"),
+      "\n# Project Environment candidate\n",
+    );
+    await appendFile(
+      join(prepared.workspaceDirectory, "frame_input_window.tscn"),
+      "\n; candidate scene metadata\n",
+    );
+    await appendFile(resourcePath, Buffer.from([0, 255, 1, 0, 2]));
+    const extracted = await extractTaskPatch({
+      ...projectEnvironmentRequest(prepared),
+      hostBaselineCommit,
+      baselineSourceHash: source.selectedTreeSha256,
+    });
+    const patch = Buffer.from(extracted.patchBytes).toString("utf8");
+
+    expect(extracted.roundTripVerified).toBe(true);
+    expect(extracted.identity).toMatchObject({
+      baselineSourceHash: source.selectedTreeSha256,
+      patchId: `patch:v1:${extracted.identity.patchHash}`,
+    });
+    expect(extracted.identity.candidateSourceHash).not.toBe(
+      source.selectedTreeSha256,
+    );
+    expect(patch).toMatch(
+      new RegExp(`^index [a-f0-9]{40}\\.\\.[a-f0-9]{40}(?: [0-7]{6})?$`, "mu"),
+    );
+    expect(patch).toContain("GIT binary patch");
+    expect(patch).toContain("frame_input_window.gd");
+    expect(patch).toContain("frame_input_window.tscn");
+    expect(patch).toContain("gameplay_settings.tres");
+  });
+
+  it("requires a tracked non-@tool GDScript change for Project Environment patches", async () => {
+    const toolOnly = await prepareFixture();
+    await writeFile(
+      join(toolOnly.workspaceDirectory, "frame_input_window.gd"),
+      "@tool\nextends Node\n",
+    );
+    await expect(
+      extractTaskPatch(projectEnvironmentRequest(toolOnly)),
+    ).rejects.toThrow(/non-@tool/iu);
+
+    const editorPlugin = await prepareFixture();
+    await writeFile(
+      join(editorPlugin.workspaceDirectory, "frame_input_window.gd"),
+      "extends EditorPlugin\n",
+    );
+    await expect(
+      extractTaskPatch(projectEnvironmentRequest(editorPlugin)),
+    ).rejects.toThrow(/EditorPlugin/iu);
+
+    const untracked = await prepareFixture();
+    await appendFile(
+      join(untracked.workspaceDirectory, "frame_input_window.gd"),
+      "\n# tracked candidate\n",
+    );
+    await writeFile(
+      join(untracked.workspaceDirectory, "extra.gd"),
+      "extends Node\n",
+    );
+    await expect(
+      extractTaskPatch(projectEnvironmentRequest(untracked)),
+    ).rejects.toThrow(/tracked by the assignment baseline/iu);
+  });
+
+  it.each([
+    ".chronorift/state.json",
+    ".godot/editor/cache.bin",
+    "addons/plugin.gd",
+    "native/bridge.so",
+    "cache/generated.gd",
+    "deps/copied.gd",
+  ])(
+    "rejects Project Environment managed or dependency path %s",
+    async (relativePath) => {
+      const prepared = await prepareFixture();
+      const target = join(prepared.workspaceDirectory, relativePath);
+      await mkdir(join(target, ".."), { recursive: true });
+      await writeFile(target, "candidate\n");
+
+      await expect(
+        extractTaskPatch(projectEnvironmentRequest(prepared)),
+      ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+    },
+  );
+
+  it("rejects Project Environment cache/dependency exclusions", async () => {
+    const prepared = await prepareFixture();
+    await expect(
+      extractTaskPatch({
+        ...projectEnvironmentRequest(prepared),
+        ignoredCachePaths: [".godot"],
+      }),
+    ).rejects.toThrow(/cache or dependency exclusions/iu);
   });
 
   it("rejects an oversized candidate before importing it into Host Git", async () => {

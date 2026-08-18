@@ -492,6 +492,7 @@ const createDeterministicFakePi =
       assistantText: `deterministic M4 conformance turn ${String(turn)}`,
       errorMessage: null,
       eventsObserved: 0,
+      observedTurnCount: 1,
       stats: {
         sessionFile,
         sessionId: "session-m4-external-project-conformance",

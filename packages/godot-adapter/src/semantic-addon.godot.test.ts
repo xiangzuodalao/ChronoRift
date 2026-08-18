@@ -57,8 +57,11 @@ const waitForExit = (
     child.once("exit", (code, signal) => resolveExit({ code, signal }));
   });
 
+const wait = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 describe("Godot semantic addon", () => {
-  it("observes and descriptively restores a Timer/spawn projection", async () => {
+  it("observes a Host-delayed broken Timer spawn and descriptively restores its projection", async () => {
     const godotPath =
       process.env.CHRONORIFT_TEST_GODOT_BIN ??
       join(
@@ -106,11 +109,11 @@ describe("Godot semantic addon", () => {
           "extends Node",
           "@export var spawn_interval := 1.0",
           "@export var scene_to_spawn: PackedScene",
-          "@onready var timer: Timer = $Timer",
           "func _ready() -> void:",
+          "\tvar timer := Timer.new()",
+          "\tadd_child(timer)",
           "\ttimer.timeout.connect(_spawn)",
-          "\ttimer.start(spawn_interval)",
-          "\t_spawn()",
+          "\ttimer.start(spawn_interval / 1000.0)",
           "func _spawn() -> void:",
           "\tget_parent().add_child(scene_to_spawn.instantiate())",
           "",
@@ -145,7 +148,6 @@ describe("Godot semantic addon", () => {
           '[node name="Spawner" type="Node"]',
           'script = ExtResource("1")',
           'scene_to_spawn = ExtResource("2")',
-          '[node name="Timer" type="Timer" parent="."]',
           "",
         ].join("\n"),
       ),
@@ -261,7 +263,33 @@ describe("Godot semantic addon", () => {
       expect(
         runtime.ready.sample.projection.subject.spawnIntervalSeconds,
       ).not.toBe(1);
-      const nearIntegerEntity = runtime.ready.sample.projection.entities[0];
+      expect(runtime.ready.sample.projection.timer.waitTimeSeconds).toBeCloseTo(
+        0.001000001,
+        9,
+      );
+      expect(runtime.ready.sample.projection.nextSpawnOrdinal).toBe(0);
+      expect(runtime.ready.sample.projection.entities).toHaveLength(0);
+
+      // A real Agent call can leave the process running while the model plans
+      // its next tool call. The eventual status sample remains valid runtime
+      // evidence even when it lands well after an arbitrary 250 ms window.
+      await wait(350);
+      const delayed = await runtime.status();
+      const delayedRelativeSimulationTimeUs =
+        delayed.sample.projection.capturedAt.simulationTimeUs -
+        runtime.ready.sample.projection.capturedAt.simulationTimeUs;
+      expect(delayedRelativeSimulationTimeUs).toBeGreaterThan(250_000);
+      expect(
+        delayed.hostMonotonicStartUs - runtime.ready.hostMonotonicEndUs,
+      ).toBeGreaterThan(250_000);
+      expect(delayed.sample.projection.timer.waitTimeSeconds).toBeCloseTo(
+        0.001000001,
+        9,
+      );
+      expect(delayed.sample.projection.nextSpawnOrdinal).toBeGreaterThan(0);
+      expect(delayed.sample.projection.entities.length).toBeGreaterThan(0);
+
+      const nearIntegerEntity = delayed.sample.projection.entities[0];
       expect(nearIntegerEntity).toBeDefined();
       expect(nearIntegerEntity?.transform.position.x).toBeCloseTo(0.999999, 6);
       expect(nearIntegerEntity?.transform.position.y).toBeCloseTo(1.000001, 6);
@@ -269,6 +297,35 @@ describe("Godot semantic addon", () => {
       expect(nearIntegerEntity?.velocity?.y).toBeCloseTo(1.000001, 6);
       expect(nearIntegerEntity?.transform.position.x).not.toBe(1);
       expect(nearIntegerEntity?.transform.position.y).not.toBe(1);
+      const saturationDeadline = Date.now() + 15_000;
+      let saturated = delayed;
+      while (
+        saturated.sample.projection.nextSpawnOrdinal <=
+          profile.limits.entityMaximum &&
+        Date.now() < saturationDeadline
+      ) {
+        await wait(25);
+        saturated = await runtime.status();
+      }
+      expect(saturated.sample.projection.entities).toHaveLength(
+        profile.limits.entityMaximum,
+      );
+      expect(saturated.sample.projection.nextSpawnOrdinal).toBeGreaterThan(
+        profile.limits.entityMaximum,
+      );
+      expect(saturated.sample.projection.nextSpawnOrdinal).toBe(
+        profile.limits.entityMaximum + 1,
+      );
+      expect(saturated.sample.projection.timer.stopped).toBe(true);
+      await wait(250);
+      const bounded = await runtime.status();
+      expect(bounded.sample.projection.entities).toHaveLength(
+        profile.limits.entityMaximum,
+      );
+      expect(bounded.sample.projection.nextSpawnOrdinal).toBe(
+        saturated.sample.projection.nextSpawnOrdinal,
+      );
+      expect(bounded.sample.projection.timer.stopped).toBe(true);
       const checkpoint = await runtime.checkpoint();
       const restored = await runtime.restore(checkpoint.sample.projection);
       expect(
@@ -276,13 +333,21 @@ describe("Godot semantic addon", () => {
           limitation.includes("does not establish"),
         ),
       ).toBe(true);
-      await runtime.shutdown();
+      const stopped = await runtime.shutdown();
+      expect(stopped.sample.projection.timer.waitTimeSeconds).toBeCloseTo(
+        0.001000001,
+        9,
+      );
+      expect(stopped.sample.projection.nextSpawnOrdinal).toBeGreaterThan(0);
       await expect(waitForExit(child)).resolves.toEqual({
         code: 0,
         signal: null,
       });
       expect(Buffer.concat(stderr).toString("utf8")).not.toContain(
         "SCRIPT ERROR",
+      );
+      expect(Buffer.concat(stderr).toString("utf8")).not.toContain(
+        "ChronoRiftSemantic entity bound exceeded",
       );
     } finally {
       server.close();

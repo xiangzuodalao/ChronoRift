@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "m7-r5-formal-agent-entry-recording-failure-archive-freeze",
+  "archiveKind": "local_unprotected_sanitized_operator_archive",
+  "formalAttempt": {
+    "attemptOrdinal": 1,
+    "onlyFormalR5AttemptObserved": true,
+    "commandExitCode": 0,
+    "commandStatus": "completed",
+    "workflowTerminalized": true,
+    "experimentalVerdictProduced": false,
+    "retryOrRerollPerformed": false
+  },
+  "retainedBoundary": {
+    "formalNoAgentPreflightPassedCaseCount": 2,
+    "formalNoAgentPreflightDenominatorCaseCount": 2,
+    "case01ClaimPersisted": true,
+    "piTurnStartedFlag": true,
+    "piResultObserved": false,
+    "observedPiEventCount": 0,
+    "observedAgentTurnCount": 0,
+    "deliveryCount": 0,
+    "persistedPiSessionCount": 0,
+    "providerInvocationKnownAfterPreflight": false,
+    "candidateCount": 0,
+    "patchCount": 0,
+    "postAgentCandidateEvaluatorInvocationCount": 0,
+    "codeOnlyStartedCount": 0,
+    "pairedComparisonCount": 0,
+    "case02SafetyStopped": true,
+    "actualArmCleanupProven": true,
+    "gateRecordedCleanupProven": false,
+    "campaignTerminalOutcome": "cleanup_failed",
+    "postExitActiveResidualCount": 0,
+    "completeSecurityEventHistoryAvailable": false
+  },
+  "failureBoundary": {
+    "originalRunnerExceptionRecoverable": false,
+    "runnerResultInvalidIsSecondaryMatcherFailure": true,
+    "durableTraceAndFallbackSidecarTraceMismatch": true,
+    "gateLostLowerLevelCleanupTruth": true,
+    "residualSafetySummaryMismatchRaisedZodError": true,
+    "campaignCleanupFailedMeansPhysicalCleanupFailed": false,
+    "projectEnvironmentPairedComposerBoundByR5Manifest": false
+  },
+  "claimBoundary": {
+    "runtimeUseObserved": false,
+    "runtimeAdvantageEstablished": false,
+    "pairedComparisonCompleted": false,
+    "targetClaimSupportedByR5": false,
+    "r2CodeOnlyFormalNineOfNineCounterevidencePreserved": true,
+    "exitZeroMeansWorkflowTerminalizedOnly": true,
+    "contentHashesAreSignatures": false,
+    "externalAttestationEstablished": false
+  },
+  "archiveFiles": {
+    "failure-payload.v1.json": "85bb000babb66e21b00703948c1ad7b6551d598c4e7388be1fc5f3766101f4f4"
+  },
+  "excludedSensitiveArtifacts": {
+    "hiddenMutationBytesArchived": false,
+    "hiddenEvaluatorBytesArchived": false,
+    "absolutePrivatePathsArchived": false,
+    "credentialsOrAuthMaterialArchived": false,
+    "rawPromptArchived": false,
+    "rawModelRequestsArchived": false,
+    "rawAssistantProseArchived": false,
+    "rawPiSessionArchived": false,
+    "rawPrivateSourceRecordsArchived": false
+  },
+  "frozenAt": "2026-08-15T19:55:37Z",
+  "recordContentSha256": "989138786191237572a15f387c19aa2366084556f09a9682f40a8964044c3fa1"
+}

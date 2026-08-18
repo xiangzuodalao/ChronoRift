@@ -38,6 +38,7 @@ import {
 } from "@chronorift/godot-adapter";
 import {
   PROJECT_ADAPTER_REQUIRED_MODULES_V1,
+  type GodotProjectEnvironmentFingerprintV1,
   type GodotProjectEnvironmentClockV1,
   type GodotProjectEnvironmentStatusV1,
 } from "@chronorift/godot-protocol";
@@ -115,6 +116,25 @@ export interface ProjectEnvironmentRuntimeBuildV1 {
   readonly sourceClosureId: string;
   readonly candidateSourceHash: string;
   readonly expectedMainScene: string;
+}
+
+/**
+ * Exact runtime closure available to adapter-to-Build compatibility callers.
+ * EnvironmentRevision is intentionally absent: it is publication provenance,
+ * not the identity of the Task-owned source Build being executed.
+ */
+export interface ProjectEnvironmentAdapterBuildRuntimeIdentityV1 {
+  readonly schemaVersion: 1;
+  readonly taskId: string;
+  readonly buildId: string;
+  readonly sourceClosureId: string;
+  readonly candidateSourceHash: string;
+  readonly adapterRevisionId: string;
+  readonly adapterPackageSha256: string;
+  readonly adapterManifestSha256: string;
+  readonly sdkSha256: string;
+  readonly bridgeSha256: string;
+  readonly toolchainSha256: string;
 }
 
 class ProjectEnvironmentRuntimeOperationError extends Error {
@@ -286,6 +306,37 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
       candidateSourceHash: options.candidateSourceHash,
       expectedMainScene: options.expectedMainScene,
     });
+  }
+
+  public adapterBuildCompatibilityIdentity(): ProjectEnvironmentAdapterBuildRuntimeIdentityV1 {
+    return Object.freeze({
+      schemaVersion: 1,
+      taskId: this.options.taskId,
+      buildId: this.#latestBuild.buildId,
+      sourceClosureId: this.#latestBuild.sourceClosureId,
+      candidateSourceHash: this.#latestBuild.candidateSourceHash,
+      adapterRevisionId: this.options.adapterRevisionId,
+      adapterPackageSha256: this.options.adapterPackage.candidateSha256,
+      adapterManifestSha256: this.options.adapterManifestSha256,
+      sdkSha256: this.options.sdkSha256,
+      bridgeSha256: this.options.bridgeSha256,
+      toolchainSha256: this.options.toolchainSha256,
+    });
+  }
+
+  /**
+   * Host-only access to the fingerprint already authenticated by the bridge
+   * handshake. It is deliberately absent from Agent tool responses and is
+   * available only for the currently running execution.
+   */
+  public activeFingerprint(): GodotProjectEnvironmentFingerprintV1 {
+    const active = this.#active;
+    if (active === null || active.phase !== "running") {
+      throw new Error(
+        "Project Environment fingerprint is unavailable without a running execution",
+      );
+    }
+    return active.client.fingerprint;
   }
 
   public async invoke(
@@ -972,10 +1023,7 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
       createdAt: this.now(),
     });
     await this.options.persistPinnedCapture(pinned, records);
-    await active.client.acknowledgeObservationBatch(
-      batch,
-      LIMITS.observationWindowBatches,
-    );
+    await active.client.acknowledgeObservationBatch(batch, 1);
     active.pinnedCaptureCount += 1;
     active.pinnedCaptureWindowIds.push(captureWindowId);
     return success(toolCallId, {

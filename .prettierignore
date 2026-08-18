@@ -42,3 +42,15 @@ docs/evidence/vnext-e2-public-exposed-r1/chronorift-*.json
 # Preserve exact sanitized PE-A local evidence bytes bound by the freeze record.
 docs/evidence/vnext-project-environment-pe-a-local-r1/evidence/pe-a-evidence.v1.json
 docs/evidence/vnext-project-environment-pe-a-local-r1/validator/validator-result.v1.json
+
+# Preserve exact sanitized local M5 evidence bytes bound by its manifest/freeze record.
+docs/evidence/vnext-m5-public-exposed-local-r1/bundle/**
+
+# Preserve the exact retained M6 failed-attempt bytes bound by SHA256SUMS/freeze record.
+docs/evidence/vnext-m6-external-hidden-fix-local-r1/**
+
+# Preserve the exact retained M7 paired-campaign bytes bound by SHA256SUMS/freeze record.
+docs/evidence/vnext-m7-runtime-use-ablation-local-r2/**
+
+# Preserve the exact M7 R3 trajectory classifier implementation bytes bound before mutation selection.
+apps/cli/src/vnext/m7-patrol-trajectory.ts

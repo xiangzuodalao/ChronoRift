@@ -1,6 +1,19 @@
 import { EventEmitter } from "node:events";
 
-import { EnvHttpProxyAgent, install, setGlobalDispatcher } from "undici";
+import {
+  EnvHttpProxyAgent,
+  getGlobalDispatcher,
+  install,
+  setGlobalDispatcher,
+  type Dispatcher,
+} from "undici";
+
+import { observeVNextPiHostHttpDispatchV1 } from "./internal/vnext-host-http-observation.js";
+
+export {
+  parseVNextPiHostHttpTransportObservationV1,
+  type VNextPiHostHttpTransportObservationV1,
+} from "./internal/vnext-host-http-observation.js";
 
 const DEFAULT_HOST_HTTP_IDLE_TIMEOUT_MS = 300_000;
 
@@ -51,5 +64,20 @@ export const createVNextPiHostHttpTransportConfigurer = (
 
 const configureDefaultTransport = createVNextPiHostHttpTransportConfigurer();
 
-export const configureVNextPiHostHttpTransport = (): boolean =>
-  configureDefaultTransport(process.env);
+const observedGlobalDispatchers = new WeakSet<Dispatcher>();
+
+const installTransportObservation = (): void => {
+  const dispatcher = getGlobalDispatcher();
+  if (observedGlobalDispatchers.has(dispatcher)) return;
+  const observedDispatcher = dispatcher.compose(
+    observeVNextPiHostHttpDispatchV1,
+  );
+  observedGlobalDispatchers.add(observedDispatcher);
+  setGlobalDispatcher(observedDispatcher);
+};
+
+export const configureVNextPiHostHttpTransport = (): boolean => {
+  const proxyConfigured = configureDefaultTransport(process.env);
+  installTransportObservation();
+  return proxyConfigured;
+};

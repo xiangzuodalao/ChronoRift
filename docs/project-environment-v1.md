@@ -11,13 +11,14 @@ PE-A 的 strict DTO、Project Environment stores、ProjectAdapter SDK/wire/loade
 initial publication/binding、跨命令 publication crash reconciliation、post-edit exact Build compatibility、同 Session goal turn、new-Session reuse、durable runtime
 evidence、snapshot characterization、独立 evidence validator、官方 Pi TUI 与 Task-bound runtime tools。本地默认离线
 Gate、真实 Godot 4.7.1 bridge/SDK/observation/snapshot 测试、下层 Linux sandbox/Godot Host conformance，以及
-deterministic fake-Pi 驱动的完整 Preview Host integration 均已通过。冻结 product subject
-`5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 的本地真实 `openai-codex/gpt-5.6-luna/max` one-shot Gate 也产生了
-create-new、standalone-validator 复验的 local-only bundle，并归档为 local r1。因此状态是
-`PE-A implementation present + local Gate passed`；该输出只覆盖一个冻结 clean/single-root fixture，不是
-protected-ref artifact、签名或外部 attestation，不能描述成外部项目普遍受支持或默认入口已经切换。
+deterministic fake-Pi 驱动的完整 Preview Host integration 均已通过。2026-08-13 的本地真实
+`openai-codex/gpt-5.6-luna/max` one-shot Gate 也在冻结 product subject
+`5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 上通过；create-new bundle content hash 为
+`ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`，并由 standalone validator 复验和 local r1
+archive 冻结。该输出只覆盖一个冻结 clean/single-root fixture，也不是 protected-ref artifact、签名或外部
+attestation。因此只能称 `PE-A implementation present + local Gate passed`，不能描述成外部项目普遍受支持或默认入口已经切换。
 
-M3、M4 与 E2 的 schema、wire、证据和原语义保持不变。Project Environment V1 使用独立 namespace，
+M3、M4、E2、M5 与 E3.1 的 schema、wire、证据和原语义保持不变。Project Environment V1 使用独立 namespace，
 只复用已经有真实依赖和生命周期边界的 workspace、sandbox、Pi Session、Godot sidecar、runtime store 与 patch
 handoff 实现；它不把冻结 profile 原地迁移成新产品 API。
 
@@ -613,8 +614,8 @@ process/cgroup/scope/scratch cleanup success/failure，以及 §6.1 四个 publi
 mismatch/missing/first divergence。一个 opt-in real Pi project 必须产生 init turn → publication → same-Session goal
 turn；该 goal 形成非空 candidate source change、对精确 Build 取得 compatibility receipt，并至少运行一次 candidate
 game observation。随后新 Session quick-smoke reuse且不重生成 adapter。没有实际输出时只能称
-`PE-A implementation present`。当前精确 baseline product tree 已重新运行 create-new Gate 并由 standalone
-validator 复验，因此状态是 `PE-A implementation present + local Gate passed`，但仍不是完整 V1 conformance。
+`PE-A implementation present`；当前 checkout 已取得上述单 fixture 的本地实际输出，因此状态是
+`PE-A implementation present + local Gate passed`，不是完整 V1 conformance。
 
 real-Pi Gate 的 success bundle 必须写入显式、canonical 的
 `CHRONORIFT_TEST_PE_A_EVIDENCE_OUTPUT_DIR`，使用固定文件名与 create-new 语义；临时测试目录、覆盖旧 bundle 或只在

@@ -1,0 +1,13 @@
+diff --git a/components/enemy/enemy.gd b/components/enemy/enemy.gd
+index 4f0eea5b631e72570cea04917f98531391a85837..433e59de1405c83c0aa3a103505cd40a457b1eff 100644
+--- a/components/enemy/enemy.gd
++++ b/components/enemy/enemy.gd
+@@ -36,7 +36,7 @@ func _set_speed(new_speed):
+ func _ready():
+ 	Global.gravity_changed.connect(_on_gravity_changed)
+ 
+-	direction = 1 if start_direction == 0 else -1
++	direction = -1 if start_direction == 0 else 1
+ 
+ 
+ func _physics_process(delta):

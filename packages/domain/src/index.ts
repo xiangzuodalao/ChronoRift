@@ -14,6 +14,7 @@ export * from "./ids.js";
 export * from "./invariant.js";
 export * from "./json.js";
 export * from "./manifest.js";
+export * from "./m6-adapter-build-compatibility.js";
 export * from "./proposal.js";
 export * from "./project-environment.js";
 export * from "./project-environment-characterization.js";

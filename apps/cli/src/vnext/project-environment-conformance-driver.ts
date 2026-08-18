@@ -304,7 +304,7 @@ export const createProjectEnvironmentConformanceDriverV1 = (
               runtimeFailures.push(record.payload.message);
             }
           }
-          await client.acknowledgeObservationBatch(batch, 8);
+          await client.acknowledgeObservationBatch(batch, 1);
           const statesReady = [...requiredStates].every((id) =>
             stateDomainIds.has(id),
           );

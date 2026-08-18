@@ -1,0 +1,16 @@
+diff --git a/components/spawner/spawner_broken.gd b/components/spawner/spawner_broken.gd
+index 6009a60aedbc3cf1dbe94a4499450d08657b392d..2447ba0474b6b71b8820087eadd5b3b1df4118dc 100644
+--- a/components/spawner/spawner_broken.gd
++++ b/components/spawner/spawner_broken.gd
+@@ -19,9 +19,8 @@ func _ready() -> void:
+ 
+ 	timer.timeout.connect(spawn)
+ 
+-	# Convert seconds to milliseconds for timer.start() method.
+-	# FIXME: Is this correct?? It seems to spawn too fast!
+-	timer.start(spawn_interval / 1000)
++	# Timer.start() expects the wait time in seconds.
++	timer.start(spawn_interval)
+ 
+ 
+ ## Spawns an instance of [member scene_to_spawn] at the same position as this node, as a sibling.

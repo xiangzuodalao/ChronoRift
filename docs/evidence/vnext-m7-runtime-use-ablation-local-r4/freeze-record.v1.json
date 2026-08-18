@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "m7-r4-formal-campaign-infrastructure-failure-archive-freeze",
+  "archiveKind": "local_unprotected_sanitized_operator_archive",
+  "formalAttempt": {
+    "attemptOrdinal": 1,
+    "onlyFormalR4AttemptObserved": true,
+    "commandExitCode": 0,
+    "commandStatus": "completed",
+    "workflowCompleted": true,
+    "experimentalVerdictProduced": false,
+    "retryOrRerollPerformed": false
+  },
+  "retainedBoundary": {
+    "noAgentPreflightPassedCaseCount": 2,
+    "noAgentPreflightDenominatorCaseCount": 2,
+    "campaignInfrastructureFailureCount": 2,
+    "campaignTerminalCount": 0,
+    "armClaimCount": 0,
+    "armResultCount": 0,
+    "candidateCount": 0,
+    "trajectoryUseEvidenceCount": 0,
+    "candidateEvaluatorEvidenceCount": 0,
+    "agentLaunchCount": 0,
+    "piSessionCount": 0,
+    "providerInvocationCount": 0,
+    "allCampaignFailureCleanupProven": true,
+    "postExitActivityResidualCount": 0,
+    "emptyRootOwnedMode0755MountpointStubCount": 4
+  },
+  "rootCauseBoundary": {
+    "classification": "pre_fix_preparation_claim_hash_mapping_defect",
+    "claimBindsPairedPublicContract": true,
+    "attemptBindingTaskSpecRemainsArmSpecific": true,
+    "retainedRecordContainsOnlyErrorClassHash": true,
+    "exactAttributionDependsOnStaticRepairDiff": true
+  },
+  "sourceBindings": {
+    "runControlStartedFileSha256": "9cb1e5206d2506db0ed9e73f90c543bee769aca5c4e0886b92e96943d1f80fcc",
+    "runControlResultFileSha256": "dd12b3a950829668f46944d5973acb5ceededfa33cfabaaf3dd800cba28ca70e",
+    "noAgentPreflightTerminalFileSha256": "3b770b93bd257a8b5dbcac5f3233b53a98e70bb11d54668c772c09e2a65a9a4b",
+    "portfolioFreezeFileSha256": "0b64362006144e3550a0a228998c9274c6b9a4c9b196b57a928429efed6f2317",
+    "portfolioSummaryFileSha256": "67b86d7b7714837286548264f845c34f0c17f4de208529c2d5a4e58b36de2b76",
+    "caseReferenceFileSha256s": [
+      "aaef4a7c9638ce0d9c9d6edbc078a9542bdb16d269020e1c33a65e4ffc03e263",
+      "833fb8591e6c86a6186a453d9f49e00ef9e7faad1c729e9a62697cc718587cb6"
+    ],
+    "campaignInfrastructureFailureFileSha256s": [
+      "06a656a615156d0da7f5915befd49cc3a964cee7445e5f4a51fb96a519cd17f3",
+      "dce4668048be664f71bd5a9b2d7b05edc73910bd0591703201ffe6ce0f833219"
+    ]
+  },
+  "claimBoundary": {
+    "runtimeUseObserved": false,
+    "runtimeAdvantageEstablished": false,
+    "pairedComparisonCompleted": false,
+    "targetClaimSupportedByR4": false,
+    "r2CodeOnlyFormalNineOfNineCounterevidencePreserved": true,
+    "r3PreAgentFailureConclusionPreserved": true,
+    "exitZeroMeansWorkflowCompletedOnly": true,
+    "contentHashesAreSignatures": false,
+    "externalAttestationEstablished": false
+  },
+  "archiveFiles": {
+    "failure-payload.v1.json": "7927a0e8c1ef453e7130e4675896764b452e066b40e73588a2744548d86b4716"
+  },
+  "excludedSensitiveArtifacts": {
+    "hiddenMutationBytesArchived": false,
+    "hiddenEvaluatorBytesArchived": false,
+    "absolutePrivatePathsArchived": false,
+    "credentialsOrAuthMaterialArchived": false,
+    "rawModelRequestsArchived": false,
+    "rawAssistantProseArchived": false,
+    "rawPiSessionArchived": false,
+    "rawPrivateSourceRecordsArchived": false
+  },
+  "frozenAt": "2026-08-15T17:44:21Z",
+  "recordContentSha256": "5318edc2ea55832b3aa5d6f8f21355a41eba7a09b0358151965af759d79ba0c7"
+}

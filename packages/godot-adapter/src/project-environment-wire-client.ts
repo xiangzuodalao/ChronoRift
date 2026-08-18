@@ -394,7 +394,7 @@ export class GodotProjectEnvironmentRuntimeClientV1 {
 
   public acknowledgeObservationBatch(
     batch: PayloadOfKind<"observation_batch">,
-    nextWindowBatches = 4,
+    nextWindowBatches = 1,
   ): Promise<void> {
     this.assertOpen();
     return this.peer.send("observation_ack", {

@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "m7-r3-formal-failure-sanitized-payload",
+  "classification": "sanitized_operator_read_only_projection",
+  "formalFailure": {
+    "attemptOrdinal": 1,
+    "onlyFormalR3AttemptObserved": true,
+    "startedAt": "2026-08-15T07:45:59.377Z",
+    "completedAt": "2026-08-15T07:48:59.753Z",
+    "commandStatus": "failed",
+    "commandExitCode": 1,
+    "outcome": "failed_before_agent_in_shared_no_agent_preflight",
+    "campaignTerminalPersisted": false,
+    "retryOrRerollPerformed": false
+  },
+  "persistenceInventory": {
+    "constructionReceiptCount": 2,
+    "portfolioFreezeCount": 1,
+    "preflightReceiptCount": 0,
+    "caseReferenceCount": 0,
+    "campaignRecordCount": 0,
+    "campaignTerminalCount": 0,
+    "armClaimCount": 0,
+    "armResultCount": 0,
+    "candidatePatchCount": 0,
+    "runtimeUseEvidenceCount": 0,
+    "evaluatorEvidenceCount": 0
+  },
+  "executionCounts": {
+    "agentLaunchCount": 0,
+    "piSessionCount": 0,
+    "providerInvocationCount": 0,
+    "compatibilityGodotInvocationCount": 2,
+    "noAgentPublicLaunchCount": {
+      "minimum": 0,
+      "maximum": 2,
+      "exact": null
+    },
+    "publicBehaviorPreflightReceiptCount": 0,
+    "hiddenEvaluatorInvocationCount": 0,
+    "hiddenEvaluatorZeroEvidence": "Both case-scoped preflight evaluator-temporary directories were empty and their mtimes predated the formal command; the evaluator path must create a fresh temporary directory before starting its process.",
+    "preflightEvaluatorTemporaryDirectories": [
+      {
+        "caseOrdinal": 1,
+        "entryCount": 0,
+        "mtime": "2026-08-15T07:45:16.113605110Z",
+        "mtimePredatesFormalCommand": true
+      },
+      {
+        "caseOrdinal": 2,
+        "entryCount": 0,
+        "mtime": "2026-08-15T07:45:16.113605110Z",
+        "mtimePredatesFormalCommand": true
+      }
+    ],
+    "attestationBoundary": "The operational manifest and realized cgroup topology attest zero Agent, Pi Session, and provider invocations only at their pre-Agent seal and observation. Their later zero counts are a narrower Operator projection from the failure stage and retained filesystem inventory, not an independent continuous lifecycle attestation. The exact count of no-Agent public launches is unknown within the retained 0..2 bound."
+  },
+  "compatibilityGodot": {
+    "outcome": "two_compatible_receipts",
+    "caseCount": 2,
+    "allBridgeHandshakesObserved": true,
+    "allInstrumentedLaunchesObserved": true,
+    "allCoverageComplete": true,
+    "allLossArraysEmpty": true,
+    "allReceiptScopedCleanupFieldsTrue": true,
+    "claimLimit": "These two compatibility-only launches do not establish public symptom reproduction, a completed no-Agent preflight, Agent runtime observation, candidate repair, or evaluator acceptance."
+  },
+  "cleanupBoundary": {
+    "casePreparationCleanupSummaryCount": 2,
+    "allCasePreparationCleanupSummariesProven": true,
+    "unstartedArmCleanupReceiptCount": 4,
+    "allUnstartedArmCleanupReceiptsProven": true,
+    "sharedNoAgentPreflightCleanupProven": null,
+    "sharedNoAgentPreflightSecurityProven": null,
+    "overallCleanupProven": null,
+    "retainedMountpointStubs": [
+      {
+        "scope": "case-01/materials",
+        "kind": "empty_directory",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      },
+      {
+        "scope": "case-01/sensor",
+        "kind": "empty_directory",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      },
+      {
+        "scope": "case-02/materials",
+        "kind": "empty_directory",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      },
+      {
+        "scope": "case-02/sensor",
+        "kind": "empty_directory",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      }
+    ],
+    "claimLimit": "The scoped preparation and unstarted-arm receipts do not prove cleanup or sandbox-security closure for the shared no-Agent preflight. The four retained mountpoint stubs prevent an overall cleanup-proven claim; unknown does not itself mean a cleanup or security violation occurred."
+  },
+  "sourceRecordBindings": {
+    "runControlStarted": {
+      "fileSha256": "499aa7490bb88d1f399978f22c111f3d647d6c39c357ccaea7f0930a094ff9d6",
+      "recordContentSha256": "6d7a68e21fe728f84eb56db5dcd9e87febd5b176c92dc7425658b77dfc56627a"
+    },
+    "runControlResult": {
+      "fileSha256": "90c331f6a025fc328f9735bd9b9e6f87b7841471c8a36c53e211d5d06ec9a54e",
+      "recordContentSha256": "7a6a79a6239ab54f09ad5a9ad94548d0bc41a58ca7ea82a69e2d8a98927dc1a7"
+    },
+    "operationalManifest": {
+      "fileSha256": "333adb3e5bee4449125016fef50834a4835f212c049f703ea1ae141b0b38e241",
+      "recordContentSha256": "0fbcd0c0357bf3731f49a51be76dcfc4d4e142eb1d541d2bf729c506fab6f50f"
+    },
+    "realizedCgroupTopology": {
+      "fileSha256": "8b8b3f195d6ed50d8c600987cdd9ca141ce35c370d0f79d5609557b4bca8be40",
+      "recordContentSha256": "41ff03e648a77a99aa49efa160f11ca1ad19c0c9499cea3483481ef8703c511d"
+    },
+    "constructionReceipts": [
+      {
+        "caseOrdinal": 1,
+        "fileSha256": "15cc08c19d74e0139ed5e66cc51b97b616dca37c29a63c724309d3711bcd92c8",
+        "recordContentSha256": "c5fd3375390d14f3f2666646dc08431cee60dabf5a75a252ca355563e6271c58"
+      },
+      {
+        "caseOrdinal": 2,
+        "fileSha256": "2a0f2610bd00355e4299634454439ec4811788c9bf89a6977ff6c5b5f4e3b988",
+        "recordContentSha256": "3613d8ee6cf120d5ea24ef0590f81568d82651f3bb90f67641a14f83891509b3"
+      }
+    ],
+    "portfolioFreeze": {
+      "fileSha256": "6d4fb2d56819234e354b0055bca3ac200fea003077f615bea4e8ada863ffe3a1",
+      "recordContentSha256": "e9e3028c45733322e17fbf85f37090d45de6a85612fa1fbdf64e1baadf0e1f62"
+    },
+    "compatibilityReceipts": [
+      {
+        "caseOrdinal": 1,
+        "fileSha256": "4af0382f06acb58b00acf08444cbfca860f55a0d8a84faaef1dd998ad7b7ef53"
+      },
+      {
+        "caseOrdinal": 2,
+        "fileSha256": "4cfff5837307d889fd0cdc1219095520a3d133849dd0223f62a30cd994ab54e3"
+      }
+    ],
+    "casePreparationCleanupSummaries": [
+      {
+        "caseOrdinal": 1,
+        "fileSha256": "dce58060f62933f6ed42bfd34109365edaec40150b4d9af580ee15b36135175e",
+        "recordContentSha256": "9e750ab145c16e91da82ea1f21bdb27db48d40748e974c483e8676383da76b3e"
+      },
+      {
+        "caseOrdinal": 2,
+        "fileSha256": "f590c759beba3d322759db7cc6e42f08c6674b9a0433772870e1d5c7375d97c5",
+        "recordContentSha256": "d3374c4758ad1bf5459ef298323392c136dcfb259b2bce4e266537627130d287"
+      }
+    ],
+    "unstartedArmCleanupReceipts": [
+      {
+        "caseOrdinal": 1,
+        "arm": "runtime_enabled",
+        "fileSha256": "89761060d4d907d89513a60e9ecd4a0004cd10f85518188267038873cf13b0a1"
+      },
+      {
+        "caseOrdinal": 1,
+        "arm": "code_only",
+        "fileSha256": "922d36a5eb2e40ca35b0cd286afebd2b5d72fbe33ce04bd911c2cefdd58de154"
+      },
+      {
+        "caseOrdinal": 2,
+        "arm": "runtime_enabled",
+        "fileSha256": "e70b5ac235ea32d08a603650d2c939ec8314dd4e451fc813870f5c1b0c8d8fc5"
+      },
+      {
+        "caseOrdinal": 2,
+        "arm": "code_only",
+        "fileSha256": "9af7194ba17c4b9ff6e820365b448959da67a88a0a918b36d617ac8e233a1e21"
+      }
+    ]
+  },
+  "claimAssessment": {
+    "runtimeUseObserved": false,
+    "runtimeAdvantageEstablished": false,
+    "pairedComparisonCompleted": false,
+    "targetClaimSupportedByR3": false,
+    "r2CounterevidenceStillApplies": true,
+    "reason": "R3 failed before any Agent and before the shared no-Agent preflight produced a receipt, so neither arm ran and no runtime-use evidence or candidate exists. Separately, R2 retained a code-only candidate accepted by its formal hidden evaluator 9/9; R3 does not erase that counterevidence."
+  },
+  "archiveExclusions": {
+    "hiddenMutationBytesArchived": false,
+    "hiddenEvaluatorBytesArchived": false,
+    "absolutePrivatePathsArchived": false,
+    "credentialsOrAuthMaterialArchived": false,
+    "rawModelRequestsArchived": false,
+    "rawAssistantProseArchived": false,
+    "rawPiSessionArchived": false,
+    "rawPrivateSourceRecordsArchived": false
+  },
+  "auditedAt": "2026-08-15T08:02:57Z",
+  "recordContentSha256": "2fd63d46ebab51ea5cf7c640904e577bdab00844504ba9b40a4f7e150a8ac1d2"
+}

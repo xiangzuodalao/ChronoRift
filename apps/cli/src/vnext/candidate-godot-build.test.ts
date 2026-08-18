@@ -157,6 +157,40 @@ describe("Project Environment candidate collection", () => {
       collectCandidateGodotSourceV1(workspace, "project-environment"),
     ).rejects.toBeInstanceOf(Error);
   });
+
+  it("admits @tool only under tracked-tool-scripts-v1 and still rejects EditorPlugin", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-candidate-"),
+    );
+    roots.push(workspace);
+    await writeFile(join(workspace, "project.godot"), "[application]\n");
+    const script = join(workspace, "tool_script.gd");
+    await writeFile(script, "@tool\nextends Node\n");
+
+    await expect(
+      collectCandidateGodotSourceV1(workspace, "project-environment"),
+    ).rejects.toBeInstanceOf(Error);
+    await expect(
+      collectCandidateGodotSourceV1(
+        workspace,
+        "project-environment",
+        "tracked-tool-scripts-v1",
+      ),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ relativePath: "tool_script.gd" }),
+      ]),
+    );
+
+    await writeFile(script, "@tool\nextends EditorPlugin\n");
+    await expect(
+      collectCandidateGodotSourceV1(
+        workspace,
+        "project-environment",
+        "tracked-tool-scripts-v1",
+      ),
+    ).rejects.toBeInstanceOf(Error);
+  });
 });
 
 describe("Project Environment candidate Build binding", () => {

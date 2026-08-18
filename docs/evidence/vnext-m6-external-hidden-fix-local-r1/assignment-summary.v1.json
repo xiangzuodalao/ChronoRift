@@ -1,0 +1,29 @@
+{
+  "assignmentId": "m6-assignment:346413c0071fb0492b6f4368",
+  "createdAt": "2026-08-14T17:06:34.710Z",
+  "mutatedBaselineSelectedTreeSha256": "57d93349c41eb47917f4d361300151a1703e4260679bcef87cd977adfbc077fc",
+  "pristineSelectedTreeSha256": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+  "privateInputIdentities": {
+    "evaluatorBundleSha256": "ee3546ea519c3e382f22e2fed24dfcaa774ef91769f2618d3a01f5b99e879243",
+    "evaluatorImplementationSha256": "e97461cf0011280894715ff3be92e2428b27fa99f8b2eed105b3c886b52753b5",
+    "mutationSha256": "497af4ea057f3a2a1fdf15124e99612a4e36adc6ca8dce39eeefa7ec2bb73a42"
+  },
+  "publicTaskSpecSha256": "ea1fbdfa69391db4d4be76616d4e929c21737ef7e553858ca84aeaaa91e696e6",
+  "recordKind": "external-hidden-fix-assignment-sanitized-summary",
+  "sanitization": {
+    "omittedFields": [
+      "baselineRoot",
+      "evaluatorBundlePath",
+      "evaluatorImplementationPath",
+      "mutationPath"
+    ],
+    "reason": "Host-only absolute paths are not part of the public archive; hidden bytes are represented only by their frozen SHA-256 identities."
+  },
+  "schemaVersion": 1,
+  "sourceArtifact": {
+    "fileSha256": "551f7e31dc466264c5a06da4d188e580d7b609ce0b15887bbac8935f3e0378c2",
+    "recordContentSha256": "82f7ba5b3498c933e37183e71a4a1b25a28b52acedf417fda1cdc79b9bb96132"
+  },
+  "subjectProjectSha256": "7ca5e19397aa1c7eada15ebd0dc66a8256305d192d24e78bc28d04f2e0b73b1d",
+  "taskBlindAdapterSha256": "f8243ac56ed0a2d9d2b0d9357ed9d858accb9965a4052cb170d59cb702a3793a"
+}

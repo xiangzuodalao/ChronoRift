@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "m7-r4-formal-campaign-infrastructure-failure-sanitized-payload",
+  "classification": "sanitized_operator_read_only_projection",
+  "formalAttempt": {
+    "attemptOrdinal": 1,
+    "onlyFormalR4AttemptObserved": true,
+    "startedAt": "2026-08-15T17:21:41.939Z",
+    "completedAt": "2026-08-15T17:29:41.458Z",
+    "commandStatus": "completed",
+    "commandExitCode": 0,
+    "workflowCompleted": true,
+    "workflowCompletionIsExperimentalSuccess": false,
+    "campaignTerminalCount": 0,
+    "retryOrRerollPerformed": false
+  },
+  "noAgentPreflight": {
+    "status": "passed",
+    "passedCaseCount": 2,
+    "denominatorCaseCount": 2,
+    "agentLaunchCount": 0,
+    "piSessionCount": 0,
+    "providerInvocationCount": 0
+  },
+  "cases": [
+    {
+      "caseOrdinal": 1,
+      "constructionOutcome": "passed",
+      "constructionReceiptContentSha256": "f0c699a464d47e52b084b71d79a61cc33fd38ef805a45c1d3da545911bf82b94",
+      "preflightOutcome": "passed",
+      "preflightReceiptContentSha256": "05cd441e88eef45fadc92384bd87077ec9874aeaa1418ef8023ffaabc48362fa",
+      "portfolioDisposition": "campaign_infrastructure_failure",
+      "campaignFailureStage": "campaign_gate",
+      "errorClassSha256": "54a0e8c17ebb21a11f8a25b8042786ef7efe52441e6cc87e92c67e0c4c0c6e78",
+      "errorClass": "Error",
+      "agentStarted": false,
+      "cleanupProven": true,
+      "sandboxSafetyFailure": false,
+      "campaignTerminalPersisted": false,
+      "runtimeEnabled": {
+        "claimPersisted": false,
+        "resultPersisted": false,
+        "candidatePersisted": false,
+        "trajectoryUseEvidencePersisted": false,
+        "candidateEvaluatorEvidencePersisted": false,
+        "unstartedCleanupProven": true,
+        "unstartedCleanupContentSha256": "4602b4e4c502852fce87833773e64fa2d6e0618e235c9b7bdafe02fe06deb6dc"
+      },
+      "codeOnly": {
+        "claimPersisted": false,
+        "resultPersisted": false,
+        "candidatePersisted": false,
+        "trajectoryUseEvidencePersisted": false,
+        "candidateEvaluatorEvidencePersisted": false,
+        "unstartedCleanupProven": true,
+        "unstartedCleanupContentSha256": "bd73cb8bcda93661ac32c83bd5a593f2ac4fc9861cbae85f0ddf2f521f79769c"
+      }
+    },
+    {
+      "caseOrdinal": 2,
+      "constructionOutcome": "passed",
+      "constructionReceiptContentSha256": "1c4ea377d362d7b6e95bfa218c784f1514438039b306fa10bb83569824c64c84",
+      "preflightOutcome": "passed",
+      "preflightReceiptContentSha256": "c693324f3e90ea40a28bacf948486ed6f21ca1231c01e38ff34e0ef1b63b94b6",
+      "portfolioDisposition": "campaign_infrastructure_failure",
+      "campaignFailureStage": "campaign_gate",
+      "errorClassSha256": "54a0e8c17ebb21a11f8a25b8042786ef7efe52441e6cc87e92c67e0c4c0c6e78",
+      "errorClass": "Error",
+      "agentStarted": false,
+      "cleanupProven": true,
+      "sandboxSafetyFailure": false,
+      "campaignTerminalPersisted": false,
+      "runtimeEnabled": {
+        "claimPersisted": false,
+        "resultPersisted": false,
+        "candidatePersisted": false,
+        "trajectoryUseEvidencePersisted": false,
+        "candidateEvaluatorEvidencePersisted": false,
+        "unstartedCleanupProven": true,
+        "unstartedCleanupContentSha256": "aae29d1ce4011407477d018a78da88ac9e313f817ea3d991e76bdb0a14df67af"
+      },
+      "codeOnly": {
+        "claimPersisted": false,
+        "resultPersisted": false,
+        "candidatePersisted": false,
+        "trajectoryUseEvidencePersisted": false,
+        "candidateEvaluatorEvidencePersisted": false,
+        "unstartedCleanupProven": true,
+        "unstartedCleanupContentSha256": "f30a3750c46cda115eca83fca964c2b7f57b7e493c892f939fbc969e26214b02"
+      }
+    }
+  ],
+  "persistenceInventory": {
+    "constructionReceiptCount": 2,
+    "preflightReceiptCount": 2,
+    "portfolioFreezeCount": 1,
+    "caseReferenceCount": 2,
+    "portfolioSummaryCount": 1,
+    "campaignInfrastructureFailureCount": 2,
+    "campaignTerminalCount": 0,
+    "armClaimCount": 0,
+    "armResultCount": 0,
+    "candidateCount": 0,
+    "trajectoryUseEvidenceCount": 0,
+    "candidateEvaluatorEvidenceCount": 0
+  },
+  "cleanupBoundary": {
+    "casePreparationCleanupSummaryCount": 2,
+    "allCasePreparationCleanupSummariesProven": true,
+    "unstartedArmCleanupReceiptCount": 4,
+    "allUnstartedArmCleanupReceiptsProven": true,
+    "allCampaignFailureCleanupProven": true,
+    "postExitActivityResidualCount": 0,
+    "postExitActivityScopes": [
+      "matching_processes",
+      "matching_mounts",
+      "matching_containers",
+      "populated_protocol_cgroups"
+    ],
+    "retainedEmptyMountpointStubs": [
+      {
+        "scope": "case-01/materials",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      },
+      {
+        "scope": "case-01/sensor",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      },
+      {
+        "scope": "case-02/materials",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      },
+      {
+        "scope": "case-02/sensor",
+        "owner": "root:root",
+        "mode": "0755",
+        "linkCount": 2,
+        "entryCount": 0
+      }
+    ],
+    "claimLimit": "The four empty stubs are retained filesystem entries, not active processes, mounts, containers, or populated cgroups. Activity residual zero does not mean filesystem entry count zero."
+  },
+  "rootCauseAttribution": {
+    "classification": "static_pre_fix_source_and_repair_diff_attribution",
+    "exactDefect": "Pre-fix campaign preparation populated claim.binding.publicTaskSpecSha256 with the arm-specific Task hash instead of the paired public contract hash.",
+    "correctInvariant": "The campaign claim binds the paired public contract; pairedAttemptBinding.publicTaskSpecSha256 remains arm-specific.",
+    "retainedFailureEvidence": "Each retained record stores campaign_gate and SHA-256 of the Error class only; it stores no raw error message or stack.",
+    "causalBoundary": "The exact mapping defect is established by static inspection and the repair diff. It is not independently recoverable from the retained failure record alone."
+  },
+  "sourceRecordBindings": {
+    "runControlStarted": {
+      "fileSha256": "9cb1e5206d2506db0ed9e73f90c543bee769aca5c4e0886b92e96943d1f80fcc",
+      "recordContentSha256": "31419b7f6555191b09e1ec1c094e508498de22953745cb4af6b19e86079d0ca4"
+    },
+    "runControlResult": {
+      "fileSha256": "dd12b3a950829668f46944d5973acb5ceededfa33cfabaaf3dd800cba28ca70e",
+      "recordContentSha256": "2b22fc9cbd4e43beeae6d291165b661261eea1e841ce7604219b98f011260512"
+    },
+    "noAgentPreflightTerminal": {
+      "fileSha256": "3b770b93bd257a8b5dbcac5f3233b53a98e70bb11d54668c772c09e2a65a9a4b",
+      "recordContentSha256": "9360c32542b3b781006d8dcbd9a39e37836b9cb50a2b0dcf134bfbf504a9be23"
+    },
+    "portfolioFreeze": {
+      "fileSha256": "0b64362006144e3550a0a228998c9274c6b9a4c9b196b57a928429efed6f2317",
+      "recordContentSha256": "cb4cf44fe8e35f046dcdcb332ecbc86bdc1bfa4422b9eb0e46212cd434a83f42"
+    },
+    "caseReferences": [
+      {
+        "caseOrdinal": 1,
+        "fileSha256": "aaef4a7c9638ce0d9c9d6edbc078a9542bdb16d269020e1c33a65e4ffc03e263",
+        "recordContentSha256": "3c42dafbcc87091dc1e454d0e048862cdc64be2bc1f5b741bbeb43ffd6d9a97c"
+      },
+      {
+        "caseOrdinal": 2,
+        "fileSha256": "833fb8591e6c86a6186a453d9f49e00ef9e7faad1c729e9a62697cc718587cb6",
+        "recordContentSha256": "22d6d677ba7e2c6584c6db5ddfe2e5bd91bb4dd822ff7aaa1928c4f6e9b3b925"
+      }
+    ],
+    "portfolioSummary": {
+      "fileSha256": "67b86d7b7714837286548264f845c34f0c17f4de208529c2d5a4e58b36de2b76",
+      "recordContentSha256": "629add4166270ff9b5b5b3da6b6d3066957864db0b5a4d82726b8bfe8ef24fd8"
+    },
+    "campaignInfrastructureFailures": [
+      {
+        "caseOrdinal": 1,
+        "fileSha256": "06a656a615156d0da7f5915befd49cc3a964cee7445e5f4a51fb96a519cd17f3",
+        "logicalContentSha256": "da95d8d00c7620e11911bb4efdcefcfebe9d3fe0c1737b4d8f5d30401296c17d"
+      },
+      {
+        "caseOrdinal": 2,
+        "fileSha256": "dce4668048be664f71bd5a9b2d7b05edc73910bd0591703201ffe6ce0f833219",
+        "logicalContentSha256": "c1e9bc37ee6e0d0e249084bc26ad57e4b41bdd7eb5503c05ee0cf245e487a821"
+      }
+    ]
+  },
+  "claimAssessment": {
+    "runtimeUseObserved": false,
+    "runtimeAdvantageEstablished": false,
+    "pairedComparisonCompleted": false,
+    "targetClaimSupportedByR4": false,
+    "reason": "Both cases failed in campaign_gate before either arm claim or Agent start. No arm result, candidate, trajectory-use evidence, or candidate-evaluator evidence exists."
+  },
+  "priorRoundBoundary": {
+    "r2": "R2 retained a code-only candidate accepted by its formal hidden evaluator 9/9, while its runtime arm failed at infrastructure level; R2 does not support runtime advantage.",
+    "r3": "R3 failed before completing shared no-Agent preflight and before either Agent arm; it produced no paired comparison and does not support runtime advantage.",
+    "r4": "R4 passed no-Agent preflight for 2/2 cases but both campaigns failed before Agent claims; it adds no differential result and does not replace R2 or R3."
+  },
+  "archiveExclusions": {
+    "hiddenMutationBytesArchived": false,
+    "hiddenEvaluatorBytesArchived": false,
+    "absolutePrivatePathsArchived": false,
+    "credentialsOrAuthMaterialArchived": false,
+    "rawModelRequestsArchived": false,
+    "rawAssistantProseArchived": false,
+    "rawPiSessionArchived": false,
+    "rawPrivateSourceRecordsArchived": false
+  },
+  "auditedAt": "2026-08-15T17:44:21Z",
+  "recordContentSha256": "be58bb75eae8afa019a99a82fdd3a8384d48cbf8537fa4bf388990341a9ed8de"
+}

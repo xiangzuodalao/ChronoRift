@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "m7-runtime-use-ablation-local-run-control-summary",
+  "r2FormalCommand": {
+    "attemptOrdinal": 1,
+    "startedAt": "2026-08-14T22:47:41.674Z",
+    "completedAt": "2026-08-14T22:55:39.599Z",
+    "exitCode": 0,
+    "status": "completed",
+    "startedRecordContentSha256": "de4e0629868f81c0e57174b5e6158044e025f1f9811cba144d39fe65992b1807",
+    "resultRecordContentSha256": "2fcba9edf2a7df96c54ef0dafd7d52c9c02de7f7e7576fe0cf5d0b010aa84ea1",
+    "exitZeroMeaning": "The formal wrapper completed and persisted a campaign terminal; it does not mean the experimental target claim passed."
+  },
+  "r2PostExitInspection": {
+    "matchingGodotBwrapVitestOrM7Processes": 0,
+    "matchingFormalContainers": 0,
+    "matchingChronoRiftCgroups": 0,
+    "matchingR2Mounts": 0,
+    "evaluatorTemporaryRootEmpty": true,
+    "runtimeEnabledPatchRootEmpty": true,
+    "runtimeEnabledAgentResourceRootEmpty": true,
+    "codeOnlyAgentResourceRootEmpty": true
+  },
+  "r1RetainedHistory": {
+    "classification": "two_pre_agent_command_failures_no_agent_no_campaign",
+    "rewrittenForR2": false,
+    "agentLaunchCount": 0,
+    "campaignCreated": false,
+    "initialCommandExitCode": 1,
+    "recoveryCommandExitCode": 1,
+    "rawRecordSha256": {
+      "started.v1.json": "e6a669d07e3bee1b1a44c45037c7f54537f97dde23bbd37617d539ccbd5e53aa",
+      "command-result.v1.json": "2885d365310cdf26dd30b845b070dc9080478e985489afbe120916889946caff",
+      "pre-agent-recovery-started.v1.json": "d153177693083ef5c7979fc25a98bbe4ebc74ff2cdd6a8b6ed055fa637531bb8",
+      "pre-agent-recovery-result.v1.json": "0cc703e0dcc1c10072433a92139af4bfd11c3c5c5e2b32eccc77226f6a9eb099"
+    }
+  },
+  "auditedAt": "2026-08-14T23:06:56.386Z"
+}

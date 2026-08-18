@@ -25,7 +25,19 @@ export const isProjectEnvironmentSensitivePathV1 = (
   );
 };
 
+export type ProjectEnvironmentGdscriptPolicyV1 = "tracked-tool-scripts-v1";
+
+export const hasProjectEnvironmentToolAnnotationV1 = (
+  source: string,
+): boolean => /^\s*@tool\b/mu.test(source);
+
+export const hasProjectEnvironmentEditorPluginV1 = (source: string): boolean =>
+  /^\s*extends\s+EditorPlugin\b/mu.test(source);
+
 export const hasProjectEnvironmentDeferredGdscriptFeatureV1 = (
   source: string,
+  gdscriptPolicy?: ProjectEnvironmentGdscriptPolicyV1,
 ): boolean =>
-  /^\s*@tool\b/mu.test(source) || /^\s*extends\s+EditorPlugin\b/mu.test(source);
+  hasProjectEnvironmentEditorPluginV1(source) ||
+  (gdscriptPolicy !== "tracked-tool-scripts-v1" &&
+    hasProjectEnvironmentToolAnnotationV1(source));

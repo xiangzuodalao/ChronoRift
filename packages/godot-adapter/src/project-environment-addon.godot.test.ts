@@ -374,7 +374,7 @@ func create_modules() -> Dictionary:
             runtimeErrors.push(record.payload.message);
           }
         }
-        await runtime.acknowledgeObservationBatch(batch, 8);
+        await runtime.acknowledgeObservationBatch(batch, 1);
       }
       expect([...observed], runtimeErrors.join("; ")).toContain(
         "entity_lifecycle",

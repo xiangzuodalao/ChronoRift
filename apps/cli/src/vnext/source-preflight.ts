@@ -26,6 +26,7 @@ import {
 import {
   hasProjectEnvironmentDeferredGdscriptFeatureV1,
   isProjectEnvironmentSensitivePathV1,
+  type ProjectEnvironmentGdscriptPolicyV1,
 } from "./project-environment-source-policy.js";
 import {
   loadTrustedFixtureCatalog,
@@ -68,6 +69,7 @@ export interface CleanExternalGodotProjectPreflightRequest {
 export interface CleanProjectEnvironmentPreflightRequestV1 {
   readonly projectPath: string;
   readonly sourceRepositoryExclusionRoots: readonly string[];
+  readonly gdscriptPolicy?: ProjectEnvironmentGdscriptPolicyV1;
 }
 
 export interface VerifiedGitTreeEntry {
@@ -637,7 +639,7 @@ const readVerifiedGitBlob = async (input: {
   }
 };
 
-const projectEnvironmentMainScene = (input: Uint8Array): string => {
+const projectEnvironmentConfiguredMainScene = (input: Uint8Array): string => {
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(input);
@@ -666,10 +668,82 @@ const projectEnvironmentMainScene = (input: Uint8Array): string => {
   return mainScene;
 };
 
+const normalizedProjectResourcePath = (relativePath: string): string => {
+  const reference = `res://${relativePath}`;
+  if (
+    reference.length > 1_024 ||
+    !/^res:\/\/[A-Za-z0-9_./@+ -]+$/u.test(reference) ||
+    reference.includes("\\") ||
+    reference.includes("\0") ||
+    relativePath
+      .split("/")
+      .some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    return sourceFeatureUnsupported(
+      "tracked UID main scene does not have a normalized adapter resource path",
+    );
+  }
+  return reference;
+};
+
+const resolveProjectEnvironmentMainSceneV1 = async (input: {
+  readonly configuredMainScene: string;
+  readonly git: HostGitPort;
+  readonly repositoryRoot: string;
+  readonly entries: readonly VerifiedGitTreeEntry[];
+}): Promise<string> => {
+  if (input.configuredMainScene.startsWith("res://")) {
+    return normalizedProjectResourcePath(
+      input.configuredMainScene.slice("res://".length),
+    );
+  }
+  if (!/^uid:\/\/[a-z0-9]{1,128}$/u.test(input.configuredMainScene)) {
+    return sourceFeatureUnsupported(
+      "project.godot configures an invalid bounded main-scene UID",
+    );
+  }
+
+  const matches: string[] = [];
+  for (const entry of input.entries) {
+    if (!entry.relativePath.endsWith(".tscn")) continue;
+    const bytes = await readVerifiedGitBlob({
+      git: input.git,
+      repositoryRoot: input.repositoryRoot,
+      entry,
+    });
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch (error) {
+      return sourceFeatureUnsupported(
+        `tracked scene ${entry.relativePath} must be valid UTF-8`,
+        error,
+      );
+    }
+    const firstLineEnd = text.search(/[\r\n]/u);
+    const header = firstLineEnd < 0 ? text : text.slice(0, firstLineEnd);
+    if (!header.startsWith("[gd_scene ") || !header.endsWith("]")) continue;
+    const declaredUid =
+      /(?:^|\s)uid="(uid:\/\/[a-z0-9]{1,128})"(?:\s|\]$)/u.exec(header)?.[1];
+    if (declaredUid === input.configuredMainScene) {
+      matches.push(normalizedProjectResourcePath(entry.relativePath));
+    }
+  }
+  if (matches.length !== 1) {
+    return sourceFeatureUnsupported(
+      matches.length === 0
+        ? "tracked main-scene UID could not be resolved to one .tscn resource"
+        : "tracked main-scene UID resolves to multiple .tscn resources",
+    );
+  }
+  return matches[0] ?? sourceFeatureUnsupported("resolved main scene vanished");
+};
+
 const assertProjectEnvironmentSourceProfileV1 = async (input: {
   readonly git: HostGitPort;
   readonly repositoryRoot: string;
   readonly entries: readonly VerifiedGitTreeEntry[];
+  readonly gdscriptPolicy?: ProjectEnvironmentGdscriptPolicyV1;
 }): Promise<"4.7.1"> => {
   let requestedVersion = "4.7.1" as const;
   for (const entry of input.entries) {
@@ -710,9 +784,16 @@ const assertProjectEnvironmentSourceProfileV1 = async (input: {
           );
         }
         requestedVersion = "4.7.1";
-      } else if (hasProjectEnvironmentDeferredGdscriptFeatureV1(text)) {
+      } else if (
+        hasProjectEnvironmentDeferredGdscriptFeatureV1(
+          text,
+          input.gdscriptPolicy,
+        )
+      ) {
         return sourceFeatureUnsupported(
-          "PE-A defers @tool scripts and EditorPlugin to a later source/import slice",
+          input.gdscriptPolicy === "tracked-tool-scripts-v1"
+            ? "PE-A tracked-tool-scripts-v1 still defers EditorPlugin"
+            : "PE-A defers @tool scripts and EditorPlugin unless tracked-tool-scripts-v1 is explicitly selected",
         );
       }
     }
@@ -925,6 +1006,9 @@ export async function preflightCleanProjectEnvironmentV1(
         git,
         repositoryRoot: inspected.repositoryRoot,
         entries: inspected.entries,
+        ...(request.gdscriptPolicy === undefined
+          ? {}
+          : { gdscriptPolicy: request.gdscriptPolicy }),
       },
     );
     if (inspected.projectFileBytes === undefined) {
@@ -932,7 +1016,15 @@ export async function preflightCleanProjectEnvironmentV1(
         "tracked project.godot bytes are unavailable",
       );
     }
-    const mainScene = projectEnvironmentMainScene(inspected.projectFileBytes);
+    const configuredMainScene = projectEnvironmentConfiguredMainScene(
+      inspected.projectFileBytes,
+    );
+    const mainScene = await resolveProjectEnvironmentMainSceneV1({
+      configuredMainScene,
+      git,
+      repositoryRoot: inspected.repositoryRoot,
+      entries: inspected.entries,
+    });
     const identityContent = {
       schemaVersion: 1 as const,
       sourceKind: "project-environment-v1-clean-git" as const,

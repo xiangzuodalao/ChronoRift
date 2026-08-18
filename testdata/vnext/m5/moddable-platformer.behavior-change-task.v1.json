@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "specKind": "chronorift-m5-public-exposed-behavior-change-task",
+  "taskClassification": "public_exposed_behavior_change_conformance",
+  "source": {
+    "declaredUrl": "https://github.com/endlessm/moddable-platformer",
+    "headCommit": "3e793f53598a131c53fb82555191cc14b8db07ff",
+    "gitTreeObjectId": "a013bd677c712dbf354e8e2f6e8ff7c53d5684c6",
+    "selectedTreeSha256": "3e8bd6478d53586284010da38959005e2a377ef6277b2a838ecb1538abc096e8",
+    "descriptorRawSha256": "534dcd8aa14aeea74685059f8d66e44e5bebe21742b7a702ee7d78e91e1a955e",
+    "projectCapabilitySha256": "5fcb49b2a8dc64e7f38af7c26e630dec67799bf0dd1a713310baefac32c58836"
+  },
+  "semanticProfile": {
+    "taskProfile": "godot-external-semantic-v1",
+    "protocolProfile": "chronorift-godot-semantic-v1",
+    "adapterProfileRawSha256": "1ca17b9f3fff8556d5fa260331929126ba54e18518de2d2386562b230327238b",
+    "adapterProfileCanonicalSha256": "2600ae0d42a463d78a7c74b987799e74e7391c254f806ddbcc86b2256591f0e4",
+    "targetScene": "res://components/spawner/enemy_spawner_broken.tscn",
+    "toolNames": [
+      "game_capabilities",
+      "game_launch",
+      "game_status",
+      "game_stop",
+      "game_query",
+      "game_checkpoint_create",
+      "game_checkpoint_restore",
+      "game_fork",
+      "game_trace_create",
+      "game_trace_replay",
+      "game_compare"
+    ]
+  },
+  "agentBudget": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "attemptsMaximum": 1,
+    "turnsPerAttemptMaximum": 1,
+    "toolCallsMaximum": 128,
+    "wallTimeMsMaximum": 900000,
+    "taskSandboxNetworkMode": "denied",
+    "hostModelNetworkAuthorization": "provider_only",
+    "taskCredentialMountCountMaximum": 0
+  },
+  "toolchain": {
+    "nodeVersion": "v22.23.1",
+    "godotVersion": "4.7.1.stable.official.a13da4feb"
+  },
+  "prompt": "Work on the pinned external Godot project. Reproduce the public behavior problem in res://components/spawner/enemy_spawner_broken.tscn: enemies spawn much sooner than its configured one-second interval. Mandatory evidence checkpoint: game_capabilities or a build response alone is not a baseline execution. Before the first source-file write, actually launch and observe the untouched initial workspace. That unchanged-source execution must record a Timer wait time at or below 0.01 seconds and a spawn-present observation endpoint. It must ultimately be sealed and cleanup-proven; turn-completion cleanup may do so. It cannot be reconstructed after editing, and the Gate rejects candidate-only runs. Investigate the project and independently modify actual tracked GDScript to change this behavior; do not assume a particular cause or edit from this task text. From the final changed source, run a candidate that records a Timer wait time from 0.9 through 1.1 seconds, spawn-absent ready and early observation endpoints through 0.25 seconds, and a spawn-present later observation endpoint at or after 0.9 seconds. These are observation endpoint states, not exact spawn timestamps; there is no upper endpoint deadline tied to Agent response latency. Once both observations and the tracked change exist, finish promptly; turn-completion cleanup may seal active runtimes. Do not add or modify addons, generated caches, or native extensions. Leave reviewable candidate changes for patch export, with both required executions sealed by turn completion.",
+  "behaviorContract": {
+    "baseline": {
+      "timerWaitTimeSecondsMaximum": 0.01,
+      "minimumObservedSpawnOrdinal": 1
+    },
+    "candidate": {
+      "timerWaitTimeSecondsMinimum": 0.9,
+      "timerWaitTimeSecondsMaximum": 1.1,
+      "earlyObservationWindowUs": 250000,
+      "maximumEarlyTimeoutOrdinal": 0,
+      "laterObservationMinimumUs": 900000,
+      "minimumLaterTimeoutOrdinal": 1
+    }
+  },
+  "patchContract": {
+    "requiredChangedSuffix": ".gd",
+    "requireNonempty": true,
+    "requireFullIndexBinaryRoundTrip": true,
+    "forbiddenPathPrefixes": [".chronorift/", ".godot/", "addons/"]
+  },
+  "claimsExcluded": [
+    "correctness",
+    "independent_acceptance",
+    "intelligent_diagnosis",
+    "causality",
+    "generalization",
+    "reliability",
+    "success_rate",
+    "relative_advantage",
+    "arbitrary_project_support",
+    "root_cause_correctness"
+  ]
+}

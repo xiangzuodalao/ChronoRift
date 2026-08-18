@@ -40,6 +40,7 @@ import {
 import {
   hasProjectEnvironmentDeferredGdscriptFeatureV1,
   isProjectEnvironmentSensitivePathV1,
+  type ProjectEnvironmentGdscriptPolicyV1,
 } from "./project-environment-source-policy.js";
 import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
 import {
@@ -196,6 +197,7 @@ const collectCandidate = async (
   workspaceDirectory: string,
   policy:
     "m3-fixture" | "external-lifecycle" | "project-environment" = "m3-fixture",
+  gdscriptPolicy?: ProjectEnvironmentGdscriptPolicyV1,
 ): Promise<readonly SelectedTreeEntryV1[]> => {
   const root = resolve(workspaceDirectory);
   const inspectedRoot = await lstat(root, { bigint: true });
@@ -327,10 +329,12 @@ const collectCandidate = async (
           }
           if (
             relativePath.endsWith(".gd") &&
-            hasProjectEnvironmentDeferredGdscriptFeatureV1(text)
+            hasProjectEnvironmentDeferredGdscriptFeatureV1(text, gdscriptPolicy)
           ) {
             throw new TypeError(
-              `Project Environment candidate defers @tool and EditorPlugin scripts: ${relativePath}`,
+              gdscriptPolicy === "tracked-tool-scripts-v1"
+                ? `Project Environment candidate still defers EditorPlugin scripts: ${relativePath}`
+                : `Project Environment candidate defers @tool and EditorPlugin scripts unless tracked-tool-scripts-v1 is explicitly selected: ${relativePath}`,
             );
           }
         }
@@ -376,8 +380,9 @@ const collectCandidate = async (
 export const collectCandidateGodotSourceV1 = (
   workspaceDirectory: string,
   profile: "m3-fixture" | "external-lifecycle" | "project-environment",
+  gdscriptPolicy?: ProjectEnvironmentGdscriptPolicyV1,
 ): Promise<readonly SelectedTreeEntryV1[]> =>
-  collectCandidate(workspaceDirectory, profile);
+  collectCandidate(workspaceDirectory, profile, gdscriptPolicy);
 
 const fixtureTreeHash = (
   files: readonly SelectedTreeEntryV1[],
@@ -713,11 +718,13 @@ export const prepareProjectEnvironmentGodotBuildV1 = async (input: {
   readonly adapter: ProjectAdapterRevisionV1;
   readonly toolchainArtifactDigest: Sha256DigestV1;
   readonly policyProfileDigest: Sha256DigestV1;
+  readonly gdscriptPolicy?: ProjectEnvironmentGdscriptPolicyV1;
   readonly now: string;
 }): Promise<PreparedProjectEnvironmentGodotBuildV1> => {
   const files = await collectCandidate(
     input.workspaceDirectory,
     "project-environment",
+    input.gdscriptPolicy,
   );
   const projectFile = files.find(
     (entry) => entry.relativePath === "project.godot",

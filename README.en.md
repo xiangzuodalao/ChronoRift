@@ -21,26 +21,7 @@ _Concept art for the product theme; not a UI screenshot, runtime capture, or pie
 
 ## Architecture at a glance
 
-```mermaid
-flowchart LR
-  USER[User goal] --> CLI[ChronoRift CLI]
-  MODEL[Model provider] <--> PI[Pi AgentSession<br/>Session and Agent Loop]
-  CLI --> PI
-  PI --> CODE[Brokered coding tools]
-  PI --> GAME[Versioned game tools]
-
-  subgraph TASK[Task sandbox]
-    WS[Managed /workspace]
-    GODOT[Godot + ProjectAdapter]
-    WS --> GODOT
-  end
-
-  CODE <--> WS
-  GAME <--> GODOT
-  CODE --> RECORDS[Diffs, outputs, receipts<br/>runtime records and lineage]
-  GODOT --> RECORDS
-  RECORDS -. review .-> ACCEPT[Project CI, external Eval<br/>or human acceptance]
-```
+![ChronoRift architecture overview: the Pi Loop reaches an isolated Task sandbox through a tool broker and leaves records for external acceptance](docs/assets/chronorift-architecture.png)
 
 `completed` means the Loop ended with reviewable candidate changes and execution records. It does not mean
 `verified`, `fixed`, or logically proved. Diffs, command output, tool results, and raw runtime records outrank the

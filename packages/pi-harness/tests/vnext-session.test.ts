@@ -17,6 +17,7 @@ import {
   PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
   PROJECT_ADAPTER_SKILL_V1_NAME,
   runVNextPiTurn,
+  VNEXT_CODING_ENVIRONMENT_APPENDIX,
   VNEXT_ENVIRONMENT_APPENDIX,
   VNEXT_PI_WORKSPACE_CWD,
 } from "../src/index.js";
@@ -180,6 +181,37 @@ describe("vNext Pi AgentSession host", () => {
     );
   });
 
+  it("provides a coding-only appendix without game or semantic runtime affordances", async () => {
+    expect(VNEXT_CODING_ENVIRONMENT_APPENDIX).toMatch(/task sandbox/u);
+    expect(VNEXT_CODING_ENVIRONMENT_APPENDIX).toMatch(
+      /checks you actually ran/u,
+    );
+    expect(VNEXT_CODING_ENVIRONMENT_APPENDIX).not.toMatch(
+      /ChronoRift|game|runtime|observation|resource IDs|checkpoint|capture|control/iu,
+    );
+    const root = await createRoot();
+    const captures: CreateAgentSessionOptions[] = [];
+
+    await runVNextPiTurn(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        prompt: "Investigate and fix the project bug.",
+        tools,
+        environmentProfile: "coding",
+      },
+      { createSession: fakeSessionFactory(captures) },
+    );
+
+    expect(captures[0]?.resourceLoader?.getAppendSystemPrompt()).toEqual([
+      VNEXT_CODING_ENVIRONMENT_APPENDIX,
+    ]);
+  });
+
   it("keeps Pi's Loop, resources, and persistence while exposing only the declared tools", async () => {
     const root = await createRoot();
     const captures: CreateAgentSessionOptions[] = [];
@@ -194,6 +226,9 @@ describe("vNext Pi AgentSession host", () => {
         thinkingLevel: "max",
         prompt: "Investigate and fix the timing bug.",
         tools,
+        providerRequestTimeoutMs: 60_000,
+        agentRetryMaxRetries: 1,
+        transport: "sse",
         onEvent: (event) => events.push(event),
       },
       { createSession: fakeSessionFactory(captures) },
@@ -219,6 +254,17 @@ describe("vNext Pi AgentSession host", () => {
     expect(captures[0]?.resourceLoader?.getAppendSystemPrompt()).toContain(
       VNEXT_ENVIRONMENT_APPENDIX,
     );
+    expect(captures[0]?.settingsManager?.getTransport()).toBe("sse");
+    expect(captures[0]?.settingsManager?.getHttpIdleTimeoutMs()).toBe(60_000);
+    expect(captures[0]?.settingsManager?.getRetrySettings()).toMatchObject({
+      enabled: true,
+      maxRetries: 1,
+    });
+    expect(captures[0]?.settingsManager?.getProviderRetrySettings()).toEqual({
+      timeoutMs: 60_000,
+      maxRetries: 0,
+      maxRetryDelayMs: 1_000,
+    });
     expect(captures[0]?.resourceLoader?.getAgentsFiles().agentsFiles).toEqual([
       expect.objectContaining({ content: "# Project guidance\n" }),
     ]);
@@ -365,4 +411,32 @@ describe("vNext Pi AgentSession host", () => {
     ).rejects.toThrow("provider request failed");
     expect(lifecycle).toEqual({ disposeCalls: 1, unsubscribeCalls: 1 });
   });
+
+  it.each([
+    [{ providerRequestTimeoutMs: 0 }, "providerRequestTimeoutMs"],
+    [{ providerRequestTimeoutMs: 600_001 }, "providerRequestTimeoutMs"],
+    [{ agentRetryMaxRetries: -1 }, "agentRetryMaxRetries"],
+    [{ agentRetryMaxRetries: 11 }, "agentRetryMaxRetries"],
+  ] as const)(
+    "rejects invalid provider request controls %#",
+    async (controls, message) => {
+      const root = await createRoot();
+      await expect(
+        runVNextPiTurn(
+          {
+            resourceWorkspaceDirectory: root.workspace,
+            sessionDirectory: root.sessions,
+            agentDir: root.agentDir,
+            modelRuntime,
+            model,
+            thinkingLevel: "max",
+            prompt: "Investigate the environment",
+            tools,
+            ...controls,
+          },
+          { createSession: fakeSessionFactory([]) },
+        ),
+      ).rejects.toThrow(message);
+    },
+  );
 });

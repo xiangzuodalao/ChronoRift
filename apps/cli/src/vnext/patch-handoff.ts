@@ -112,8 +112,16 @@ export interface ExtractExternalGodotTaskPatchRequest extends ExtractTaskPatchRe
   readonly projectCapability: TaskGodotProjectCapabilityV1;
 }
 
+export interface ExtractProjectEnvironmentTaskPatchRequest extends ExtractTaskPatchRequestCommon {
+  readonly sourceKind: "project-environment-v1";
+  readonly fixtureCapability?: undefined;
+  readonly projectCapability?: undefined;
+}
+
 export type ExtractTaskPatchRequest =
-  ExtractFixtureTaskPatchRequest | ExtractExternalGodotTaskPatchRequest;
+  | ExtractFixtureTaskPatchRequest
+  | ExtractExternalGodotTaskPatchRequest
+  | ExtractProjectEnvironmentTaskPatchRequest;
 
 interface ExtractionDependencies {
   readonly git?: PatchGitPort | undefined;
@@ -998,6 +1006,7 @@ const verifyRoundTrip = async (input: {
   readonly baselineSourceHash: Sha256DigestV1;
   readonly candidateSourceHash: Sha256DigestV1;
   readonly patch: FileHandle;
+  readonly patchByteLength: number;
   readonly hostTemporaryDirectory: OpenedDirectory;
 }): Promise<void> => {
   const verificationName = createUniqueName("verify");
@@ -1031,16 +1040,18 @@ const verifyRoundTrip = async (input: {
       gitDirectory: input.baselineContext.gitDirectory,
       workTree: verificationPath,
     };
-    await input.git.applyPatch({
-      context: verificationContext,
-      patch: input.patch,
-      checkOnly: true,
-    });
-    await input.git.applyPatch({
-      context: verificationContext,
-      patch: input.patch,
-      checkOnly: false,
-    });
+    if (input.patchByteLength > 0) {
+      await input.git.applyPatch({
+        context: verificationContext,
+        patch: input.patch,
+        checkOnly: true,
+      });
+      await input.git.applyPatch({
+        context: verificationContext,
+        patch: input.patch,
+        checkOnly: false,
+      });
+    }
     if ((await hashDirectoryTree(verification)) !== input.candidateSourceHash) {
       throw new M1Error(
         "artifact_write_failed",
@@ -1065,6 +1076,8 @@ export async function extractTaskPatch(
     );
   }
   const externalProfile = request.sourceKind === "godot-external-lifecycle-v1";
+  const projectEnvironmentProfile =
+    request.sourceKind === "project-environment-v1";
   let fixtureCapability: TaskFixtureCapabilityV1 | undefined;
   let projectCapability: TaskGodotProjectCapabilityV1 | undefined;
   if (externalProfile) {
@@ -1087,7 +1100,7 @@ export async function extractTaskPatch(
         "patch baseline does not match the frozen external Godot project capability",
       );
     }
-  } else {
+  } else if (!projectEnvironmentProfile) {
     const parsedFixtureCapability = TaskFixtureCapabilityV1Schema.safeParse(
       request.fixtureCapability,
     );
@@ -1103,7 +1116,9 @@ export async function extractTaskPatch(
   const ignoredRoots = validateIgnoredRoots(request.ignoredCachePaths);
   const frozenIgnoredCachePaths = externalProfile
     ? projectCapability!.ignoredCachePaths
-    : fixtureCapability!.ignoredCachePaths;
+    : projectEnvironmentProfile
+      ? [".chronorift", ".godot"]
+      : fixtureCapability!.ignoredCachePaths;
   if (
     ignoredRoots.length !== frozenIgnoredCachePaths.length ||
     ignoredRoots.some(
@@ -1177,7 +1192,7 @@ export async function extractTaskPatch(
       ignoredRoots,
       git,
       candidateContext,
-      !externalProfile,
+      !externalProfile && !projectEnvironmentProfile,
       externalProfile ? projectCapability?.projectFile : undefined,
     );
     if (externalProfile) {
@@ -1189,7 +1204,7 @@ export async function extractTaskPatch(
       }
       assertExternalGodotCandidatePolicy(candidate.entries, projectCapability);
       assertExternalGodotProjectConfigurationV1(candidate.projectFileBytes);
-    } else {
+    } else if (!projectEnvironmentProfile) {
       if (candidate.manifestBytes === undefined) {
         throw new M1Error(
           "source_configuration_mismatch",
@@ -1282,6 +1297,7 @@ export async function extractTaskPatch(
       baselineSourceHash: request.baselineSourceHash,
       candidateSourceHash,
       patch: patchHandle,
+      patchByteLength: patchReceipt.byteLength,
       hostTemporaryDirectory: hostTemporary,
     });
     const patchReadback = await readAndHashFile(

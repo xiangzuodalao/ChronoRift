@@ -113,6 +113,12 @@ import { ManagedGodotLifecycleRuntimeCapabilityV1Schema } from "./vnext/managed-
 import { ManagedGodotSemanticRuntimeCapabilityV1Schema } from "./vnext/managed-godot-semantic-runtime.js";
 import { readGodotSemanticAdapterProfileSnapshotV1 } from "./vnext/semantic-adapter-profile.js";
 import { createSandboxTaskRuntimeRoot } from "./vnext/sandbox-preflight.js";
+import {
+  PlatformAliasAblationArmV1Schema,
+  PlatformAliasDemoFailureV1Schema,
+  runPlatformAliasAblationV1,
+  runPlatformAliasDemoV1,
+} from "./vnext/platform-alias-demo.js";
 import { runProjectEnvironmentPreviewV1 } from "./vnext/project-environment-preview.js";
 
 interface Arguments {
@@ -151,7 +157,12 @@ function parseArguments(argv: readonly string[]): Arguments {
       flags.set(name, Object.freeze([...existingValues, value]));
       return;
     }
-    if (existing !== undefined && command === "project-preview") {
+    if (
+      existing !== undefined &&
+      (command === "project-preview" ||
+        command === "demo-platform-alias" ||
+        command === "demo-platform-alias-ablation")
+    ) {
       throw new Error(`Duplicate --${name}`);
     }
     flags.set(name, value);
@@ -1649,8 +1660,192 @@ async function projectPreviewCommand(
   if (unsuccessful) process.exitCode = 1;
 }
 
+async function platformAliasDemoCommand(args: Arguments) {
+  assertOnlyFlags(args, [
+    "project",
+    "provider",
+    "model",
+    "thinking",
+    "host-config",
+    "timeout-ms",
+    "agent-dir",
+    "json",
+  ]);
+  let result: Awaited<ReturnType<typeof runPlatformAliasDemoV1>>;
+  try {
+    result = await runPlatformAliasDemoV1({
+      projectPath: resolve(requiredFlag(args, "project")),
+      provider: requiredFlag(args, "provider"),
+      model: requiredFlag(args, "model"),
+      thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
+      ...(flag(args, "host-config") === undefined
+        ? {}
+        : { hostConfigPath: resolve(flag(args, "host-config")!) }),
+      ...(flag(args, "agent-dir") === undefined
+        ? {}
+        : { agentDir: resolve(flag(args, "agent-dir")!) }),
+      ...(flag(args, "timeout-ms") === undefined
+        ? {}
+        : { timeoutMs: positiveIntegerFlag(args, "timeout-ms", 600_000) }),
+    });
+  } catch (error) {
+    const failure = PlatformAliasDemoFailureV1Schema.parse({
+      schemaVersion: 1 as const,
+      commandStatus: "failed" as const,
+      errorMessage:
+        (error instanceof Error ? error.message : String(error))
+          .replace(/[\r\n\0]/gu, " ")
+          .trim()
+          .slice(0, 4_096) || "GN-1 command failed",
+    });
+    if (hasFlag(args, "json")) {
+      printJson(failure);
+    } else {
+      process.stderr.write(
+        `ChronoRift GN-1 platform alias — failed\n${failure.errorMessage}\n`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+  const unsuccessful =
+    result.commandStatus !== "completed" || result.agent.status !== "completed";
+  if (hasFlag(args, "json")) {
+    printJson(result);
+  } else {
+    process.stdout.write(
+      [
+        `ChronoRift GN-1 platform alias — ${result.commandStatus}`,
+        `source: ${result.source.commit} (tree ${result.source.tree})`,
+        `original checkout remained clean: ${result.source.checkoutCleanAfter}`,
+        `task: ${result.taskId}`,
+        `workspace: ${result.workspaceDirectory}`,
+        `session: ${result.agent.sessionFile ?? "not persisted"}`,
+        `Pi: ${result.agent.provider}/${result.agent.model} — ${result.agent.status}`,
+        "",
+        "baseline entity observation:",
+        JSON.stringify(result.baselineObservation.entities, null, 2),
+        "baseline platform state observation:",
+        JSON.stringify(result.baselineObservation.state, null, 2),
+        "",
+        "Agent game-tool calls:",
+        JSON.stringify(result.agent.gameToolCalls, null, 2),
+        "",
+        "candidate diff:",
+        result.candidatePatch.unifiedDiff || "(empty)",
+        "candidate platform state observation:",
+        result.candidateObservation === null
+          ? `(unavailable: ${result.candidateObservationError ?? "unknown error"})`
+          : JSON.stringify(result.candidateObservation.state, null, 2),
+        "",
+        `assistant text:\n${result.agent.assistantText}`,
+        ...result.limitations.map((limitation) => `limitation: ${limitation}`),
+      ].join("\n") + "\n",
+    );
+  }
+  if (unsuccessful) process.exitCode = 1;
+}
+
+async function platformAliasAblationCommand(args: Arguments) {
+  assertOnlyFlags(args, [
+    "arm",
+    "project",
+    "provider",
+    "model",
+    "thinking",
+    "host-config",
+    "timeout-ms",
+    "agent-dir",
+    "json",
+  ]);
+  let run: Awaited<ReturnType<typeof runPlatformAliasAblationV1>>;
+  try {
+    run = await runPlatformAliasAblationV1({
+      arm: PlatformAliasAblationArmV1Schema.parse(requiredFlag(args, "arm")),
+      projectPath: resolve(requiredFlag(args, "project")),
+      provider: requiredFlag(args, "provider"),
+      model: requiredFlag(args, "model"),
+      thinkingLevel: thinkingLevelFlag(args, "max"),
+      ...(flag(args, "host-config") === undefined
+        ? {}
+        : { hostConfigPath: resolve(flag(args, "host-config")!) }),
+      ...(flag(args, "agent-dir") === undefined
+        ? {}
+        : { agentDir: resolve(flag(args, "agent-dir")!) }),
+      ...(flag(args, "timeout-ms") === undefined
+        ? {}
+        : { timeoutMs: positiveIntegerFlag(args, "timeout-ms", 600_000) }),
+    });
+  } catch (error) {
+    const failure = PlatformAliasDemoFailureV1Schema.parse({
+      schemaVersion: 1 as const,
+      commandStatus: "failed" as const,
+      errorMessage:
+        (error instanceof Error ? error.message : String(error))
+          .replace(/[\r\n\0]/gu, " ")
+          .trim()
+          .slice(0, 4_096) || "GN-1 ablation arm failed",
+    });
+    if (hasFlag(args, "json")) {
+      printJson(failure);
+    } else {
+      process.stderr.write(
+        `ChronoRift GN-1 platform alias ablation — failed\n${failure.errorMessage}\n`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+  const result = run.result;
+  const unsuccessful =
+    result.commandStatus !== "completed" || result.agent.status !== "completed";
+  if (hasFlag(args, "json")) {
+    printJson(run);
+  } else {
+    process.stdout.write(
+      [
+        `ChronoRift GN-1 platform alias ablation — ${run.arm} — ${result.commandStatus}`,
+        `source: ${result.source.commit} (tree ${result.source.tree})`,
+        `task: ${result.taskId}`,
+        `session: ${result.agent.sessionFile ?? "not persisted"}`,
+        `Pi: ${result.agent.provider}/${result.agent.model} (${result.agent.requestedThinkingLevel}) — ${result.agent.status}`,
+        `active tools: ${result.agent.activeTools.join(", ")}`,
+        `raw Godot calls: ${run.rawGodotToolCalls.length}`,
+        `ChronoRift game calls: ${result.agent.gameToolCalls.length}`,
+        "",
+        "candidate diff:",
+        result.candidatePatch.unifiedDiff || "(empty)",
+        "candidate platform state observation:",
+        result.candidateObservation === null
+          ? `(unavailable: ${result.candidateObservationError ?? "unknown error"})`
+          : JSON.stringify(result.candidateObservation.state, null, 2),
+        "candidate runtime errors:",
+        run.candidateRuntimeErrors === null
+          ? `(unavailable: ${run.candidateRuntimeErrorsError ?? "unknown error"})`
+          : JSON.stringify(run.candidateRuntimeErrors, null, 2),
+        "",
+        `assistant text:\n${result.agent.assistantText}`,
+        ...result.limitations.map((limitation) => `limitation: ${limitation}`),
+      ].join("\n") + "\n",
+    );
+  }
+  if (unsuccessful) process.exitCode = 1;
+}
+
 function printHelp(): void {
   process.stdout.write(`ChronoRift v0.4.0\n\n`);
+  process.stdout.write(
+    `  pnpm demo:platform-alias -- --project PATH --provider PROVIDER --model MODEL [--thinking LEVEL --timeout-ms MS --host-config PATH --json]\n`,
+  );
+  process.stdout.write(
+    `  GN-1 freezes one exact moddable-platformer checkout, runs baseline and candidate ProjectAdapter V1 observations around one normal Pi coding-agent turn, and leaves the private workspace/session for review.\n\n`,
+  );
+  process.stdout.write(
+    `  pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift --project PATH --provider openai-codex --model gpt-5.6-luna [--thinking max --timeout-ms 600000 --host-config PATH --json]\n`,
+  );
+  process.stdout.write(
+    `  Runs one fresh GN-1 ablation arm. Pair the two arm outputs with the independent evaluator; one arm is not a comparative result.\n\n`,
+  );
   process.stdout.write(
     `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--launch-target TARGET_ID] [--thinking LEVEL --host-config PATH]\n`,
   );
@@ -1729,6 +1924,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArguments(argv);
   const cwd = process.cwd();
   switch (args.command) {
+    case "demo-platform-alias-ablation":
+      await platformAliasAblationCommand(args);
+      return;
+    case "demo-platform-alias":
+      await platformAliasDemoCommand(args);
+      return;
     case "project-preview":
       await projectPreviewCommand(args, cwd);
       return;

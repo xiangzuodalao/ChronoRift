@@ -486,6 +486,32 @@ const copyCandidate = async () => {
   return { candidateSourceHash: hash.digest("hex"), fileCount, byteLength };
 };
 
+const sealStagedCandidate = async () => {
+  const sourceDirectories = new Set();
+  for (const entry of stagedCandidateManifest) {
+    await fsp.chmod(
+      path.join(PROJECT_ROOT, entry.relativePath),
+      entry.mode === "100755" ? 0o500 : 0o400
+    );
+    let relativeDirectory = path.dirname(entry.relativePath);
+    while (relativeDirectory !== ".") {
+      sourceDirectories.add(relativeDirectory);
+      relativeDirectory = path.dirname(relativeDirectory);
+    }
+  }
+  await fsp.mkdir(path.join(PROJECT_ROOT, ".godot"), { mode: 0o700 });
+  const deepestFirst = [...sourceDirectories].sort((left, right) => {
+    const depth = right.split("/").length - left.split("/").length;
+    return depth !== 0
+      ? depth
+      : Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+  });
+  for (const relativeDirectory of deepestFirst) {
+    await fsp.chmod(path.join(PROJECT_ROOT, relativeDirectory), 0o500);
+  }
+  await fsp.chmod(PROJECT_ROOT, 0o500);
+};
+
 const verifyStagedCandidate = async (expectedStage) => {
   const actual = [];
   const visit = async (directory, prefix, atRoot) => {
@@ -948,6 +974,7 @@ process.once("SIGINT", shutdown);
     if (stage.candidateSourceHash !== launch.candidateSourceHash) {
       const mismatch = new Error("staged candidate source identity mismatch"); mismatch.code = "BUILD_IDENTITY_MISMATCH"; throw mismatch;
     }
+    await sealStagedCandidate();
     if (OPERATION === "vanilla_smoke") await runVanillaSmoke(launch, stage, remainder);
     else await startManagedRuntime(launch, stage, remainder);
   } catch (error) {

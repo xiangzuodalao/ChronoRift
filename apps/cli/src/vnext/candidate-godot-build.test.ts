@@ -78,6 +78,7 @@ import {
   collectCandidateGodotSourceV1,
   prepareCandidateGodotBuildV1,
   prepareExternalGodotLifecycleBuildV1,
+  prepareProjectEnvironmentDebugBuildV1,
   prepareProjectEnvironmentGodotBuildV1,
 } from "./candidate-godot-build.js";
 import type { TaskFixtureCapabilityV1 } from "./contracts.js";
@@ -318,6 +319,122 @@ describe("Project Environment candidate Build binding", () => {
       compatibilityReceiptId: null,
     });
     expect(prepared.fileCount).toBe(2);
+  });
+});
+
+describe("Project Environment direct debug Build", () => {
+  const debugIdentity = {
+    adapterManifestDigest: asSha256DigestV1("1".repeat(64)),
+    adapterPackageDigest: asSha256DigestV1("2".repeat(64)),
+    payloadSchemaDigest: asSha256DigestV1("3".repeat(64)),
+    sdkDigest: asSha256DigestV1("4".repeat(64)),
+    bridgeDigest: asSha256DigestV1("5".repeat(64)),
+    toolchainArtifactDigest: asSha256DigestV1("6".repeat(64)),
+    policyProfileDigest: asSha256DigestV1("7".repeat(64)),
+  };
+
+  const makeWorkspace = async (): Promise<string> => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-debug-build-"),
+    );
+    roots.push(workspace);
+    await writeFile(
+      join(workspace, "project.godot"),
+      '[application]\nrun/main_scene="res://main.tscn"\n',
+    );
+    await writeFile(join(workspace, "main.gd"), "extends Node\n");
+    return workspace;
+  };
+
+  it("returns a direct runtime descriptor from the frozen candidate", async () => {
+    const workspace = await makeWorkspace();
+
+    const prepared = await prepareProjectEnvironmentDebugBuildV1({
+      workspaceDirectory: workspace,
+      expectedMainScene: "res://main.tscn",
+      ...debugIdentity,
+    });
+
+    expect(prepared).toMatchObject({
+      build: {
+        schemaVersion: 1,
+        expectedMainScene: "res://main.tscn",
+      },
+      fileCount: 2,
+    });
+    expect(prepared.build.buildId).toMatch(/^build:[a-f0-9]{64}$/u);
+    expect(prepared.build.sourceClosureId).toMatch(
+      /^source-closure:[a-f0-9]{64}$/u,
+    );
+    expect(prepared.build.candidateSourceHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(prepared.projectHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(prepared.byteLength).toBeGreaterThan(0);
+    expect(Object.isFrozen(prepared)).toBe(true);
+    expect(Object.isFrozen(prepared.build)).toBe(true);
+  });
+
+  it("rejects a configured main scene that differs from expectedMainScene", async () => {
+    const workspace = await makeWorkspace();
+
+    await expect(
+      prepareProjectEnvironmentDebugBuildV1({
+        workspaceDirectory: workspace,
+        expectedMainScene: "res://other.tscn",
+        ...debugIdentity,
+      }),
+    ).rejects.toThrow(/does not match expectedMainScene/u);
+  });
+
+  it("changes the Build when frozen source bytes change", async () => {
+    const workspace = await makeWorkspace();
+    const input = {
+      workspaceDirectory: workspace,
+      expectedMainScene: "res://main.tscn",
+      ...debugIdentity,
+    };
+    const before = await prepareProjectEnvironmentDebugBuildV1(input);
+
+    await writeFile(
+      join(workspace, "main.gd"),
+      "extends Node\nvar edited = true\n",
+    );
+    const after = await prepareProjectEnvironmentDebugBuildV1(input);
+
+    expect(after.build.candidateSourceHash).not.toBe(
+      before.build.candidateSourceHash,
+    );
+    expect(after.projectHash).not.toBe(before.projectHash);
+    expect(after.build.sourceClosureId).not.toBe(before.build.sourceClosureId);
+    expect(after.build.buildId).not.toBe(before.build.buildId);
+  });
+
+  it.each([
+    "adapterManifestDigest",
+    "adapterPackageDigest",
+    "payloadSchemaDigest",
+    "sdkDigest",
+    "bridgeDigest",
+    "toolchainArtifactDigest",
+    "policyProfileDigest",
+  ] as const)("includes %s in the direct Build identity", async (field) => {
+    const workspace = await makeWorkspace();
+    const baseline = await prepareProjectEnvironmentDebugBuildV1({
+      workspaceDirectory: workspace,
+      expectedMainScene: "res://main.tscn",
+      ...debugIdentity,
+    });
+    const changed = await prepareProjectEnvironmentDebugBuildV1({
+      workspaceDirectory: workspace,
+      expectedMainScene: "res://main.tscn",
+      ...debugIdentity,
+      [field]: asSha256DigestV1("f".repeat(64)),
+    });
+
+    expect(changed.projectHash).not.toBe(baseline.projectHash);
+    expect(changed.build.sourceClosureId).not.toBe(
+      baseline.build.sourceClosureId,
+    );
+    expect(changed.build.buildId).not.toBe(baseline.build.buildId);
   });
 });
 

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, symlink } from "node:fs/promises";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -9,12 +10,14 @@ import {
   PROJECT_ADAPTER_REQUIRED_MODULES_V1,
   PROJECT_ADAPTER_SCHEMA_DIALECT_V1,
   PROJECT_ADAPTER_SDK_ID_V1,
+  validateProjectAdapterPayloadV1,
 } from "@chronorift/godot-protocol";
 import { describe, expect, it } from "vitest";
 
 import {
   loadProjectAdapterPackageV1,
   loadProjectAdapterPackageFilesV1,
+  loadProjectAdapterPackageWithBytesV1,
   ProjectAdapterPackageValidationError,
 } from "./project-adapter-package.js";
 
@@ -216,6 +219,31 @@ describe("ProjectAdapter package validator V1", () => {
     ).toThrow(/paths must be unique/u);
   });
 
+  it("returns defensive copies of the exact bytes from the stable read", async () => {
+    const root = await makePackage();
+    const loaded = await loadProjectAdapterPackageWithBytesV1(root);
+    const entry = loaded.fileBytes.find(
+      (file) => file.path === "src/project_adapter.gd",
+    );
+    expect(entry).toBeDefined();
+    expect(Buffer.from(entry?.bytes ?? [])).toEqual(
+      await readFile(join(root, "src/project_adapter.gd")),
+    );
+    expect(
+      createHash("sha256")
+        .update(Buffer.from(entry?.bytes ?? new Uint8Array()))
+        .digest("hex"),
+    ).toBe(
+      loaded.files.find((file) => file.path === "src/project_adapter.gd")
+        ?.sha256,
+    );
+
+    if (entry !== undefined) entry.bytes[0] = 0;
+    expect(await readFile(join(root, "src/project_adapter.gd"))).toEqual(
+      Buffer.from("extends RefCounted\n", "utf8"),
+    );
+  });
+
   it("rejects schema corruption and forbidden GDScript features", async () => {
     const badHash = await makePackage(
       makeManifest({
@@ -261,5 +289,89 @@ describe("ProjectAdapter package validator V1", () => {
     );
     expect(failure).toBeInstanceOf(ProjectAdapterPackageValidationError);
     expect((failure as Error).message).toMatch(/cannot contain symlinks/u);
+  });
+
+  it("rejects traversal paths and filesystem special files", async () => {
+    expect(() =>
+      loadProjectAdapterPackageFilesV1([
+        { path: "../manifest.json", bytes: Buffer.from("{}") },
+      ]),
+    ).toThrow(/normalized relative paths/u);
+
+    const root = await makePackage();
+    const socketPath = join(root, "src/runtime.gd");
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, resolve);
+    });
+    try {
+      await expect(loadProjectAdapterPackageV1(root)).rejects.toThrow(
+        /cannot contain special files/u,
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) =>
+          error === undefined ? resolve() : reject(error),
+        );
+      });
+    }
+  });
+
+  it("loads the GN-1 adapter and enforces its platform geometry payload", async () => {
+    const root = join(
+      process.cwd(),
+      "testdata/vnext/external-project/moddable-platformer-platform-alias-adapter",
+    );
+    const loaded = await loadProjectAdapterPackageWithBytesV1(root, {
+      requireSingleLaunchTarget: true,
+      expectedMainScene: "res://main.tscn",
+      requireEmptyLaunchParameters: true,
+    });
+    expect(loaded.manifest).toMatchObject({
+      adapterId: "moddable_platformer.platform_alias",
+      eventTypes: [],
+      entityTypes: [{ entityTypeId: "platform", identityStrategy: "authored" }],
+      stateDomains: [{ stateDomainId: "platform_geometry" }],
+    });
+    expect(loaded.fileBytes.map((file) => file.path)).toEqual(
+      [...loaded.fileBytes.map((file) => file.path)].sort((left, right) =>
+        left.localeCompare(right, "en-US"),
+      ),
+    );
+
+    const stateSchema = loaded.schemas.find(
+      (schema) => schema.schemaId === "state.platform_geometry",
+    );
+    expect(stateSchema).toBeDefined();
+    const observed = {
+      platforms: [
+        {
+          node_path: "Platforms/Platform3",
+          configured_width_tiles: 3,
+          rendered_sprite_count: 3,
+          one_way: true,
+          fall_time_seconds: 2,
+          solid_shape_instance_id: "1234",
+          solid_collision_width_px: 384,
+          area_shape_instance_id: "5678",
+          area_collision_width_px: 768,
+        },
+      ],
+    };
+    expect(validateProjectAdapterPayloadV1(stateSchema!, observed)).toEqual(
+      observed,
+    );
+    expect(() =>
+      validateProjectAdapterPayloadV1(stateSchema!, {
+        ...observed,
+        platforms: [
+          {
+            ...observed.platforms[0],
+            area_shape_instance_id: 5678,
+          },
+        ],
+      }),
+    ).toThrow(/expected string/u);
   });
 });

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "dialect": "chronorift://schemas/project-adapter-payload/v1",
+  "schemaId": "entity.platform",
+  "root": {
+    "type": "object",
+    "properties": {
+      "node_path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      }
+    },
+    "required": ["node_path"],
+    "additionalProperties": false
+  }
+}

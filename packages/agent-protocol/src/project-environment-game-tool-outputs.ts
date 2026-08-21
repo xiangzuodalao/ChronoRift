@@ -241,8 +241,9 @@ export const ProjectEnvironmentGameCapabilitiesOutputV1Schema = Type.Object(
       }),
     ),
     tools: Type.Array(ProjectEnvironmentToolAvailabilityOutputV1Schema, {
-      minItems: 16,
+      minItems: 1,
       maxItems: 16,
+      uniqueItems: true,
     }),
     limitations,
   },
@@ -774,6 +775,16 @@ const canonicalOutputFieldsAreValid = (
   const record = asRecord(output);
   if (record === null) return false;
   switch (toolName) {
+    case "game_capabilities": {
+      if (!Array.isArray(record.tools)) return false;
+      const names = new Set<unknown>();
+      for (const value of record.tools) {
+        const tool = asRecord(value);
+        if (tool === null || names.has(tool.toolName)) return false;
+        names.add(tool.toolName);
+      }
+      return true;
+    }
     case "game_launch":
       return (
         canonicalField(record.requested, "parameters") &&
@@ -821,7 +832,6 @@ const canonicalOutputFieldsAreValid = (
             canonicalField(entry, "candidate"),
         )
       );
-    case "game_capabilities":
     case "game_status":
     case "game_stop":
     case "game_step":

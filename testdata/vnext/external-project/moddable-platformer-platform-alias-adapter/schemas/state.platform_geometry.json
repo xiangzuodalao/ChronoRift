@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "dialect": "chronorift://schemas/project-adapter-payload/v1",
+  "schemaId": "state.platform_geometry",
+  "root": {
+    "type": "object",
+    "properties": {
+      "platforms": {
+        "type": "array",
+        "minItems": 0,
+        "maxItems": 32,
+        "items": {
+          "type": "object",
+          "properties": {
+            "node_path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "configured_width_tiles": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "rendered_sprite_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 64
+            },
+            "one_way": { "type": "boolean" },
+            "fall_time_seconds": {
+              "type": "number",
+              "minimum": -86400,
+              "maximum": 86400
+            },
+            "solid_shape_instance_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "solid_collision_width_px": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 262144
+            },
+            "area_shape_instance_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "area_collision_width_px": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 262144
+            }
+          },
+          "required": [
+            "node_path",
+            "configured_width_tiles",
+            "rendered_sprite_count",
+            "one_way",
+            "fall_time_seconds",
+            "solid_shape_instance_id",
+            "solid_collision_width_px",
+            "area_shape_instance_id",
+            "area_collision_width_px"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["platforms"],
+    "additionalProperties": false
+  }
+}

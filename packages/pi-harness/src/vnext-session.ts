@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model, Transport } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -37,6 +37,12 @@ export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
 - Unsupported capabilities, unavailable history, restore gaps, conflicts, exhausted budgets, and runtime failures are structured recoverable tool results when recovery is available.
 - Report only checks you actually ran and their observed results. Finishing the Agent Loop does not prove a bug is fixed.`;
 
+export const VNEXT_CODING_ENVIRONMENT_APPENDIX = `Task environment:
+- Your file and command tools execute inside the task sandbox at /workspace. Their outputs and receipts are the execution record.
+- Network, Host files, credentials, ports, and devices are unavailable unless the task policy explicitly grants them.
+- Unsupported operations and exhausted budgets are returned as structured tool results when recovery is available.
+- Report only checks you actually ran and their observed results. Finishing the Agent Loop does not prove a bug is fixed.`;
+
 export interface RunVNextPiTurnOptions {
   readonly resourceWorkspaceDirectory: string;
   readonly sessionDirectory: string;
@@ -50,7 +56,14 @@ export interface RunVNextPiTurnOptions {
   readonly prompt: string;
   readonly tools: readonly ToolDefinition[];
   readonly timeoutMs?: number | undefined;
+  /** Idle timeout for one provider request, independent of the whole Agent turn. */
+  readonly providerRequestTimeoutMs?: number | undefined;
+  /** Pi-level retries after a failed assistant request. Provider SDK retries stay disabled. */
+  readonly agentRetryMaxRetries?: number | undefined;
+  readonly transport?: Transport | undefined;
   readonly signal?: AbortSignal | undefined;
+  /** Defaults to the game-capable appendix retained by existing vNext paths. */
+  readonly environmentProfile?: "game" | "coding" | undefined;
   readonly additionalEnvironmentInstructions?: string | undefined;
   readonly loadProjectAdapterSkillV1?: boolean | undefined;
   readonly loadProjectAdapterSkillV2?: boolean | undefined;
@@ -97,6 +110,26 @@ const boundedTimeout = (value: number | undefined): number => {
     throw new Error("timeoutMs must be an integer from 1 to 3600000");
   }
   return timeoutMs;
+};
+
+const boundedProviderRequestTimeout = (
+  value: number | undefined,
+): number | undefined => {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || value < 1 || value > 600_000) {
+    throw new Error(
+      "providerRequestTimeoutMs must be an integer from 1 to 600000",
+    );
+  }
+  return value;
+};
+
+const boundedAgentRetryMaxRetries = (value: number | undefined): number => {
+  const retries = value ?? 2;
+  if (!Number.isInteger(retries) || retries < 0 || retries > 10) {
+    throw new Error("agentRetryMaxRetries must be an integer from 0 to 10");
+  }
+  return retries;
 };
 
 const normalizedToolNames = (tools: readonly ToolDefinition[]): string[] => {
@@ -185,6 +218,12 @@ export async function runVNextPiTurn(
     throw new Error("prompt must not be empty");
   const toolNames = normalizedToolNames(options.tools);
   const timeoutMs = boundedTimeout(options.timeoutMs);
+  const providerRequestTimeoutMs = boundedProviderRequestTimeout(
+    options.providerRequestTimeoutMs,
+  );
+  const agentRetryMaxRetries = boundedAgentRetryMaxRetries(
+    options.agentRetryMaxRetries,
+  );
   const resourceWorkspaceDirectory = resolve(
     options.resourceWorkspaceDirectory,
   );
@@ -192,10 +231,30 @@ export async function runVNextPiTurn(
   const agentDir = resolve(options.agentDir ?? getAgentDir());
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: true },
-    retry: { enabled: true, maxRetries: 2 },
+    ...(options.transport === undefined
+      ? {}
+      : { transport: options.transport }),
+    ...(providerRequestTimeoutMs === undefined
+      ? {}
+      : { httpIdleTimeoutMs: providerRequestTimeoutMs }),
+    retry: {
+      enabled: true,
+      maxRetries: agentRetryMaxRetries,
+      ...(providerRequestTimeoutMs === undefined
+        ? {}
+        : {
+            provider: {
+              timeoutMs: providerRequestTimeoutMs,
+              maxRetries: 0,
+              maxRetryDelayMs: 1_000,
+            },
+          }),
+    },
   });
   const appendSystemPrompt = [
-    VNEXT_ENVIRONMENT_APPENDIX,
+    options.environmentProfile === "coding"
+      ? VNEXT_CODING_ENVIRONMENT_APPENDIX
+      : VNEXT_ENVIRONMENT_APPENDIX,
     ...(options.additionalEnvironmentInstructions === undefined
       ? []
       : [options.additionalEnvironmentInstructions]),
@@ -415,7 +474,19 @@ export async function runVNextPiTurnWithSdk(
     ...(options.timeoutMs === undefined
       ? {}
       : { timeoutMs: options.timeoutMs }),
+    ...(options.providerRequestTimeoutMs === undefined
+      ? {}
+      : { providerRequestTimeoutMs: options.providerRequestTimeoutMs }),
+    ...(options.agentRetryMaxRetries === undefined
+      ? {}
+      : { agentRetryMaxRetries: options.agentRetryMaxRetries }),
+    ...(options.transport === undefined
+      ? {}
+      : { transport: options.transport }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.environmentProfile === undefined
+      ? {}
+      : { environmentProfile: options.environmentProfile }),
     ...(options.additionalEnvironmentInstructions === undefined
       ? {}
       : {

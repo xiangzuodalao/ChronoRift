@@ -375,6 +375,88 @@ describe("extractTaskPatch", () => {
     );
   });
 
+  it("extracts a Project Environment patch without executing candidate Git config", async () => {
+    const prepared = await prepareFixture();
+    const filterMarker = join(prepared.root, "project-filter-ran");
+    const fsmonitorMarker = join(prepared.root, "project-fsmonitor-ran");
+    const fsmonitor = join(prepared.root, "hostile-fsmonitor.sh");
+    await writeFile(
+      fsmonitor,
+      `#!/bin/sh\ntouch "${fsmonitorMarker}"\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    await git(prepared.workspaceDirectory, [
+      "config",
+      "filter.hostile.clean",
+      `/bin/sh -c 'touch "${filterMarker}"; cat'`,
+    ]);
+    await git(prepared.workspaceDirectory, [
+      "config",
+      "core.fsmonitor",
+      fsmonitor,
+    ]);
+    await writeFile(
+      join(prepared.workspaceDirectory, ".gitattributes"),
+      "*.gd filter=hostile\n",
+    );
+    await appendFile(
+      join(prepared.workspaceDirectory, "frame_input_window.gd"),
+      "\n# project candidate\n",
+    );
+    await writeFile(
+      join(prepared.workspaceDirectory, "project-untracked.bin"),
+      Buffer.from([0, 255, 1, 0, 2]),
+    );
+
+    const extracted = await extractTaskPatch({
+      taskId: prepared.request.taskId,
+      workspaceDirectory: prepared.request.workspaceDirectory,
+      hostBaselineGitDirectory: prepared.request.hostBaselineGitDirectory,
+      hostBaselineCommit: prepared.request.hostBaselineCommit,
+      baselineSourceHash: prepared.request.baselineSourceHash,
+      hostOperationTemporaryDirectory:
+        prepared.request.hostOperationTemporaryDirectory,
+      sourceKind: "project-environment-v1",
+      ignoredCachePaths: [".chronorift", ".godot"],
+    });
+    const patch = Buffer.from(extracted.patchBytes).toString("utf8");
+
+    await expect(access(filterMarker)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(access(fsmonitorMarker)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(extracted.roundTripVerified).toBe(true);
+    expect(patch).toContain("frame_input_window.gd");
+    expect(patch).toContain("# project candidate");
+    expect(patch).toContain("project-untracked.bin");
+    expect(patch).toContain("GIT binary patch");
+  });
+
+  it("round-trips an unchanged Project Environment candidate as an empty patch", async () => {
+    const prepared = await prepareFixture();
+
+    const extracted = await extractTaskPatch({
+      taskId: prepared.request.taskId,
+      workspaceDirectory: prepared.request.workspaceDirectory,
+      hostBaselineGitDirectory: prepared.request.hostBaselineGitDirectory,
+      hostBaselineCommit: prepared.request.hostBaselineCommit,
+      baselineSourceHash: prepared.request.baselineSourceHash,
+      hostOperationTemporaryDirectory:
+        prepared.request.hostOperationTemporaryDirectory,
+      sourceKind: "project-environment-v1",
+      ignoredCachePaths: [".chronorift", ".godot"],
+    });
+
+    expect(extracted.patchBytes).toHaveLength(0);
+    expect(extracted.identity.byteLength).toBe(0);
+    expect(extracted.identity.candidateSourceHash).toBe(
+      prepared.request.baselineSourceHash,
+    );
+    expect(extracted.roundTripVerified).toBe(true);
+  });
+
   it("accepts formatting-only manifest changes but rejects semantic escalation", async () => {
     const prepared = await prepareFixture();
     const manifestPath = join(

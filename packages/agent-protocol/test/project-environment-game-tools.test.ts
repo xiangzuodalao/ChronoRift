@@ -371,6 +371,31 @@ describe("Project Environment game-tool outputs", () => {
     expect(
       Check(ProjectEnvironmentGameCapabilitiesOutputV1Schema, {
         ...output,
+        tools: output.tools.slice(0, 4),
+      }),
+    ).toBe(true);
+    expect(
+      Check(ProjectEnvironmentGameCapabilitiesOutputV1Schema, {
+        ...output,
+        tools: [],
+      }),
+    ).toBe(false);
+    expect(
+      validateProjectEnvironmentGameToolOutputV1("game_capabilities", {
+        ...output,
+        tools: [
+          output.tools[0],
+          {
+            ...output.tools[0],
+            status: "unsupported_capability",
+            limitations: ["not exposed"],
+          },
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      Check(ProjectEnvironmentGameCapabilitiesOutputV1Schema, {
+        ...output,
         unexpected: true,
       }),
     ).toBe(false);

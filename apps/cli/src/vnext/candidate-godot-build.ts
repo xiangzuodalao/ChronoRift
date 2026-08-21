@@ -93,6 +93,19 @@ export interface PreparedProjectEnvironmentGodotBuildV1 {
   readonly byteLength: number;
 }
 
+export interface PreparedProjectEnvironmentDebugBuildV1 {
+  readonly build: {
+    readonly schemaVersion: 1;
+    readonly buildId: string;
+    readonly sourceClosureId: string;
+    readonly candidateSourceHash: Sha256DigestV1;
+    readonly expectedMainScene: string;
+  };
+  readonly projectHash: Sha256DigestV1;
+  readonly fileCount: number;
+  readonly byteLength: number;
+}
+
 const inspectExternalProjectConfiguration = (
   entry: SelectedTreeEntryV1,
 ): { readonly configuredMainScene: string } => {
@@ -820,6 +833,92 @@ export const prepareProjectEnvironmentGodotBuildV1 = async (input: {
     build,
     binding,
     configuredMainScene,
+    projectHash,
+    fileCount: files.length,
+    byteLength: files.reduce(
+      (total, file) => total + file.content.byteLength,
+      0,
+    ),
+  });
+};
+
+/**
+ * Freezes the current Project Environment workspace for a direct debug run.
+ * This identity deliberately has no published revision, binding, or evidence
+ * lifecycle: every input needed by the runtime closure is hashed directly.
+ */
+export const prepareProjectEnvironmentDebugBuildV1 = async (input: {
+  readonly workspaceDirectory: string;
+  readonly expectedMainScene: string;
+  readonly adapterManifestDigest: Sha256DigestV1;
+  readonly adapterPackageDigest: Sha256DigestV1;
+  readonly payloadSchemaDigest: Sha256DigestV1;
+  readonly sdkDigest: Sha256DigestV1;
+  readonly bridgeDigest: Sha256DigestV1;
+  readonly toolchainArtifactDigest: Sha256DigestV1;
+  readonly policyProfileDigest: Sha256DigestV1;
+}): Promise<PreparedProjectEnvironmentDebugBuildV1> => {
+  const files = await collectCandidate(
+    input.workspaceDirectory,
+    "project-environment",
+  );
+  const projectFile = files.find(
+    (entry) => entry.relativePath === "project.godot",
+  );
+  if (projectFile === undefined) {
+    throw new TypeError(
+      "Project Environment debug candidate is missing project.godot",
+    );
+  }
+  const { configuredMainScene } =
+    inspectExternalProjectConfiguration(projectFile);
+  if (configuredMainScene !== input.expectedMainScene) {
+    throw new TypeError(
+      `Project Environment debug candidate main scene ${configuredMainScene} does not match expectedMainScene ${input.expectedMainScene}`,
+    );
+  }
+
+  const candidateSourceHash = selectedTreeSha256(files);
+  const closureConfigurationHash = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      runtimeProfile: "project-environment-debug-v1",
+      adapterManifestDigest: input.adapterManifestDigest,
+      adapterPackageDigest: input.adapterPackageDigest,
+      payloadSchemaDigest: input.payloadSchemaDigest,
+      sdkDigest: input.sdkDigest,
+      bridgeDigest: input.bridgeDigest,
+      toolchainArtifactDigest: input.toolchainArtifactDigest,
+      policyProfileDigest: input.policyProfileDigest,
+      expectedMainScene: input.expectedMainScene,
+    }),
+  );
+  const projectHash = asSha256DigestV1(
+    createHash("sha256")
+      .update("chronorift-project-environment-debug-build-v1\0")
+      .update(candidateSourceHash)
+      .update("\0")
+      .update(closureConfigurationHash)
+      .digest("hex"),
+  );
+  const sourceClosureId = `source-closure:${projectHash}`;
+  const buildId = asBuildId(
+    `build:${contentHash({
+      schemaVersion: 1,
+      runtimeProfile: "project-environment-debug-v1",
+      candidateSourceHash,
+      sourceClosureId,
+    })}`,
+  );
+
+  return Object.freeze({
+    build: Object.freeze({
+      schemaVersion: 1,
+      buildId,
+      sourceClosureId,
+      candidateSourceHash,
+      expectedMainScene: input.expectedMainScene,
+    }),
     projectHash,
     fileCount: files.length,
     byteLength: files.reduce(

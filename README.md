@@ -21,26 +21,7 @@ _概念插图，用于表达产品母题；不是产品界面、运行截图或�
 
 ## 两分钟看懂
 
-```mermaid
-flowchart LR
-  USER[User goal] --> CLI[ChronoRift CLI]
-  MODEL[Model provider] <--> PI[Pi AgentSession<br/>Session and Agent Loop]
-  CLI --> PI
-  PI --> CODE[Brokered coding tools]
-  PI --> GAME[Versioned game tools]
-
-  subgraph TASK[Task sandbox]
-    WS[Managed /workspace]
-    GODOT[Godot + ProjectAdapter]
-    WS --> GODOT
-  end
-
-  CODE <--> WS
-  GAME <--> GODOT
-  CODE --> RECORDS[Diffs, outputs, receipts<br/>runtime records and lineage]
-  GODOT --> RECORDS
-  RECORDS -. review .-> ACCEPT[Project CI, external Eval<br/>or human acceptance]
-```
+![ChronoRift 架构概览：Pi Loop 通过工具 broker 操作隔离的 Task sandbox，并留下可供外部验收的记录](docs/assets/chronorift-architecture.png)
 
 - **Pi owns the Loop：** Session、模型调用、消息历史、tool scheduling、compaction 和普通终止。
 - **ChronoRift owns the Harness：** Task workspace、sandbox policy、工具执行、资源 identity、记录和 cleanup。

@@ -576,4 +576,18 @@ describe("vNext broker-only Pi coding tools", () => {
       ]),
     );
   });
+
+  it("normalizes an explicit empty optional search path to the workspace root", async () => {
+    const port = new MemoryPort();
+
+    await Promise.all([
+      execute(port, "grep", { pattern: "two", path: "" }),
+      execute(port, "find", { pattern: "*.ts", path: "" }),
+      execute(port, "ls", { path: "" }),
+    ]);
+
+    expect(port.calls).toEqual(
+      expect.arrayContaining(["grep:.:100", "find:.:1000", "ls:.:500"]),
+    );
+  });
 });

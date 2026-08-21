@@ -97,6 +97,12 @@ export interface VNextCodingToolDefinitionsOptionsV1 {
 const pathSchema = Type.String({
   description: "Path relative to the task workspace",
 });
+const optionalSearchPathSchema = Type.Optional(
+  Type.String({
+    description:
+      "Directory relative to the task workspace; omit or pass an empty string for the workspace root",
+  }),
+);
 const readSchema = Type.Object({
   path: pathSchema,
   offset: Type.Optional(Type.Number()),
@@ -115,7 +121,7 @@ const editSchema = Type.Object({
 const writeSchema = Type.Object({ path: pathSchema, content: Type.String() });
 const grepSchema = Type.Object({
   pattern: Type.String(),
-  path: Type.Optional(pathSchema),
+  path: optionalSearchPathSchema,
   glob: Type.Optional(Type.String()),
   ignoreCase: Type.Optional(Type.Boolean()),
   literal: Type.Optional(Type.Boolean()),
@@ -124,11 +130,11 @@ const grepSchema = Type.Object({
 });
 const findSchema = Type.Object({
   pattern: Type.String(),
-  path: Type.Optional(pathSchema),
+  path: optionalSearchPathSchema,
   limit: Type.Optional(Type.Number()),
 });
 const lsSchema = Type.Object({
-  path: Type.Optional(pathSchema),
+  path: optionalSearchPathSchema,
   limit: Type.Optional(Type.Number()),
 });
 const finalizeProjectAdapterV2Schema = Type.Object({});
@@ -152,6 +158,9 @@ function workspacePath(value: string, allowDot = false): string {
   }
   return value;
 }
+
+const optionalSearchPath = (value: string | undefined): string =>
+  value === undefined || value === "" ? "." : workspacePath(value, true);
 
 function positiveInteger(
   value: number | undefined,
@@ -695,7 +704,7 @@ export function createVNextCodingToolDefinitions(
       const result = await port.grep(
         {
           pattern: input.pattern,
-          path: workspacePath(input.path ?? ".", true),
+          path: optionalSearchPath(input.path),
           ...(input.glob === undefined ? {} : { glob: input.glob }),
           ignoreCase: input.ignoreCase ?? false,
           literal: input.literal ?? false,
@@ -729,7 +738,7 @@ export function createVNextCodingToolDefinitions(
       const result = await port.find(
         {
           pattern: input.pattern,
-          path: workspacePath(input.path ?? ".", true),
+          path: optionalSearchPath(input.path),
           limit,
         },
         signal,
@@ -757,7 +766,7 @@ export function createVNextCodingToolDefinitions(
       assertAdmitted("ls");
       const limit = positiveInteger(input.limit, 500, "limit");
       const result = await port.ls(
-        { path: workspacePath(input.path ?? ".", true), limit },
+        { path: optionalSearchPath(input.path), limit },
         signal,
       );
       const failure = executionFailure(result, "ls");

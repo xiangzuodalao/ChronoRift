@@ -31,6 +31,8 @@
     "task": "tsx apps/cli/src/main.ts task",
     "demo": "tsx apps/cli/src/main.ts demo",
     "demo:godot": "tsx apps/cli/src/main.ts demo --environment godot",
+    "demo:platform-alias": "tsx apps/cli/src/main.ts demo-platform-alias",
+    "demo:platform-alias-ablation": "tsx apps/cli/src/main.ts demo-platform-alias-ablation",
     "demo:v03": "tsx apps/cli/src/main.ts demo-v03",
     "diagnose": "tsx apps/cli/src/main.ts diagnose",
     "diagnose:v03": "tsx apps/cli/src/main.ts diagnose-v03",

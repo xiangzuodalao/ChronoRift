@@ -69,6 +69,15 @@ export interface LoadedProjectAdapterPackageV1 {
   readonly totalBytes: number;
 }
 
+/**
+ * A validated package plus defensive copies of the exact bytes that were
+ * inspected. This is intended for runtime materialization: callers never need
+ * to reopen an untrusted candidate after validation.
+ */
+export interface LoadedProjectAdapterPackageWithBytesV1 extends LoadedProjectAdapterPackageV1 {
+  readonly fileBytes: readonly ProjectAdapterPackageBytesV1[];
+}
+
 export class ProjectAdapterPackageValidationError extends Error {
   public override readonly name = "ProjectAdapterPackageValidationError";
 }
@@ -392,11 +401,9 @@ export const loadProjectAdapterPackageFilesV1 = (
   return validateLoadedProjectAdapterPackageV1(files, options);
 };
 
-/** Loads a candidate package without following symlinks or special files. */
-export const loadProjectAdapterPackageV1 = async (
+const readProjectAdapterPackageV1 = async (
   candidateRoot: string,
-  options: ProjectAdapterPackageValidationOptionsV1 = {},
-): Promise<LoadedProjectAdapterPackageV1> => {
+): Promise<readonly LoadedFile[]> => {
   const resolvedRoot = resolve(candidateRoot);
   const rootBefore = await lstat(resolvedRoot, { bigint: true }).catch(() =>
     fail("adapter package root does not exist"),
@@ -465,5 +472,43 @@ export const loadProjectAdapterPackageV1 = async (
   if (!sameIdentity(rootBefore, rootAfter)) {
     fail("adapter package root changed during inspection");
   }
-  return validateLoadedProjectAdapterPackageV1(files, options);
+  return Object.freeze(files);
+};
+
+/**
+ * Loads a candidate without following symlinks or special files and exposes
+ * the exact validated bytes without a second filesystem read.
+ */
+export const loadProjectAdapterPackageWithBytesV1 = async (
+  candidateRoot: string,
+  options: ProjectAdapterPackageValidationOptionsV1 = {},
+): Promise<LoadedProjectAdapterPackageWithBytesV1> => {
+  const files = await readProjectAdapterPackageV1(candidateRoot);
+  const loaded = validateLoadedProjectAdapterPackageV1(files, options);
+  return Object.freeze({
+    ...loaded,
+    fileBytes: Object.freeze(
+      [...files]
+        .sort((left, right) =>
+          left.relativePath.localeCompare(right.relativePath, "en-US"),
+        )
+        .map((file) =>
+          Object.freeze({
+            path: file.relativePath,
+            bytes: Uint8Array.from(file.bytes),
+          }),
+        ),
+    ),
+  });
+};
+
+/** Loads a candidate package without following symlinks or special files. */
+export const loadProjectAdapterPackageV1 = async (
+  candidateRoot: string,
+  options: ProjectAdapterPackageValidationOptionsV1 = {},
+): Promise<LoadedProjectAdapterPackageV1> => {
+  const { fileBytes: _fileBytes, ...loaded } =
+    await loadProjectAdapterPackageWithBytesV1(candidateRoot, options);
+  void _fileBytes;
+  return Object.freeze(loaded);
 };

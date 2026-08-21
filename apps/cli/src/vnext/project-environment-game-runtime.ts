@@ -38,6 +38,7 @@ import {
 } from "@chronorift/godot-adapter";
 import {
   PROJECT_ADAPTER_REQUIRED_MODULES_V1,
+  type GodotLifecycleSidecarDiagnosticV1,
   type GodotProjectEnvironmentClockV1,
   type GodotProjectEnvironmentStatusV1,
 } from "@chronorift/godot-protocol";
@@ -227,7 +228,56 @@ const failure = (
   error: { code, message, recoverable },
 });
 
+const declaredIdLimitations = (
+  label: string,
+  ids: readonly string[],
+): readonly string[] => {
+  if (ids.length === 0) return [`Declared ${label} IDs: none.`];
+  const chunks: string[] = [];
+  let current = "";
+  for (const id of ids) {
+    const candidate = current.length === 0 ? id : `${current}, ${id}`;
+    if (candidate.length > 3_900) {
+      chunks.push(current);
+      current = id;
+    } else {
+      current = candidate;
+    }
+  }
+  chunks.push(current);
+  return chunks.map(
+    (chunk, index) =>
+      `Declared ${label} IDs${index === 0 ? "" : " (continued)"}: ${chunk}.`,
+  );
+};
+
 const phaseForStatus = (phase: ActiveRuntimeV1["phase"]) => phase;
+
+const normalizeExposedToolNames = (
+  untrustedNames: unknown,
+): ReadonlySet<ProjectEnvironmentGameToolNameV1> => {
+  const definitions = PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1;
+  if (untrustedNames === undefined) {
+    return new Set(definitions.map(({ name }) => name));
+  }
+  if (!Array.isArray(untrustedNames)) {
+    throw new TypeError("exposedToolNames must be an array");
+  }
+  if (untrustedNames.length === 0) {
+    throw new TypeError("exposedToolNames must not be empty");
+  }
+  const knownToolNames = new Set<string>(definitions.map(({ name }) => name));
+  const exposedToolNames = new Set<ProjectEnvironmentGameToolNameV1>();
+  for (const name of untrustedNames) {
+    if (typeof name !== "string" || !knownToolNames.has(name)) {
+      throw new TypeError(
+        `Unknown exposed Project Environment game tool: ${String(name)}`,
+      );
+    }
+    exposedToolNames.add(name as ProjectEnvironmentGameToolNameV1);
+  }
+  return exposedToolNames;
+};
 
 export interface ProjectEnvironmentGameRuntimeOptionsV1 {
   readonly sidecar: GodotProjectEnvironmentSidecarPortV1;
@@ -246,6 +296,9 @@ export interface ProjectEnvironmentGameRuntimeOptionsV1 {
   readonly bridgeSha256: string;
   readonly toolchainSha256: string;
   readonly engineVersion: string;
+  /** Restricts both the callable and game_capabilities-declared tool surface. */
+  readonly exposedToolNames?:
+    readonly ProjectEnvironmentGameToolNameV1[] | undefined;
   /**
    * Freezes the current Task workspace and returns it only after the exact
    * Build has obtained a compatibility receipt. It is never called while an
@@ -275,10 +328,14 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
   #latestBuild: ProjectEnvironmentRuntimeBuildV1;
   #operationTail: Promise<void> = Promise.resolve();
   readonly #checkpoints = new Map<string, string>();
+  readonly #exposedToolNames: ReadonlySet<ProjectEnvironmentGameToolNameV1>;
 
   public constructor(
     private readonly options: ProjectEnvironmentGameRuntimeOptionsV1,
   ) {
+    this.#exposedToolNames = normalizeExposedToolNames(
+      options.exposedToolNames,
+    );
     this.#latestBuild = Object.freeze({
       schemaVersion: 1,
       buildId: options.buildId,
@@ -292,6 +349,14 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
     request: ProjectEnvironmentGameToolPortRequestV1,
     signal?: AbortSignal,
   ): Promise<unknown> {
+    if (!this.#exposedToolNames.has(request.toolName)) {
+      return failure(
+        request.toolCallId,
+        "unsupported_capability",
+        `${request.toolName} is not exposed by this Project Environment binding`,
+        false,
+      );
+    }
     if (
       !validateProjectEnvironmentGameToolInputV1(
         request.toolName,
@@ -459,6 +524,22 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
     if (this.options.persistPinnedCapture !== undefined) {
       hostTools.add("game_capture_pin");
     }
+    const manifest = this.options.adapterPackage.manifest;
+    const queryLimitations = [
+      "PE-A/V1 game_query supports only an unfiltered first page; the filters and cursor fields must be omitted.",
+      ...declaredIdLimitations(
+        "entity type",
+        manifest.entityTypes.map(({ entityTypeId }) => entityTypeId),
+      ),
+      ...declaredIdLimitations(
+        "state domain",
+        manifest.stateDomains.map(({ stateDomainId }) => stateDomainId),
+      ),
+      ...declaredIdLimitations(
+        "event type",
+        manifest.eventTypes.map(({ eventTypeId }) => eventTypeId),
+      ),
+    ];
     return {
       schemaVersion: 1 as const,
       taskId: this.options.taskId,
@@ -467,7 +548,16 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
       buildId: build.buildId,
       runtimeId: active?.runtimeId ?? null,
       modules: this.options.capabilitySet.modules,
-      tools: PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1.map((tool) => {
+      launchTargets: manifest.launchTargets.map((target) => ({
+        schemaVersion: 1 as const,
+        targetId: target.targetId,
+        scene: target.scene,
+        default: target.default,
+        validationStatus: "validated" as const,
+      })),
+      tools: PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1.filter((tool) =>
+        this.#exposedToolNames.has(tool.name),
+      ).map((tool) => {
         const module =
           tool.availabilityModule === null
             ? null
@@ -499,7 +589,9 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
           status,
           limitations:
             status === "available"
-              ? []
+              ? tool.name === "game_query"
+                ? queryLimitations
+                : []
               : module?.limitations.length
                 ? module.limitations
                 : ["This Host-level operation is outside PE-A."],
@@ -1001,8 +1093,8 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
     if (input.cursor !== undefined || input.filters !== undefined) {
       throw new ProjectEnvironmentRuntimeOperationError(
         "unsupported_capability",
-        "PE-A query does not implement cursors, clock ranges, or entity/type/domain filters",
-        false,
+        "PE-A/V1 game_query supports only an unfiltered first page; omit filters and cursor",
+        true,
       );
     }
     if (input.select === "clocks" || input.select === "coverage") {
@@ -1457,11 +1549,31 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
       cleanup,
       coverage: observedCoverage,
       loss: observedLoss,
-      limitations:
-        sandboxReceipt?.status === "succeeded"
+      limitations: [
+        ...(sandboxReceipt?.status === "succeeded"
           ? []
-          : ["The runtime did not return a successful sandbox receipt."],
+          : ["The runtime did not return a successful sandbox receipt."]),
+        ...this.managedImportLimitations(active.sidecar.diagnostics()),
+      ],
     };
+  }
+
+  private managedImportLimitations(
+    diagnostics: readonly GodotLifecycleSidecarDiagnosticV1[],
+  ): string[] {
+    const result = diagnostics.find(
+      (diagnostic) => diagnostic.kind === "managed_import_result",
+    );
+    if (
+      result?.kind !== "managed_import_result" ||
+      result.receipt.stderr.totalBytes === 0
+    ) {
+      return [];
+    }
+    const stderr = result.receipt.stderr;
+    return [
+      `Managed Godot import emitted ${stderr.totalBytes} stderr bytes (sha256 ${stderr.sha256}; retained ${stderr.retainedBytes}; truncated ${String(stderr.truncated)}).`,
+    ];
   }
 
   private now(): string {

@@ -95,6 +95,7 @@ export {
   type ProjectEnvironmentGameToolErrorEnvelopeV1,
   type ProjectEnvironmentGameToolErrorV1,
   type ProjectEnvironmentGameToolDefinitionsOptionsV1,
+  type ProjectEnvironmentGameQueryInputProfileV1,
   type ProjectEnvironmentGameToolPort,
   type ProjectEnvironmentGameToolPortRequestV1,
   type ProjectEnvironmentGameToolResponseV1,
@@ -107,6 +108,19 @@ export {
   type VNextCodingToolDefinitionsOptionsV1,
   type VNextCodingToolPort,
 } from "./vnext-coding-tools.js";
+export {
+  createVNextGodotRunToolDefinitionV1,
+  VNextGodotRunErrorV1Schema,
+  VNextGodotRunResultV1Schema,
+  VNextGodotRunSuccessV1Schema,
+  VNextGodotRunToolCallV1Schema,
+  VNextGodotRunToolInputV1Schema,
+  type VNextGodotRunResultV1,
+  type VNextGodotRunToolCallV1,
+  type VNextGodotRunToolDefinitionOptionsV1,
+  type VNextGodotRunToolInputV1,
+  type VNextGodotRunToolPortV1,
+} from "./vnext-godot-run-tool.js";
 export {
   createVNextLifecycleGameToolDefinitions,
   createVNextSemanticGameToolDefinitions,
@@ -137,6 +151,7 @@ export {
 export {
   runVNextPiTurn,
   runVNextPiTurnWithSdk,
+  VNEXT_CODING_ENVIRONMENT_APPENDIX,
   VNEXT_ENVIRONMENT_APPENDIX,
   VNEXT_PI_WORKSPACE_CWD,
   type RunVNextPiTurnOptions,

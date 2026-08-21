@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -26,9 +34,21 @@ import {
 
 const roots: string[] = [];
 
+const restoreDirectoryModes = async (directory: string): Promise<void> => {
+  await chmod(directory, 0o700);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      await restoreDirectoryModes(join(directory, entry.name));
+    }
+  }
+};
+
 afterEach(async () => {
   await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+    roots.splice(0).map(async (root) => {
+      await restoreDirectoryModes(root);
+      await rm(root, { recursive: true, force: true });
+    }),
   );
 });
 
@@ -390,7 +410,7 @@ describe("Godot lifecycle sidecar sources", () => {
     }
   });
 
-  it("rejects an import that mutates the staged candidate before vanilla launch", async () => {
+  it("rejects an import process that attempts to mutate sealed candidate source", async () => {
     const root = await mkdtemp(
       join(tmpdir(), "chronorift-vanilla-import-mutation-"),
     );
@@ -476,7 +496,7 @@ describe("Godot lifecycle sidecar sources", () => {
       throw new Error("missing terminal smoke failure diagnostic");
     }
     expect(smokeFailure.import).toMatchObject({
-      exitCode: 0,
+      exitCode: 1,
       signal: null,
       timedOut: false,
     });
@@ -484,7 +504,7 @@ describe("Godot lifecycle sidecar sources", () => {
       expect.objectContaining({
         kind: "sidecar_error",
         phase: "import",
-        code: "BUILD_IDENTITY_MISMATCH",
+        code: "GODOT_IMPORT_FAILED",
       }),
     );
   });
@@ -614,8 +634,11 @@ describe("Godot lifecycle sidecar sources", () => {
         'const projectRoot = process.argv[process.argv.indexOf("--path") + 1];',
         'const importMarker = path.join(projectRoot, ".godot", "managed-import-complete");',
         'if (process.argv.includes("--import")) {',
-        "  fs.mkdirSync(path.dirname(importMarker), { recursive: true });",
-        '  fs.writeFileSync(importMarker, "ok");',
+        "  let blockedWrites = 0;",
+        '  try { fs.appendFileSync(path.join(projectRoot, "project.godot"), "mutated"); } catch (error) { if (error.code === "EACCES") blockedWrites += 1; }',
+        '  try { fs.writeFileSync(path.join(projectRoot, "main.tscn.uid"), "uid://untrusted"); } catch (error) { if (error.code === "EACCES") blockedWrites += 1; }',
+        "  fs.writeFileSync(importMarker, JSON.stringify({ blockedWrites }));",
+        "  if (blockedWrites !== 2) process.exit(13);",
         '  process.stdout.write("managed import complete\\n");',
         "  process.exit(0);",
         "}",
@@ -730,6 +753,18 @@ describe("Godot lifecycle sidecar sources", () => {
     expect(managedImport?.receipt.exitCode).toBe(0);
     expect(managedImport?.receipt.signal).toBeNull();
     expect(managedImport?.receipt.timedOut).toBe(false);
+    await expect(
+      readFile(join(overlayProject, "project.godot")),
+    ).resolves.toEqual(projectBytes);
+    await expect(
+      readFile(join(overlayProject, "main.tscn.uid")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(
+        join(overlayProject, ".godot", "managed-import-complete"),
+        "utf8",
+      ),
+    ).resolves.toBe('{"blockedWrites":2}');
   });
 
   it("records a failed managed import before starting the lifecycle runtime", async () => {

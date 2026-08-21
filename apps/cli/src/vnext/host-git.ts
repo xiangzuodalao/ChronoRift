@@ -71,6 +71,7 @@ export interface HostGitIndexEntry {
 export interface HostGitPort {
   resolveRepositoryRoot(cwd: string): Promise<string>;
   resolveHeadCommit(cwd: string): Promise<string>;
+  resolveHeadTree(cwd: string): Promise<string>;
   statusPorcelain(cwd: string): Promise<Uint8Array>;
   listTree(input: {
     readonly context: HostGitRepositoryContext;
@@ -381,6 +382,18 @@ export class NodeHostGitPort implements HostGitPort {
     );
     assertObjectId(commit, "HEAD commit");
     return commit;
+  }
+
+  public async resolveHeadTree(cwd: string): Promise<string> {
+    const tree = decodeSingleLine(
+      await this.run({
+        cwd,
+        args: ["rev-parse", "--verify", "HEAD^{tree}"],
+      }),
+      "HEAD tree",
+    );
+    assertObjectId(tree, "HEAD tree");
+    return tree;
   }
 
   public async statusPorcelain(cwd: string): Promise<Uint8Array> {

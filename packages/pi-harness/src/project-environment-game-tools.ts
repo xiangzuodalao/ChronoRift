@@ -1,6 +1,7 @@
 import {
   PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1,
   ProjectEnvironmentCanonicalAdapterValueV1Schema,
+  ProjectEnvironmentGameQueryInputV1Schema,
   validateProjectEnvironmentGameToolInputV1,
   validateProjectEnvironmentGameToolOutputV1,
   type ProjectEnvironmentGameToolNameV1,
@@ -117,9 +118,25 @@ export interface ProjectEnvironmentGameToolPort {
   ): Promise<unknown>;
 }
 
+export type ProjectEnvironmentGameQueryInputProfileV1 =
+  "canonical-v1" | "pe-a-v1-narrow";
+
 export interface ProjectEnvironmentGameToolDefinitionsOptionsV1 {
   readonly toolCallAdmission?:
     ProjectEnvironmentToolCallAdmissionV1 | undefined;
+  /**
+   * Restricts the Pi-visible tool surface. Names are validated and duplicate
+   * entries collapse; definitions retain the canonical catalog order.
+   */
+  readonly includedToolNames?:
+    readonly ProjectEnvironmentGameToolNameV1[] | undefined;
+  /**
+   * Selects the Pi-visible game_query input surface. The canonical profile is
+   * the default. PE-A V1 callers that do not implement filters or cursors may
+   * explicitly expose the narrower query contract instead.
+   */
+  readonly queryInputProfile?:
+    ProjectEnvironmentGameQueryInputProfileV1 | undefined;
 }
 
 const responseContent = (value: ProjectEnvironmentGameToolResponseV1) => [
@@ -168,6 +185,68 @@ const validateResponse = (
 
 const blocksInvocation = (state: ProjectCapabilityStateV1): boolean =>
   state.status !== "implemented" && state.status !== "degraded";
+
+const PROJECT_ENVIRONMENT_GAME_TOOL_PROMPT_GUIDELINE =
+  "Use game tools to test source-derived hypotheses against runtime observations when conclusions depend on realized geometry, physics, timing, entity or resource identity, runtime state, or history.";
+
+const ProjectEnvironmentGameQueryPeAV1NarrowInputSchema = Type.Object(
+  {
+    schemaVersion:
+      ProjectEnvironmentGameQueryInputV1Schema.properties.schemaVersion,
+    taskId: ProjectEnvironmentGameQueryInputV1Schema.properties.taskId,
+    executionId:
+      ProjectEnvironmentGameQueryInputV1Schema.properties.executionId,
+    select: ProjectEnvironmentGameQueryInputV1Schema.properties.select,
+    limit: ProjectEnvironmentGameQueryInputV1Schema.properties.limit,
+  },
+  strictObject,
+);
+
+const selectToolParameters = (
+  toolName: ProjectEnvironmentGameToolNameV1,
+  canonicalParameters: (typeof PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1)[number]["parameters"],
+  queryInputProfile: ProjectEnvironmentGameQueryInputProfileV1,
+) =>
+  toolName === "game_query" && queryInputProfile === "pe-a-v1-narrow"
+    ? ProjectEnvironmentGameQueryPeAV1NarrowInputSchema
+    : canonicalParameters;
+
+const validateQueryInputProfile = (
+  value: unknown,
+): ProjectEnvironmentGameQueryInputProfileV1 => {
+  const profile = value ?? "canonical-v1";
+  if (profile !== "canonical-v1" && profile !== "pe-a-v1-narrow") {
+    throw new TypeError("Unknown game_query input profile");
+  }
+  return profile;
+};
+
+const selectToolDefinitions = (includedToolNames: unknown) => {
+  if (includedToolNames === undefined) {
+    return PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1;
+  }
+  if (!Array.isArray(includedToolNames)) {
+    throw new TypeError("includedToolNames must be an array");
+  }
+  if (includedToolNames.length === 0) {
+    throw new TypeError("includedToolNames must not be empty");
+  }
+  const knownNames = new Set<string>(
+    PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1.map(({ name }) => name),
+  );
+  const includedNames = new Set<ProjectEnvironmentGameToolNameV1>();
+  for (const name of includedToolNames) {
+    if (typeof name !== "string" || !knownNames.has(name)) {
+      throw new TypeError(
+        `Unknown Project Environment game tool: ${String(name)}`,
+      );
+    }
+    includedNames.add(name as ProjectEnvironmentGameToolNameV1);
+  }
+  return PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1.filter(({ name }) =>
+    includedNames.has(name),
+  );
+};
 
 export const projectEnvironmentUnsupportedCapabilityResponseV1 = (
   toolCallId: string,
@@ -225,8 +304,9 @@ const projectEnvironmentBudgetExhaustedResponseV1 = (
 };
 
 /**
- * Bind all 16 PE-A tools. Optional module absence produces a structured tool
- * result at execution time; definitions are never filtered from Pi.
+ * Bind all 16 PE-A tools by default. A caller may select a strict subset for a
+ * narrower Agent surface. Optional module absence produces a structured tool
+ * result at execution time.
  */
 export function createProjectEnvironmentGameToolDefinitions(
   port: ProjectEnvironmentGameToolPort,
@@ -239,13 +319,24 @@ export function createProjectEnvironmentGameToolDefinitions(
   const moduleStates = new Map(
     capabilitySet.modules.map((state) => [state.module, state]),
   );
+  const queryInputProfile = validateQueryInputProfile(
+    options.queryInputProfile,
+  );
+  const definitions = selectToolDefinitions(options.includedToolNames);
   return Object.freeze(
-    PROJECT_ENVIRONMENT_GAME_TOOL_DEFINITIONS_V1.map((metadata) =>
-      defineTool({
+    definitions.map((metadata) => {
+      const parameters = selectToolParameters(
+        metadata.name,
+        metadata.parameters,
+        queryInputProfile,
+      );
+      return defineTool({
         name: metadata.name,
         label: metadata.label,
         description: metadata.description,
-        parameters: metadata.parameters,
+        promptSnippet: metadata.description,
+        promptGuidelines: [PROJECT_ENVIRONMENT_GAME_TOOL_PROMPT_GUIDELINE],
+        parameters,
         async execute(toolCallId, input, signal) {
           if (!Check(toolCallIdSchema, toolCallId)) {
             throw new TypeError(`Invalid Pi toolCallId for ${metadata.name}`);
@@ -259,6 +350,7 @@ export function createProjectEnvironmentGameToolDefinitions(
             return { content: responseContent(response), details: response };
           }
           if (
+            !Check(parameters, input) ||
             !validateProjectEnvironmentGameToolInputV1(metadata.name, input)
           ) {
             throw new TypeError(`Invalid input for ${metadata.name}`);
@@ -299,7 +391,7 @@ export function createProjectEnvironmentGameToolDefinitions(
             details: validated,
           };
         },
-      }),
-    ),
+      });
+    }),
   );
 }

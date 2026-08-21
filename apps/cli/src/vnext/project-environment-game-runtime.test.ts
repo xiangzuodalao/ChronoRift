@@ -15,6 +15,7 @@ import type {
   GodotProjectEnvironmentRuntimeClientV1,
   LoadedProjectAdapterPackageV1,
 } from "@chronorift/godot-adapter";
+import type { GodotLifecycleSidecarDiagnosticV1 } from "@chronorift/godot-protocol";
 
 import { ProjectEnvironmentGameRuntimeV1 } from "./project-environment-game-runtime.js";
 import type { ManagedGodotProjectEnvironmentRuntimeCapabilityV1 } from "./managed-godot-project-environment-runtime.js";
@@ -254,6 +255,7 @@ const makeRuntime = (
       ) => Promise<void>) = () => Promise.resolve(),
   connect:
     (() => Promise<GodotProjectEnvironmentRuntimeClientV1>) | null = null,
+  exposedToolNames?: readonly ProjectEnvironmentGameToolNameV1[],
 ) =>
   new ProjectEnvironmentGameRuntimeV1({
     sidecar,
@@ -276,6 +278,7 @@ const makeRuntime = (
     bridgeSha256: sha("6"),
     toolchainSha256: sha("7"),
     engineVersion: "4.7.1",
+    ...(exposedToolNames === undefined ? {} : { exposedToolNames }),
     ...(resolveCompatibleBuild === undefined ? {} : { resolveCompatibleBuild }),
     ...(persistRuntimeObservation === undefined
       ? {}
@@ -297,7 +300,11 @@ const invoke = async (
   })) as {
     readonly outcome: "success" | "error";
     readonly output?: unknown;
-    readonly error?: { readonly code: string };
+    readonly error?: {
+      readonly code: string;
+      readonly message: string;
+      readonly recoverable: boolean;
+    };
   };
   if (result.outcome === "success") {
     expect(
@@ -321,6 +328,8 @@ const completingRuntime = (input?: {
         capture: ProjectEnvironmentPinnedCaptureV1,
         records: readonly JsonValue[],
       ) => Promise<void>);
+  readonly diagnostics?:
+    (() => readonly GodotLifecycleSidecarDiagnosticV1[]) | undefined;
 }) => {
   let finish!: (value: unknown) => void;
   const completion = new Promise<unknown>((resolve) => {
@@ -355,6 +364,7 @@ const completingRuntime = (input?: {
         sidecar: {
           ...fakeManagedSidecar,
           completion,
+          diagnostics: input?.diagnostics ?? (() => []),
         } as SandboxedGodotProjectEnvironmentSidecarV1,
       }),
   } as unknown as GodotProjectEnvironmentSidecarPortV1;
@@ -429,6 +439,53 @@ const queryObservation = (
   });
 
 describe("ProjectEnvironmentGameRuntimeV1", () => {
+  it("surfaces managed-import stderr coverage on stop", async () => {
+    const { runtime } = completingRuntime({
+      diagnostics: () => [
+        {
+          schemaVersion: 1,
+          kind: "managed_import_result",
+          outcome: "succeeded",
+          receipt: {
+            exitCode: 0,
+            signal: null,
+            timedOut: false,
+            durationMs: 12,
+            stdout: {
+              totalBytes: 0,
+              sha256: sha("0"),
+              retainedBytes: 0,
+              truncated: false,
+            },
+            stderr: {
+              totalBytes: 321,
+              sha256: sha("8"),
+              retainedBytes: 321,
+              truncated: false,
+            },
+          },
+        },
+      ],
+    });
+    const active = await launchForObservation(runtime);
+    const stopped = await invoke(runtime, "game_stop", {
+      schemaVersion: 1,
+      taskId,
+      runtimeId: active.runtimeId,
+    });
+
+    expect(stopped).toMatchObject({
+      outcome: "success",
+      output: {
+        limitations: [
+          expect.stringContaining(
+            `321 stderr bytes (sha256 ${sha("8")}; retained 321; truncated false)`,
+          ),
+        ],
+      },
+    });
+  });
+
   it("serializes concurrent launches so one execution cannot overwrite another", async () => {
     const { runtime } = completingRuntime();
     const launchInput = {
@@ -565,6 +622,198 @@ describe("ProjectEnvironmentGameRuntimeV1", () => {
     });
   });
 
+  it("declares only exposed tools and rejects invocation outside that surface", async () => {
+    const exposedToolNames = [
+      "game_capabilities",
+      "game_launch",
+      "game_query",
+      "game_stop",
+      "game_query",
+    ] as const;
+    const runtime = makeRuntime(
+      fakeClient,
+      fakeSidecar,
+      undefined,
+      undefined,
+      undefined,
+      null,
+      exposedToolNames,
+    );
+
+    const capabilities = await invoke(runtime, "game_capabilities", {
+      schemaVersion: 1,
+      taskId,
+    });
+    expect(capabilities.outcome).toBe("success");
+    expect(capabilities.output).toMatchObject({
+      launchTargets: [
+        {
+          schemaVersion: 1,
+          targetId: "default",
+          scene: "res://main.tscn",
+          default: true,
+          validationStatus: "validated",
+        },
+      ],
+      tools: [
+        {
+          schemaVersion: 1,
+          toolName: "game_capabilities",
+          module: null,
+          status: "available",
+          limitations: [],
+        },
+        {
+          schemaVersion: 1,
+          toolName: "game_launch",
+          module: "lifecycle",
+          status: "available",
+          limitations: [],
+        },
+        {
+          schemaVersion: 1,
+          toolName: "game_stop",
+          module: "lifecycle",
+          status: "available",
+          limitations: [],
+        },
+        {
+          schemaVersion: 1,
+          toolName: "game_query",
+          module: "entity_projection",
+          status: "available",
+          limitations: [
+            "PE-A/V1 game_query supports only an unfiltered first page; the filters and cursor fields must be omitted.",
+            "Declared entity type IDs: actor.",
+            "Declared state domain IDs: world.",
+            "Declared event type IDs: none.",
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      invoke(runtime, "game_status", {
+        schemaVersion: 1,
+        taskId,
+        runtimeId: "runtime.v1.not-exposed",
+      }),
+    ).resolves.toMatchObject({
+      outcome: "error",
+      error: { code: "unsupported_capability" },
+    });
+  });
+
+  it("rejects unknown exposed tool names", () => {
+    expect(() =>
+      makeRuntime(
+        fakeClient,
+        fakeSidecar,
+        undefined,
+        undefined,
+        undefined,
+        null,
+        [
+          "game_unknown",
+        ] as unknown as readonly ProjectEnvironmentGameToolNameV1[],
+      ),
+    ).toThrow(/Unknown exposed Project Environment game tool/u);
+    expect(() =>
+      makeRuntime(
+        fakeClient,
+        fakeSidecar,
+        undefined,
+        undefined,
+        undefined,
+        null,
+        [],
+      ),
+    ).toThrow(/must not be empty/u);
+  });
+
+  it("uses capabilities to launch and return a declared state domain without filters", async () => {
+    const bridgeQueries: {
+      readonly queryKind: string;
+      readonly ids: readonly string[];
+      readonly limit: number;
+    }[] = [];
+    const client = {
+      ...fakeClient,
+      query: (request: {
+        readonly queryKind: string;
+        readonly ids: readonly string[];
+        readonly limit: number;
+      }) => {
+        bridgeQueries.push(request);
+        return Promise.resolve({
+          rows: [
+            observation("state_sample", {
+              stateDomainId: "world",
+              value: { health: 3 },
+              semanticCoverage: "declared",
+            }),
+          ],
+          truncated: false,
+          coverage: wireCoverage,
+        });
+      },
+    } as unknown as GodotProjectEnvironmentRuntimeClientV1;
+    const runtime = makeRuntime(
+      client,
+      fakeSidecar,
+      undefined,
+      undefined,
+      undefined,
+      null,
+      ["game_capabilities", "game_launch", "game_stop", "game_query"],
+    );
+
+    const capabilities = await invoke(runtime, "game_capabilities", {
+      schemaVersion: 1,
+      taskId,
+    });
+    expect(capabilities).toMatchObject({
+      outcome: "success",
+      output: {
+        buildId,
+        launchTargets: [{ targetId: "default" }],
+      },
+    });
+
+    const launched = await invoke(runtime, "game_launch", {
+      schemaVersion: 1,
+      taskId,
+      buildId,
+      launchTargetId: "default",
+      parameters: {},
+    });
+    expect(launched.outcome).toBe("success");
+    const { executionId } = launched.output as { readonly executionId: string };
+
+    const queried = await invoke(runtime, "game_query", {
+      schemaVersion: 1,
+      taskId,
+      executionId,
+      select: "state",
+      limit: 10,
+    });
+    expect(queried).toMatchObject({
+      outcome: "success",
+      output: {
+        rows: [
+          {
+            kind: "state",
+            value: {
+              kind: "state_sample",
+              payload: { stateDomainId: "world" },
+            },
+          },
+        ],
+      },
+    });
+    expect(bridgeQueries).toEqual([{ queryKind: "state", ids: [], limit: 10 }]);
+  });
+
   it("launches the exact bound Build and exposes strict status/capture/query output", async () => {
     const runtime = makeRuntime();
     const launched = await invoke(runtime, "game_launch", {
@@ -682,7 +931,10 @@ describe("ProjectEnvironmentGameRuntimeV1", () => {
       });
       expect(result).toMatchObject({
         outcome: "error",
-        error: { code: "unsupported_capability" },
+        error: {
+          code: "unsupported_capability",
+          recoverable: true,
+        },
       });
     }
     expect(queryCalls).toBe(0);

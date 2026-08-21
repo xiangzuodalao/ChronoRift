@@ -132,14 +132,96 @@ revalidation commands and trust limits are documented with the
 [PE-A evidence](evidence/vnext-project-environment-pe-a-local-r1/README.md) and
 [PE-B evidence](evidence/vnext-project-environment-pe-b-local-r1/README.md).
 
+## GN-1 external-project matched ablation
+
+GN-1 is a separate experimental implementation, not a Project Environment Preview or Gate. Provision a local clone
+of `endlessm/moddable-platformer` at exact commit `e78b339500dec8e480b33723c4156bf9b74cd25c` and tree
+`9941cb045b3cd73c4554ca1de337a341b383590b`. The checkout must be clean and must not contain `.chronorift/`; each
+command validates these facts and does not clone, fetch, alter, or apply a patch to the source checkout.
+
+Use the same fail-closed Host config and sandbox prerequisites described above. Run each arm as a fresh Task and save
+its versioned JSON separately:
+
+```bash
+corepack pnpm demo:platform-alias-ablation -- \
+  --arm coding-only \
+  --project /absolute/path/to/moddable-platformer \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max \
+  --timeout-ms 600000 \
+  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --json > coding-only.json
+
+corepack pnpm demo:platform-alias-ablation -- \
+  --arm chronorift \
+  --project /absolute/path/to/moddable-platformer \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max \
+  --timeout-ms 600000 \
+  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --json > chronorift.json
+
+node scripts/evaluate-platform-alias-ablation.mjs coding-only.json chronorift.json
+```
+
+`--host-config` is optional under the normal Host-config lookup. The matched command fixes provider/model to
+`openai-codex/gpt-5.6-luna`, thinking to `max`, and the default timeout to 600 seconds; mismatching values fail closed.
+There is no fake-model fallback. Each arm receives the same exact source, neutral symptom prompt, `coding`
+environment profile, and task-id-only environment instruction profile. It receives the same `read`, `bash`, `edit`,
+`write`, `grep`, `find`, `ls`, and raw `godot_run` tools. The treatment's only tool-surface addition is
+`game_capabilities`, `game_launch`, `game_stop`, and `game_query`; the common prompt does not name ChronoRift, a game
+tool, `platform_geometry`, a cause, a patch, or a required tool order. The two runs intentionally have distinct Task,
+workspace, and Pi Session identities.
+
+Each command materializes a private Task workspace, records the Agent's candidate diff, and performs a Host-only
+candidate observation on the resulting Build. The treatment may additionally launch and query ProjectAdapter V1
+during its normal Pi Loop. Every Godot launch copies the exact Build into an execution-private tree, seals admitted
+source read-only, and leaves only `.godot/` writable for import cache. Runtime/tool results bind the Task, Build,
+runtime, Execution, and tool-call identities. Cleanup receipts and the untouched source-checkout status are retained.
+
+The standalone evaluator is independent of product TypeScript. It strictly validates both result envelopes, matched
+configuration, distinct run identities, tool surface and calls, patch byte length/hash, Build/Execution lineage,
+cleanup, runtime errors, and the project-specific geometry/identity oracle. A successful treatment semantic-use check
+requires a successful `platform_geometry` state query bound to a prior successful launch; merely calling a game tool
+is insufficient. The evaluator reports both arm outcomes and has no winner or general-superiority field.
+
+The 2026-08-20 local R2 pair produced this narrow result:
+
+- `coding-only` completed and produced a nonempty candidate, but candidate geometry mismatched the project-specific
+  oracle, so `oraclePassed` was `false`.
+- `chronorift` successfully launched and obtained a launch-bound `platform_geometry` observation before editing. Its
+  candidate exposed four distinct Area Shape identities with widths 256/128/384/768px; `runtime_errors` rows were
+  empty and `oraclePassed` was `true`.
+
+Every managed Godot import in both arms also emitted 1412 bytes on stderr. The exact bytes and digest are retained in
+each stop receipt; these are import diagnostics at the read-only admitted-source/old-project importer-metadata
+boundary. Scene startup and adapter queries succeeded, but empty `runtime_errors` rows must not be read as "no
+diagnostics."
+
+An earlier R1 characterization exposed a query-contract mismatch: the Agent autonomously chose game tools, but the
+capability response did not disclose that V1 rejected filters/cursors, so no semantic state query succeeded and the
+evaluator correctly rejected that treatment. R2 is a fresh pair after correcting that affordance. The older
+`gpt-5.6-sol`/`medium` single-arm demo remains routing/lifecycle characterization and is not the strongest current
+evidence.
+
+This path deliberately bypasses Project Environment initialization/publication/reuse, V2 history, capture/pin,
+checkpoint/replay, evidence packaging, verdicts, and apply. The R2 JSON, Session, runtime output, diff, and evaluator
+output remain under local-only `.chronorift/`; there is no frozen repository bundle or Gate. One project, one exact
+revision, one prompt, and one pair do not establish candidate acceptance, general superiority over ordinary coding
+agents, universal causality from the game-tool observation, success rate, or arbitrary-project generality.
+
 ## Other explicit live paths
 
-| Command                             | Scope                                                                    |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| `corepack pnpm test:vnext:pi-live`  | Real Pi Session/tool smoke; no Godot and not release acceptance          |
-| `corepack pnpm test:vnext:live`     | M3 single-Agent-turn plus external 13-scenario evaluator; not default CI |
-| `corepack pnpm diagnose:v04 -- ...` | Legacy v0.4 real-provider diagnosis                                      |
-| `corepack pnpm test:live`           | Historical v0.1 provider smoke                                           |
+| Command                                                   | Scope                                                                    |
+| --------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `corepack pnpm demo:platform-alias -- ...`                | GN-1 fixed-project observation/diff/rerun; not a Gate or acceptance      |
+| `corepack pnpm demo:platform-alias-ablation -- --arm ...` | One fresh GN-1 matched arm; pair with the standalone evaluator           |
+| `corepack pnpm test:vnext:pi-live`                        | Real Pi Session/tool smoke; no Godot and not release acceptance          |
+| `corepack pnpm test:vnext:live`                           | M3 single-Agent-turn plus external 13-scenario evaluator; not default CI |
+| `corepack pnpm diagnose:v04 -- ...`                       | Legacy v0.4 real-provider diagnosis                                      |
+| `corepack pnpm test:live`                                 | Historical v0.1 provider smoke                                           |
 
 Only `*.live.test.ts` and explicit live commands may contact a provider. Pi credentials remain in the Host credential
 store and must never enter the repository, evidence, Task command environment, or Godot process. A live success is

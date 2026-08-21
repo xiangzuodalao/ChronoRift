@@ -6,7 +6,9 @@ Loop，同时提供隔离 workspace、受控 Godot runtime，以及 checkpoint�
 
 > 当前公开 release 仍是 **v0.4.0 legacy diagnosis slice**。Project Environment V1 是实验性 vNext 基础：PE-A
 > 与 PE-B 已达到 `implementation present + local Gate passed`；PE-C Narrow Source/Import Closure 已通过固定外部项目的
-> CI Host Gate 并封版，但尚未晋升默认入口。当前下一切片是 **PC-1 External Project Debug Closure**。
+> CI Host Gate 并封版，但尚未晋升默认入口。当前下一切片是 **GN-1 External Project Runtime Observation**：
+> 专用命令已支持 matched `coding-only` / `chronorift` 消融。2026-08-20 的一个本地 R2 pair
+> 产生了一次窄的正结果，但未冻结为仓库 evidence 或 Gate；原 PC-1 全闭环已延期。
 
 ## 产品边界
 
@@ -91,6 +93,60 @@ push 或直接 apply 都不是完成条件。
 [Project Environment V1 RFC](docs/project-environment-v1.md)。Host 配置和 conformance 操作见
 [开发与验证指南](docs/development.md)。
 
+## 实验性 GN-1 外部项目运行时观察
+
+GN-1 不走上述 Preview 初始化/publication/reuse 流程。它固定真实第三方项目
+`endlessm/moddable-platformer@e78b339500dec8e480b33723c4156bf9b74cd25c`（tree
+`9941cb045b3cd73c4554ca1de337a341b383590b`），并将同一个中性调试任务拆成两个独立 fresh arm。
+两个 arm 使用相同的 exact source、prompt、`coding` environment profile、`gpt-5.6-luna`/`max`、600
+秒 timeout 和共享工具 `read`/`bash`/`edit`/`write`/`grep`/`find`/`ls`/`godot_run`；每个 fresh Task 只有
+自己的 `taskId` 不同。`chronorift` arm 的唯一工具面增量是 `game_capabilities`、`game_launch`、
+`game_stop` 和 `game_query`。
+
+准备一个位于精确 commit/tree、工作树 clean 且不含 `.chronorift/` 的本地 checkout；命令不会 clone、fetch、修改或
+apply 回原 checkout：
+
+```bash
+corepack pnpm demo:platform-alias-ablation -- \
+  --arm coding-only \
+  --project /absolute/path/to/moddable-platformer \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max \
+  --json > coding-only.json
+
+corepack pnpm demo:platform-alias-ablation -- \
+  --arm chronorift \
+  --project /absolute/path/to/moddable-platformer \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max \
+  --json > chronorift.json
+
+node scripts/evaluate-platform-alias-ablation.mjs coding-only.json chronorift.json
+```
+
+`--host-config PATH` 与 `--timeout-ms 600000` 可显式传入。每条命令只运行一个 arm；standalone evaluator
+验证配置、Task/workspace/Session 隔离、tool/Build/Execution lineage、candidate diff、runtime observation、
+cleanup 和 Agent-invisible Host geometry/identity oracle，但不选择 winner。Godot 仍只在 execution-private staging 中运行：admitted
+source 只读，`.godot/` import cache 可写。完整 Host 前置条件见 [开发与验证指南](docs/development.md)。
+
+2026-08-20 的本地 R2 matched pair 使用 `openai-codex/gpt-5.6-luna`、`max`。`coding-only` 产生了
+非空 candidate，但 candidate geometry mismatch，Host oracle 为 `false`。`chronorift` 在修改前成功
+launch 并查询了绑定该 Execution 的 `platform_geometry`；candidate 上的四个 Area Shape identity 互不相同，
+宽度分别为 256/128/384/768px，runtime-error rows 为空，该 arm 的窄 oracle 为 `true`。较早的 R1
+表征暴露了 query contract 不匹配：Agent 自主选择了 game tools，但因 capabilities 没有说明 V1 不支持
+filters/cursor，未成功取得 semantic state，当次 evaluator 正确拒绝通过；R2 是修正该 affordance 后的
+fresh pair。更早的 `gpt-5.6-sol`/`medium` 单 arm demo 只是路由/lifecycle characterization，不再作为当前最强证据。
+两个 arm 的每次 managed Godot import 也都有 1412-byte stderr，精确 bytes/digest 在 stop receipt 中；
+它们是只读 admitted source/旧项目 importer metadata 边界下的 diagnostics。scene 和 adapter query 成功，
+但 `runtime_errors` rows 为空不表示完全没有 diagnostics。
+
+这仍然只是一个项目、一个 exact revision、一个 prompt 和一个 pair。它不证明 ChronoRift 的通用
+superiority，不证明 game-tool observation 对所有修复都具有因果性，也不估计成功率或任意项目泛化。两个
+arm 的 JSON、Session 和 evaluator output 仅保留在 local-only `.chronorift/`；没有冻结 bundle、Gate、自动
+verdict 或 apply。
+
 ## 实现状态
 
 | 路径     | 状态                                             | 当前证据与边界                                                                               |
@@ -102,7 +158,8 @@ push 或直接 apply 都不是完成条件。
 | PE-A     | implementation present + local Gate passed       | Author → Validate → Publish → Use、exact Build、new-Session reuse                            |
 | PE-B     | implementation present + local Gate passed       | V2 dynamic identity、Execution-bound incarnation、连续 validated ring 和 pinned captures     |
 | **PE-C** | **implementation present + CI Host Gate passed** | narrow dirty closure、多项目选择、addon/import、default + selected target 与 review boundary |
-| **PC-1** | **下一切片；尚未实现**                           | 外部项目上的 real-Pi Agent 调试、checkpoint/replay、候选 patch 与绑定 evidence               |
+| **GN-1** | **实验性实现；一个本地 R2 matched pair 完成**    | 对照 oracle false，ChronoRift oracle true；单项目/单 pair，local-only，未冻结                |
+| PC-1     | 延期；尚未实现                                   | Project Environment publication/reuse、checkpoint/replay 与 evidence 全闭环                  |
 
 PE-A/PE-B 的本地真实模型 Gate 均有 create-new bundle，并由不导入产品 TypeScript 的 standalone validator 复验：
 
@@ -120,6 +177,8 @@ PE-A/PE-B 的本地真实模型 Gate 均有 create-new bundle，并由不导入�
 | ------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `corepack pnpm check`                                         | 默认离线 Gate：lint、格式、strict typecheck 和测试                      |
 | `corepack pnpm test:godot`                                    | Godot Addon、protocol、Project Environment 集成与 characterization 测试 |
+| `corepack pnpm demo:platform-alias -- ...`                    | GN-1 固定外部项目的专用 real-Pi 实验入口                                |
+| `corepack pnpm demo:platform-alias-ablation -- --arm ...`     | GN-1 matched ablation 的一个 fresh arm；两个 JSON 另行评估              |
 | `corepack pnpm project preview -- ...`                        | 实验性 Project Environment 入口                                         |
 | `corepack pnpm task -- start ...`                             | M3/M4/E2 兼容实验路径；另有 `continue/show/export/discard` 子命令       |
 | `corepack pnpm test:sandbox`                                  | 真实 Host coding-sandbox conformance                                    |
@@ -135,7 +194,10 @@ Host prerequisites、live Gate、evidence validator 和完整 Gate 命令矩阵�
 
 ## 当前限制
 
-- `chronorift [goal]` 尚不是默认命令；Project Environment 只能通过显式 Preview 使用。
+- `chronorift [goal]` 尚不是默认命令；Project Environment 只能通过显式 Preview 使用，GN-1 只能通过固定项目的
+  `demo:platform-alias` 或 `demo:platform-alias-ablation` 命令使用。
+- GN-1 只支持上述精确 `moddable-platformer` commit/tree、一个项目特定 V1 adapter 和四个 lifecycle/query tools；它不
+  支持其他项目、adapter authoring/reuse、V2 history/capture、checkpoint/replay、evidence archive 或自动 acceptance。
 - PE-B 只证明一个冻结的 clean、single-root、single-target 动态项目结构；不能外推到任意 Godot 项目。
 - PE-C CI r1 只证明一个冻结外部项目、deterministic fake Agent 和精确 Host boundary 上的 tracked dirty、逐次显式
   untracked、项目选择、稳定 `SourceId`、materialize 后 drift 检查、本地 addon/`@tool`、default + selected target、
@@ -163,7 +225,7 @@ Host prerequisites、live Gate、evidence validator 和完整 Gate 命令矩阵�
 
 ## 文档地图
 
-- [目标架构](docs/architecture.md)：vNext 产品契约、边界、PC-1 下一切片和当前实现映射。
+- [目标架构](docs/architecture.md)：vNext 产品契约、边界、GN-1 当前切片和当前实现映射。
 - [Project Environment V1 RFC](docs/project-environment-v1.md)：详细数据模型、初始化/publication 状态机和 PE rollout。
 - [开发与验证指南](docs/development.md)：本地、Host、live 与 evidence Gate。
 - [Godot Protocol v2](docs/godot-protocol-v2.md)：已实现的 v0.3 Host ↔ Addon wire；Project Environment 使用 RFC

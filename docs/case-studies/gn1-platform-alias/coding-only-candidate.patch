@@ -1,0 +1,33 @@
+diff --git a/components/platform/platform.gd b/components/platform/platform.gd
+index 1f5858466e5f7dfabac5f92c2434d36867c951ce..9046a4fe77ea464da4718179aeaef78304c7e462 100644
+--- a/components/platform/platform.gd
++++ b/components/platform/platform.gd
+@@ -3,6 +3,8 @@ class_name Platform
+ extends Node2D
+ 
+ const TILE_WIDTH: int = 128
++# The trigger detects the player's body, so subtract its width to constrain its center.
++const PLAYER_COLLISION_WIDTH: int = 86
+ const SPRITE: Texture2D = preload("res://assets/tiles-a.png")
+ 
+ ## How many tiles wide is the platform?
+@@ -48,7 +50,9 @@ func _recreate_sprites():
+ 	_collision_shape.one_way_collision = one_way
+ 	_collision_shape.shape.set_size(Vector2(width * TILE_WIDTH, TILE_WIDTH))
+ 	_area_collision_shape.shape.set_size(
+-		Vector2(width * TILE_WIDTH, _area_collision_shape.shape.size[1])
++		Vector2(
++			width * TILE_WIDTH - PLAYER_COLLISION_WIDTH, _area_collision_shape.shape.size[1]
++		)
+ 	)
+ 
+ 	var center: float = (width - 1) * TILE_WIDTH / 2.0
+diff --git a/main.tscn b/main.tscn
+index 1adcf11c203d9db3314f7991ea60a58e8f64470a..032899f3347eacc55daa63d424f7bb8ef280be6b 100644
+--- a/main.tscn
++++ b/main.tscn
+@@ -73,3 +73,4 @@ speed = 100.0
+ position = Vector2(859, 483)
+ speed = 50.0
+ start_direction = 1
++

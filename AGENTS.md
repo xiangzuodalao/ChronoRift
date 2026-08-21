@@ -1,19 +1,40 @@
 # ChronoRift Repository Guidelines
 
-These instructions apply repository-wide. Keep changes small, evidence-backed, and scoped to the current
-vertical slice. Add nested `AGENTS.md` files only when a subtree develops genuinely different rules.
+These instructions apply repository-wide. Keep changes small, evidence-backed, and scoped to the user-requested
+product path or one explicit vertical slice. No follow-on slice is predetermined. Add nested `AGENTS.md` files only
+when a subtree develops genuinely different rules.
 
 ## Sources of truth
 
 - `docs/architecture.md` defines the vNext product contract, boundaries, terminology, and rollout. It is
   a target architecture, not a list of implemented features.
-- Architecture Section 20 defines the next slice; Section 21 maps current code to the target. Never
-  describe planned behavior as implemented.
+- Architecture Section 20 records the rollout and current experiment; Section 21 maps current code to
+  the target. Never describe planned behavior as implemented.
 - `README.md` is the user entry point. Keep its commands, status, limitations, and next slice accurate.
-- `docs/benchmarks/**` contains frozen historical evidence. Do not strengthen its published conclusions.
+- `docs/benchmarks/**` and `docs/evidence/**` contain frozen historical evidence. Do not strengthen their
+  published conclusions.
 - Installed Pi package source and types are authoritative; do not invent SDK APIs from memory.
 - Deliver narrow, tested vertical slices with one major uncertainty dimension at a time.
 - Legacy v0.1-v0.4 behavior may remain for compatibility. New paths must not copy or widen that debt.
+- The current maintained surfaces are the v0.4 legacy release, experimental Project Environment Preview, and the
+  fixed-project GN-1 ablation. M3/M4/E2 remain compatibility or historical paths, not templates for new slices.
+- Active v0.3 benchmark/formal machinery and PE/M4/E2 evidence campaigns are retired. Reproduce them from their
+  historical tag when necessary; do not restore their producers, validators, publishers, or one-off Gates in current
+  HEAD merely to revalidate frozen archives.
+
+## Scope and repository hygiene
+
+- Start from the smallest product behavior that answers the user's question. Prefer one project, Bug, runtime
+  primitive, candidate diff, and external acceptance boundary over a reusable experiment framework.
+- Do not add a campaign manager, evidence bundle builder, standalone validator, canary, publisher, freeze ledger,
+  Gate matrix, or failure-resume system unless the current product contract—not experiment bookkeeping—requires it.
+- A transcript, diff, runtime receipt, and independent project test may be sufficient characterization output. Do not
+  freeze or promote a one-off result by default.
+- Keep GN-1 independent from Project Environment initialization/publication/reuse. Keep Preview reusable rather than
+  adding another fixed-project profile, and keep legacy v0.4 debt out of new vNext paths.
+- Before deleting legacy code, trace reverse dependencies, preserve lower layers still used by v0.4 or Preview, and
+  replace material security/runtime coverage. Frozen archives stay byte-identical even when their active producer is
+  retired.
 
 ## vNext product contract
 
@@ -55,6 +76,11 @@ vertical slice. Add nested `AGENTS.md` files only when a subtree develops genuin
   upgrade includes compatibility tests.
 - Preserve Pi's normal coding-agent behavior and resources. Add ChronoRift tools and a concise environment
   appendix; do not replace the Loop with a diagnostic script or fixed tool order.
+- Advertise custom tools through truthful `ToolDefinition` prompt metadata and exact input schemas. Do not force tool
+  use through task-specific instructions; the Agent remains free to choose source, command, and game tools.
+- In a matched ablation, keep source, user prompt, model/thinking, budget, shared tools, and shared environment
+  instructions matched. Record every treatment-only surface and do not describe a tool-plus-prompt intervention as a
+  tool-only comparison.
 - Provider and model selection stay explicit at the command boundary. Unit tests use fakes; only
   `*.live.test.ts` may contact a provider.
 - Normal coding and game tools must use the task sandbox broker. Setting Pi's `cwd` is not isolation, and
@@ -116,8 +142,13 @@ vertical slice. Add nested `AGENTS.md` files only when a subtree develops genuin
 
 - The default gate is `corepack pnpm check`. Default tests are offline, deterministic, credential-free,
   and network-free.
+- If Corepack is unavailable but the pinned dependencies are already installed, the equivalent `npm run <script>` may
+  be used without changing package-manager metadata; report that fallback in the handoff.
 - Use `corepack pnpm test:godot` for relevant Godot changes. Run `corepack pnpm test:live` only when the Pi
   path changed and valid credentials and network access are intentionally available.
+- Run Host sandbox suites through their checked-in conformance wrapper or an explicitly equivalent provisioned
+  boundary with the required delegated cgroup and bounded Task storage. A raw invocation that lacks required Host
+  environment variables is a precondition failure, not a product test result.
 - Reproduce a Bug with a test before fixing it. Do not weaken schemas, lint, compiler flags, or tests.
 - Test schemas, real IDs, task ownership, receipts, lineage, recoverable failures, and security boundaries;
   do not assert exact model prose or one mandatory tool sequence.

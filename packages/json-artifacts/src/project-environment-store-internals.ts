@@ -14,10 +14,7 @@ import { dirname, isAbsolute, join, posix, resolve, win32 } from "node:path";
 import { JsonValueSchema, type JsonValue } from "@chronorift/domain";
 
 import { canonicalJson, contentHash } from "./canonical-json.js";
-import {
-  ArtifactCorruptionError,
-  ArtifactNotFoundError,
-} from "./json-artifact-repository.js";
+import { ArtifactCorruptionError, ArtifactNotFoundError } from "./errors.js";
 import {
   ArtifactPathSecurityError,
   ImmutableArtifactConflictError,
@@ -1641,37 +1638,6 @@ export async function readLedger<T>(
   } catch (error) {
     throw new ArtifactCorruptionError(path, error);
   }
-}
-
-export async function readSealedLedgerEvidence<T>(
-  directory: DirectoryIdentity,
-  name: string,
-  ownerId: string,
-  parse: (input: unknown) => T,
-  quota: ProjectEnvironmentStoreQuotaV1,
-): Promise<{
-  readonly bytes: Uint8Array;
-  readonly envelopes: readonly ProjectEnvironmentLedgerEnvelopeV1[];
-  readonly seal: ProjectEnvironmentLedgerSealV1;
-}> {
-  const state = await readLedgerState(directory, name, ownerId, quota);
-  if (state.seal === undefined) {
-    throw new Error(`Project Environment ledger ${name} is not sealed`);
-  }
-  try {
-    for (const envelope of state.envelopes) {
-      asJsonValue(parse(envelope.payload));
-    }
-  } catch (error) {
-    throw new ArtifactCorruptionError(join(directory.path, name), error);
-  }
-  return Object.freeze({
-    bytes: Uint8Array.from(state.bytes),
-    envelopes: Object.freeze(
-      state.envelopes.map((value) => Object.freeze(value)),
-    ),
-    seal: Object.freeze(state.seal),
-  });
 }
 
 export async function sealLedger(

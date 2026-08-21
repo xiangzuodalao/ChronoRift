@@ -76,10 +76,6 @@ export const PLATFORM_ALIAS_SOURCE_TREE =
   "9941cb045b3cd73c4554ca1de337a341b383590b" as const;
 export const PLATFORM_ALIAS_PROMPT =
   "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy." as const;
-export const PLATFORM_ALIAS_OBSERVATION_AFFORDANCE =
-  "The adapter exposes the platform_geometry state domain: configured tile width, rendered sprite count, solid and area collision widths, and execution-local Shape resource identity." as const;
-export const PLATFORM_ALIAS_BUILD_LIFECYCLE_AFFORDANCE =
-  "Without an active runtime, game_capabilities freezes and reports the current private-workspace Build. An active runtime remains bound to its launch Build until stopped, and game_launch accepts an exact current buildId." as const;
 
 export const PLATFORM_ALIAS_ABLATION_PROVIDER = "openai-codex" as const;
 export const PLATFORM_ALIAS_ABLATION_MODEL = "gpt-5.6-luna" as const;
@@ -97,26 +93,11 @@ export type PlatformAliasAblationArmV1 = z.infer<
   typeof PlatformAliasAblationArmV1Schema
 >;
 
-export const createPlatformAliasEnvironmentInstructions = (input: {
-  readonly taskId: string;
-  readonly launchTargetId: string;
-}): string =>
-  [
-    "GN-1 fixed external-project runtime:",
-    `- taskId: ${input.taskId}`,
-    `- default launchTargetId: ${input.launchTargetId}`,
-    "- Only game_capabilities, game_launch, game_query, and game_stop are exposed.",
-    `- ${PLATFORM_ALIAS_OBSERVATION_AFFORDANCE}`,
-    `- ${PLATFORM_ALIAS_BUILD_LIFECYCLE_AFFORDANCE}`,
-    "- Resource instance IDs are meaningful only as equality classes inside one Execution; do not compare their numeric values across launches.",
-  ].join("\n");
-
-export const createPlatformAliasAblationEnvironmentInstructionsV1 = (input: {
+const createPlatformAliasAblationEnvironmentInstructionsV1 = (input: {
   readonly taskId: string;
 }): string => ["Task context:", `- taskId: ${input.taskId}`].join("\n");
 
 export const createPlatformAliasAblationEnvironmentV1 = (input: {
-  readonly arm: PlatformAliasAblationArmV1;
   readonly taskId: string;
 }): {
   readonly environmentProfile: "coding";
@@ -832,7 +813,7 @@ interface PlatformAliasCaseRunV1 {
 
 async function runPlatformAliasCaseV1(
   request: PlatformAliasDemoRequestV1,
-  ablationArm: PlatformAliasAblationArmV1 | null,
+  ablationArm: PlatformAliasAblationArmV1,
 ): Promise<PlatformAliasCaseRunV1> {
   if (
     request.provider.trim().length === 0 ||
@@ -970,8 +951,7 @@ async function runPlatformAliasCaseV1(
   let candidateObservation: PlatformAliasRuntimeObservationV1 | null = null;
   let candidateObservationError: string | null = null;
   let candidateRuntimeErrors: JsonValue | null = null;
-  let candidateRuntimeErrorsError: string | null =
-    ablationArm === null ? "runtime errors were not requested" : null;
+  let candidateRuntimeErrorsError: string | null = null;
   let cleanupReceipt: z.infer<typeof SandboxCleanupReceiptV1Schema>;
   let runtime: ProjectEnvironmentGameRuntimeV1 | null = null;
   let sharedToolNames: readonly string[] = [];
@@ -1017,60 +997,41 @@ async function runPlatformAliasCaseV1(
     const codingTools = createVNextCodingToolDefinitions(
       new SandboxPiCodingToolPort(broker),
     );
-    const godotRunTool =
-      ablationArm === null
-        ? null
-        : createPlatformAliasGodotRunToolV1({
-            sidecar,
-            managedRuntime: managed.capability,
-            taskId,
-            prepareBuild,
-            onCall: (call) => {
-              rawGodotToolCalls.push(call);
-            },
-          });
-    const ablationToolSurface =
-      godotRunTool === null || ablationArm === null
-        ? null
-        : selectPlatformAliasAblationToolSurfaceV1({
-            arm: ablationArm,
-            codingTools,
-            godotRunTool,
-            chronoriftTools: gameTools,
-          });
-    const sharedTools =
-      ablationToolSurface === null
-        ? Object.freeze([...codingTools])
-        : ablationToolSurface.sharedTools;
-    const selectedGameTools =
-      ablationToolSurface === null
-        ? gameTools
-        : ablationToolSurface.chronoriftTools;
+    const godotRunTool = createPlatformAliasGodotRunToolV1({
+      sidecar,
+      managedRuntime: managed.capability,
+      taskId,
+      prepareBuild,
+      onCall: (call) => {
+        rawGodotToolCalls.push(call);
+      },
+    });
+    const ablationToolSurface = selectPlatformAliasAblationToolSurfaceV1({
+      arm: ablationArm,
+      codingTools,
+      godotRunTool,
+      chronoriftTools: gameTools,
+    });
+    const sharedTools = ablationToolSurface.sharedTools;
+    const selectedGameTools = ablationToolSurface.chronoriftTools;
     sharedToolNames = Object.freeze(sharedTools.map((tool) => tool.name));
     chronoriftToolNames = Object.freeze(
       selectedGameTools.map((tool) => tool.name),
     );
     if (
-      ablationArm !== null &&
-      (JSON.stringify(sharedToolNames) !==
+      JSON.stringify(sharedToolNames) !==
         JSON.stringify(PLATFORM_ALIAS_ABLATION_SHARED_TOOL_NAMES) ||
-        JSON.stringify(chronoriftToolNames) !==
-          JSON.stringify(
-            ablationArm === "chronorift" ? EXPOSED_GAME_TOOLS : [],
-          ))
+      JSON.stringify(chronoriftToolNames) !==
+        JSON.stringify(ablationArm === "chronorift" ? EXPOSED_GAME_TOOLS : [])
     ) {
       throw new Error(
         "GN-1 ablation tool catalog drifted before the Agent turn",
       );
     }
     try {
-      const ablationEnvironment =
-        ablationArm === null
-          ? null
-          : createPlatformAliasAblationEnvironmentV1({
-              arm: ablationArm,
-              taskId,
-            });
+      const ablationEnvironment = createPlatformAliasAblationEnvironmentV1({
+        taskId,
+      });
       piResult = await runVNextPiTurnWithSdk({
         resourceWorkspaceDirectory: materialized.workspaceDirectory,
         sessionDirectory: layout.piSessionDirectory,
@@ -1082,25 +1043,14 @@ async function runPlatformAliasCaseV1(
         model: request.model,
         thinkingLevel: request.thinkingLevel,
         prompt: PLATFORM_ALIAS_PROMPT,
-        tools:
-          ablationToolSurface === null
-            ? Object.freeze([...sharedTools, ...selectedGameTools])
-            : ablationToolSurface.tools,
+        tools: ablationToolSurface.tools,
         ...(request.timeoutMs === undefined
           ? {}
           : { timeoutMs: request.timeoutMs }),
         providerRequestTimeoutMs: GN1_PROVIDER_REQUEST_TIMEOUT_MS,
         agentRetryMaxRetries: GN1_AGENT_RETRY_MAX_RETRIES,
         transport: "sse",
-        ...(ablationEnvironment === null
-          ? {
-              additionalEnvironmentInstructions:
-                createPlatformAliasEnvironmentInstructions({
-                  taskId,
-                  launchTargetId: defaultTarget.targetId,
-                }),
-            }
-          : ablationEnvironment),
+        ...ablationEnvironment,
       });
     } catch (error) {
       piError = error;
@@ -1115,28 +1065,16 @@ async function runPlatformAliasCaseV1(
       hostOperationTemporaryDirectory: layout.hostOperationTemporaryDirectory,
     });
     try {
-      const postflight =
-        ablationArm === null
-          ? {
-              observation: await observePlatformAliasRuntimeV1(
-                runtime,
-                taskId,
-                defaultTarget.targetId,
-              ),
-              runtimeErrors: null,
-            }
-          : await observePlatformAliasAblationPostflightV1(
-              runtime,
-              taskId,
-              defaultTarget.targetId,
-            );
+      const postflight = await observePlatformAliasAblationPostflightV1(
+        runtime,
+        taskId,
+        defaultTarget.targetId,
+      );
       candidateObservation = postflight.observation;
       candidateRuntimeErrors = postflight.runtimeErrors;
     } catch (error) {
       candidateObservationError = boundedError(error);
-      if (ablationArm !== null) {
-        candidateRuntimeErrorsError = candidateObservationError;
-      }
+      candidateRuntimeErrorsError = candidateObservationError;
     }
   } finally {
     await runtime?.close().catch(() => undefined);
@@ -1179,19 +1117,11 @@ async function runPlatformAliasCaseV1(
     taskDirectory: layout.taskRootDirectory,
     cleanupReceipt,
     securityEvents: parsedSecurityEvents,
-    limitations:
-      ablationArm === null
-        ? [
-            "This is one project-specific runtime-observation case at one exact third-party commit and tree.",
-            "The Adapter observes settled startup geometry and execution-local Resource identity; it does not retain the earlier write history.",
-            "An Agent tool call, candidate diff, or changed runtime observation is not a fix verdict or acceptance result.",
-            "This command has no ordinary-coding-agent arm and supports no comparative or general superiority claim.",
-          ]
-        : [
-            "This is one arm of one project-specific ablation pair at one exact third-party commit and tree.",
-            "The Host postflight is not visible to the Agent and does not establish a canonical fix verdict.",
-            "Interpretation requires the separately executed matched arm; one pair supports no general superiority claim.",
-          ],
+    limitations: [
+      "This is one arm of one project-specific ablation pair at one exact third-party commit and tree.",
+      "The Host postflight is not visible to the Agent and does not establish a canonical fix verdict.",
+      "Interpretation requires the separately executed matched arm; one pair supports no general superiority claim.",
+    ],
   });
   return {
     result,
@@ -1201,12 +1131,6 @@ async function runPlatformAliasCaseV1(
     sharedToolNames,
     chronoriftToolNames,
   };
-}
-
-export async function runPlatformAliasDemoV1(
-  request: PlatformAliasDemoRequestV1,
-): Promise<PlatformAliasDemoResultV1> {
-  return (await runPlatformAliasCaseV1(request, null)).result;
 }
 
 export async function runPlatformAliasAblationV1(

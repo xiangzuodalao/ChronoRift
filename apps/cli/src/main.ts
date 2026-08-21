@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { readFile, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,9 +10,6 @@ import {
   asExecutionId,
   asTaskId,
   type DiagnosisProposal,
-  type DiagnosisProposalV3,
-  type DiagnosisVerdictV2,
-  type V03ExecutionLog,
 } from "@chronorift/domain";
 import {
   DEFAULT_LIFECYCLE_SIDECAR_TARGETS,
@@ -32,17 +29,13 @@ import {
 import {
   ArtifactNotFoundError,
   V01JsonArtifactRepository,
-  V03BenchmarkJsonArtifactRepository,
-  V03BenchmarkJsonArtifactRepositoryV3,
   VNextTaskStore,
 } from "@chronorift/json-artifacts";
 import {
   listAvailablePiModels,
   persistPiApiKey,
   runDeterministicPiDiagnosis,
-  runDeterministicV03PiDiagnosis,
   runPiDiagnosis,
-  runV03PiDiagnosis,
   type PiThinkingLevel,
   type PiDiagnosisRunResult,
 } from "@chronorift/pi-harness";
@@ -55,51 +48,12 @@ import {
 } from "./pi-defaults.js";
 import { runPiSmoke } from "./pi-smoke.js";
 import { ChronoRiftV01AgentGameApi } from "./v01-agent-game-api.js";
-import { ChronoRiftV03AgentGameApi } from "./v03-agent-game-api.js";
-import {
-  runV03Benchmark,
-  writeSanitizedV03BenchmarkReport,
-} from "./v03-benchmark.js";
-import {
-  publishFormalBenchmark,
-  verifyFormalBenchmarkReport,
-} from "./v03-formal-publication.js";
-import {
-  publishFormalBenchmarkV3,
-  verifyFormalBenchmarkReportV3,
-} from "./v03-formal-publication-v3.js";
-import {
-  runFormalBenchmark,
-  runFormalBenchmarkV3,
-} from "./v03-formal-runtime.js";
-import {
-  buildFormalBenchmarkSuiteSpecV3,
-  buildFormalBenchmarkSuiteSpecV2,
-  parseFormalBenchmarkSuiteSpecV3,
-  parseFormalBenchmarkSuiteSpecV2,
-} from "./v03-formal-suite.js";
 import {
   createV01GameBranchServiceForEnvironment,
   createV01MockRun,
   type V01MockRunContext,
 } from "./v01-runtime.js";
-import { createV03Run, type V03RunContext } from "./v03-runtime.js";
-import { createV03NeutralSourceAccess } from "./v03-source-view.js";
 import { runV04Diagnosis, type V04DiagnosisOutput } from "./v04-diagnosis.js";
-import {
-  assertCanaryC1Prerequisite,
-  buildLunaCanarySpec,
-  executeCanaryStage,
-  parseCanaryStageReport,
-  publishCanaryReport,
-  readCanaryReport,
-  readCanarySpec,
-  type CanaryStage,
-} from "./v03-canary.js";
-import {
-  LiveLunaCanaryRunner,
-  createCanaryImplementationReceipt,
-} from "./v03-canary-live.js";
 import {
   continueVNextAgentTask,
   discardVNextAgentTask,
@@ -117,7 +71,6 @@ import {
   PlatformAliasAblationArmV1Schema,
   PlatformAliasDemoFailureV1Schema,
   runPlatformAliasAblationV1,
-  runPlatformAliasDemoV1,
 } from "./vnext/platform-alias-demo.js";
 import { runProjectEnvironmentPreviewV1 } from "./vnext/project-environment-preview.js";
 
@@ -160,7 +113,6 @@ function parseArguments(argv: readonly string[]): Arguments {
     if (
       existing !== undefined &&
       (command === "project-preview" ||
-        command === "demo-platform-alias" ||
         command === "demo-platform-alias-ablation")
     ) {
       throw new Error(`Duplicate --${name}`);
@@ -449,104 +401,6 @@ async function runDiagnosisCommand(
   else printHumanDiagnosis(output);
 }
 
-async function v03DiagnosisOutput(
-  context: V03RunContext,
-  result: Awaited<ReturnType<typeof runDeterministicV03PiDiagnosis>>,
-): Promise<Readonly<Record<string, unknown>>> {
-  const verdict = await context.gameBranch.concludeV3(
-    result.proposal,
-    result.accessReceipts,
-  );
-  return {
-    schemaVersion: 3,
-    fixture: context.preparedFixture.fixtureName,
-    runId: context.runId,
-    artifactRoot: context.artifactRoot,
-    runDirectory: context.runDirectory,
-    contract: context.contract,
-    baselineBranch: context.baselineBranch,
-    baselineExecution: context.baselineExecution,
-    evidenceCapsule: context.evidenceCapsule,
-    proposal: result.proposal,
-    accessReceipts: result.accessReceipts,
-    verdict,
-    piSession: result.piSession,
-  };
-}
-
-function printHumanV03Diagnosis(
-  output: Readonly<Record<string, unknown>>,
-): void {
-  const proposal = output["proposal"] as DiagnosisProposalV3;
-  const verdict = output["verdict"] as DiagnosisVerdictV2;
-  const baseline = output["baselineExecution"] as V03ExecutionLog;
-  const session = output["piSession"] as {
-    readonly provider: string;
-    readonly model: string;
-    readonly sessionFile: string;
-  };
-  process.stdout.write(`ChronoRift v0.3 — ${verdict.status}\n`);
-  process.stdout.write(`${verdict.summary}\n\n`);
-  process.stdout.write(`Fixture:           ${String(output["fixture"])}\n`);
-  process.stdout.write(
-    `Baseline:          ${baseline.executionId} (${baseline.evaluation.status})\n`,
-  );
-  process.stdout.write(`Mechanism:         ${proposal.mechanismCode}\n`);
-  process.stdout.write(
-    `Agent confidence:  ${proposal.confidence} (advisory; ignored by the Gate)\n`,
-  );
-  process.stdout.write(
-    `Pi model:          ${session.provider}/${session.model}\n`,
-  );
-  process.stdout.write(`Pi session:        ${session.sessionFile}\n`);
-  process.stdout.write(
-    `Artifacts:         ${String(output["runDirectory"])}\n`,
-  );
-  if (verdict.blockers.length > 0) {
-    process.stdout.write(`Blockers:          ${verdict.blockers.join("; ")}\n`);
-  }
-}
-
-async function runV03DiagnosisCommand(
-  args: Arguments,
-  cwd: string,
-  mode: "deterministic" | "live",
-): Promise<void> {
-  const fixture = asV03FixtureName(flag(args, "fixture") ?? "signal-ordering");
-  const artifactRoot = flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT");
-  const godotBin = flag(args, "godot-bin", "GODOT_BIN");
-  const context = await createV03Run({
-    cwd,
-    fixture,
-    ...(artifactRoot === undefined ? {} : { artifactRoot }),
-    ...(godotBin === undefined ? {} : { godotBin }),
-  });
-  const game = new ChronoRiftV03AgentGameApi(context);
-  const source = await createV03NeutralSourceAccess(context);
-  const common = {
-    cwd,
-    runDir: context.runDirectory,
-    arm: "chronorift-full" as const,
-    initialCapsuleId: context.evidenceCapsule.capsuleId,
-    baselineExecutionId: context.baselineExecution.executionId,
-    game,
-    source,
-    failureBrief: context.failureBrief,
-  };
-  const result =
-    mode === "deterministic"
-      ? await runDeterministicV03PiDiagnosis(common)
-      : await runV03PiDiagnosis({
-          ...common,
-          provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
-          model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
-          thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
-        });
-  const output = await v03DiagnosisOutput(context, result);
-  if (hasFlag(args, "json")) printJson(output);
-  else printHumanV03Diagnosis(output);
-}
-
 function printHumanV04Diagnosis(output: V04DiagnosisOutput): void {
   process.stdout.write(
     [
@@ -602,296 +456,6 @@ async function runV04DiagnosisCommand(
   else printHumanV04Diagnosis(output);
 }
 
-async function runBenchmarkCommand(
-  args: Arguments,
-  cwd: string,
-  mode: "deterministic" | "live",
-): Promise<void> {
-  const report = await runV03Benchmark({
-    cwd,
-    mode,
-    repetitions: positiveIntegerFlag(
-      args,
-      "repetitions",
-      mode === "live" ? 3 : 1,
-    ),
-    seed: flag(args, "seed") ?? "chronorift-v0.3",
-    ...(mode === "live"
-      ? {
-          provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
-          model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
-          thinkingLevel: thinkingLevelFlag(args, "low"),
-        }
-      : {}),
-    ...(flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") === undefined
-      ? {}
-      : { artifactRoot: flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") }),
-    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
-      ? {}
-      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
-  });
-  const output =
-    flag(args, "report") ??
-    (mode === "live" ? "docs/benchmarks/v0.3-live.json" : undefined);
-  if (output !== undefined) {
-    await writeSanitizedV03BenchmarkReport(resolve(cwd, output), report);
-  }
-  printJson({
-    ...report,
-    ...(output === undefined ? {} : { reportPath: output }),
-  });
-}
-
-const canaryArtifactRoot = (cwd: string): string => resolve(cwd, ".chronorift");
-
-function canaryStageFlag(args: Arguments): CanaryStage {
-  const stage = requiredFlag(args, "stage");
-  if (stage !== "c0" && stage !== "c1") {
-    throw new Error("--stage must be c0 or c1");
-  }
-  return stage;
-}
-
-async function buildCanarySpecCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["id"]);
-  printJson(
-    buildLunaCanarySpec(
-      flag(args, "id"),
-      await createCanaryImplementationReceipt(cwd),
-    ),
-  );
-}
-
-async function runCanaryCommand(args: Arguments, cwd: string): Promise<void> {
-  assertOnlyFlags(args, ["spec", "stage", "c0-report", "godot-bin"]);
-  const stage = canaryStageFlag(args);
-  const spec = await readCanarySpec(resolve(cwd, requiredFlag(args, "spec")));
-  const prerequisitePath = flag(args, "c0-report");
-  if (stage === "c1" && prerequisitePath === undefined) {
-    throw new Error("--c0-report is required for C1");
-  }
-  if (stage === "c0" && prerequisitePath !== undefined) {
-    throw new Error("--c0-report is only valid for C1");
-  }
-  const prerequisiteReport =
-    prerequisitePath === undefined
-      ? undefined
-      : await readCanaryReport(resolve(cwd, prerequisitePath));
-  const artifactRoot = canaryArtifactRoot(cwd);
-  const report = await executeCanaryStage({
-    cwd,
-    artifactRoot,
-    spec,
-    stage,
-    ...(prerequisiteReport === undefined ? {} : { prerequisiteReport }),
-    runner: new LiveLunaCanaryRunner({
-      cwd,
-      artifactRoot,
-      ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
-        ? {}
-        : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
-    }),
-  });
-  printJson({
-    canaryId: report.spec.canaryId,
-    stage: report.stage,
-    reportHash: report.reportHash,
-    readiness: report.readiness,
-  });
-  if (report.readiness.status !== "ready") process.exitCode = 2;
-}
-
-async function publishCanaryCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["spec", "stage", "output"]);
-  const spec = await readCanarySpec(resolve(cwd, requiredFlag(args, "spec")));
-  const stage = canaryStageFlag(args);
-  const output =
-    flag(args, "output") ??
-    `.chronorift/v0.3/canary-publications/${encodeURIComponent(spec.canaryId)}/${stage}.report.json`;
-  printJson({
-    canaryId: spec.canaryId,
-    stage,
-    reportPath: await publishCanaryReport({
-      cwd,
-      artifactRoot: canaryArtifactRoot(cwd),
-      canaryId: spec.canaryId,
-      stage,
-      outputPath: output,
-    }),
-  });
-}
-
-async function verifyCanaryCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["report", "c0-report"]);
-  const report = parseCanaryStageReport(
-    await readCanaryReport(resolve(cwd, requiredFlag(args, "report"))),
-  );
-  const prerequisitePath = flag(args, "c0-report");
-  if (report.stage === "c1" && prerequisitePath === undefined) {
-    throw new Error("--c0-report is required to verify C1 linkage");
-  }
-  if (report.stage === "c0" && prerequisitePath !== undefined) {
-    throw new Error("--c0-report is only valid when verifying C1");
-  }
-  let prerequisiteEligibility: "not_eligible" | "legacy_only" | "hardened" =
-    report.readiness.status !== "ready"
-      ? "not_eligible"
-      : report.implementationReceipt === undefined
-        ? "legacy_only"
-        : "hardened";
-  if (prerequisitePath !== undefined) {
-    const prerequisite = await readCanaryReport(resolve(cwd, prerequisitePath));
-    assertCanaryC1Prerequisite(
-      report.spec,
-      prerequisite,
-      report.prerequisiteReportHash ?? undefined,
-    );
-    if (report.implementationReceipt === undefined) {
-      if (report.readiness.status === "ready") {
-        prerequisiteEligibility = "legacy_only";
-      }
-    } else {
-      assertCanaryC1Prerequisite(
-        report.spec,
-        prerequisite,
-        report.prerequisiteReportHash ?? undefined,
-        report.implementationReceipt,
-      );
-      if (report.readiness.status === "ready") {
-        prerequisiteEligibility = "hardened";
-      }
-    }
-  }
-  printJson({
-    canaryId: report.spec.canaryId,
-    stage: report.stage,
-    reportHash: report.reportHash,
-    readiness: report.readiness,
-    prerequisiteEligibility,
-  });
-  if (report.readiness.status !== "ready") process.exitCode = 2;
-}
-
-const formalSpecPath = (args: Arguments, cwd: string): string =>
-  resolve(
-    cwd,
-    flag(args, "spec") ?? "docs/benchmarks/v0.3/benchmark-spec.v2.json",
-  );
-
-const formalArtifactRoot = (cwd: string): string => resolve(cwd, ".chronorift");
-
-function formalSchemaVersion(input: unknown, label: string): 2 | 3 {
-  if (input === null || Array.isArray(input) || typeof input !== "object") {
-    throw new Error(`${label} is not an object`);
-  }
-  const version = (input as Readonly<Record<string, unknown>>)["schemaVersion"];
-  if (version !== 2 && version !== 3) {
-    throw new Error(`${label} has an unsupported schemaVersion`);
-  }
-  return version;
-}
-
-async function readFormalJson(path: string): Promise<unknown> {
-  return JSON.parse(await readFile(resolve(path), "utf8")) as unknown;
-}
-
-async function runFormalBenchmarkCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["spec", "resume", "godot-bin"]);
-  const specPath = formalSpecPath(args, cwd);
-  const version = formalSchemaVersion(
-    await readFormalJson(specPath),
-    "Formal benchmark specification",
-  );
-  const commonOptions = {
-    cwd,
-    specPath,
-    artifactRoot: formalArtifactRoot(cwd),
-    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
-      ? {}
-      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
-    ...(flag(args, "resume") === undefined
-      ? {}
-      : { resumeExecutionId: flag(args, "resume") }),
-    onExecutionSelected: (executionId: string) => {
-      process.stderr.write(
-        `${JSON.stringify({ executionId, status: "execution_identified" })}\n`,
-      );
-    },
-  };
-  const result =
-    version === 3
-      ? await runFormalBenchmarkV3(commonOptions)
-      : await runFormalBenchmark(commonOptions);
-  printJson({
-    executionId: result.report.executionId,
-    status: result.report.status,
-    recoverable: result.recoverable,
-    reportHash: result.report.reportHash,
-  });
-  if (result.recoverable || result.report.status === "incomplete") {
-    process.exitCode = 2;
-  } else if (result.report.status === "invalid") {
-    process.exitCode = 1;
-  }
-}
-
-async function buildFormalSpecCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["artifacts", "campaign", "godot-bin"]);
-  const campaign = flag(args, "campaign");
-  if (
-    campaign !== undefined &&
-    campaign !== "v0.3.1" &&
-    campaign !== "v0.3.1-r2" &&
-    campaign !== "v0.3.2-luna" &&
-    campaign !== "v0.3.2-luna-r1" &&
-    campaign !== "v0.3.2-luna-r2" &&
-    campaign !== "v0.3.2-luna-r3" &&
-    campaign !== "v0.3.2-luna-r4"
-  ) {
-    throw new Error(`Unsupported benchmark campaign: ${campaign}`);
-  }
-  const commonOptions = {
-    cwd,
-    artifactRoot: resolve(
-      cwd,
-      flag(args, "artifacts") ?? ".chronorift/formal-spec-build",
-    ),
-    ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
-      ? {}
-      : { godotBin: flag(args, "godot-bin", "GODOT_BIN") }),
-  };
-  printJson(
-    campaign === "v0.3.2-luna" ||
-      campaign === "v0.3.2-luna-r1" ||
-      campaign === "v0.3.2-luna-r2" ||
-      campaign === "v0.3.2-luna-r3" ||
-      campaign === "v0.3.2-luna-r4"
-      ? await buildFormalBenchmarkSuiteSpecV3({
-          ...commonOptions,
-          campaign,
-        })
-      : await buildFormalBenchmarkSuiteSpecV2({
-          ...commonOptions,
-          ...(campaign === undefined ? {} : { campaign }),
-        }),
-  );
-}
-
 async function piSmokeCommand(args: Arguments, cwd: string): Promise<void> {
   assertOnlyFlags(args, []);
   printJson(
@@ -902,157 +466,6 @@ async function piSmokeCommand(args: Arguments, cwd: string): Promise<void> {
       thinkingLevel: DEFAULT_PI_THINKING_LEVEL,
     }),
   );
-}
-
-async function formalBenchmarkStatusCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["spec"]);
-  const specInput = await readFormalJson(formalSpecPath(args, cwd));
-  const version = formalSchemaVersion(
-    specInput,
-    "Formal benchmark specification",
-  );
-  const suite =
-    version === 3
-      ? parseFormalBenchmarkSuiteSpecV3(specInput)
-      : parseFormalBenchmarkSuiteSpecV2(specInput);
-  const v3Repository =
-    version === 3
-      ? new V03BenchmarkJsonArtifactRepositoryV3(formalArtifactRoot(cwd))
-      : null;
-  const v2Repository =
-    version === 2
-      ? new V03BenchmarkJsonArtifactRepository(formalArtifactRoot(cwd))
-      : null;
-  const selection =
-    version === 3
-      ? await v3Repository?.getExecutionSelectionV3(suite.definitionId)
-      : await v2Repository?.getExecutionSelection(suite.definitionId);
-  if (selection === null) {
-    printJson({
-      definitionId: suite.definitionId,
-      selected: false,
-      executionId: null,
-    });
-    return;
-  }
-  if (selection === undefined) {
-    throw new Error("Formal benchmark repository dispatch failed");
-  }
-  const [started, completed] =
-    version === 3
-      ? await Promise.all([
-          v3Repository?.getExecutionStartedV3(
-            suite.definitionId,
-            selection.executionId,
-          ),
-          v3Repository?.getCompletedV3(
-            suite.definitionId,
-            selection.executionId,
-          ),
-        ])
-      : await Promise.all([
-          v2Repository?.getExecutionStarted(
-            suite.definitionId,
-            selection.executionId,
-          ),
-          v2Repository?.getCompleted(suite.definitionId, selection.executionId),
-        ]);
-  printJson({
-    definitionId: suite.definitionId,
-    selected: true,
-    executionId: selection.executionId,
-    selectionHash: selection.selectionHash,
-    started: started !== null && started !== undefined,
-    status: completed?.status ?? (started === null ? "selected" : "running"),
-    reportHash: completed?.reportHash ?? null,
-  });
-}
-
-async function publishFormalBenchmarkCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["spec", "execution", "output"]);
-  const specPath = formalSpecPath(args, cwd);
-  const version = formalSchemaVersion(
-    await readFormalJson(specPath),
-    "Formal benchmark specification",
-  );
-  const options = {
-    cwd,
-    artifactRoot: formalArtifactRoot(cwd),
-    specPath,
-    executionId: requiredFlag(args, "execution"),
-    outputDirectory: resolve(cwd, requiredFlag(args, "output")),
-  };
-  const files =
-    version === 3
-      ? await publishFormalBenchmarkV3(options)
-      : await publishFormalBenchmark(options);
-  printJson({ published: true, files });
-}
-
-async function verifyFormalBenchmarkCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["spec", "report"]);
-  const path = resolve(cwd, requiredFlag(args, "report"));
-  const specPath = formalSpecPath(args, cwd);
-  const specVersion = formalSchemaVersion(
-    await readFormalJson(specPath),
-    "Formal benchmark specification",
-  );
-  const options = {
-    reportPath: path,
-    specPath,
-  };
-  const verification =
-    specVersion === 3
-      ? await verifyFormalBenchmarkReportV3(options)
-      : await verifyFormalBenchmarkReport(options);
-  printJson({
-    verified: verification.valid,
-    reportPath: path,
-    gate: verification.gate,
-    issues: verification.issues,
-  });
-  if (!verification.valid) process.exitCode = 1;
-}
-
-async function gateFormalBenchmarkCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, ["spec", "report"]);
-  const path = resolve(cwd, requiredFlag(args, "report"));
-  const specPath = formalSpecPath(args, cwd);
-  const specVersion = formalSchemaVersion(
-    await readFormalJson(specPath),
-    "Formal benchmark specification",
-  );
-  const options = {
-    reportPath: path,
-    specPath,
-  };
-  const verification =
-    specVersion === 3
-      ? await verifyFormalBenchmarkReportV3(options)
-      : await verifyFormalBenchmarkReport(options);
-  printJson({
-    verified: verification.valid,
-    reportPath: path,
-    gate: verification.gate,
-    issues: verification.issues,
-  });
-  process.exitCode = verification.valid
-    ? verification.gate.status === "pass"
-      ? 0
-      : 2
-    : 1;
 }
 
 async function replayCommand(args: Arguments, cwd: string): Promise<void> {
@@ -1660,92 +1073,6 @@ async function projectPreviewCommand(
   if (unsuccessful) process.exitCode = 1;
 }
 
-async function platformAliasDemoCommand(args: Arguments) {
-  assertOnlyFlags(args, [
-    "project",
-    "provider",
-    "model",
-    "thinking",
-    "host-config",
-    "timeout-ms",
-    "agent-dir",
-    "json",
-  ]);
-  let result: Awaited<ReturnType<typeof runPlatformAliasDemoV1>>;
-  try {
-    result = await runPlatformAliasDemoV1({
-      projectPath: resolve(requiredFlag(args, "project")),
-      provider: requiredFlag(args, "provider"),
-      model: requiredFlag(args, "model"),
-      thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
-      ...(flag(args, "host-config") === undefined
-        ? {}
-        : { hostConfigPath: resolve(flag(args, "host-config")!) }),
-      ...(flag(args, "agent-dir") === undefined
-        ? {}
-        : { agentDir: resolve(flag(args, "agent-dir")!) }),
-      ...(flag(args, "timeout-ms") === undefined
-        ? {}
-        : { timeoutMs: positiveIntegerFlag(args, "timeout-ms", 600_000) }),
-    });
-  } catch (error) {
-    const failure = PlatformAliasDemoFailureV1Schema.parse({
-      schemaVersion: 1 as const,
-      commandStatus: "failed" as const,
-      errorMessage:
-        (error instanceof Error ? error.message : String(error))
-          .replace(/[\r\n\0]/gu, " ")
-          .trim()
-          .slice(0, 4_096) || "GN-1 command failed",
-    });
-    if (hasFlag(args, "json")) {
-      printJson(failure);
-    } else {
-      process.stderr.write(
-        `ChronoRift GN-1 platform alias — failed\n${failure.errorMessage}\n`,
-      );
-    }
-    process.exitCode = 1;
-    return;
-  }
-  const unsuccessful =
-    result.commandStatus !== "completed" || result.agent.status !== "completed";
-  if (hasFlag(args, "json")) {
-    printJson(result);
-  } else {
-    process.stdout.write(
-      [
-        `ChronoRift GN-1 platform alias — ${result.commandStatus}`,
-        `source: ${result.source.commit} (tree ${result.source.tree})`,
-        `original checkout remained clean: ${result.source.checkoutCleanAfter}`,
-        `task: ${result.taskId}`,
-        `workspace: ${result.workspaceDirectory}`,
-        `session: ${result.agent.sessionFile ?? "not persisted"}`,
-        `Pi: ${result.agent.provider}/${result.agent.model} — ${result.agent.status}`,
-        "",
-        "baseline entity observation:",
-        JSON.stringify(result.baselineObservation.entities, null, 2),
-        "baseline platform state observation:",
-        JSON.stringify(result.baselineObservation.state, null, 2),
-        "",
-        "Agent game-tool calls:",
-        JSON.stringify(result.agent.gameToolCalls, null, 2),
-        "",
-        "candidate diff:",
-        result.candidatePatch.unifiedDiff || "(empty)",
-        "candidate platform state observation:",
-        result.candidateObservation === null
-          ? `(unavailable: ${result.candidateObservationError ?? "unknown error"})`
-          : JSON.stringify(result.candidateObservation.state, null, 2),
-        "",
-        `assistant text:\n${result.agent.assistantText}`,
-        ...result.limitations.map((limitation) => `limitation: ${limitation}`),
-      ].join("\n") + "\n",
-    );
-  }
-  if (unsuccessful) process.exitCode = 1;
-}
-
 async function platformAliasAblationCommand(args: Arguments) {
   assertOnlyFlags(args, [
     "arm",
@@ -1835,12 +1162,6 @@ async function platformAliasAblationCommand(args: Arguments) {
 function printHelp(): void {
   process.stdout.write(`ChronoRift v0.4.0\n\n`);
   process.stdout.write(
-    `  pnpm demo:platform-alias -- --project PATH --provider PROVIDER --model MODEL [--thinking LEVEL --timeout-ms MS --host-config PATH --json]\n`,
-  );
-  process.stdout.write(
-    `  GN-1 freezes one exact moddable-platformer checkout, runs baseline and candidate ProjectAdapter V1 observations around one normal Pi coding-agent turn, and leaves the private workspace/session for review.\n\n`,
-  );
-  process.stdout.write(
     `  pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift --project PATH --provider openai-codex --model gpt-5.6-luna [--thinking max --timeout-ms 600000 --host-config PATH --json]\n`,
   );
   process.stdout.write(
@@ -1877,47 +1198,11 @@ function printHelp(): void {
   );
   process.stdout.write(`  pnpm fixtures\n`);
   process.stdout.write(
-    `  pnpm demo:v03 -- --fixture FIXTURE [--godot-bin PATH] [--json]\n`,
-  );
-  process.stdout.write(
-    `  pnpm diagnose:v03 -- --fixture FIXTURE --provider PROVIDER --model MODEL [--thinking LEVEL] [--json]\n`,
-  );
-  process.stdout.write(
     `  pnpm demo:v04 -- --fixture FIXTURE [--godot-bin PATH] [--json]\n`,
   );
   process.stdout.write(
     `  pnpm diagnose:v04 -- --fixture FIXTURE --provider PROVIDER --model MODEL [--thinking LEVEL] [--timeout-ms MS] [--json]\n`,
   );
-  process.stdout.write(
-    `  pnpm benchmark [-- --repetitions N --seed SEED --report PATH]\n`,
-  );
-  process.stdout.write(
-    `  pnpm benchmark:explore -- --provider PROVIDER --model MODEL [--thinking LEVEL --repetitions 3 --report PATH]\n`,
-  );
-  process.stdout.write(`  pnpm benchmark:canary:spec [-- --id CANARY_ID]\n`);
-  process.stdout.write(
-    `  pnpm benchmark:canary -- --spec PATH --stage c0|c1 [--c0-report PATH] [--godot-bin PATH]\n`,
-  );
-  process.stdout.write(
-    `  pnpm benchmark:canary:publish -- --spec PATH --stage c0|c1 [--output PATH]\n`,
-  );
-  process.stdout.write(
-    `  pnpm benchmark:canary:verify -- --report PATH [--c0-report PATH]\n`,
-  );
-  process.stdout.write(
-    `  pnpm benchmark:formal -- --spec PATH [--resume EXECUTION_ID]\n`,
-  );
-  process.stdout.write(
-    `  pnpm benchmark:spec [-- --campaign v0.3.1|v0.3.1-r2|v0.3.2-luna|v0.3.2-luna-r1|v0.3.2-luna-r2|v0.3.2-luna-r3|v0.3.2-luna-r4 --godot-bin PATH]\n`,
-  );
-  process.stdout.write(`  pnpm benchmark:status [-- --spec PATH]\n`);
-  process.stdout.write(
-    `  pnpm benchmark:publish -- --spec PATH --execution EXECUTION_ID --output DIR\n`,
-  );
-  process.stdout.write(
-    `  pnpm benchmark:verify -- --spec PATH --report PATH\n`,
-  );
-  process.stdout.write(`  pnpm benchmark:gate -- --spec PATH --report PATH\n`);
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
@@ -1926,9 +1211,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   switch (args.command) {
     case "demo-platform-alias-ablation":
       await platformAliasAblationCommand(args);
-      return;
-    case "demo-platform-alias":
-      await platformAliasDemoCommand(args);
       return;
     case "project-preview":
       await projectPreviewCommand(args, cwd);
@@ -1954,12 +1236,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "diagnose":
       await runDiagnosisCommand(args, cwd);
       return;
-    case "demo-v03":
-      await runV03DiagnosisCommand(args, cwd, "deterministic");
-      return;
-    case "diagnose-v03":
-      await runV03DiagnosisCommand(args, cwd, "live");
-      return;
     case "demo-v04":
       await runV04DiagnosisCommand(args, cwd, "scripted");
       return;
@@ -1968,43 +1244,6 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     case "fixtures":
       printJson({ schemaVersion: 1, fixtures: V03_FIXTURE_IDS });
-      return;
-    case "benchmark":
-      await runBenchmarkCommand(args, cwd, "deterministic");
-      return;
-    case "benchmark-live":
-    case "benchmark-explore":
-      await runBenchmarkCommand(args, cwd, "live");
-      return;
-    case "benchmark-canary-spec":
-      await buildCanarySpecCommand(args, cwd);
-      return;
-    case "benchmark-canary":
-      await runCanaryCommand(args, cwd);
-      return;
-    case "benchmark-canary-publish":
-      await publishCanaryCommand(args, cwd);
-      return;
-    case "benchmark-canary-verify":
-      await verifyCanaryCommand(args, cwd);
-      return;
-    case "benchmark-formal":
-      await runFormalBenchmarkCommand(args, cwd);
-      return;
-    case "benchmark-spec":
-      await buildFormalSpecCommand(args, cwd);
-      return;
-    case "benchmark-status":
-      await formalBenchmarkStatusCommand(args, cwd);
-      return;
-    case "benchmark-publish":
-      await publishFormalBenchmarkCommand(args, cwd);
-      return;
-    case "benchmark-verify":
-      await verifyFormalBenchmarkCommand(args, cwd);
-      return;
-    case "benchmark-gate":
-      await gateFormalBenchmarkCommand(args, cwd);
       return;
     case "models":
       await modelsCommand(args);

@@ -3,7 +3,6 @@ import {
   VNextRuntimeControlReceiptV1Schema,
   VNextRuntimeStateQueryResultV1Schema,
   type ComparisonId,
-  type JsonValue,
   type TaskId,
   type VNextComparisonConfounderV1,
   type VNextComparisonExecutionRefV1,
@@ -14,6 +13,8 @@ import {
   type VNextRuntimeStateQueryResultV1,
   type VNextRuntimeStateRowV1,
 } from "@chronorift/domain";
+
+import { jsonEqual } from "./canonical.js";
 
 export interface VNextDescriptiveComparisonRequest {
   readonly taskId: TaskId;
@@ -27,33 +28,6 @@ export interface VNextDescriptiveComparisonRequest {
   readonly firstDivergencePhase?: VNextRuntimePhaseV1 | undefined;
   readonly createdAt: string;
 }
-
-const jsonEqual = (left: JsonValue, right: JsonValue): boolean => {
-  if (left === null || right === null || typeof left !== typeof right) {
-    return left === right;
-  }
-  if (typeof left !== "object" || typeof right !== "object") {
-    return left === right;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((entry, index) => jsonEqual(entry, right[index] as JsonValue))
-    );
-  }
-  const leftKeys = Object.keys(left).sort();
-  const rightKeys = Object.keys(right).sort();
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key, index) =>
-        key === rightKeys[index] &&
-        jsonEqual(left[key] as JsonValue, right[key] as JsonValue),
-    )
-  );
-};
 
 const sameStringSet = (left: readonly string[], right: readonly string[]) => {
   const sortedLeft = [...left].sort();

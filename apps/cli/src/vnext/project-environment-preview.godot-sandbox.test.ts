@@ -31,7 +31,6 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ProjectEnvironmentHostConfigV1Schema } from "./project-environment-host-config.js";
-import { buildProjectEnvironmentPeBEvidenceV2 } from "./project-environment-pe-b-evidence.js";
 import {
   runProjectEnvironmentPreviewV1,
   type ProjectEnvironmentPreviewDependenciesV1,
@@ -525,7 +524,7 @@ describe("PE-B complete Preview Host integration", () => {
     const firstBinding = firstBindings[0];
     const secondBinding = secondBindings[0];
     if (firstBinding?.state !== "bound" || secondBinding?.state !== "reused")
-      throw new Error("PE-B Host evidence omitted exact binding epochs");
+      throw new Error("PE-B Preview omitted exact binding epochs");
     const [attemptEvents, publication, reuseReceipt] = await Promise.all([
       firstStore.readAttemptEvents(),
       firstStore.readPublicationReceipt(firstBinding.publicationReceiptId),
@@ -533,7 +532,7 @@ describe("PE-B complete Preview Host integration", () => {
     ]);
     const created = attemptEvents[0];
     if (created?.eventKind !== "created")
-      throw new Error("PE-B Host evidence omitted initialization creation");
+      throw new Error("PE-B Preview omitted initialization creation");
     const attempt = await firstStore.readInitializationAttempt(
       created.attemptId,
     );
@@ -543,7 +542,7 @@ describe("PE-B complete Preview Host integration", () => {
       first.runtimeObservationReceiptId === null ||
       second.runtimeObservationReceiptId === null
     )
-      throw new Error("PE-B Host evidence omitted runtime/build identities");
+      throw new Error("PE-B Preview omitted runtime/build identities");
     const [firstBuildBinding, secondBuildBinding, firstRuntime, secondRuntime] =
       await Promise.all([
         firstStore.readBuildBinding(asBuildId(first.buildId)),
@@ -565,7 +564,7 @@ describe("PE-B complete Preview Host integration", () => {
       firstRuntime.captureWindowIds[0] === undefined ||
       secondRuntime.captureWindowIds[0] === undefined
     )
-      throw new Error("PE-B Host evidence omitted compatibility/capture IDs");
+      throw new Error("PE-B Preview omitted compatibility/capture IDs");
     const [
       firstCompatibility,
       secondCompatibility,
@@ -588,7 +587,7 @@ describe("PE-B complete Preview Host integration", () => {
     await projectStore.open();
     const current = await projectStore.readCurrent();
     if (current === null)
-      throw new Error("PE-B Host evidence omitted current revision");
+      throw new Error("PE-B Preview omitted current revision");
     const revision = await projectStore.readRevision(
       current.environmentRevisionId,
       current.publicationOperationId,
@@ -618,66 +617,61 @@ describe("PE-B complete Preview Host integration", () => {
     const toolchain = await firstStore.readToolchainReceipt(
       revision.payload.toolchainReceiptId,
     );
-    const evidence = buildProjectEnvironmentPeBEvidenceV2({
-      source,
-      loadedAdapter,
-      environmentRevision: revision.payload,
-      revisionFiles: revision.files,
-      revisionPayloadHash: revision.payloadHash,
-      revisionPackageHash: revision.packageHash,
-      revisionPackageSeal: revision.packageSeal,
-      publication,
-      initializationAttempt: attempt,
-      toolchain,
-      first: {
-        taskId: first.taskId,
-        sessionId: first.sessionId,
-        binding: firstBinding,
-        compatibility: firstCompatibility,
-        runtime: firstRuntime,
-        pinnedCapture: firstCapture,
-        turns: firstTurns,
-        goalDelivered: first.goalDelivered,
-      },
-      reuse: {
-        taskId: second.taskId,
-        sessionId: second.sessionId,
-        binding: secondBinding,
-        compatibility: secondCompatibility,
-        runtime: secondRuntime,
-        pinnedCapture: secondCapture,
-        turns: secondTurns,
-        goalDelivered: second.goalDelivered,
-        reuseReceipt,
-      },
+    expect(firstTurns).toHaveLength(2);
+    expect(secondTurns).toHaveLength(1);
+    expect(publication).toMatchObject({
+      outcome: "committed",
+      targetEnvironmentRevisionId: first.environmentRevisionId,
     });
-    const evidencePath = join(root, "pe-b-evidence.v2.json");
-    await writeFile(evidencePath, `${JSON.stringify(evidence)}\n`, {
-      flag: "wx",
-      mode: 0o600,
-    });
-    const validated = await execFileAsync(
-      process.execPath,
-      [
-        join(
-          process.cwd(),
-          ".github/scripts/validate-project-environment-pe-b-evidence.mjs",
-        ),
-        join(
-          process.cwd(),
-          "testdata/vnext/project-environment/pe-b-evidence-bundle.schema.v2.json",
-        ),
-        evidencePath,
-      ],
-      { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
-    );
-    expect(validated.stderr).toBe("");
-    expect(JSON.parse(validated.stdout)).toMatchObject({
-      schemaVersion: 2,
-      bundleContentHash: evidence.bundleContentHash,
+    expect(attempt).toMatchObject({
+      state: "succeeded",
       environmentRevisionId: first.environmentRevisionId,
-      firstExecutionId: firstRuntime.executionId,
-      reuseExecutionId: secondRuntime.executionId,
     });
+    expect(toolchain.status).toBe("realized");
+    expect(loadedAdapter.manifest).toMatchObject({
+      schemaVersion: 2,
+      sdk: { version: 2 },
+    });
+    expect(firstCompatibility).toMatchObject({
+      schemaVersion: 2,
+      outcome: "compatible",
+    });
+    expect(secondCompatibility).toMatchObject({
+      schemaVersion: 2,
+      outcome: "compatible",
+    });
+    expect(firstRuntime).toMatchObject({
+      schemaVersion: 2,
+      outcome: "succeeded",
+      stickyPoisoned: false,
+    });
+    expect(secondRuntime).toMatchObject({
+      schemaVersion: 2,
+      outcome: "succeeded",
+      stickyPoisoned: false,
+    });
+    expect(firstCompatibility.dynamicTraces.length).toBeGreaterThan(0);
+    expect(secondCompatibility.dynamicTraces.length).toBeGreaterThan(0);
+    expect(firstRuntime.dynamicTraces.length).toBeGreaterThan(0);
+    expect(secondRuntime.dynamicTraces.length).toBeGreaterThan(0);
+    if (
+      firstCapture.payload.schemaVersion !== 2 ||
+      secondCapture.payload.schemaVersion !== 2
+    ) {
+      throw new Error("PE-B Preview persisted a non-V2 pinned capture");
+    }
+    expect(firstCapture.payload).toMatchObject({
+      schemaVersion: 2,
+    });
+    expect(secondCapture.payload).toMatchObject({
+      schemaVersion: 2,
+    });
+    expect(firstCapture.payload.dynamicTraces.length).toBeGreaterThan(0);
+    expect(secondCapture.payload.dynamicTraces.length).toBeGreaterThan(0);
+    expect(reuseReceipt).toMatchObject({
+      outcome: "reused",
+      environmentRevisionId: first.environmentRevisionId,
+    });
+    expect(firstRuntime.executionId).not.toBe(secondRuntime.executionId);
   });
 });

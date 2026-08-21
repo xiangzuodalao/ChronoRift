@@ -10,6 +10,7 @@ import {
   VNextRollingCapture,
   VNextRuntimeStateIndex,
   VNextTraceReplayService,
+  jsonEqual,
   type VNextCheckpointRestorePort,
   type VNextRuntimeEventIdPort,
   type VNextTraceReplayPort,
@@ -53,6 +54,19 @@ const adapterId = asAdapterId("adapter:fixture");
 const probeId = asProbeId("probe:fixture");
 const digest = (character: string) => asSha256DigestV1(character.repeat(64));
 const createdAt = "2026-08-07T00:00:00.000Z";
+
+describe("canonical JSON equality", () => {
+  it("ignores object key order while preserving nested array and value differences", () => {
+    expect(
+      jsonEqual(
+        { second: [1, { enabled: true, value: null }], first: "value" },
+        { first: "value", second: [1, { value: null, enabled: true }] },
+      ),
+    ).toBe(true);
+    expect(jsonEqual([1, 2], [2, 1])).toBe(false);
+    expect(jsonEqual({ value: 1 }, { value: "1" })).toBe(false);
+  });
+});
 
 const clock = (
   physicsTick: number,

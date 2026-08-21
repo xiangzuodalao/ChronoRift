@@ -10,9 +10,6 @@ export type BranchId = Id<"BranchId">;
 export type CheckpointId = Id<"CheckpointId">;
 export type InputTraceId = Id<"InputTraceId">;
 export type EventId = Id<"EventId">;
-export type EvidenceId = Id<"EvidenceId">;
-export type EvaluationId = Id<"EvaluationId">;
-export type ReportId = Id<"ReportId">;
 export type InvariantId = Id<"InvariantId">;
 export type ContractId = Id<"ContractId">;
 export type ExecutionId = Id<"ExecutionId">;
@@ -24,12 +21,6 @@ export type ProposalId = Id<"ProposalId">;
 export type VerdictId = Id<"VerdictId">;
 export type FixtureId = Id<"FixtureId">;
 export type InterventionId = Id<"InterventionId">;
-export type BenchmarkRunId = Id<"BenchmarkRunId">;
-export type BenchmarkSuiteId = Id<"BenchmarkSuiteId">;
-export type BenchmarkDefinitionId = Id<"BenchmarkDefinitionId">;
-export type BenchmarkExecutionId = Id<"BenchmarkExecutionId">;
-export type BenchmarkCellId = Id<"BenchmarkCellId">;
-export type BenchmarkAttemptId = Id<"BenchmarkAttemptId">;
 export type EvidenceAccessReceiptId = Id<"EvidenceAccessReceiptId">;
 export type InvestigationId = Id<"InvestigationId">;
 export type ClaimPolicyId = Id<"ClaimPolicyId">;
@@ -63,9 +54,6 @@ export const BranchIdSchema = idSchema<"BranchId">();
 export const CheckpointIdSchema = idSchema<"CheckpointId">();
 export const InputTraceIdSchema = idSchema<"InputTraceId">();
 export const EventIdSchema = idSchema<"EventId">();
-export const EvidenceIdSchema = idSchema<"EvidenceId">();
-export const EvaluationIdSchema = idSchema<"EvaluationId">();
-export const ReportIdSchema = idSchema<"ReportId">();
 export const InvariantIdSchema = idSchema<"InvariantId">();
 export const ContractIdSchema = idSchema<"ContractId">();
 export const ExecutionIdSchema = idSchema<"ExecutionId">();
@@ -77,12 +65,6 @@ export const ProposalIdSchema = idSchema<"ProposalId">();
 export const VerdictIdSchema = idSchema<"VerdictId">();
 export const FixtureIdSchema = idSchema<"FixtureId">();
 export const InterventionIdSchema = idSchema<"InterventionId">();
-export const BenchmarkRunIdSchema = idSchema<"BenchmarkRunId">();
-export const BenchmarkSuiteIdSchema = idSchema<"BenchmarkSuiteId">();
-export const BenchmarkDefinitionIdSchema = idSchema<"BenchmarkDefinitionId">();
-export const BenchmarkExecutionIdSchema = idSchema<"BenchmarkExecutionId">();
-export const BenchmarkCellIdSchema = idSchema<"BenchmarkCellId">();
-export const BenchmarkAttemptIdSchema = idSchema<"BenchmarkAttemptId">();
 export const EvidenceAccessReceiptIdSchema =
   idSchema<"EvidenceAccessReceiptId">();
 export const InvestigationIdSchema = idSchema<"InvestigationId">();
@@ -111,12 +93,6 @@ export const asCheckpointId = (value: string): CheckpointId =>
 export const asInputTraceId = (value: string): InputTraceId =>
   InputTraceIdSchema.parse(value);
 export const asEventId = (value: string): EventId => EventIdSchema.parse(value);
-export const asEvidenceId = (value: string): EvidenceId =>
-  EvidenceIdSchema.parse(value);
-export const asEvaluationId = (value: string): EvaluationId =>
-  EvaluationIdSchema.parse(value);
-export const asReportId = (value: string): ReportId =>
-  ReportIdSchema.parse(value);
 export const asInvariantId = (value: string): InvariantId =>
   InvariantIdSchema.parse(value);
 export const asContractId = (value: string): ContractId =>
@@ -137,18 +113,6 @@ export const asFixtureId = (value: string): FixtureId =>
   FixtureIdSchema.parse(value);
 export const asInterventionId = (value: string): InterventionId =>
   InterventionIdSchema.parse(value);
-export const asBenchmarkRunId = (value: string): BenchmarkRunId =>
-  BenchmarkRunIdSchema.parse(value);
-export const asBenchmarkSuiteId = (value: string): BenchmarkSuiteId =>
-  BenchmarkSuiteIdSchema.parse(value);
-export const asBenchmarkDefinitionId = (value: string): BenchmarkDefinitionId =>
-  BenchmarkDefinitionIdSchema.parse(value);
-export const asBenchmarkExecutionId = (value: string): BenchmarkExecutionId =>
-  BenchmarkExecutionIdSchema.parse(value);
-export const asBenchmarkCellId = (value: string): BenchmarkCellId =>
-  BenchmarkCellIdSchema.parse(value);
-export const asBenchmarkAttemptId = (value: string): BenchmarkAttemptId =>
-  BenchmarkAttemptIdSchema.parse(value);
 export const asEvidenceAccessReceiptId = (
   value: string,
 ): EvidenceAccessReceiptId => EvidenceAccessReceiptIdSchema.parse(value);

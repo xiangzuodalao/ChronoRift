@@ -13,8 +13,6 @@ export {
   persistPiApiKey,
   runDeterministicPiDiagnosis,
   runPiDiagnosis,
-  runV03PiDiagnosis,
-  runDeterministicV03PiDiagnosis,
   runV04PiDiagnosis,
   runScriptedV04PiDiagnosis,
 } from "./harness.js";
@@ -22,14 +20,6 @@ export {
   createRestrictedSourceAccess,
   createVirtualSourceAccess,
 } from "./source-access.js";
-export {
-  auditV03BlindPrompt,
-  buildV03BlindSystemPrompt,
-  buildV03BlindUserPrompt,
-  v03FailureBriefAccessReceipt,
-  v03FailureBriefReceiptId,
-  type V03BlindPromptAudit,
-} from "./internal/v03-prompt.js";
 export type {
   AgentGameApi,
   AgentInterventionResult,
@@ -62,8 +52,6 @@ export type {
   VirtualSourceAccessOptions,
   VirtualSourceFile,
 } from "./types.js";
-export { V03_AGENT_BUDGETS } from "./v03-types.js";
-export type * from "./v03-types.js";
 export type * from "./v04-types.js";
 export {
   PROJECT_ADAPTER_SKILL_V1_DIRECTORY,

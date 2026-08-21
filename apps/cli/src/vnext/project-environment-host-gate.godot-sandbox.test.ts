@@ -23,7 +23,6 @@ import {
   ProjectEnvironmentHostConfigV1Schema,
   resolveProjectEnvironmentGodotToolchainV1,
 } from "./project-environment-host-config.js";
-import { closeProjectEnvironmentHostGateV1 } from "./project-environment-host-gate.js";
 import { GodotProjectEnvironmentSidecarPortV1 } from "./project-environment-sidecar-port.js";
 import { createDuplexBwrapCgroupTaskSandbox } from "./sandbox-broker.js";
 import { createSandboxPolicyV2 } from "./sandbox-policy.js";
@@ -280,8 +279,6 @@ describe("PE-A integrated Godot sandbox Host Gate", () => {
       },
     });
 
-    let gateCleanup:
-      Awaited<ReturnType<typeof closeProjectEnvironmentHostGateV1>> | undefined;
     try {
       const bridgePath = `${managedRuntime.capability.addonTarget}/bridge.gd`;
       const sdkPath = `${managedRuntime.capability.addonTarget}/sdk/snapshot_v1.gd`;
@@ -544,9 +541,12 @@ describe("PE-A integrated Godot sandbox Host Gate", () => {
       expect(instrumented.stateDomainIds).toContain("world");
     } finally {
       try {
-        gateCleanup = await closeProjectEnvironmentHostGateV1(() =>
-          broker.cleanup(),
-        );
+        expect(await broker.cleanup()).toMatchObject({
+          processGroupTerminated: true,
+          cgroupPopulated: false,
+          scopeRemoved: true,
+          storageReconciled: true,
+        });
       } finally {
         await rm(runtimeRoot, { recursive: true, force: true });
         await rm(sourceRoot, { recursive: true, force: true });
@@ -554,12 +554,6 @@ describe("PE-A integrated Godot sandbox Host Gate", () => {
         temporaryRoots.delete(sourceRoot);
       }
     }
-    expect(gateCleanup).toMatchObject({
-      processGroupTerminated: true,
-      cgroupPopulated: false,
-      scopeRemoved: true,
-      storageReconciled: true,
-    });
     expect(managedRuntime.capability.addonTarget).toBe(
       DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAddonRoot,
     );

@@ -9,11 +9,6 @@ import type {
   PiHarnessOptions,
 } from "./types.js";
 import type {
-  DeterministicV03PiHarnessOptions,
-  V03PiDiagnosisRunResult,
-  V03PiHarnessOptions,
-} from "./v03-types.js";
-import type {
   ScriptedV04PiHarnessOptions,
   V04PiDiagnosisRunResult,
   V04PiHarnessOptions,
@@ -60,21 +55,6 @@ export async function persistPiApiKey(
 ): Promise<PersistPiApiKeyResult> {
   const { persistPiApiKeyWithSdk } = await import("./internal/pi-runner.js");
   return persistPiApiKeyWithSdk(options);
-}
-
-export async function runV03PiDiagnosis(
-  options: V03PiHarnessOptions,
-): Promise<V03PiDiagnosisRunResult> {
-  const { runV03PiDiagnosisWithSdk } = await import("./internal/v03-runner.js");
-  return runV03PiDiagnosisWithSdk(options);
-}
-
-export async function runDeterministicV03PiDiagnosis(
-  options: DeterministicV03PiHarnessOptions,
-): Promise<V03PiDiagnosisRunResult> {
-  const { runDeterministicV03PiDiagnosisWithSdk } =
-    await import("./internal/v03-runner.js");
-  return runDeterministicV03PiDiagnosisWithSdk(options);
 }
 
 /** Run a real Pi Session/Agent Loop against the SDK-neutral v0.4 API. */

@@ -17,7 +17,7 @@ loss 和 lineage。候选是否可接受，仍由项目 CI、独立 Eval 或人�
 
 ![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
 
-_概念插图，用于表达产品母题；不是产品界面、运行截图或实验凭据。_
+_概念插图，用于表达产品母题；不是产品界面、运行截图或实验凭据。[查看 2560×1280 master](docs/assets/chronorift-hero-master.jpg)。_
 
 ## 两分钟看懂
 

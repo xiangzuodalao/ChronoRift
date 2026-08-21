@@ -17,7 +17,7 @@ human reviewer decides whether to accept the candidate.
 
 ![ChronoRift concept art showing an isolated Godot runtime, baseline and candidate executions, and runtime records](docs/assets/chronorift-hero.jpg)
 
-_Concept art for the product theme; not a UI screenshot, runtime capture, or piece of experimental evidence._
+_Concept art for the product theme; not a UI screenshot, runtime capture, or piece of experimental evidence. [Open the 2560×1280 master](docs/assets/chronorift-hero-master.jpg)._
 
 ## Architecture at a glance
 

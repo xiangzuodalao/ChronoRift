@@ -29,7 +29,7 @@ import {
 } from "@chronorift/domain";
 import { describe, expect, it } from "vitest";
 
-import { ArtifactCorruptionError } from "./json-artifact-repository.js";
+import { ArtifactCorruptionError } from "./errors.js";
 import {
   ProjectEnvironmentLedgerSealedError,
   ProjectEnvironmentStoreQuotaError,

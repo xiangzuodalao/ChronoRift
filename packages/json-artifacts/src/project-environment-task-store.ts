@@ -56,10 +56,7 @@ import {
 } from "@chronorift/domain";
 
 import { canonicalJson, contentHash } from "./canonical-json.js";
-import {
-  ArtifactCorruptionError,
-  ArtifactNotFoundError,
-} from "./json-artifact-repository.js";
+import { ArtifactCorruptionError, ArtifactNotFoundError } from "./errors.js";
 import { ArtifactPathSecurityError } from "./v01-json-artifact-repository.js";
 import {
   appendLedger,
@@ -82,7 +79,6 @@ import {
   projectEnvironmentPackageContentDigestV1,
   readCanonicalJson,
   readLedger,
-  readSealedLedgerEvidence,
   resourceDigest,
   sealLedger,
   validateLedger,
@@ -129,36 +125,6 @@ export interface ProjectEnvironmentTaskStoreSummaryV1 {
   readonly sealedLedgers: number;
   readonly bytes: number;
   readonly entries: number;
-}
-
-export interface ProjectEnvironmentTaskEvidenceInventoryV1 {
-  readonly schemaVersion: 1;
-  readonly taskId: TaskId;
-  readonly candidatePackages: readonly {
-    readonly resourceId: string;
-    readonly resourceDigest: string;
-  }[];
-  readonly captureWindowPackages: readonly {
-    readonly resourceId: string;
-    readonly resourceDigest: string;
-  }[];
-  readonly records: readonly {
-    readonly schemaVersion: 1;
-    readonly taskId: TaskId;
-    readonly recordKind: ProjectEnvironmentTaskRecordKindV1;
-    readonly resourceId: string;
-    readonly resourceDigest: string;
-    readonly payload: JsonValue;
-    readonly payloadHash: string;
-    readonly recordHash: string;
-  }[];
-  readonly ledgers: readonly {
-    readonly kind: ProjectEnvironmentTaskLedgerKindV1;
-    readonly canonicalBase64: string;
-    readonly envelopes: readonly ProjectEnvironmentLedgerEnvelopeV1[];
-    readonly seal: ProjectEnvironmentLedgerSealV1;
-  }[];
-  readonly inventoryHash: string;
 }
 
 export interface StoredProjectEnvironmentPinnedCaptureV1 {
@@ -1308,87 +1274,6 @@ export class ProjectEnvironmentTaskStoreV1 {
       bytes: usage.bytes,
       entries: usage.entries,
     };
-  }
-
-  /**
-   * Seals all append-only Task ledgers and freezes a path-free inventory of
-   * every immutable collection entry and record envelope. This is local
-   * physical closure evidence, not a signature or Host attestation.
-   */
-  public async freezeEvidenceInventory(): Promise<ProjectEnvironmentTaskEvidenceInventoryV1> {
-    await this.revalidate();
-    for (const kind of Object.keys(
-      LEDGER_FILES,
-    ) as ProjectEnvironmentTaskLedgerKindV1[]) {
-      await this.sealLedger(kind);
-    }
-    const candidatePackages = (
-      await inspectImmutablePackageCollection(
-        this.requireCandidates(),
-        "chronorift-project-adapter-candidate-v1",
-        this.taskId,
-        this.quota,
-        false,
-      )
-    ).map(({ resourceId, resourceDigest }) => ({
-      resourceId,
-      resourceDigest,
-    }));
-    const captureWindowPackages = (
-      await inspectImmutablePackageCollection(
-        this.requireCaptureWindows(),
-        "chronorift-project-environment-pinned-capture-v1",
-        this.taskId,
-        this.quota,
-        false,
-      )
-    ).map(({ resourceId, resourceDigest }) => ({
-      resourceId,
-      resourceDigest,
-    }));
-    const records: TaskRecordEnvelopeV1[] = [];
-    const recordsDirectory = this.requireRecords();
-    for (const name of (await readdir(recordsDirectory.path)).sort()) {
-      const value = await readCanonicalJson(
-        recordsDirectory,
-        join(recordsDirectory.path, name),
-        this.quota.maximumCanonicalJsonBytes,
-      );
-      const envelope = parseRecordEnvelope(value);
-      parsePayload(envelope.recordKind, envelope.payload);
-      records.push(envelope);
-    }
-    const ledgers = await Promise.all(
-      (Object.keys(LEDGER_FILES) as ProjectEnvironmentTaskLedgerKindV1[]).map(
-        async (kind) => {
-          const evidence = await readSealedLedgerEvidence(
-            this.requireLedgers(),
-            LEDGER_FILES[kind],
-            this.taskId,
-            ledgerParser(kind),
-            this.quota,
-          );
-          return {
-            kind,
-            canonicalBase64: Buffer.from(evidence.bytes).toString("base64"),
-            envelopes: evidence.envelopes,
-            seal: evidence.seal,
-          };
-        },
-      ),
-    );
-    const basis = {
-      schemaVersion: 1 as const,
-      taskId: this.taskId,
-      candidatePackages: Object.freeze(candidatePackages),
-      captureWindowPackages: Object.freeze(captureWindowPackages),
-      records: Object.freeze(records),
-      ledgers: Object.freeze(ledgers),
-    };
-    return Object.freeze({
-      ...basis,
-      inventoryHash: contentHash(asJsonValue(basis)),
-    });
   }
 
   private marker(): ProjectEnvironmentTaskStoreMarkerV1 {

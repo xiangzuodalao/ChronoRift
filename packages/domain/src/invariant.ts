@@ -1,19 +1,7 @@
 import { z } from "zod";
 
-import {
-  BranchIdSchema,
-  EvaluationIdSchema,
-  EventIdSchema,
-  EvidenceIdSchema,
-  InvariantIdSchema,
-  type BranchId,
-  type EvaluationId,
-  type EventId,
-  type EvidenceId,
-  type InvariantId,
-} from "./ids.js";
+import { InvariantIdSchema, type InvariantId } from "./ids.js";
 import { JsonValueSchema, type JsonValue } from "./json.js";
-import { TickSchema, type Tick } from "./time.js";
 
 export interface SignalPredicate {
   readonly kind: "signal";
@@ -90,33 +78,3 @@ export const StateValueObservationSchema: z.ZodType<StateValueObservation> = z
       });
     }
   });
-
-export interface InvariantEvaluation {
-  readonly schemaVersion: 1;
-  readonly evaluationId: EvaluationId;
-  readonly branchId: BranchId;
-  readonly invariantId: InvariantId;
-  readonly triggerEventId: EventId;
-  readonly triggerTick: Tick;
-  readonly deadlineTick: Tick;
-  readonly status: "pass" | "fail" | "incomplete";
-  readonly observed: StateValueObservation;
-  readonly satisfiedTick?: Tick | undefined;
-  readonly evidenceId?: EvidenceId | undefined;
-}
-
-export const InvariantEvaluationSchema: z.ZodType<InvariantEvaluation> = z
-  .object({
-    schemaVersion: z.literal(1),
-    evaluationId: EvaluationIdSchema,
-    branchId: BranchIdSchema,
-    invariantId: InvariantIdSchema,
-    triggerEventId: EventIdSchema,
-    triggerTick: TickSchema,
-    deadlineTick: TickSchema,
-    status: z.enum(["pass", "fail", "incomplete"]),
-    observed: StateValueObservationSchema,
-    satisfiedTick: TickSchema.optional(),
-    evidenceId: EvidenceIdSchema.optional(),
-  })
-  .strict();

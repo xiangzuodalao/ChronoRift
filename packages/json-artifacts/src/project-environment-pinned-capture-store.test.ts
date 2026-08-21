@@ -18,7 +18,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { canonicalJson } from "./canonical-json.js";
-import { ArtifactCorruptionError } from "./json-artifact-repository.js";
+import { ArtifactCorruptionError } from "./errors.js";
 import {
   ProjectEnvironmentStoreQuotaError,
   ProjectEnvironmentTaskStoreV1,

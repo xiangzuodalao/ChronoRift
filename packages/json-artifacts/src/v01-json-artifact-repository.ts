@@ -45,10 +45,7 @@ import {
 } from "@chronorift/gamebranch";
 
 import { canonicalJson, contentHash } from "./canonical-json.js";
-import {
-  ArtifactCorruptionError,
-  ArtifactNotFoundError,
-} from "./json-artifact-repository.js";
+import { ArtifactCorruptionError, ArtifactNotFoundError } from "./errors.js";
 
 export class ImmutableArtifactConflictError extends Error {
   constructor(readonly artifactPath: string) {

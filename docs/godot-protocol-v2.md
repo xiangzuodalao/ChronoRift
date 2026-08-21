@@ -1,7 +1,7 @@
 # ChronoRift Godot Protocol v2
 
-本文档描述 v0.3 已实现的 TypeScript Host ↔ Godot Addon 边界。Protocol v1 文档保留为 v0.2
-历史说明；parser 可识别 v1/v2 envelope，但一个 Execution 的握手与后续消息必须使用同一版本。
+本文档描述 v0.3 已实现的 TypeScript Host ↔ Godot Addon 边界，并在末尾保留 v0.2 Protocol v1 的差异摘要。
+parser 可识别 v1/v2 envelope，但一个 Execution 的握手与后续消息必须使用同一版本。
 
 ## Transport、身份与 fail-closed 边界
 
@@ -89,3 +89,19 @@ participant validation。
 
 v0.3 未覆盖 physics internals、Timer/Tween/coroutine、线程、未注册 RNG、resource cache、网络和
 外部服务。这些域不会被默认为已恢复；当 Contract 依赖它们时，Harness 应输出 `inconclusive`。
+
+## Legacy Protocol v1（v0.2）
+
+v1 使用相同的 loopback client、单次 token、length-prefixed JSON、双向 sequence、request ID 和 canonical payload
+hash 边界，但 envelope 固定 `protocolVersion=1`。其 capability 集合只有 allowlisted Signal/property、
+InputEventAction、process/physics clocks、fixed FPS、L0 restart 与 fixture-semantic checkpoint；v2 的 entity
+lifecycle、pending effect、dynamic property registry、physics TPS 和 fixture controls 尚不存在。
+
+v1 的 step barrier 在 probe process callback 注入成对的 `InputEventAction` press/release 后，等待完整的下一 process
+frame，再封存 requested/realized tick/delta、输入顺序、process/physics counters、Host monotonic interval、event loss
+与采样开销。绝对 engine frame、Host time 和 probe overhead 不进入 semantic replay digest。
+
+v1 的 L2 participant 接口是 `chronorift_capture()`、`chronorift_restore(state)` 与
+`chronorift_validate(expected)`；唯一实现是 `switch-door` fixture。它覆盖 fixture 声明的 switch/door/connection/
+pending/clock/input 状态，不是完整 SceneTree、Godot physics、Timer/Tween/coroutine、线程、RNG、resource cache、网络
+或外部服务快照。

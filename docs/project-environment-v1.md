@@ -1,31 +1,20 @@
 # Project Environment V1 RFC
 
-> 状态：**设计冻结；PE-B Dynamic Projection implementation present + local Gate passed；PE-C narrow slice
-> implementation present + CI Host Gate passed/frozen；完整 Project Environment 晋升 Gate 未通过**
+> 状态：**设计冻结；PE-A 至 PE-C implementation present；历史 characterization 已归档，专用 evidence/Gate
+> 基础设施已退役；尚未晋升默认入口**
 > 决策日期：2026-08-12
-> 目标入口：Project Environment Preview；通过晋升 Gate 后成为默认 `chronorift [goal]` 入口
+> 目标入口：Project Environment Preview；经过显式产品验证与评审后才可成为默认 `chronorift [goal]` 入口
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
 
-Project Environment V1 是 ChronoRift 从冻结实验 profile 走向通用 Godot 项目入口的下一产品切片。本 RFC
-定义目标产品契约、数据和信任边界、首个 Preview 范围与晋升 Gate；它不是完整的当前实现说明。当前源码已有
-PE-A 的 strict DTO、Project Environment stores、ProjectAdapter SDK/wire/loader、初始化入口、三阶段 conformance、
-initial publication/binding、跨命令 publication crash reconciliation、post-edit exact Build compatibility、同 Session goal turn、new-Session reuse、durable runtime
-evidence、snapshot characterization、独立 evidence validator、官方 Pi TUI 与 Task-bound runtime tools。本地默认离线
-Gate、真实 Godot 4.7.1 bridge/SDK/observation/snapshot 测试、下层 Linux sandbox/Godot Host conformance，以及
-deterministic fake-Pi 驱动的完整 Preview Host integration 均已通过。冻结 product subject
-`5d98857a0c5423d050615b93d6fa0dfd6f109a5b` 的本地真实 `openai-codex/gpt-5.6-luna/max` one-shot Gate 也产生了
-create-new、standalone-validator 复验的 local-only bundle，并归档为 local r1。因此状态是
-`PE-A implementation present + local Gate passed`；该输出只覆盖一个冻结 clean/single-root fixture，不是
-protected-ref artifact、签名或外部 attestation，不能描述成外部项目普遍受支持或默认入口已经切换。
+Project Environment V1 定义实验性 Preview 的产品契约、数据和信任边界；它不是完整的当前实现说明。当前源码已有
+PE-A 至 PE-C 的 strict DTO、stores、ProjectAdapter SDK/wire/loader、初始化与 publication、exact Build compatibility、
+same/new-Session reuse、V2 dynamic observation，以及 narrow dirty/source/import/target closure。旧 PE-A/PE-B real-model
+bundles 与 PE-C CI run metadata 只作为冻结历史归档保留；当前 HEAD 不再包含它们的 producer、standalone validator
+或一次性 Host Gate。历史结果不能描述成外部项目普遍受支持或默认入口已经切换。
 
-PE-B implementation 进一步增加内部 manifest/SDK/observation protocol V2，但产品与 store 仍是 Project Environment
-V1。V1 bridge/SDK bytes 和已发布 PE-A revision 原样保留；新初始化默认生成 V2 adapter，未知版本或 digest
-`review_required`，不自动迁移。V2 使用 Execution-bound EntityRef、event-driven ordered queue、Host continuous
-validated ring、raw conformance chain 与两次 durable capture replay。精确 product subject
-`0731eb13b0c103dbcb61bd0e2d967962838324a4` 已运行默认、Godot 4.7.1、特权 Host 及本地
-`openai-codex/gpt-5.6-luna/max` 双 Session Gate；create-new bundle content hash 为
-`df1388507271901602fb8371d50087ddc17c528270459f73d6493bbc6a981bf1`，并由 standalone validator
-复验。因此当前状态是 `PE-B implementation present + local Gate passed`，仍不是完整 V1 conformance 或默认入口晋升。
+PE-B 在 Project Environment V1 store 上增加内部 manifest/SDK/observation protocol V2。V1 bridge/SDK bytes 和已发布
+PE-A revision 原样保留；新初始化默认生成 V2 adapter，未知版本或 digest 返回 `review_required`，不自动迁移。V2
+使用 Execution-bound EntityRef、event-driven ordered queue、Host continuous validated ring 与 durable capture replay。
 
 M3、M4 与 E2 的 schema、wire、证据和原语义保持不变。Project Environment V1 使用独立 namespace，
 只复用已经有真实依赖和生命周期边界的 workspace、sandbox、Pi Session、Godot sidecar、runtime store 与 patch
@@ -625,119 +614,19 @@ PE-C 不包含完整 LFS、dirty/递归 submodule、directory symlink/cycle/race
 这些能力只有真实项目要求时才进入后续 hardening/conformance，不是 PE-C 完成条件。
 
 开发期通过显式 `pnpm project preview -- [GOAL] --provider ... --model ...` route 暴露已完成切片；当前 README
-不得把目标 `chronorift [goal]` 写成已存在命令。只有
-§11 的 Release Candidate Gate 实际通过后，Preview 才能替代 v0.4 成为默认入口，legacy 命令再迁入显式 namespace。
+不得把目标 `chronorift [goal]` 写成已存在命令。Preview 只有在当前实现经过与风险相称的产品验证、默认入口边界被
+明确评审并更新 README 后，才能替代 v0.4；legacy 命令届时再迁入显式 namespace。
 
-## 11. 验证与晋升 Gate
+## 11. 当前验证原则
 
-### 11.1 PE-A Gate
+当前 HEAD 只维护与产品实现直接相关的三层验证：默认离线 `corepack pnpm check`、Godot integration
+`corepack pnpm test:godot`，以及显式的 coding/Godot sandbox Host conformance。新增或修改能力时，按实际风险增加
+成功、拒绝、corruption、ownership、path containment、bounded output/storage、cleanup 和 runtime lineage 测试；没有
+实际运行输出时不声明 Host 或 live conformance。
 
-PE-A 的默认离线 Gate 覆盖 implemented DTO、canonical value、Task ownership/cross-Task rejection、attempt/turn/binding
-顺序、corruption、quota、optional capability、secret/path containment，以及 deterministic fake-Agent 的 success、
-failure、timeout 和 goal-not-delivered。真实 Linux/Godot 4.7 Host Gate 覆盖 clean single-root project、受管 binary、
-只读 overlay、vanilla/bridge-only/instrumented smoke、默认 network/credential/device 拒绝、bounded output/store 与
-process/cgroup/scope/scratch cleanup success/failure，以及 §6.1 四个 publication crash cut 的 restart/reconciliation。
-一个冻结 characterization adapter 必须执行 snapshot → controlled mutation → restore → read-back，并保留逐域
-mismatch/missing/first divergence。一个 opt-in real Pi project 必须产生 init turn → publication → same-Session goal
-turn；该 goal 形成非空 candidate source change、对精确 Build 取得 compatibility receipt，并至少运行一次 candidate
-game observation。随后新 Session quick-smoke reuse且不重生成 adapter。没有实际输出时只能称
-`PE-A implementation present`。当前精确 baseline product tree 已重新运行 create-new Gate 并由 standalone
-validator 复验，因此状态是 `PE-A implementation present + local Gate passed`，但仍不是完整 V1 conformance。
-
-real-Pi Gate 的 success bundle 必须写入显式、canonical 的
-`CHRONORIFT_TEST_PE_A_EVIDENCE_OUTPUT_DIR`，使用固定文件名与 create-new 语义；临时测试目录、覆盖旧 bundle 或只在
-内存中通过 validator 都不算可保留 Gate 输出。
-
-2026-08-13 的 local r1 绑定 product subject `5d98857a0c5423d050615b93d6fa0dfd6f109a5b`，bundle content hash 为
-`ad53d152a05017c21f9ee64580fcba96bbe99febab0ec00b33ec6a0c7c7e2f2f`。初始化 Agent turn 实测
-348.638 秒，authoritative conformance/publication 完成并 ready 为 363.322 秒；完整双 Session case 为 505.21 秒。
-归档见 [`docs/evidence/vnext-project-environment-pe-a-local-r1/`](evidence/vnext-project-environment-pe-a-local-r1/README.md)。
-
-### 11.2 各切片 Gate
-
-PE-B 至 PE-H 以及 PE-P 分别为其 §10.2 单一边界增加 offline、Host 与 failure Gate；某个切片未完成不能借其他切片
-的证据越过。尤其：PE-B 检查动态 entity/event identity；PE-C 检查 narrow dirty closure、project selection、
-addon import、default + selected target、drift 与 reuse/review boundary；PE-E 检查
-successor resume 和 drift refusal；PE-F 只新增 multi-writer lease/CAS contention 与 pinning；PE-G 检查 conflict-safe
-refresh/apply；PE-H 检查 bundle 全量重验；PE-P 检查空 template deny、DNS/target drift 与新主体授权拒绝。
-
-PE-B 的 frozen dynamic profile 是：`appeared(ref1) → initial state(ref1) → declared event(ref1) → changed state(ref1)
-→ disappeared(ref1) → appeared(ref2) → initial state(ref2) → declared event(ref2) → changed state(ref2)`，其中
-`ref2.entityId == ref1.entityId` 且 `ref2.incarnation == ref1.incarnation + 1`。state/event 的 project scope 必须使用
-null reference，entity scope 必须引用当前 active incarnation；payload 中的 `entity-ref/v2` 也服从相同规则。
-duplicate/unknown lifecycle、stale incarnation、scope/schema mismatch、跨 Execution、sequence/clock 回退、loss/overwrite
-都会 fail closed 并 sticky-poison Execution。该 trace 只证明 observation 顺序与绑定，不证明 Signal 导致状态变化。
-
-2026-08-13 的 PE-B local r1 绑定上述 product subject。adapter finalizer 实测 254.393 秒，初始化 Agent turn
-260.037 秒，完整双 Session case 387.718 秒；默认离线 Gate 为 162 files/1252 tests，Godot Gate 为
-11 files/27 tests，特权 Preview Host 与真实模型 Gate 均为 1/1。归档见
-[`docs/evidence/vnext-project-environment-pe-b-local-r1/`](evidence/vnext-project-environment-pe-b-local-r1/README.md)。
-该 local archive 不是 protected artifact、签名、外部 attestation 或通用 Godot 支持证明。
-
-PE-C 的离线 Gate 覆盖项目发现、tracked dirty、显式 untracked、canonical `SourceId`、materialize postflight drift、
-addon admission、target validation 状态、reuse/review，以及未 materialize LFS pointer、symlink、dirty/recursive
-submodule 的拒绝。已 materialize 的 LFS 实体 bytes 只作为普通文件覆盖；不声称 LFS-aware 下载、lineage 或一致性
-支持。Godot Gate 只运行 default 与当前 selected target。真实 Host Gate 复用固定
-`endlessm/moddable-platformer@3e793f53598a131c53fb82555191cc14b8db07ff`，在临时 checkout 加入 deterministic
-dirty/untracked/nested-project/addon/secondary-target overlay，完成 init → run/observation → new-Session reuse，
-再用一处 source mutation 证明 `review_required`。GitHub Actions run
-[`31779574638`](https://github.com/xiangzuodalao/ChronoRift/actions/runs/31779574638) 在 product subject
-`a119ec4f7a9a203d32db740b3dc4ffba7fc69ad0` 上成功；记录见
-[PE-C CI r1 freeze](evidence/vnext-project-environment-pe-c-ci-r1/README.md)。该 Gate 使用 deterministic fake Agent，
-不要求所有 target 的三阶段 matrix、独立 bundle validator 或 product-subject archive，也不证明 real-Pi adapter
-生成、Agent 调试、checkpoint/replay 或 patch/evidence 产品闭环。后四项进入 Architecture §20 的 PC-1，而不是继续
-扩大 PE-C。
-
-以下 §11.3–§11.7 是完整 V1 晋升的累计 Gate，不是 PE-C 的单切片 DoD。
-
-### 11.3 Release Candidate 默认离线与 Host Gate
-
-`corepack pnpm check` 必须覆盖所有新 schema、canonical value、source closure、状态转换、CAS、ownership、
-corruption、quota、unsupported/degraded、symlink/path containment 和 deterministic fake-Agent 初始化。默认测试保持
-offline、credential-free 和 deterministic。
-
-真实 Host Gate 必须累计覆盖受管 toolchain registry、GDScript plugin import、只读 overlay、bridge、网络/
-credential/device 拒绝、bounded output/storage、process tree/cgroup/scope/scratch cleanup、publication crash points、
-corrupt/unsupported current、directory/symlink race，以及 vanilla/bridge-only/instrumented smoke。没有实际 Host 输出
-时不能声明 sandbox 或 Project Environment conformance 已通过。
-
-### 11.4 三类结构化兼容矩阵
-
-至少维护三个冻结、身份不同的 test/conformance project：
-
-1. 常规单项目：标准 GDScript、主场景和 InputMap；
-2. 动态项目：运行时生成节点、自定义 Signal 和状态转换；
-3. 复杂布局：materialized multi-source closure、GDScript addon/`@tool` 与多个 launch target。
-
-全部必须达到 Ready 最低门槛。项目 ID、文件名和游戏概念只能存在于 testdata/conformance，产品代码、skill 和
-adapter 示例不得按其身份分支。PE-A 的 characterization fixture 证明 snapshot/restore contract 可执行；它不是三个
-项目 Ready 的必要 capability。
-
-### 11.5 Project Environment Host-boundary Gate
-
-完整 V1 晋升必须累计覆盖 dirty snapshot + 显式 untracked、多源 closure、失败 attempt resume、revision materialization/current-pointer
-crash consistency、source review、逐 Build compatibility、并发 CAS conflict、multi-Session pin、Host drift/refresh、
-conflict-safe game patch apply、bundle
-import/export、storage degradation 与 cleanup failure。初始化 attempt 的 resume 不得被描述成已经实现跨命令 open-
-Execution cleanup recovery；后者仍是独立后续 slice。
-
-### 11.6 真实 Pi Gate
-
-Release manifest 预注册至少两个拥有不同冻结 structural predicate、初始 source bytes 中没有 `.chronorift/` 的项目；
-它同时固定 project/source identity、adapter-absence、product subject、provider/model/thinking、预算、toolchain 与
-policy。真实 Pi Agent 必须分别在可见初始化 turn 中生成 adapter、通过完整 conformance 并自动 publication；随后由
-新 Pi Session 在不重新生成 adapter的前提下 pin 并复用 ready revision。这里不使用事后不可验证的“陌生”标签；
-success evidence 必须 create-new，失败不得上传 success artifact。
-
-### 11.7 独立 validator 与默认入口晋升
-
-成功 evidence 由不导入产品 TypeScript 的独立 validator 重算 source/adapter/environment/publication identity、
-payload schema、runtime raw chain、physical seal、compatibility、publication/binding 顺序和 cleanup binding。PE-A 至
-PE-H 及 PE-P 的已承诺能力均有各自实际证据，且全部 Release Candidate Gate 取得可复验输出后，Preview 才能成为
-默认 `chronorift [goal]` 入口。
-
-该 matrix 最多支持“所测结构类别的 Project Environment 接入闭环通过”。它不证明任意 Godot 项目支持、adapter
-语义正确、snapshot 等价、Agent 成功率、可靠性、泛化、修复正确性、相对产品优势或外部 attestation。
+PE-A/PE-B/M4/E2/PE-C 的一次性 campaign、evidence producer、standalone validator 和专用 Host Gate 已退役。旧
+结果仍位于 `docs/evidence/**`，只保留其历史语义；要重现旧工具链应使用对应历史 tag，而不是把它重新接回当前默认
+Gate。产品是否可接受由用户、项目 CI、review 或独立外部 Eval 决定，不以仓库内 campaign verdict 代替。
 
 ## 12. 明确延期与非目标
 

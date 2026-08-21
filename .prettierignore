@@ -4,21 +4,15 @@ coverage/
 .chronorift/
 pnpm-lock.yaml
 
-# Write-once formal evidence is formatted and verified by the benchmark publisher.
+# Preserve exact frozen historical benchmark bytes.
 docs/benchmarks/v0.3/benchmark-report.v2.json
 docs/benchmarks/v0.3/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3/results.md
-docs/benchmarks/v0.3.1/benchmark-report.v2.json
-docs/benchmarks/v0.3.1/case-physics-tunneling-full-r1.json
-docs/benchmarks/v0.3.1/results.md
 docs/benchmarks/v0.3.1-r2/benchmark-report.v2.json
 docs/benchmarks/v0.3.1-r2/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3.1-r2/results.md
 docs/benchmarks/v0.3.2-luna/canary-c0-ready-005.json
 docs/benchmarks/v0.3.2-luna/canary-c1-ready-005.json
-docs/benchmarks/v0.3.2-luna/benchmark-report.v3.json
-docs/benchmarks/v0.3.2-luna/case-physics-tunneling-full-r1.json
-docs/benchmarks/v0.3.2-luna/results.md
 docs/benchmarks/v0.3.2-luna-r1/benchmark-report.v3.json
 docs/benchmarks/v0.3.2-luna-r1/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3.2-luna-r1/results.md
@@ -27,22 +21,19 @@ docs/benchmarks/v0.3.2-luna-r2/benchmark-report.v3.json
 docs/benchmarks/v0.3.2-luna-r2/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3.2-luna-r2/results.md
 docs/benchmarks/v0.3.2-luna-r2/canary-*.json
-docs/benchmarks/v0.3.2-luna-r3/benchmark-report.v3.json
-docs/benchmarks/v0.3.2-luna-r3/case-physics-tunneling-full-r1.json
-docs/benchmarks/v0.3.2-luna-r3/results.md
 docs/benchmarks/v0.3.2-luna-r3/canary-*.json
 docs/benchmarks/v0.3.2-luna-r4/benchmark-report.v3.json
 docs/benchmarks/v0.3.2-luna-r4/case-physics-tunneling-full-r1.json
 docs/benchmarks/v0.3.2-luna-r4/results.md
 docs/benchmarks/v0.3.2-luna-r4/canary-*.json
 
-# Preserve exact sanitized CI evidence bytes bound by the E2 freeze record.
+# Preserve exact sanitized historical E2 evidence bytes.
 docs/evidence/vnext-e2-public-exposed-r1/chronorift-*.json
 
-# Preserve exact sanitized PE-A local evidence bytes bound by the freeze record.
+# Preserve exact sanitized historical PE-A evidence bytes.
 docs/evidence/vnext-project-environment-pe-a-local-r1/evidence/pe-a-evidence.v1.json
 docs/evidence/vnext-project-environment-pe-a-local-r1/validator/validator-result.v1.json
 
-# Preserve exact sanitized PE-B local evidence bytes bound by the freeze record.
+# Preserve exact sanitized historical PE-B evidence bytes.
 docs/evidence/vnext-project-environment-pe-b-local-r1/evidence/pe-b-evidence.v2.json
 docs/evidence/vnext-project-environment-pe-b-local-r1/validator/validator-result.v2.json

@@ -13,6 +13,7 @@ import {
 } from "@chronorift/domain";
 
 import type { VNextTraceReplayPort } from "../ports/vnext-runtime.js";
+import { jsonEqual } from "./canonical.js";
 
 export interface VNextTraceReplayExpectation {
   readonly traceSequence: number;
@@ -32,33 +33,6 @@ export interface VNextTraceReplayResult {
   readonly trace: VNextRuntimeTraceV1;
   readonly receipt: VNextTraceReplayReceiptV1;
 }
-
-const jsonEqual = (left: JsonValue, right: JsonValue): boolean => {
-  if (left === null || right === null || typeof left !== typeof right) {
-    return left === right;
-  }
-  if (typeof left !== "object" || typeof right !== "object") {
-    return left === right;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((entry, index) => jsonEqual(entry, right[index] as JsonValue))
-    );
-  }
-  const leftKeys = Object.keys(left).sort();
-  const rightKeys = Object.keys(right).sort();
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key, index) =>
-        key === rightKeys[index] &&
-        jsonEqual(left[key] as JsonValue, right[key] as JsonValue),
-    )
-  );
-};
 
 const realizedPosition = (
   event: VNextRuntimeTraceV1["events"][number],

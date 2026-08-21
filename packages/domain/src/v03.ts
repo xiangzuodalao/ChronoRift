@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import {
-  BenchmarkRunIdSchema,
   BranchIdSchema,
   CapsuleIdSchema,
   CheckpointIdSchema,
@@ -15,7 +14,6 @@ import {
   ProposalIdSchema,
   RunIdSchema,
   VerdictIdSchema,
-  type BenchmarkRunId,
   type BranchId,
   type CapsuleId,
   type CheckpointId,
@@ -837,147 +835,3 @@ export const DiagnosisVerdictV2Schema: z.ZodType<DiagnosisVerdictV2> = z
     blockers: z.array(z.string().min(1)),
   })
   .strict();
-
-export const BenchmarkArmV1Schema = z.enum([
-  "generic",
-  "evidence-only",
-  "chronorift-full",
-]);
-export type BenchmarkArmV1 = z.infer<typeof BenchmarkArmV1Schema>;
-
-export interface BenchmarkCellResultV1 {
-  readonly schemaVersion: 1;
-  readonly benchmarkRunId: BenchmarkRunId;
-  readonly suiteHash: string;
-  readonly fixtureId: FixtureId;
-  readonly arm: BenchmarkArmV1;
-  readonly repetition: number;
-  readonly provider: string;
-  readonly model: string;
-  readonly thinkingLevel: string;
-  readonly expectedMechanism: Exclude<MechanismCodeV2, "unknown">;
-  readonly proposedMechanism: MechanismCodeV2;
-  readonly mechanismCorrect: boolean;
-  readonly verdict: "confirmed" | "inconclusive";
-  readonly incorrectConfirmation: boolean;
-  readonly sourceLocationCorrect: boolean | null;
-  readonly gameExecutions: number;
-  readonly toolCalls: number;
-  readonly wallTimeMs: number;
-  readonly tokens: {
-    readonly input: number;
-    readonly output: number;
-    readonly total: number;
-  };
-  readonly rawManifestHash: string;
-}
-
-export const BenchmarkCellResultV1Schema: z.ZodType<BenchmarkCellResultV1> = z
-  .object({
-    schemaVersion: z.literal(1),
-    benchmarkRunId: BenchmarkRunIdSchema,
-    suiteHash: z.string().regex(/^[a-f0-9]{64}$/u),
-    fixtureId: FixtureIdSchema,
-    arm: BenchmarkArmV1Schema,
-    repetition: z.number().int().positive(),
-    provider: z.string().min(1),
-    model: z.string().min(1),
-    thinkingLevel: z.string().min(1),
-    expectedMechanism: MechanismCodeV2Schema.exclude(["unknown"]),
-    proposedMechanism: MechanismCodeV2Schema,
-    mechanismCorrect: z.boolean(),
-    verdict: z.enum(["confirmed", "inconclusive"]),
-    incorrectConfirmation: z.boolean(),
-    sourceLocationCorrect: z.boolean().nullable(),
-    gameExecutions: z.number().int().nonnegative(),
-    toolCalls: z.number().int().nonnegative(),
-    wallTimeMs: z.number().int().nonnegative(),
-    tokens: z
-      .object({
-        input: z.number().int().nonnegative(),
-        output: z.number().int().nonnegative(),
-        total: z.number().int().nonnegative(),
-      })
-      .strict(),
-    rawManifestHash: z.string().regex(/^[a-f0-9]{64}$/u),
-  })
-  .strict()
-  .superRefine((cell, context) => {
-    const correct = cell.expectedMechanism === cell.proposedMechanism;
-    if (cell.mechanismCorrect !== correct) {
-      context.addIssue({
-        code: "custom",
-        message: "mechanismCorrect contradicts the mechanism fields",
-        path: ["mechanismCorrect"],
-      });
-    }
-    if (
-      cell.incorrectConfirmation !== (cell.verdict === "confirmed" && !correct)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "incorrectConfirmation contradicts verdict and mechanism",
-        path: ["incorrectConfirmation"],
-      });
-    }
-  });
-
-export interface BenchmarkReportV1 {
-  readonly schemaVersion: 1;
-  readonly benchmarkRunId: BenchmarkRunId;
-  readonly suiteHash: string;
-  readonly seed: string;
-  readonly provider: string;
-  readonly model: string;
-  readonly thinkingLevel: string;
-  readonly repetitions: number;
-  readonly cells: readonly BenchmarkCellResultV1[];
-  readonly advantage: {
-    readonly fullAccuracy: number;
-    readonly genericAccuracy: number;
-    readonly delta: number;
-    readonly incorrectConfirmations: number;
-    readonly thresholdMet: boolean;
-  };
-}
-
-export const BenchmarkReportV1Schema: z.ZodType<BenchmarkReportV1> = z
-  .object({
-    schemaVersion: z.literal(1),
-    benchmarkRunId: BenchmarkRunIdSchema,
-    suiteHash: z.string().regex(/^[a-f0-9]{64}$/u),
-    seed: z.string().min(1),
-    provider: z.string().min(1),
-    model: z.string().min(1),
-    thinkingLevel: z.string().min(1),
-    repetitions: z.number().int().positive(),
-    cells: z.array(BenchmarkCellResultV1Schema),
-    advantage: z
-      .object({
-        fullAccuracy: z.number().finite().min(0).max(1),
-        genericAccuracy: z.number().finite().min(0).max(1),
-        delta: z.number().finite().min(-1).max(1),
-        incorrectConfirmations: z.number().int().nonnegative(),
-        thresholdMet: z.boolean(),
-      })
-      .strict(),
-  })
-  .strict()
-  .superRefine((report, context) => {
-    for (const [index, cell] of report.cells.entries()) {
-      if (
-        cell.benchmarkRunId !== report.benchmarkRunId ||
-        cell.suiteHash !== report.suiteHash ||
-        cell.provider !== report.provider ||
-        cell.model !== report.model ||
-        cell.thinkingLevel !== report.thinkingLevel ||
-        cell.repetition > report.repetitions
-      ) {
-        context.addIssue({
-          code: "custom",
-          message: "Cell provenance does not match its benchmark report",
-          path: ["cells", index],
-        });
-      }
-    }
-  });

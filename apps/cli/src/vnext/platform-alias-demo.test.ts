@@ -30,7 +30,6 @@ import {
 
 import {
   createPlatformAliasAblationEnvironmentV1,
-  createPlatformAliasEnvironmentInstructions,
   observePlatformAliasAblationPostflightV1,
   observePlatformAliasRuntimeV1,
   PLATFORM_ALIAS_ABLATION_ENVIRONMENT_INSTRUCTION_PROFILE,
@@ -40,8 +39,6 @@ import {
   PLATFORM_ALIAS_ABLATION_SHARED_TOOL_NAMES,
   PLATFORM_ALIAS_ABLATION_THINKING_LEVEL,
   PLATFORM_ALIAS_ABLATION_TIMEOUT_MS,
-  PLATFORM_ALIAS_BUILD_LIFECYCLE_AFFORDANCE,
-  PLATFORM_ALIAS_OBSERVATION_AFFORDANCE,
   PLATFORM_ALIAS_PROMPT,
   PlatformAliasAblationConfigurationV1Schema,
   PlatformAliasAblationRunV1Schema,
@@ -236,36 +233,13 @@ class RuntimePort implements ProjectEnvironmentGameToolPort {
 }
 
 describe("GN-1 platform alias observation", () => {
-  it("keeps the user goal neutral while describing the available observation domain", () => {
+  it("keeps the matched prompt and raw Godot tool shared while ablating only ChronoRift tools", () => {
     expect(PLATFORM_ALIAS_PROMPT).toBe(
       "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy.",
     );
     expect(PLATFORM_ALIAS_PROMPT).not.toMatch(
       /ChronoRift|game_|runtime|observation|geometry|resource|tool/iu,
     );
-    expect(PLATFORM_ALIAS_OBSERVATION_AFFORDANCE).toMatch(
-      /platform_geometry.*collision widths.*resource identity/iu,
-    );
-    expect(PLATFORM_ALIAS_OBSERVATION_AFFORDANCE).not.toMatch(
-      /bug|cause|expected|mismatch|duplicate|shared|fix/iu,
-    );
-    expect(PLATFORM_ALIAS_BUILD_LIFECYCLE_AFFORDANCE).not.toMatch(
-      /\b(?:call|invoke|use)\b[^.\n]*\b(?:after|before|first|then)\b|\b(?:after|before|first|then)\b[^.\n]*\b(?:call|invoke|use)\b|\b(?:must|should)\b/iu,
-    );
-    const instructions = createPlatformAliasEnvironmentInstructions({
-      taskId: "task.test",
-      launchTargetId: "main",
-    });
-    expect(instructions).toContain("taskId: task.test");
-    expect(instructions).toContain("default launchTargetId: main");
-    expect(instructions).toContain(PLATFORM_ALIAS_OBSERVATION_AFFORDANCE);
-    expect(instructions).toContain(PLATFORM_ALIAS_BUILD_LIFECYCLE_AFFORDANCE);
-    expect(instructions).not.toMatch(
-      /\b(?:call|invoke|use)\b[^.\n]*\b(?:after|before|first|then)\b|\b(?:after|before|first|then)\b[^.\n]*\b(?:call|invoke|use)\b|\b(?:must|should)\b/iu,
-    );
-  });
-
-  it("keeps the matched prompt and raw Godot tool shared while ablating only ChronoRift tools", () => {
     const codingTools = createVNextCodingToolDefinitions(
       {} as VNextCodingToolPort,
     ).map((tool) => ({ name: tool.name }));
@@ -319,11 +293,9 @@ describe("GN-1 platform alias observation", () => {
 
   it("uses the same task-id-only coding environment in both arms", () => {
     const control = createPlatformAliasAblationEnvironmentV1({
-      arm: "coding-only",
       taskId: "task.control",
     });
     const treatment = createPlatformAliasAblationEnvironmentV1({
-      arm: "chronorift",
       taskId: "task.treatment",
     });
 

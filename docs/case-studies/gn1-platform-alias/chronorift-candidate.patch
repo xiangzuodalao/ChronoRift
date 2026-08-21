@@ -1,0 +1,12 @@
+diff --git a/components/platform/platform.gd b/components/platform/platform.gd
+index 1f5858466e5f7dfabac5f92c2434d36867c951ce..899d06a2dae7fb1ce15e9becc6c00f4969f6a3df 100644
+--- a/components/platform/platform.gd
++++ b/components/platform/platform.gd
+@@ -47,6 +47,7 @@ func _recreate_sprites():
+ 	_collision_shape.shape = RectangleShape2D.new()
+ 	_collision_shape.one_way_collision = one_way
+ 	_collision_shape.shape.set_size(Vector2(width * TILE_WIDTH, TILE_WIDTH))
++	_area_collision_shape.shape = _area_collision_shape.shape.duplicate()
+ 	_area_collision_shape.shape.set_size(
+ 		Vector2(width * TILE_WIDTH, _area_collision_shape.shape.size[1])
+ 	)

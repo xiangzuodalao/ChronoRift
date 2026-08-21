@@ -1,7 +1,27 @@
 {
   "name": "chronorift",
   "version": "0.4.0",
+  "description": "Secure, evidence-preserving Agent Runtime Harness for Godot, built on the Pi SDK.",
   "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xiangzuodalao/ChronoRift.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xiangzuodalao/ChronoRift/issues"
+  },
+  "homepage": "https://github.com/xiangzuodalao/ChronoRift#readme",
+  "keywords": [
+    "ai-agents",
+    "agent-infrastructure",
+    "agent-harness",
+    "godot",
+    "sandbox",
+    "evals",
+    "typescript",
+    "developer-tools"
+  ],
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "engines": {

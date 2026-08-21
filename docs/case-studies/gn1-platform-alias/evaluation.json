@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "configurationMatched": true,
+  "configurationReasons": [],
+  "arms": {
+    "codingOnly": {
+      "commandCompleted": true,
+      "agentCompleted": true,
+      "patchNonEmpty": true,
+      "candidateObservationAvailable": true,
+      "checkoutClean": true,
+      "cleanupComplete": true,
+      "candidateBuildChanged": true,
+      "runtimeErrorsEmpty": true,
+      "semanticObservationUsed": false,
+      "geometryMatched": false,
+      "areaIdentityDistinct": false,
+      "oraclePassed": false,
+      "reasons": [
+        "candidate_geometry_mismatch"
+      ]
+    },
+    "chronorift": {
+      "commandCompleted": true,
+      "agentCompleted": true,
+      "patchNonEmpty": true,
+      "candidateObservationAvailable": true,
+      "checkoutClean": true,
+      "cleanupComplete": true,
+      "candidateBuildChanged": true,
+      "runtimeErrorsEmpty": true,
+      "semanticObservationUsed": true,
+      "geometryMatched": true,
+      "areaIdentityDistinct": true,
+      "oraclePassed": true,
+      "reasons": []
+    }
+  },
+  "limitations": [
+    "This evaluator reports two case-level candidate outcomes and does not select a winner or support a general superiority claim.",
+    "A valid pair requires fresh distinct Task, workspace, and Pi Session identities."
+  ]
+}

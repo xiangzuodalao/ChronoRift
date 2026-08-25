@@ -5,12 +5,15 @@ import { z } from "zod";
 import type { GodotLifecycleVanillaSmokeDiagnosticV1 } from "@chronorift/godot-protocol";
 import {
   createVNextGodotRunToolDefinitionV1,
+  type ProjectEnvironmentToolCallAdmissionV1,
   type VNextGodotRunToolPortV1,
 } from "@chronorift/pi-harness";
 
 import type { PreparedProjectEnvironmentDebugBuildV1 } from "./candidate-godot-build.js";
 import type { ManagedGodotProjectEnvironmentRuntimeCapabilityV1 } from "./managed-godot-project-environment-runtime.js";
+import type { ManagedGodotProjectEnvironmentRuntimeCapabilityV2 } from "./managed-godot-project-environment-runtime-v2.js";
 import type { GodotProjectEnvironmentSidecarPortV1 } from "./project-environment-sidecar-port.js";
+import type { GodotProjectEnvironmentSidecarPortV2 } from "./project-environment-sidecar-port-v2.js";
 
 const OUTPUT_MAX_BYTES = 64 * 1024;
 const LIMITS = Object.freeze({
@@ -260,6 +263,8 @@ export interface PlatformAliasGodotRunToolOptionsV1 {
   readonly prepareBuild: () => Promise<PreparedProjectEnvironmentDebugBuildV1>;
   readonly onCall?:
     ((call: PlatformAliasGodotRunCallV1) => void | Promise<void>) | undefined;
+  readonly toolCallAdmission?:
+    ProjectEnvironmentToolCallAdmissionV1 | undefined;
 }
 
 const createPort = (
@@ -369,9 +374,135 @@ export const createPlatformAliasGodotRunToolV1 = (
 ) => {
   const onCall = options.onCall;
   return createVNextGodotRunToolDefinitionV1(createPort(options), {
+    toolCallAdmission: options.toolCallAdmission,
     onCall:
       onCall === undefined
         ? undefined
         : (call) => onCall(PlatformAliasGodotRunCallV1Schema.parse(call)),
   });
 };
+
+export interface ProjectEnvironmentGodotRunToolOptionsV2 {
+  readonly sidecar: Pick<GodotProjectEnvironmentSidecarPortV2, "runVanilla">;
+  readonly managedRuntime: ManagedGodotProjectEnvironmentRuntimeCapabilityV2;
+  readonly taskId: string;
+  readonly prepareBuild: () => Promise<PreparedProjectEnvironmentDebugBuildV1>;
+  readonly onCall?:
+    ((call: PlatformAliasGodotRunCallV1) => void | Promise<void>) | undefined;
+  readonly toolCallAdmission?:
+    ProjectEnvironmentToolCallAdmissionV1 | undefined;
+}
+
+const createPortV2 = (
+  options: ProjectEnvironmentGodotRunToolOptionsV2,
+): VNextGodotRunToolPortV1 => ({
+  async run(signal) {
+    let prepared: PreparedProjectEnvironmentDebugBuildV1;
+    try {
+      prepared = await options.prepareBuild();
+    } catch (error) {
+      return PlatformAliasGodotRunResultV1Schema.parse({
+        schemaVersion: 1,
+        outcome: "error",
+        error: {
+          code: "prepare_failed",
+          message: boundedMessage(error),
+          recoverable: true,
+        },
+      });
+    }
+    const build = buildIdentity(prepared);
+    let run: Awaited<ReturnType<typeof options.sidecar.runVanilla>>;
+    try {
+      const nonce = randomUUID();
+      run = await options.sidecar.runVanilla(
+        {
+          schemaVersion: 2,
+          runtimeProfile: "chronorift-managed-godot-project-environment-v2",
+          taskId: options.taskId,
+          buildId: build.buildId,
+          runtimeId: `runtime:godot-run:${nonce}`,
+          executionId: `execution:godot-run:${nonce}`,
+          managedRuntimeId: options.managedRuntime.managedRuntimeId,
+          candidateSourceHash: build.candidateSourceHash,
+          diagnosticFrameMaxBytes: LIMITS.diagnosticFrameMaxBytes,
+          diagnosticTotalMaxBytes: LIMITS.diagnosticTotalMaxBytes,
+          diagnosticMaxCount: LIMITS.diagnosticMaxCount,
+          outputCaptureMaxBytes: LIMITS.outputCaptureMaxBytes,
+          operation: "vanilla_smoke",
+          importTimeoutMs: LIMITS.importTimeoutMs,
+          vanillaTimeoutMs: LIMITS.vanillaTimeoutMs,
+          stabilityWindowMs: LIMITS.stabilityWindowMs,
+        },
+        signal,
+      );
+    } catch (error) {
+      return PlatformAliasGodotRunResultV1Schema.parse({
+        schemaVersion: 1,
+        outcome: "error",
+        error: {
+          code: "execution_failed",
+          message: boundedMessage(error),
+          recoverable: true,
+        },
+        build,
+      });
+    }
+    if (run.kind === "denied") {
+      return PlatformAliasGodotRunResultV1Schema.parse({
+        schemaVersion: 1,
+        outcome: "error",
+        error: {
+          code: "denied",
+          message: "The task sandbox denied the Godot execution",
+          recoverable: false,
+        },
+        build,
+      });
+    }
+    const receipt = executionReceipt(run.result, build.candidateSourceHash);
+    const rawCapture = capture(run.result.diagnostics);
+    const completed = run.result.diagnostics.some(
+      (record) =>
+        record.kind === "smoke_complete" &&
+        record.candidateSourceHash === build.candidateSourceHash,
+    );
+    if (
+      run.result.sandbox.receipt.status !== "succeeded" ||
+      !completed ||
+      !receipt.sourceIdentityReverified
+    ) {
+      return PlatformAliasGodotRunResultV1Schema.parse({
+        schemaVersion: 1,
+        outcome: "error",
+        error: {
+          code: "execution_failed",
+          message: sidecarFailureMessage(run.result.diagnostics),
+          recoverable: true,
+        },
+        build,
+        receipt,
+        capture: rawCapture,
+      });
+    }
+    return PlatformAliasGodotRunResultV1Schema.parse({
+      schemaVersion: 1,
+      outcome: "success",
+      build,
+      receipt,
+      capture: rawCapture,
+    });
+  },
+});
+
+export const createProjectEnvironmentGodotRunToolV2 = (
+  options: ProjectEnvironmentGodotRunToolOptionsV2,
+) =>
+  createVNextGodotRunToolDefinitionV1(createPortV2(options), {
+    toolCallAdmission: options.toolCallAdmission,
+    onCall:
+      options.onCall === undefined
+        ? undefined
+        : (call) =>
+            options.onCall?.(PlatformAliasGodotRunCallV1Schema.parse(call)),
+  });

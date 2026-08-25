@@ -1,0 +1,14 @@
+diff --git a/Mob.gd b/Mob.gd
+index 168dc545af35762f2de9a2b98d94fdf61249b4df..50c55d27a1a81061a7d7f278dcbd2e684e3ea390 100644
+--- a/Mob.gd
++++ b/Mob.gd
+@@ -14,7 +14,8 @@ func _physics_process(_delta):
+ 
+ 
+ func initialize(start_position, player_position):
+-	look_at_from_position(start_position, player_position, Vector3.UP)
++	var horizontal_player_position = Vector3(player_position.x, start_position.y, player_position.z)
++	look_at_from_position(start_position, horizontal_player_position, Vector3.UP)
+ 	rotate_y(randf_range(-PI / 4, PI / 4))
+ 
+ 	var random_speed = randf_range(min_speed, max_speed)

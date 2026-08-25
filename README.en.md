@@ -1,19 +1,28 @@
 # ChronoRift
 
-[中文](README.md) · [Engineering walkthrough](docs/portfolio.md) · [GN-1 case study](docs/case-studies/gn1-platform-alias.md)
+[中文](README.md) · [Engineering walkthrough](docs/portfolio.md) · [GN-1 case study](docs/case-studies/gn1-platform-alias.md) · [Godot Demo V2 slice](docs/case-studies/godot-demo-mob-orientation.md)
 
 [![CI](https://github.com/xiangzuodalao/ChronoRift/actions/workflows/ci.yml/badge.svg)](https://github.com/xiangzuodalao/ChronoRift/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**A secure, evidence-preserving Agent Runtime Harness for Godot, built on the Pi SDK.**
+**Move coding agents from source-level guesses to executable Godot runtime evidence.**
 
-Pi owns the Session and Agent Loop. ChronoRift owns the task workspace, sandboxed execution, versioned game-tool
-boundary, and runtime records. The Agent chooses how to investigate and validate; project CI, an external Eval, or a
-human reviewer decides whether to accept the candidate.
+Pi owns the Agent Loop. ChronoRift confines file, command, and Godot operations to a declared Task sandbox and gives
+the Agent Build-bound runtime state, actual diffs, tool results, coverage, loss, lineage, and cleanup records. The
+Agent chooses its investigation and edit strategy; project CI, an independent Eval, or human review still owns final
+acceptance.
 
-> **Status on 2026-08-21:** `v0.4.0` is the current legacy diagnosis release. Project Environment is an experimental
-> Preview. GN-1 is one retrospective matched pair on one pinned external project. A default `chronorift [goal]`,
-> arbitrary-project support, and automatic “fixed” verdicts do not exist yet.
+> **Outcome advantage — GN-1:** with source, prompt, model, thinking, timeout, and shared tools held constant, the
+> coding-only candidate's geometry oracle was `false`. After querying realized platform geometry and Shape identity,
+> the ChronoRift Agent produced a different candidate whose oracle was `true`.
+>
+> **Cross-project validation — Godot Demo V2:** on a second upstream project, the ChronoRift Agent made 13 V2
+> game-tool calls and queried 14 initial plus 5 candidate Mob-state records; its candidate passed the independent
+> evaluator 3/3. Coding-only also passed 3/3, so this case supports product-path reuse rather than a general efficacy
+> claim.
+
+**Status on 2026-08-25:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
+A default `chronorift [goal]`, arbitrary-project support, and automatic “fixed” verdicts do not exist yet.
 
 ![ChronoRift concept art showing an isolated Godot runtime, baseline and candidate executions, and runtime records](docs/assets/chronorift-hero.jpg)
 
@@ -35,6 +44,7 @@ implemented features.
 | v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                             | Not the vNext free Loop and not an arbitrary-project runner                            |
 | Project Environment Preview | Explicit `project preview`; experimental source closure, sandbox, adapter publication/binding, and reuse                                | Narrow historical characterization; not the default command or general project support |
 | GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary | One project, prompt, revision, and pair; raw live outputs remain local-only            |
+| Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                    | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim       |
 | Host sandbox                | Linux bubblewrap, cgroup, bounded Task storage, and pinned toolchain/Godot paths                                                        | Requires explicit Host provisioning; `cwd` or a Git worktree is not isolation          |
 | M3/M4/E2                    | Compatibility implementations and frozen historical archives remain                                                                     | Not templates for new product slices; their dedicated producers and Gates are retired  |
 
@@ -42,11 +52,14 @@ Not yet available: a default `chronorift [goal]`, arbitrary Godot projects, gene
 cross-platform Hosts, automatic acceptance, or generally available checkpoint/fork/replay on the current product
 path. The M3 compatibility path implements some runtime primitives for one fixed fixture only.
 
-## GN-1: a reviewable N=1 case
+## Runtime evidence changed the candidate: GN-1
 
-GN-1 pins `endlessm/moddable-platformer` to one exact commit/tree. Both fresh arms receive the same neutral prompt,
-model, thinking level, timeout, source, and shared tools. The `chronorift` arm adds only four game tools and their
-existing concise metadata.
+In GN-1, coding-only produced a plausible width adjustment, but candidate runtime still retained a shared Shape
+identity and the case-level oracle was `false`. The ChronoRift Agent queried realized geometry and resource identity;
+its candidate instead isolated the shared Shape resource and the oracle was `true`.
+
+Both fresh arms pin `endlessm/moddable-platformer` to the same commit/tree and share a neutral prompt, model, thinking
+level, timeout, and ordinary tools. The `chronorift` arm adds only four game tools and their existing concise metadata.
 
 | Arm           | Additional Agent-visible runtime surface                      | Candidate Host observation                                                       | Case oracle |
 | ------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------- |
@@ -60,9 +73,31 @@ transcripts, Host paths, or raw Task/Session identifiers.
 
 [Review the GN-1 Platform Alias case study →](docs/case-studies/gn1-platform-alias.md)
 
+## Reused on a second project: Godot Demo V2
+
+The public V2 loader, managed runtime, sandbox, lineage, and game tools completed an end-to-end run against a fixed
+`godot-demo-projects/3d/squash_the_creeps` revision.
+
+| Product fact                | Formal result                                                           |
+| --------------------------- | ----------------------------------------------------------------------- |
+| Agent-visible runtime use   | 13 V2 game-tool calls; 14 initial and 5 candidate state records         |
+| ChronoRift candidate        | Independent Godot evaluator 3/3                                         |
+| Second-project runtime path | Source, Build, Execution, patch, and cleanup records are bound          |
+| Comparative Hero gate       | Not promoted; coding-only produced the same semantic fix and passed 3/3 |
+
+The full treatment delta included four game-tool definitions and their metadata plus two neutral discoverability
+lines. This was not a tool-only comparison, and the outcome cannot be attributed to the game tools alone.
+
+This run shows that ChronoRift's runtime product boundary is not confined to GN-1; it does not carry the comparative
+advantage claim. The detailed page retains both original candidate patches and evaluator stdout, and summarizes time,
+cost, failed tool responses retained in local raw records, and runtime limitations.
+
+[Review the Godot Demo Mob Orientation case study →](docs/case-studies/godot-demo-mob-orientation.md)
+
 ## Review paths
 
 1. **No install:** read the [GN-1 case](docs/case-studies/gn1-platform-alias.md), the
+   [Godot Demo V2 case](docs/case-studies/godot-demo-mob-orientation.md), the
    [engineering walkthrough](docs/portfolio.md), and the
    [CI jobs](https://github.com/xiangzuodalao/ChronoRift/actions/workflows/ci.yml).
 2. **Offline:** use Node.js `>=22.19` (`.nvmrc` pins `22.23.1`) and pnpm `11.20.0`:
@@ -77,13 +112,14 @@ transcripts, Host paths, or raw Task/Session identifiers.
 
 3. **Provisioned Host:** follow the [development guide](docs/development.md) for the Linux namespace/cgroup,
    bounded-storage, immutable-toolchain, Godot, external-checkout, and provider prerequisites required by Project
-   Environment Preview or GN-1.
+   Environment Preview, GN-1, or the Godot Demo slice.
 
 The explicit experimental entry points are:
 
 ```text
 corepack pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL
 corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
+corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
 ```
 
 They operate on a Task-owned `/workspace`, do not modify or apply changes to the source checkout, and do not
@@ -105,11 +141,13 @@ automatically commit, merge, push, or declare a fix.
 
 - [Engineering walkthrough](docs/portfolio.md): design decisions, a five-file code tour, and known debt.
 - [GN-1 case study](docs/case-studies/gn1-platform-alias.md): a checkable but non-generalizable runtime-observation pair.
+- [Godot Demo Mob orientation](docs/case-studies/godot-demo-mob-orientation.md): a completed second-project V2 slice that did not promote to Hero.
 - [Target architecture](docs/architecture.md): vNext contract, rollout, and current implementation map (§20/§21).
 - [Project Environment V1 RFC](docs/project-environment-v1.md): data model, publication state machine, and wire contract.
 - [Development and conformance](docs/development.md): local, Godot, Host sandbox, and live-provider prerequisites.
 - [`docs/evidence/`](docs/evidence/) and [`docs/benchmarks/`](docs/benchmarks/): immutable historical archives whose
   conclusions do not automatically apply to current HEAD.
 
-ChronoRift-owned code is licensed under [Apache License 2.0](LICENSE). The GN-1 candidate patches derive from an MIT
-licensed upstream project; attribution is recorded in [Third-Party Notices](THIRD_PARTY_NOTICES.md) and the case directory.
+ChronoRift-owned code is licensed under [Apache License 2.0](LICENSE). Candidate patches in both public cases derive
+from MIT-licensed upstream projects; attribution is recorded in [Third-Party Notices](THIRD_PARTY_NOTICES.md) and the
+case directories.

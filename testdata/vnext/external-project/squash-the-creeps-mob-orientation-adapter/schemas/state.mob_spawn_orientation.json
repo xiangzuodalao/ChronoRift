@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "dialect": "chronorift://schemas/project-adapter-payload/v2",
+  "schemaId": "state.mob_spawn_orientation",
+  "root": {
+    "type": "object",
+    "properties": {
+      "node_path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "mob_y": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+      "player_y": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+      "height_delta": {
+        "type": "number",
+        "minimum": -2000000,
+        "maximum": 2000000
+      },
+      "up_alignment": { "type": "number", "minimum": -1, "maximum": 1 },
+      "velocity_y": {
+        "type": "number",
+        "minimum": -1000000,
+        "maximum": 1000000
+      },
+      "horizontal_speed": { "type": "number", "minimum": 0, "maximum": 1000000 }
+    },
+    "required": [
+      "node_path",
+      "mob_y",
+      "player_y",
+      "height_delta",
+      "up_alignment",
+      "velocity_y",
+      "horizontal_speed"
+    ],
+    "additionalProperties": false
+  }
+}

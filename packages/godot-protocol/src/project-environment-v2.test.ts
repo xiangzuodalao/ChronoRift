@@ -252,6 +252,19 @@ describe("Project Environment V2 contracts", () => {
     expect(ProjectAdapterManifestV2Schema.parse(manifest).schemaVersion).toBe(
       2,
     );
+    const stateOnly = ProjectAdapterManifestV2Schema.parse({
+      ...manifest,
+      eventTypes: [],
+      smoke: {
+        ...manifest.smoke,
+        minimumStateSamples: 1,
+        minimumEntityLifecycleRecords: 1,
+        requiredCustomEventTypeIds: [],
+        requiredDynamicTraces: [],
+      },
+    });
+    expect(stateOnly.eventTypes).toEqual([]);
+    expect(stateOnly.smoke.requiredDynamicTraces).toEqual([]);
     expect(() =>
       ProjectAdapterManifestV2Schema.parse({
         ...manifest,

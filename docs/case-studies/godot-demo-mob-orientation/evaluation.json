@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "caseId": "godot-demo-mob-orientation",
+  "heroPromoted": false,
+  "outcome": "not_promoted",
+  "evaluator": {
+    "codingOnlyAccepted": true,
+    "chronoriftV2Accepted": true
+  },
+  "treatmentInitialBuildRuntimeUsed": true,
+  "failures": [
+    "coding-only must fail the independent evaluator 0/3"
+  ],
+  "limitations": [
+    "One predeclared matched pair is not a statistical estimate.",
+    "The result covers one fixed upstream project revision and one fixed Adapter V2."
+  ]
+}

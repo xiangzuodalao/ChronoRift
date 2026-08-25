@@ -7,6 +7,9 @@ pnpm-lock.yaml
 # Preserve the exact GN-1 evaluator stdout published by the case study.
 docs/case-studies/gn1-platform-alias/evaluation.json
 
+# Preserve the exact Godot Demo evaluator stdout published by the case study.
+docs/case-studies/godot-demo-mob-orientation/evaluation.json
+
 # Preserve exact frozen historical benchmark bytes.
 docs/benchmarks/v0.3/benchmark-report.v2.json
 docs/benchmarks/v0.3/case-physics-tunneling-full-r1.json

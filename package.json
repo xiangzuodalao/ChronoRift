@@ -44,6 +44,7 @@
     "demo": "tsx apps/cli/src/main.ts demo",
     "demo:godot": "tsx apps/cli/src/main.ts demo --environment godot",
     "demo:platform-alias-ablation": "tsx apps/cli/src/main.ts demo-platform-alias-ablation",
+    "demo:mob-orientation-ablation": "tsx apps/cli/src/main.ts demo-mob-orientation-ablation",
     "diagnose": "tsx apps/cli/src/main.ts diagnose",
     "demo:v04": "tsx apps/cli/src/main.ts demo-v04",
     "diagnose:v04": "tsx apps/cli/src/main.ts diagnose-v04",

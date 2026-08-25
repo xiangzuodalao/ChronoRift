@@ -91,11 +91,21 @@ export async function runProjectEnvironmentCompatibilitySmokeV2(input: {
   let entities: ToolResult = { outcome: "error", message: "not run" },
     state: ToolResult = { outcome: "error", message: "not run" },
     events: ToolResult = { outcome: "error", message: "not run" },
+    ready: ToolResult = { outcome: "error", message: "not run" },
     configured: ToolResult = { outcome: "error", message: "not run" },
     pinned: ToolResult = { outcome: "error", message: "not run" },
     stop: ToolResult = { outcome: "error", message: "not run" };
   if (launch.outcome === "success") {
     const executionId = text(launch.output.executionId);
+    try {
+      await input.runtime.waitForDeclaredSmokeObservations(executionId);
+      ready = { outcome: "success", output: {} };
+    } catch (error) {
+      ready = {
+        outcome: "error",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
     entities = toolResult(
       await invoke(input.runtime, input.taskId, "game_query", {
         executionId,
@@ -148,6 +158,7 @@ export async function runProjectEnvironmentCompatibilitySmokeV2(input: {
       : [];
   const failures = [
     launch,
+    ready,
     entities,
     state,
     events,

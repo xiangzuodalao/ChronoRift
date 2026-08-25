@@ -330,6 +330,7 @@ describe("ProjectEnvironmentGameRuntimeV2 state-only execution", () => {
   it("serves a declared projection without requiring a dynamic trace", async () => {
     const { target, releasePoll, waitForPendingPoll } = fixture();
     const identifiers = await launch(target);
+    await target.waitForDeclaredSmokeObservations(identifiers.executionId);
     await waitForPendingPoll();
     const entities = await invoke(target, "game_query", {
       schemaVersion: 1,

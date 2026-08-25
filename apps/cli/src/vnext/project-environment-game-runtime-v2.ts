@@ -208,6 +208,59 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
     return run;
   }
 
+  /**
+   * Host-only readiness boundary for the compatibility smoke. Agent-facing
+   * game_query remains a nonblocking read of the current validated snapshot.
+   */
+  public waitForDeclaredSmokeObservations(executionId: string): Promise<void> {
+    if (this.#closed)
+      return Promise.reject(
+        new Error("The Project Environment runtime is closed"),
+      );
+    const run = this.#operation.then(async () => {
+      const active = this.requireExecution(executionId);
+      const smoke = this.options.adapterPackage.manifest.smoke;
+      await active.ring.waitFor((records) => {
+        try {
+          const entities = records.filter(
+            (record) => record.kind === "entity_lifecycle",
+          );
+          const states = records.filter(
+            (record) => record.kind === "state_sample",
+          );
+          const events = records.filter(
+            (record) => record.kind === "adapter_event",
+          );
+          const stateDomainIds = new Set(
+            states.map((record) => record.payload.stateDomainId),
+          );
+          const eventTypeIds = new Set(
+            events.map((record) => record.payload.eventTypeId),
+          );
+          return (
+            entities.length >= smoke.minimumEntityLifecycleRecords &&
+            states.length >= smoke.minimumStateSamples &&
+            smoke.requiredStateDomainIds.every((id) =>
+              stateDomainIds.has(id),
+            ) &&
+            smoke.requiredCustomEventTypeIds.every((id) =>
+              eventTypeIds.has(id),
+            ) &&
+            active.ring.dynamicTraces(this.options.adapterPackage).length ===
+              smoke.requiredDynamicTraces.length
+          );
+        } catch {
+          return false;
+        }
+      }, smoke.timeoutMs);
+    });
+    this.#operation = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   public async close(): Promise<void> {
     if (this.#closeResult !== null) return this.#closeResult;
     this.#closed = true;

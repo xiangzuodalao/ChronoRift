@@ -64,6 +64,7 @@ describe("the independent Mob orientation evaluator", () => {
 
     const parent = await runEvaluator(root);
     expect(parent.code, parent.stderr).toBe(1);
+    expect(parent.stdout, parent.stderr).not.toBe("");
     expect(JSON.parse(parent.stdout)).toMatchObject({
       evaluatorAccepted: false,
       repeat: 3,

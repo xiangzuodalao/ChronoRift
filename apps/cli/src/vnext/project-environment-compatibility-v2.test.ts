@@ -62,9 +62,13 @@ const dynamicTraces = [
   },
 ];
 
-const runtime = () =>
-  ({
+const runtime = () => {
+  let observationsReady = false;
+  return {
     lastDynamicTraces: dynamicTraces,
+    waitForDeclaredSmokeObservations: vi.fn(async () => {
+      observationsReady = true;
+    }),
     invoke: vi.fn(
       async (request: {
         readonly toolName: string;
@@ -79,8 +83,9 @@ const runtime = () =>
             },
           };
         if (request.toolName === "game_query") {
-          const count =
-            request.input.select === "entities"
+          const count = !observationsReady
+            ? 0
+            : request.input.select === "entities"
               ? 3
               : request.input.select === "state"
                 ? 4
@@ -103,7 +108,8 @@ const runtime = () =>
         return { outcome: "success", output: {} };
       },
     ),
-  }) as unknown as ProjectEnvironmentGameRuntimeV2;
+  } as unknown as ProjectEnvironmentGameRuntimeV2;
+};
 
 const taskId = asProjectEnvironmentTaskId("task:compatibility-v2-target");
 const buildId = asBuildId(`build:${"1".repeat(64)}`);

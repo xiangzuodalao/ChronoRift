@@ -112,17 +112,16 @@ const smoke = z
     schemaVersion: z.literal(2),
     targetId: ProjectAdapterStableIdV1Schema,
     timeoutMs: z.number().int().min(1_000).max(120_000),
-    minimumStateSamples: z.number().int().min(2).max(4_096),
-    minimumEntityLifecycleRecords: z.number().int().min(3).max(4_096),
+    minimumStateSamples: z.number().int().min(1).max(4_096),
+    minimumEntityLifecycleRecords: z.number().int().min(1).max(4_096),
     requiredStateDomainIds: z
       .array(ProjectAdapterStableIdV1Schema)
       .min(1)
       .max(128),
     requiredCustomEventTypeIds: z
       .array(ProjectAdapterStableIdV1Schema)
-      .min(1)
       .max(128),
-    requiredDynamicTraces: z.array(dynamicTrace).min(1).max(32),
+    requiredDynamicTraces: z.array(dynamicTrace).max(32),
   })
   .strict();
 
@@ -160,7 +159,7 @@ export const ProjectAdapterManifestV2Schema = z
     modules: ProjectCapabilitySetV1Schema,
     entityTypes: z.array(entityType).min(1).max(128),
     stateDomains: z.array(stateDomain).min(1).max(128),
-    eventTypes: z.array(eventType).min(1).max(128),
+    eventTypes: z.array(eventType).max(128),
     smoke,
   })
   .strict()

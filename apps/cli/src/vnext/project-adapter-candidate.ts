@@ -324,7 +324,7 @@ export async function initializeProjectAdapterCandidateWorkspaceV2(input: {
     v2Reference,
     "CONTRACT.md",
     Buffer.from(
-      "# ProjectAdapter V2 reference\n\nUse manifest/schemaVersion 2 and SDK 2. Emit all dynamic observations through ChronoRiftObservationContextV2. Entity-scoped state and events require the exact active EntityRefV2. A publishable candidate must replace all dynamic-placeholder identifiers and demonstrate appeared, initial state, declared event, changed state, disappeared, and the same stable entity ID at exactly the next incarnation. Harness does not infer node names, Signal names, properties, or causality.\n",
+      "# ProjectAdapter V2 reference\n\nUse manifest/schemaVersion 2 and SDK 2. Emit observations through ChronoRiftObservationContextV2. Entity-scoped state and events require the exact active EntityRefV2. Replace all dynamic-placeholder identifiers with source-honest project semantics. State-only adapters may leave events and dynamic traces empty; they still must emit real lifecycle and required state observations. Declare reincarnation traces only when the project naturally produces them—never force reloads, entity reuse, or gameplay for conformance. Harness does not infer node names, Signal names, properties, or causality.\n",
       "utf8",
     ),
   );

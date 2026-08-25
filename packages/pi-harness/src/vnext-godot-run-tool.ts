@@ -5,6 +5,11 @@ import {
 import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
 
+import {
+  ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
+  type ProjectEnvironmentToolCallAdmissionV1,
+} from "./project-environment-tool-call-budget.js";
+
 const strictObject = { additionalProperties: false } as const;
 const digestSchema = Type.String({ pattern: "^[a-f0-9]{64}$" });
 const resourceIdSchema = Type.String({
@@ -143,6 +148,8 @@ export interface VNextGodotRunToolPortV1 {
 }
 
 export interface VNextGodotRunToolDefinitionOptionsV1 {
+  readonly toolCallAdmission?:
+    ProjectEnvironmentToolCallAdmissionV1 | undefined;
   readonly onCall?:
     ((call: VNextGodotRunToolCallV1) => void | Promise<void>) | undefined;
 }
@@ -168,6 +175,13 @@ export function createVNextGodotRunToolDefinitionV1(
     parameters: VNextGodotRunToolInputV1Schema,
     executionMode: "sequential",
     async execute(toolCallId, _input, signal) {
+      if (
+        options.toolCallAdmission !== undefined &&
+        !options.toolCallAdmission.tryAdmit("godot_run")
+      )
+        throw new ProjectEnvironmentToolCallBudgetExhaustedErrorV1(
+          options.toolCallAdmission.limit,
+        );
       const untrusted = await port.run(signal);
       if (!Check(VNextGodotRunResultV1Schema, untrusted)) {
         throw new TypeError("Invalid godot_run port result");

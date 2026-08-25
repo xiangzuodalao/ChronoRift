@@ -296,7 +296,31 @@ export const createProjectEnvironmentConformanceDriverV2 = (
         ring.start(client);
         await ring.waitFor((records) => {
           try {
+            const entities = records.filter(
+              (record) => record.kind === "entity_lifecycle",
+            );
+            const states = records.filter(
+              (record) => record.kind === "state_sample",
+            );
+            const events = records.filter(
+              (record) => record.kind === "adapter_event",
+            );
+            const observedStateDomains = new Set(
+              states.map((record) => record.payload.stateDomainId),
+            );
+            const observedEventTypes = new Set(
+              events.map((record) => record.payload.eventTypeId),
+            );
             return (
+              entities.length >=
+                loaded.manifest.smoke.minimumEntityLifecycleRecords &&
+              states.length >= loaded.manifest.smoke.minimumStateSamples &&
+              loaded.manifest.smoke.requiredStateDomainIds.every((id) =>
+                observedStateDomains.has(id),
+              ) &&
+              loaded.manifest.smoke.requiredCustomEventTypeIds.every((id) =>
+                observedEventTypes.has(id),
+              ) &&
               ring?.dynamicTraces(loaded).length ===
                 loaded.manifest.smoke.requiredDynamicTraces.length &&
               records.length > 0
@@ -342,13 +366,9 @@ export const createProjectEnvironmentConformanceDriverV2 = (
       .query("state", 4_096)
       .filter((record) => record.kind === "state_sample");
     const eventRows = ring!.query("events", 4_096);
-    if (
-      entityRows.length === 0 ||
-      states.length === 0 ||
-      eventRows.length === 0
-    ) {
+    if (entityRows.length === 0 || states.length === 0) {
       throw new Error(
-        "PE-B conformance requires nonempty validated entity, state, and event queries",
+        "PE-B conformance requires nonempty validated entity and state queries",
       );
     }
     const runtimeErrors = rawRecords.filter(

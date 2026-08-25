@@ -220,6 +220,29 @@ const createFakePiDependencies =
           {} as never,
         );
       };
+      const queryUntilRowsArrive = async (
+        taskId: string,
+        executionId: string,
+        select: "entities" | "state" | "events",
+      ): Promise<Record<string, unknown>> => {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const output = gameOutput(
+            await invoke("game_query", {
+              schemaVersion: 1,
+              taskId,
+              executionId,
+              select,
+              limit: 20,
+            }),
+          );
+          if (Array.isArray(output.rows) && output.rows.length > 0)
+            return output;
+          await new Promise<void>((resolve) => setTimeout(resolve, 25));
+        }
+        throw new Error(
+          `fake Pi did not observe ${select} rows in the bounded retry window`,
+        );
+      };
 
       const initializing = options.prompt.startsWith(
         "Initialize this Godot project environment",
@@ -268,32 +291,16 @@ const createFakePiDependencies =
             triggers: [],
           },
         });
-        const entities = gameOutput(
-          await invoke("game_query", {
-            schemaVersion: 1,
-            taskId,
-            executionId,
-            select: "entities",
-            limit: 20,
-          }),
+        const entities = await queryUntilRowsArrive(
+          taskId,
+          executionId,
+          "entities",
         );
-        const state = gameOutput(
-          await invoke("game_query", {
-            schemaVersion: 1,
-            taskId,
-            executionId,
-            select: "state",
-            limit: 20,
-          }),
-        );
-        const events = gameOutput(
-          await invoke("game_query", {
-            schemaVersion: 1,
-            taskId,
-            executionId,
-            select: "events",
-            limit: 20,
-          }),
+        const state = await queryUntilRowsArrive(taskId, executionId, "state");
+        const events = await queryUntilRowsArrive(
+          taskId,
+          executionId,
+          "events",
         );
         if (
           !Array.isArray(entities.rows) ||

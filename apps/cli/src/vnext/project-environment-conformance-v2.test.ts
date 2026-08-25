@@ -19,6 +19,7 @@ import {
   type ProjectEnvironmentConformanceDriverV2,
   type ProjectEnvironmentInstrumentedObservationV2,
 } from "./project-environment-conformance-driver-v2.js";
+import { projectAdapterObservationFailuresV2 } from "./project-environment-conformance-v2.js";
 import {
   assertReusableProjectEnvironmentRuntimeDigestsV2,
   resolveReusableProjectEnvironmentLaunchTargetV2,
@@ -101,6 +102,68 @@ const instrumentedObservation =
   });
 
 describe("PE-C launch-target validation", () => {
+  it("accepts a complete state-only observation and rejects vacuous coverage", () => {
+    const loaded = loadProjectAdapterPackageFilesV2(candidateFiles(), {
+      expectedMainScene: "res://main.tscn",
+      requireEmptyLaunchParameters: true,
+    });
+    const manifest = {
+      ...loaded.manifest,
+      eventTypes: [],
+      smoke: {
+        ...loaded.manifest.smoke,
+        minimumStateSamples: 1,
+        minimumEntityLifecycleRecords: 1,
+        requiredCustomEventTypeIds: [],
+        requiredDynamicTraces: [],
+      },
+    };
+    const complete = {
+      ...instrumentedObservation(),
+      stateDomainIds: ["dynamic-placeholder-state"],
+    };
+
+    expect(
+      projectAdapterObservationFailuresV2("target main", manifest, complete),
+    ).toEqual([]);
+    expect(
+      projectAdapterObservationFailuresV2("target main", manifest, {
+        ...complete,
+        entityLifecycleRecords: 0,
+        stateSamples: 0,
+        stateDomainIds: [],
+      }),
+    ).toEqual([
+      "target main minimum entity lifecycle records were not observed",
+      "target main minimum state samples were not observed",
+      "target main required state domain dynamic-placeholder-state was not observed",
+    ]);
+  });
+
+  it("still requires declared events, dynamic traces, and lossless records", () => {
+    const loaded = loadProjectAdapterPackageFilesV2(candidateFiles(), {
+      expectedMainScene: "res://main.tscn",
+      requireEmptyLaunchParameters: true,
+    });
+    const failures = projectAdapterObservationFailuresV2(
+      "target main",
+      loaded.manifest,
+      {
+        ...instrumentedObservation(),
+        stateDomainIds: ["dynamic-placeholder-state"],
+        droppedRecords: 1,
+      },
+    );
+
+    expect(failures).toEqual([
+      "target main minimum entity lifecycle records were not observed",
+      "target main minimum state samples were not observed",
+      "target main required event type dynamic-placeholder-event was not observed",
+      "target main required dynamic trace was not observed",
+      "target main dynamic projection was not lossless and declared",
+    ]);
+  });
+
   it.each(["sdkDigest", "bridgeDigest", "policyProfileDigest"] as const)(
     "requires review when the reusable %s changes",
     (changed) => {

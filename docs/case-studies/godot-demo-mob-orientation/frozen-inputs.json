@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "caseId": "godot-demo-mob-orientation",
+  "status": "live_pair_complete_not_promoted",
+  "source": {
+    "repository": "godotengine/godot-demo-projects",
+    "projectPrefix": "3d/squash_the_creeps",
+    "parentCommit": "711822a319c4333a8740522f3c71e97783199fb0",
+    "parentRepositoryTree": "e80cfdab1b1c2b917bd1fe65d5aeaec5cf292539",
+    "upstreamFixCommit": "57daa67c23ffdfaf0eae8e933b8eec397441275e"
+  },
+  "runOrder": ["coding-only", "chronorift-v2"],
+  "model": {
+    "provider": "openai-codex",
+    "id": "gpt-5.6-luna",
+    "thinking": "max",
+    "timeoutMs": 600000,
+    "toolCallBudget": 128
+  },
+  "intervention": {
+    "commonEnvironmentInstructions": [
+      "Task context:",
+      "- taskId: <opaque-task-id>"
+    ],
+    "treatmentToolNames": [
+      "game_capabilities",
+      "game_launch",
+      "game_stop",
+      "game_query"
+    ],
+    "treatmentOnlyEnvironmentInstructions": [
+      "- A prevalidated Project Environment V2 is available through the game_* tools.",
+      "- Runtime records are observations, not verdicts; choose your own investigation and validation order."
+    ],
+    "interpretation": "full product intervention; not tool-only"
+  },
+  "result": {
+    "runDate": "2026-08-24",
+    "codingOnlyAccepted": true,
+    "chronoriftV2Accepted": true,
+    "treatmentInitialBuildRuntimeUsed": true,
+    "heroPromoted": false,
+    "localHostEndToEndWallTimeEstimate": {
+      "codingOnlyMs": 123275,
+      "chronoriftV2Ms": 180381,
+      "method": "output file birthtime-to-completed-write mtime",
+      "runnerRecordedDuration": false
+    },
+    "codingOnlyCandidateSha256": "87468f8bbf079abdcf3c447b01b1ce4116a894395f337a2edc895b3a1e2bb693",
+    "chronoriftV2CandidateSha256": "ef227866c26b30e8baf46dd38a9363a0b9f4aabe7a1323941ee70d75cf66d177",
+    "evaluationSha256": "68d799d8a869a20f3582815057f05159e8dabf6ae9c006b708b54028bb6e25c8"
+  },
+  "localHost": {
+    "containerImageDigest": "sha256:74c53485c186bb3e904ea970248a271306e83e4be78b705f7be9314cd1a66ad2",
+    "liveEntrypointSha256": "d868903d971af7b95038ad65dace5bd5cde09ff200d478603692544459130781",
+    "hostConfigSha256": "31c06c03d663928261d03c5182ba9e067328d6fe220470ad03e9f69beadcfa7a",
+    "piAgentDirectoryMount": "host-model-read-write; task-sandbox-denied",
+    "nodeVersion": "22.23.1",
+    "nodeExecutableSha256": "93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068",
+    "godotVersion": "4.7.1.stable.official.a13da4feb",
+    "godotExecutableSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde"
+  },
+  "hashes": {
+    "promptSha256": "6d6f5249958f64a98abb8e38d5adfcff53a9c29eb7598f9d9bbcf9ad73b07562",
+    "runnerSha256": "f883511cddf57788df3968dbf4f319b5b92686220658f88ae54aa526bf499c9e",
+    "runtimeSha256": "83feace305d970760bbc1e495122c571f9bd589b65545ce824657e410870d09d",
+    "stateOnlyRuntimeRegressionSha256": "bc9e0ee7edc06d9efac74e3486f36b4a5c8b2e7a0607e9a248c3f30691384b9b",
+    "adapterPackageSha256": "a2293a0d9feef73f8dcc167a59e895367a2ecf6e7546f4486a3ccfe30a041689",
+    "adapterManifestSha256": "3ba7f0f470dc49a3cc5e8a7b2c84c47d949c5a3cdd726b2c215931ffb3c18105",
+    "adapterEntrySha256": "859558446f308a09035b74446d0f0bf2f6735bb6d6d48915fe4ccf80be088fce",
+    "candidateEvaluatorSha256": "a21f554cf2b1aa774e29de6edf770191e20316d8a8dd2fea6f3d4c9633fd62b2",
+    "pairEvaluatorSha256": "1944471ce0ce2c585af6cb6c488cdb848c96df4601bacae0cabf69b0856bed2d",
+    "minimalTargetFixSha256": "c7fad26f9b5ecb461a4fa7bd1db1654861de1b10fb20a477a57af0908cfdcbd6"
+  }
+}

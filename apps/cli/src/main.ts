@@ -72,6 +72,7 @@ import {
   PlatformAliasDemoFailureV1Schema,
   runPlatformAliasAblationV1,
 } from "./vnext/platform-alias-demo.js";
+import { runMobOrientationAblationV1 } from "./vnext/mob-orientation-ablation.js";
 import { runProjectEnvironmentPreviewV1 } from "./vnext/project-environment-preview.js";
 
 interface Arguments {
@@ -113,7 +114,8 @@ function parseArguments(argv: readonly string[]): Arguments {
     if (
       existing !== undefined &&
       (command === "project-preview" ||
-        command === "demo-platform-alias-ablation")
+        command === "demo-platform-alias-ablation" ||
+        command === "demo-mob-orientation-ablation")
     ) {
       throw new Error(`Duplicate --${name}`);
     }
@@ -1159,6 +1161,69 @@ async function platformAliasAblationCommand(args: Arguments) {
   if (unsuccessful) process.exitCode = 1;
 }
 
+async function mobOrientationAblationCommand(args: Arguments) {
+  assertOnlyFlags(args, [
+    "arm",
+    "project",
+    "provider",
+    "model",
+    "thinking",
+    "host-config",
+    "timeout-ms",
+    "agent-dir",
+    "json",
+  ]);
+  try {
+    const arm = requiredFlag(args, "arm");
+    if (arm !== "coding-only" && arm !== "chronorift-v2")
+      throw new Error("--arm must be coding-only or chronorift-v2");
+    const run = await runMobOrientationAblationV1({
+      arm,
+      projectPath: resolve(requiredFlag(args, "project")),
+      provider: requiredFlag(args, "provider"),
+      model: requiredFlag(args, "model"),
+      thinkingLevel: thinkingLevelFlag(args, "max"),
+      ...(flag(args, "host-config") === undefined
+        ? {}
+        : { hostConfigPath: resolve(flag(args, "host-config")!) }),
+      ...(flag(args, "agent-dir") === undefined
+        ? {}
+        : { agentDir: resolve(flag(args, "agent-dir")!) }),
+      ...(flag(args, "timeout-ms") === undefined
+        ? {}
+        : { timeoutMs: positiveIntegerFlag(args, "timeout-ms", 600_000) }),
+    });
+    if (hasFlag(args, "json")) printJson(run);
+    else
+      process.stdout.write(
+        [
+          `ChronoRift Mob orientation ablation — ${run.arm} — ${run.runIntegrity}`,
+          `task: ${run.taskId}`,
+          `candidate diff:\n${run.candidatePatch.unifiedDiff || "(empty)"}`,
+          `candidate runtime observation:\n${JSON.stringify(run.candidateObservation?.state ?? run.candidateObservationError, null, 2)}`,
+          `independent evaluator: ${run.evaluator?.evaluatorAccepted === true ? "accepted 3/3" : `not accepted (${run.evaluatorError ?? "candidate failed"})`}`,
+        ].join("\n") + "\n",
+      );
+    if (run.runIntegrity !== "valid") process.exitCode = 1;
+  } catch (error) {
+    const failure = {
+      schemaVersion: 1,
+      commandStatus: "failed",
+      errorMessage:
+        (error instanceof Error ? error.message : String(error))
+          .replace(/[\r\n\0]/gu, " ")
+          .trim()
+          .slice(0, 4096) || "Mob orientation ablation arm failed",
+    } as const;
+    if (hasFlag(args, "json")) printJson(failure);
+    else
+      process.stderr.write(
+        `ChronoRift Mob orientation ablation — failed\n${failure.errorMessage}\n`,
+      );
+    process.exitCode = 1;
+  }
+}
+
 function printHelp(): void {
   process.stdout.write(`ChronoRift v0.4.0\n\n`);
   process.stdout.write(
@@ -1166,6 +1231,12 @@ function printHelp(): void {
   );
   process.stdout.write(
     `  Runs one fresh GN-1 ablation arm. Pair the two arm outputs with the independent evaluator; one arm is not a comparative result.\n\n`,
+  );
+  process.stdout.write(
+    `  pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 --project PATH --provider openai-codex --model gpt-5.6-luna [--thinking max --timeout-ms 600000 --host-config PATH --json]\n`,
+  );
+  process.stdout.write(
+    `  Runs one fresh Godot demo Mob-orientation arm through the fixed ProjectAdapter V2 slice. One arm is not a comparative result.\n\n`,
   );
   process.stdout.write(
     `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--launch-target TARGET_ID] [--thinking LEVEL --host-config PATH]\n`,
@@ -1211,6 +1282,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   switch (args.command) {
     case "demo-platform-alias-ablation":
       await platformAliasAblationCommand(args);
+      return;
+    case "demo-mob-orientation-ablation":
+      await mobOrientationAblationCommand(args);
       return;
     case "project-preview":
       await projectPreviewCommand(args, cwd);

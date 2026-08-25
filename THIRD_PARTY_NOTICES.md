@@ -22,3 +22,16 @@ Publishing these candidate patches does not imply that the upstream project
 accepted them or endorses ChronoRift. ChronoRift's Apache-2.0 license does not
 replace the terms that apply to the upstream material represented by the
 patches.
+
+## Godot demo Mob-orientation case
+
+The fixed Adapter, evaluator controls, and candidate patches in
+`docs/case-studies/godot-demo-mob-orientation/` correspond to
+[`godotengine/godot-demo-projects`](https://github.com/godotengine/godot-demo-projects),
+project `3d/squash_the_creeps`, parent commit
+`711822a319c4333a8740522f3c71e97783199fb0`. The upstream repository is
+distributed under the MIT License. The published candidates are
+`coding-only-candidate.patch` and `chronorift-v2-candidate.patch`; publication
+does not imply upstream acceptance or endorsement.
+The upstream license text is reproduced in
+[`upstream-MIT-LICENSE.md`](docs/case-studies/godot-demo-mob-orientation/upstream-MIT-LICENSE.md).

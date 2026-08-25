@@ -469,7 +469,34 @@ oracle 为 `false`；`chronorift` 在修改前成功取得 launch-bound `platfor
 geometry/identity oracle 为 `true`。记录仅在 local-only `.chronorift/`，未冻结为 evidence bundle 或 Gate；一个
 项目、revision、prompt 和 pair 不证明候选 acceptance、通用 superiority、普遍因果性、成功率或任意项目泛化。
 
-### 20.3 延期工作
+### 20.3 Godot Demo Mob Orientation V2 vertical slice
+
+该切片绑定 `godot-demo-projects/3d/squash_the_creeps` 的精确父 commit/tree 和一个 checked-in 项目 Adapter，目标是
+在 GN-1 之外复用公共 PE V2 loader/runtime，而不是扩建 benchmark 平台。Manifest V2 允许 state-only projection：
+custom events 与 dynamic traces 可为空，最少 lifecycle/state record 为 1；若声明事件或 dynamic trace，conformance
+仍须正向观察全部 required record，并拒绝零记录、缺失 domain、loss 或 overwrite。
+
+case runner 每次只接收 `coding-only|chronorift-v2` 的一个 fresh arm。两组共用纯源码、中性 Bug prompt、model、
+thinking、timeout、普通编码工具、受限 `godot_run` 和 128 次共享 admission budget；common environment appendix
+只含 opaque `taskId`。Treatment 的完整增量同时包括四个 V2 game-tool definitions 及其 metadata，以及两行
+treatment-only discoverability appendix：预验证 Project Environment V2 可通过 `game_*` tools 使用；runtime records
+是 observation 而非 verdict，调查和验证顺序仍由 Agent 决定。因此本 pair 是完整产品 intervention，不是 tool-only
+comparison，结果也不得归因于单独的 game tools。
+
+Agent 完成后，Host 才临时物化窄 evaluator，通过同一 Godot sandbox 连续执行三次，并在 patch extraction 前删除
+evaluator 文件。standalone pair evaluator 只实现本 case 的预声明 Hero gate，不构成通用 verdict 或实验框架。
+
+V2 runtime 同时移除了与 state-only Adapter 不相容的旧 PE-B Gate：query 返回当前 validated ring snapshot；stop
+始终完成 shutdown/cleanup，证据缺口进入 persisted receipt 的 `incomplete`、failure 与 limitation，而不是把健康
+execution 标成 poisoned。旧 receipt 仍会在缺少 durable pinned capture 时保留 `incomplete`，本切片不借机迁移公共 DTO。
+persisted `succeeded` 仍沿用较窄的 PE-B evidence predicate；这里不宣称通用 state-only evidence-success 已完成迁移。
+
+2026-08-24 的本机 fresh pair 按冻结顺序完成。`coding-only` 与 `chronorift-v2` 候选均连续通过独立 evaluator 3/3；
+Treatment 在源码变化前后实际使用 V2 runtime state，共调用 13 次 game tools，run integrity 与 cleanup 均有效。由于
+coding-only 同样成功，standalone evaluator 将 `heroPromoted` 记为 `false`。结果只证明共享 V2 runtime/sandbox/lineage
+边界在第二个固定外部项目上跑通，不证明 treatment win、统计优势、自动 Adapter onboarding 或任意项目支持。
+
+### 20.4 延期工作
 
 | Slice | 后续增量                                                                                        |
 | ----- | ----------------------------------------------------------------------------------------------- |
@@ -485,21 +512,22 @@ Input、probe、alignment 和 render 等待真实依赖后再成为独立切片�
 
 ## 21. 当前实现映射
 
-本节把 **2026-08-21** 当前代码与已冻结证据映射到目标架构。它只描述实际实现和已归档证据；计划仍由 §20 定义，
+本节把 **2026-08-25** 当前代码与已冻结证据映射到目标架构。它只描述实际实现和已归档证据；计划仍由 §20 定义，
 Git 分支或合并状态本身不作为产品能力证据，实现存在也不等于 live run 已通过。
 
 ### 21.1 路径状态
 
-| 路径     | 产品状态           | 实现与证据状态                                                                                                            | 主要缺口                                                     |
-| -------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| v0.4     | 当前公开 release   | 四个 legacy Fixture、真实 Pi Session、固定诊断 workflow 和 Proposal/Verdict artifacts                                     | 与 vNext 自由 Loop 和非裁决契约不兼容                        |
-| M3       | 实验性兼容路径     | 七个 broker-backed coding tools、16 个 game tools、sidecar、capture/checkpoint/fork/replay/index/compare、patch lifecycle | 只支持一个 Fixture；不作为现役产品入口                       |
-| M4       | 实验性兼容路径     | external clean checkout、strict descriptor、四个 lifecycle tools、sandbox/import/patch/cleanup plumbing                   | 不提供 gameplay observation 或 acceptance                    |
-| E2       | 实验性兼容路径     | 独立 semantic wire/Addon、11 tools、Timer/spawn projection；历史 Host characterization 已归档                             | public-exposed task，不证明诊断、等价恢复、acceptance 或泛化 |
-| PE-A     | 实验性 Preview     | DTO/store、SDK/wire/loader、initial publication/binding、exact Build、same/new Session use；历史 characterization 已归档  | clean single-root/single-target；默认入口未晋升              |
-| PE-B     | 实验性 Preview     | V2 manifest/wire、Execution-bound identity/incarnation、validated ring、dynamic trace/pin；历史 characterization 已归档   | 只覆盖一个 dynamic fixture；默认入口未晋升                   |
-| **PE-C** | **实验性 Preview** | **implementation present；固定外部项目的历史 characterization 已归档**                                                    | fake Agent、单一外部项目；不是 full V1 或通用支持            |
-| **GN-1** | **当前实验路径**   | **固定项目 adapter、matched coding-only/ChronoRift tool surface、private diff 与 postflight；本地 pair 完成**             | 单项目/单 pair；local-only，未冻结；不证明通用优势           |
+| 路径       | 产品状态              | 实现与证据状态                                                                                                            | 主要缺口                                                     |
+| ---------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| v0.4       | 当前公开 release      | 四个 legacy Fixture、真实 Pi Session、固定诊断 workflow 和 Proposal/Verdict artifacts                                     | 与 vNext 自由 Loop 和非裁决契约不兼容                        |
+| M3         | 实验性兼容路径        | 七个 broker-backed coding tools、16 个 game tools、sidecar、capture/checkpoint/fork/replay/index/compare、patch lifecycle | 只支持一个 Fixture；不作为现役产品入口                       |
+| M4         | 实验性兼容路径        | external clean checkout、strict descriptor、四个 lifecycle tools、sandbox/import/patch/cleanup plumbing                   | 不提供 gameplay observation 或 acceptance                    |
+| E2         | 实验性兼容路径        | 独立 semantic wire/Addon、11 tools、Timer/spawn projection；历史 Host characterization 已归档                             | public-exposed task，不证明诊断、等价恢复、acceptance 或泛化 |
+| PE-A       | 实验性 Preview        | DTO/store、SDK/wire/loader、initial publication/binding、exact Build、same/new Session use；历史 characterization 已归档  | clean single-root/single-target；默认入口未晋升              |
+| PE-B       | 实验性 Preview        | V2 manifest/wire、Execution-bound identity/incarnation、validated ring、dynamic trace/pin；历史 characterization 已归档   | 只覆盖一个 dynamic fixture；默认入口未晋升                   |
+| **PE-C**   | **实验性 Preview**    | **implementation present；固定外部项目的历史 characterization 已归档**                                                    | fake Agent、单一外部项目；不是 full V1 或通用支持            |
+| **GN-1**   | **当前实验路径**      | **固定项目 adapter、matched coding-only/ChronoRift tool surface、private diff 与 postflight；本地 pair 完成**             | 单项目/单 pair；local-only，未冻结；不证明通用优势           |
+| **Mob V2** | **case-study runner** | **第二项目、state-only Adapter V2、fresh pair 与 sandboxed evaluator 已完成；两组均 3/3**                                 | 未晋级 Hero；不证明比较优势、自动 onboarding 或通用支持      |
 
 M4/E2、PE-A、PE-B 与 PE-C 的旧 characterization 保存在 [E2 archive](evidence/vnext-e2-public-exposed-r1/README.md)、
 [PE-A archive](evidence/vnext-project-environment-pe-a-local-r1/README.md)、
@@ -511,7 +539,7 @@ standalone validator 和一次性 Host Gate；归档只保留历史语义，cont
 
 | 模块                                | 当前职责                                                                                                       |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `apps/cli`                          | legacy 与 vNext command composition、Task/workspace/sandbox、Project Environment/GN-1 orchestration 和 display |
+| `apps/cli`                          | legacy 与 vNext command composition、Task/workspace/sandbox、Project Environment/case orchestration 和 display |
 | `packages/domain`                   | engine-neutral identity、runtime/Project Environment DTO 和 strict schemas                                     |
 | `packages/gamebranch`               | legacy services 与 M3 capture/checkpoint/fork/replay/index/compare services                                    |
 | `packages/agent-protocol`           | SDK-neutral game-tool capabilities 和 strict contracts                                                         |
@@ -537,6 +565,8 @@ paths 是额外显式验证入口，命令和前提统一在 [开发与验证指
 
 - GN-1 只绑定一个冻结外部项目、项目特定 adapter 和一种 Platform geometry/resource observation；实验结果与
   外推边界见 §20.2。它不提供 adapter authoring、Project Environment reuse 或通用项目支持。
+- Mob V2 只覆盖一个固定 revision、项目专用 Adapter 和一次 pair；Treatment 包含 game tools、tool metadata 与两行
+  discoverability appendix，两组均 3/3，不能推出比较优势、自动 onboarding 或一般成功率。
 - PE-C 的历史 characterization 只覆盖一个冻结外部项目和 deterministic fake Agent；当前开发不再围绕完整 campaign
   或 evidence bundle 扩张。
 - M3 的 16 个 game tools 仍只覆盖 `attempt_jump`、60/120 FPS/TPS 和最多 600 ticks，不代表通用输入或运行时支持。

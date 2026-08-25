@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { Check } from "typebox/value";
 
 import {
+  createProjectEnvironmentToolCallAdmissionV1,
   createVNextGodotRunToolDefinitionV1,
+  ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
   VNextGodotRunResultV1Schema,
   VNextGodotRunToolInputV1Schema,
   type VNextGodotRunResultV1,
@@ -76,6 +78,22 @@ describe("vNext shared Godot run tool", () => {
       toolCallId: "call_fixture",
       result,
     });
+  });
+
+  it("shares the turn admission budget with coding and game tools", async () => {
+    const admission = createProjectEnvironmentToolCallAdmissionV1(1);
+    const run = vi.fn(() => Promise.resolve(success()));
+    const tool = createVNextGodotRunToolDefinitionV1(
+      { run },
+      { toolCallAdmission: admission },
+    );
+
+    await tool.execute("call_one", {}, undefined, undefined, {} as never);
+    await expect(
+      tool.execute("call_two", {}, undefined, undefined, {} as never),
+    ).rejects.toBeInstanceOf(ProjectEnvironmentToolCallBudgetExhaustedErrorV1);
+    expect(run).toHaveBeenCalledOnce();
+    expect(admission).toMatchObject({ admitted: 1, rejected: 1 });
   });
 
   it("rejects malformed or semantic adapter-shaped port output", async () => {

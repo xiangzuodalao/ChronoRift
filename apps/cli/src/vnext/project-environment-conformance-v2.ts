@@ -29,7 +29,10 @@ import {
   projectEnvironmentPackageContentDigestV1,
 } from "@chronorift/json-artifacts";
 
-import type { ProjectEnvironmentConformanceDriverV2 } from "./project-environment-conformance-driver-v2.js";
+import type {
+  ProjectEnvironmentConformanceDriverV2,
+  ProjectEnvironmentInstrumentedObservationV2,
+} from "./project-environment-conformance-driver-v2.js";
 import { runProjectAdapterLaunchTargetConformanceV2 } from "./project-environment-conformance-driver-v2.js";
 import { ProjectSourceClosureV1Schema } from "./source-preflight.js";
 import { ProjectEnvironmentWorkspaceMaterializationReceiptV2Schema } from "./workspace-materializer.js";
@@ -117,6 +120,37 @@ const processOkay = (
   value.scopeRemoved &&
   value.scratchRemoved &&
   value.storageReconciled;
+
+export const projectAdapterObservationFailuresV2 = (
+  prefix: string,
+  manifest: Awaited<ReturnType<typeof loadProjectAdapterPackageV2>>["manifest"],
+  observation: ProjectEnvironmentInstrumentedObservationV2,
+): readonly string[] =>
+  Object.freeze([
+    ...observation.runtimeFailures.map((failure) => `${prefix}: ${failure}`),
+    ...(observation.entityLifecycleRecords <
+    manifest.smoke.minimumEntityLifecycleRecords
+      ? [`${prefix} minimum entity lifecycle records were not observed`]
+      : []),
+    ...(observation.stateSamples < manifest.smoke.minimumStateSamples
+      ? [`${prefix} minimum state samples were not observed`]
+      : []),
+    ...manifest.smoke.requiredStateDomainIds
+      .filter((id) => !observation.stateDomainIds.includes(id))
+      .map((id) => `${prefix} required state domain ${id} was not observed`),
+    ...manifest.smoke.requiredCustomEventTypeIds
+      .filter((id) => !observation.observedCustomEventTypeIds.includes(id))
+      .map((id) => `${prefix} required event type ${id} was not observed`),
+    ...(observation.dynamicTraces.length !==
+    manifest.smoke.requiredDynamicTraces.length
+      ? [`${prefix} required dynamic trace was not observed`]
+      : []),
+    ...(observation.droppedRecords !== 0 ||
+    observation.overwrittenRecords !== 0 ||
+    observation.semanticCoverage !== "declared"
+      ? [`${prefix} dynamic projection was not lossless and declared`]
+      : []),
+  ]);
 
 const factDigest = (value: unknown): Sha256DigestV1 =>
   asSha256DigestV1(contentHash(json(value)));
@@ -375,18 +409,11 @@ export async function validateProjectAdapterCandidateV2(
       ...(!processOkay(run.instrumented)
         ? [`${prefix} instrumented smoke failed`]
         : []),
-      ...run.instrumented.runtimeFailures.map(
-        (failure) => `${prefix}: ${failure}`,
+      ...projectAdapterObservationFailuresV2(
+        prefix,
+        loaded.manifest,
+        run.instrumented,
       ),
-      ...(run.instrumented.dynamicTraces.length !==
-      loaded.manifest.smoke.requiredDynamicTraces.length
-        ? [`${prefix} required dynamic trace was not observed`]
-        : []),
-      ...(run.instrumented.droppedRecords !== 0 ||
-      run.instrumented.overwrittenRecords !== 0 ||
-      run.instrumented.semanticCoverage !== "declared"
-        ? [`${prefix} dynamic projection was not lossless and declared`]
-        : []),
     ];
   });
   for (const module of loaded.manifest.modules.modules)

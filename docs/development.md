@@ -171,14 +171,74 @@ checkpoint/replay, evidence packaging, verdicts, and apply. Outputs remain local
 the command does not create a frozen repository bundle or Gate. One project, revision, prompt, and pair cannot
 establish candidate acceptance, general superiority, universal causality, success rate, or arbitrary-project support.
 
+## Godot demo Mob-orientation V2 slice
+
+This case is separate from GN-1 and uses the public ProjectAdapter V2 loader/runtime with a checked-in, prevalidated,
+state-only Adapter. Prepare a clean clone of `godotengine/godot-demo-projects` at commit
+`711822a319c4333a8740522f3c71e97783199fb0`, then pass its `3d/squash_the_creeps` directory. Run exactly one fresh arm
+at a time, in the frozen order shown here:
+
+```bash
+mkdir -p .chronorift/godot-demo-mob-orientation
+
+corepack pnpm demo:mob-orientation-ablation -- \
+  --arm coding-only \
+  --project /absolute/path/to/godot-demo-projects/3d/squash_the_creeps \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max \
+  --timeout-ms 600000 \
+  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --json > .chronorift/godot-demo-mob-orientation/coding-only.json
+
+corepack pnpm demo:mob-orientation-ablation -- \
+  --arm chronorift-v2 \
+  --project /absolute/path/to/godot-demo-projects/3d/squash_the_creeps \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  --thinking max \
+  --timeout-ms 600000 \
+  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --json > .chronorift/godot-demo-mob-orientation/chronorift-v2.json
+
+node scripts/evaluate-mob-orientation-ablation.mjs \
+  .chronorift/godot-demo-mob-orientation/coding-only.json \
+  .chronorift/godot-demo-mob-orientation/chronorift-v2.json \
+  > .chronorift/godot-demo-mob-orientation/evaluation.json
+```
+
+The runner rejects a different source commit/tree, model, thinking level, timeout, or arm name. Both arms receive the
+same neutral prompt, coding tools, bounded `godot_run`, 128-call shared admission budget, pure source materialization,
+fresh Task/Session, and a common environment appendix containing only the opaque Task ID. The treatment receives four
+public game-tool definitions and their metadata plus two concise discoverability lines: a prevalidated V2 environment
+is available through `game_*`, and runtime records are observations rather than verdicts while strategy remains the
+Agent's choice. This is a full product intervention, not a tool-only comparison. Host baseline and postflight
+observations are not shown to the coding-only Agent. After the Agent turn, a narrow
+three-invocation evaluator is materialized temporarily, run through the same Godot sandbox boundary, removed before
+patch extraction, and never exposed to the Agent.
+
+The standalone pair evaluator promotes only an exact treatment win: coding-only must fail its evaluator, treatment
+must pass 3/3, treatment must have queried tilted Mob state from the exact initial Build before source mutation, and
+the changed candidate Build must report upright Mobs with zero vertical velocity and configured horizontal speed.
+Do not rerun, reorder, change the prompt/model/seed, or replace the Bug after seeing results. A non-win remains a
+non-Hero characterization.
+
+The fixed pair was completed on a provisioned local Host on 2026-08-24. Both candidates passed 3/3, and the treatment
+used initial- and candidate-Build runtime state, so the published evaluator correctly returned a non-zero process exit
+with `heroPromoted=false`: coding-only did not fail. That exit is the predeclared non-promotion outcome, not an
+invalid run or cleanup failure. The exact public summary and candidate patches are in the
+[case study](case-studies/godot-demo-mob-orientation.md); the raw arms remain local because they contain Host paths and
+opaque runtime identities. Do not rerun the published pair to search for a different outcome.
+
 ## Other explicit live paths
 
-| Command                                                   | Scope                                                           |
-| --------------------------------------------------------- | --------------------------------------------------------------- |
-| `corepack pnpm demo:platform-alias-ablation -- --arm ...` | One fresh GN-1 matched arm; pair with the standalone evaluator  |
-| `corepack pnpm test:vnext:pi-live`                        | Real Pi Session/tool smoke; no Godot and not release acceptance |
-| `corepack pnpm diagnose:v04 -- ...`                       | Legacy v0.4 real-provider diagnosis                             |
-| `corepack pnpm test:live`                                 | All live provider smokes selected by `vitest.live.config.ts`    |
+| Command                                                    | Scope                                                            |
+| ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| `corepack pnpm demo:platform-alias-ablation -- --arm ...`  | One fresh GN-1 matched arm; pair with the standalone evaluator   |
+| `corepack pnpm demo:mob-orientation-ablation -- --arm ...` | One fresh Mob-orientation V2 arm; the published pair is complete |
+| `corepack pnpm test:vnext:pi-live`                         | Real Pi Session/tool smoke; no Godot and not release acceptance  |
+| `corepack pnpm diagnose:v04 -- ...`                        | Legacy v0.4 real-provider diagnosis                              |
+| `corepack pnpm test:live`                                  | All live provider smokes selected by `vitest.live.config.ts`     |
 
 Only `*.live.test.ts` and explicit live commands may contact a provider. Pi credentials remain in the Host credential
 store and must never enter the repository, evidence, Task command environment, or Godot process. A live success is

@@ -33,10 +33,6 @@ import type {
   SandboxedGodotProjectEnvironmentSidecarV2,
 } from "./project-environment-sidecar-port-v2.js";
 import { ProjectEnvironmentValidatedRingV2 } from "./project-environment-validated-ring-v2.js";
-import {
-  projectEnvironmentRuntimeStopMissingEvidenceV2,
-  projectEnvironmentRuntimeStopReadinessSummaryV2,
-} from "./project-environment-runtime-stop-readiness-v2.js";
 import type {
   ProjectEnvironmentGameToolPort,
   ProjectEnvironmentGameToolPortRequestV1,
@@ -212,6 +208,59 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
     return run;
   }
 
+  /**
+   * Host-only readiness boundary for the compatibility smoke. Agent-facing
+   * game_query remains a nonblocking read of the current validated snapshot.
+   */
+  public waitForDeclaredSmokeObservations(executionId: string): Promise<void> {
+    if (this.#closed)
+      return Promise.reject(
+        new Error("The Project Environment runtime is closed"),
+      );
+    const run = this.#operation.then(async () => {
+      const active = this.requireExecution(executionId);
+      const smoke = this.options.adapterPackage.manifest.smoke;
+      await active.ring.waitFor((records) => {
+        try {
+          const entities = records.filter(
+            (record) => record.kind === "entity_lifecycle",
+          );
+          const states = records.filter(
+            (record) => record.kind === "state_sample",
+          );
+          const events = records.filter(
+            (record) => record.kind === "adapter_event",
+          );
+          const stateDomainIds = new Set(
+            states.map((record) => record.payload.stateDomainId),
+          );
+          const eventTypeIds = new Set(
+            events.map((record) => record.payload.eventTypeId),
+          );
+          return (
+            entities.length >= smoke.minimumEntityLifecycleRecords &&
+            states.length >= smoke.minimumStateSamples &&
+            smoke.requiredStateDomainIds.every((id) =>
+              stateDomainIds.has(id),
+            ) &&
+            smoke.requiredCustomEventTypeIds.every((id) =>
+              eventTypeIds.has(id),
+            ) &&
+            active.ring.dynamicTraces(this.options.adapterPackage).length ===
+              smoke.requiredDynamicTraces.length
+          );
+        } catch {
+          return false;
+        }
+      }, smoke.timeoutMs);
+    });
+    this.#operation = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   public async close(): Promise<void> {
     if (this.#closeResult !== null) return this.#closeResult;
     this.#closed = true;
@@ -239,7 +288,7 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
             : request.toolName === "game_stop"
               ? await this.stop(input)
               : request.toolName === "game_query"
-                ? await this.query(input)
+                ? this.query(input)
                 : request.toolName === "game_capture_configure"
                   ? await this.configure(input)
                   : request.toolName === "game_capture_pin"
@@ -517,21 +566,6 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
 
   private status(input: Record<string, unknown>) {
     const active = this.requireRuntime(input.runtimeId);
-    let dynamicTraceCount = 0;
-    try {
-      dynamicTraceCount = active.ring.dynamicTraces(
-        this.options.adapterPackage,
-      ).length;
-    } catch {
-      // Status remains available while a still-growing trace is incomplete.
-    }
-    const readiness = projectEnvironmentRuntimeStopReadinessSummaryV2({
-      dynamicTraceCount,
-      entityRows: active.entityRows,
-      stateRows: active.stateRows,
-      eventRows: active.eventRows,
-      captureWindowCount: active.captureWindowIds.length,
-    });
     return {
       schemaVersion: 1,
       taskId: this.options.taskId,
@@ -544,12 +578,12 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       coverage: [coverage(active.ring.validatedRecordCount)],
       loss: [],
       limitations: active.ring.poisoned
-        ? ["Execution observation lineage is poisoned.", readiness]
-        : [readiness],
+        ? ["Execution observation lineage is poisoned."]
+        : [],
     };
   }
 
-  private async query(input: Record<string, unknown>) {
+  private query(input: Record<string, unknown>) {
     const active = this.requireExecution(input.executionId);
     if (input.cursor !== undefined || input.filters !== undefined)
       throw new Error(
@@ -568,17 +602,6 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       select === "runtime_errors"
         ? "errors"
         : (select as "entities" | "state" | "events");
-    if (kind !== "errors") {
-      await active.ring.waitFor(() => {
-        try {
-          return (
-            active.ring.dynamicTraces(this.options.adapterPackage).length > 0
-          );
-        } catch {
-          return false;
-        }
-      }, 30_000);
-    }
     const rows = active.ring.query(kind, Number(input.limit ?? 100));
     if (kind === "entities") {
       active.entityQueryCount += 1;
@@ -727,26 +750,6 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
 
   private async stop(input: Record<string, unknown>) {
     const active = this.requireRuntime(input.runtimeId);
-    let dynamicTraceCount = 0;
-    try {
-      dynamicTraceCount = active.ring.dynamicTraces(
-        this.options.adapterPackage,
-      ).length;
-    } catch {
-      // The exact recognizer failure is retained by authoritative finalization;
-      // stop remains recoverable while the execution is still running.
-    }
-    const missing = projectEnvironmentRuntimeStopMissingEvidenceV2({
-      dynamicTraceCount,
-      entityRows: active.entityRows,
-      stateRows: active.stateRows,
-      eventRows: active.eventRows,
-      captureWindowCount: active.captureWindowIds.length,
-    });
-    if (missing.length > 0)
-      throw new Error(
-        `runtime evidence is incomplete; keep this runtime running, call game_status, and add: ${missing.join(", ")}`,
-      );
     return this.finalize(active);
   }
   private async finalize(active: ActiveV2) {
@@ -786,7 +789,7 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
         }),
       ),
     );
-    const failures = [
+    const operationalFailures = [
       ...(failure === null ? [] : [failure]),
       ...(active.ring.poisoned
         ? ["V2 observation lineage was sticky-poisoned."]
@@ -794,6 +797,29 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       ...(!projectRuntimeCleanupCompleteV1(cleanup)
         ? ["V2 sandbox cleanup was incomplete."]
         : []),
+    ];
+    const missingEvidence = [
+      ...(active.entityRows > 0 ? [] : ["nonempty entity query"]),
+      ...(active.stateRows > 0 ? [] : ["nonempty state query"]),
+      ...(this.options.adapterPackage.manifest.smoke.requiredCustomEventTypeIds
+        .length === 0 || active.eventRows > 0
+        ? []
+        : ["nonempty required event query"]),
+      ...(this.options.adapterPackage.manifest.smoke.requiredDynamicTraces
+        .length === 0 ||
+      traces.length ===
+        this.options.adapterPackage.manifest.smoke.requiredDynamicTraces.length
+        ? []
+        : ["validated required dynamic trace"]),
+      ...(active.captureWindowIds.length > 0 ? [] : ["durable pinned capture"]),
+    ];
+    const failures = [
+      ...operationalFailures,
+      ...(missingEvidence.length === 0
+        ? []
+        : [
+            `PE-B characterization evidence is incomplete: ${missingEvidence.join(", ")}`,
+          ]),
     ];
     const succeeded =
       failures.length === 0 &&
@@ -844,7 +870,7 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
         dynamicTraces: this.#lastDynamicTraces,
       });
     await this.options.persistRuntimeObservation(observation);
-    active.phase = succeeded ? "stopped" : "poisoned";
+    active.phase = operationalFailures.length === 0 ? "stopped" : "poisoned";
     return {
       schemaVersion: 1,
       taskId: this.options.taskId,

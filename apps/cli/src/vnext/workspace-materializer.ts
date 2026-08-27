@@ -52,7 +52,7 @@ import {
   type VerifiedGitTreeEntry,
 } from "./source-preflight.js";
 import type { GodotProjectDescriptorSnapshotV1 } from "./godot-project-descriptor.js";
-import type { TaskDirectoryLayout } from "./task-paths.js";
+import type { ProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 
 export interface MaterializedPrivateTaskWorkspace {
   readonly workspaceDirectory: string;
@@ -259,13 +259,13 @@ type MaterializableSource =
 export interface MaterializeTaskWorkspaceRequest {
   readonly taskId: TaskId;
   readonly source: VerifiedTaskSource;
-  readonly layout: TaskDirectoryLayout;
+  readonly layout: ProjectEnvironmentTaskDirectoryLayout;
 }
 
 export interface MaterializeProjectEnvironmentWorkspaceRequestV1 {
   readonly taskId: TaskId;
   readonly source: VerifiedProjectEnvironmentSourceV1;
-  readonly layout: TaskDirectoryLayout;
+  readonly layout: ProjectEnvironmentTaskDirectoryLayout;
 }
 
 const isExternalGodotSource = (
@@ -293,7 +293,7 @@ const pathIsWithinOrEqual = (parent: string, candidate: string): boolean => {
 };
 
 const verifyLayoutBoundary = async (
-  layout: TaskDirectoryLayout,
+  layout: ProjectEnvironmentTaskDirectoryLayout,
 ): Promise<void> => {
   const paths = [
     layout.taskRootDirectory,
@@ -753,7 +753,7 @@ export function materializePrivateTaskWorkspace(
   request: {
     readonly taskId: TaskId;
     readonly source: VerifiedGitSubtree;
-    readonly layout: TaskDirectoryLayout;
+    readonly layout: ProjectEnvironmentTaskDirectoryLayout;
   },
   dependencies?: { readonly git?: HostGitPort },
 ): Promise<MaterializedPrivateTaskWorkspace>;
@@ -761,7 +761,7 @@ export function materializePrivateTaskWorkspace(
   request: {
     readonly taskId: TaskId;
     readonly source: VerifiedExternalGodotProject;
-    readonly layout: TaskDirectoryLayout;
+    readonly layout: ProjectEnvironmentTaskDirectoryLayout;
   },
   dependencies?: { readonly git?: HostGitPort },
 ): Promise<MaterializedExternalGodotProjectWorkspace>;

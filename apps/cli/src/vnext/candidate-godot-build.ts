@@ -38,7 +38,6 @@ import {
   isExternalGodotReservedSourcePathV1,
 } from "./external-godot-source-policy.js";
 import { isProjectEnvironmentSensitivePathV1 } from "./project-environment-source-policy.js";
-import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
 import {
   selectedTreeSha256,
   type SelectedTreeEntryV1,
@@ -415,7 +414,10 @@ export const prepareCandidateGodotBuildV1 = async (input: {
   readonly workspaceDirectory: string;
   readonly baselineSourceHash: Sha256DigestV1;
   readonly fixtureCapability: TaskFixtureCapabilityV1;
-  readonly managedRuntime: ManagedGodotRuntimeCapabilityV1;
+  readonly managedRuntime: {
+    readonly managedRuntimeId: string;
+    readonly addonHash: Sha256DigestV1;
+  };
   readonly now: string;
 }): Promise<PreparedCandidateGodotBuildV1> => {
   const files = await collectCandidate(input.workspaceDirectory);

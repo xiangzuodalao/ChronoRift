@@ -125,7 +125,7 @@ R2 根据工具能力边界省略 optional filters/cursor 后取得成功 observ
 
 这些 hash 只用于检查公开副本是否与本地来源逐字节一致，不是签名或外部 attestation。
 
-R2 raw inputs 和完整 Pi transcript 不公开，因为它们包含 Host 绝对路径、Task/workspace/Session/operation identity、完整 tool payload 与 model prose。本文也不发布 token、cost 或 latency。缺少两个 raw arm 时，公开读者不能独立重跑 evaluator；公开 `evaluation.json` 应被理解为可审阅的精简输出，而不是可独立复现实验。
+R2 raw inputs 和完整 Pi transcript 不公开，因为它们包含 Host 绝对路径、Task、workspace、Session、operation identity、完整 tool payload 与 model prose。本文也不发布 token、cost 或 latency。缺少两个 raw arm 时，公开读者不能独立重跑 evaluator；公开 `evaluation.json` 应被理解为可审阅的精简输出，而不是可独立复现实验。
 
 候选 patch 来自 MIT-licensed upstream source。版权、许可和“不代表上游接受或背书”的说明见根目录 [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) 与 [上游 MIT License](./gn1-platform-alias/upstream-MIT-LICENSE.txt)。
 

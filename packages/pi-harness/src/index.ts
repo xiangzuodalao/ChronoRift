@@ -91,8 +91,8 @@ export {
 } from "./project-environment-game-tools.js";
 export {
   createVNextCodingToolDefinitions,
-  type BrokerToolDetails,
-  type BrokerToolResult,
+  type CodingToolDetails,
+  type CodingToolResult,
   type VNextCodingToolDefinitionsOptionsV1,
   type VNextCodingToolPort,
 } from "./vnext-coding-tools.js";
@@ -141,7 +141,6 @@ export {
   runVNextPiTurnWithSdk,
   VNEXT_CODING_ENVIRONMENT_APPENDIX,
   VNEXT_ENVIRONMENT_APPENDIX,
-  VNEXT_PI_WORKSPACE_CWD,
   type RunVNextPiTurnOptions,
   type RunVNextPiSdkTurnOptions,
   type VNextPiTurnResult,

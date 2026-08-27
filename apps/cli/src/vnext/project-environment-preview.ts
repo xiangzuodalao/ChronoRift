@@ -3,6 +3,7 @@ import type { Stats } from "node:fs";
 import {
   chmod,
   lstat,
+  mkdir,
   mkdtemp,
   readdir,
   realpath,
@@ -59,7 +60,6 @@ import {
 
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
 import { prepareProjectEnvironmentGodotBuildV1 } from "./candidate-godot-build.js";
-import type { SecurityEventV1 } from "./contracts.js";
 import {
   freezeProjectAdapterCandidateV1,
   initializeProjectAdapterCandidateWorkspaceV2,
@@ -80,11 +80,6 @@ import {
   type ProjectEnvironmentRuntimeRoleV2,
 } from "./project-environment-runtime-composition-v2.js";
 import { selectDeliveredRuntimeObservationReceiptId } from "./project-environment-runtime-evidence-selection.js";
-import {
-  defaultProjectEnvironmentHostConfigPath,
-  readProjectEnvironmentHostConfigV1,
-  resolveProjectEnvironmentGodotToolchainV1,
-} from "./project-environment-host-config.js";
 import {
   initializeProjectEnvironmentV1,
   enforceProjectEnvironmentTurnBudgetV1,
@@ -115,20 +110,9 @@ import {
   inspectReusableProjectEnvironmentRevisionV2,
   type InspectedReusableProjectEnvironmentV2,
 } from "./project-environment-reuse-v2.js";
-import {
-  createDuplexBwrapCgroupTaskSandbox,
-  sandboxManagedRuntimePolicyTargets,
-  type DuplexTaskSandboxBrokerV1,
-} from "./sandbox-broker.js";
-import {
-  createSandboxPolicyV1,
-  createSandboxPolicyV2,
-} from "./sandbox-policy.js";
-import {
-  createSandboxTaskRuntimeRoot,
-  preflightSandboxHost,
-} from "./sandbox-preflight.js";
-import { inspectSandboxToolchain } from "./sandbox-toolchain.js";
+import { SrtGodotRunner } from "./srt-godot-runner.js";
+import { resolveSrtRuntimeConfig } from "./srt-runtime-config.js";
+import { SrtSandboxController } from "./srt-sandbox-controller.js";
 import {
   preflightCleanProjectEnvironmentV1,
   refreezeProjectEnvironmentSourceV1,
@@ -402,7 +386,8 @@ export interface ProjectEnvironmentPreviewRequestV1 {
   readonly model: string;
   readonly thinkingLevel: PiThinkingLevel;
   readonly goal: string | null;
-  readonly hostConfigPath?: string | undefined;
+  readonly stateRoot?: string | undefined;
+  readonly godotBin?: string | undefined;
   readonly agentDir?: string | undefined;
   readonly timeoutMs?: number | undefined;
   readonly interactive?: boolean | undefined;
@@ -485,13 +470,13 @@ export async function runProjectEnvironmentPreviewV1(
   request: ProjectEnvironmentPreviewRequestV1,
   dependencies: ProjectEnvironmentPreviewDependenciesV1 = DEFAULT_PROJECT_ENVIRONMENT_PREVIEW_DEPENDENCIES_V1,
 ): Promise<ProjectEnvironmentPreviewResultV1> {
-  const hostConfig = await readProjectEnvironmentHostConfigV1(
-    request.hostConfigPath ?? defaultProjectEnvironmentHostConfigPath(),
-  );
-  const runtimeRoot = await createSandboxTaskRuntimeRoot(
-    hostConfig.taskStorageRoot,
-    hostConfig.runtimeRoot,
-  );
+  const runtimeConfig = await resolveSrtRuntimeConfig({
+    ...(request.stateRoot === undefined
+      ? {}
+      : { stateRoot: request.stateRoot }),
+    ...(request.godotBin === undefined ? {} : { godotBin: request.godotBin }),
+  });
+  const runtimeRoot = runtimeConfig.stateRoot;
   const source = await preflightCleanProjectEnvironmentV1({
     projectPath: request.projectPath,
     ...(request.projectRoot === undefined
@@ -500,7 +485,7 @@ export async function runProjectEnvironmentPreviewV1(
     ...(request.includeUntrackedPaths === undefined
       ? {}
       : { includeUntrackedPaths: request.includeUntrackedPaths }),
-    sourceRepositoryExclusionRoots: [hostConfig.taskStorageRoot],
+    sourceRepositoryExclusionRoots: [runtimeRoot],
   });
   if (source.sourceClosure === undefined) {
     throw new Error(
@@ -561,7 +546,7 @@ export async function runProjectEnvironmentPreviewV1(
           : recovery.resolution.failureMessage,
       taskDirectory: join(
         runtimeRoot,
-        "tasks",
+        "srt-tasks-v1",
         taskNamespaceDigestV1(recovery.authority.taskId),
       ),
       projectNamespace: project.namespaceRoot,
@@ -597,22 +582,7 @@ export async function runProjectEnvironmentPreviewV1(
     );
   }
 
-  const sandbox = await preflightSandboxHost({
-    delegatedCgroupRoot: hostConfig.delegatedCgroupRoot,
-    bwrapPath: hostConfig.bwrapPath,
-    prlimitPath: hostConfig.prlimitPath,
-    busyboxPath: hostConfig.busyboxPath,
-    taskStorageRoot: hostConfig.taskStorageRoot,
-  });
-  if (sandbox.kind !== "supported") {
-    throw new Error(
-      `Project Environment sandbox preflight failed: ${JSON.stringify(sandbox.receipt.blockers)}`,
-    );
-  }
-  const godot = await resolveProjectEnvironmentGodotToolchainV1(
-    hostConfig,
-    source.requestedGodotVersion,
-  );
+  const godot = runtimeConfig.godot;
   const taskId = asProjectEnvironmentTaskId(randomUUID());
   const attemptId = asProjectInitializationAttemptId(
     `attempt.v1.${randomUUID()}`,
@@ -674,51 +644,30 @@ export async function runProjectEnvironmentPreviewV1(
   });
   await taskStore.putToolchainReceiptOnce(toolchainReceipt);
 
-  const codingToolchain = await inspectSandboxToolchain({
-    lddPath: hostConfig.lddPath,
-    commands: [
-      { target: "/bin/bash", hostPath: hostConfig.bashPath },
-      { target: "/usr/bin/rg", hostPath: hostConfig.rgPath },
-      { target: "/usr/bin/find", hostPath: hostConfig.findPath },
-      { target: "/usr/bin/ls", hostPath: hostConfig.lsPath },
-    ],
+  const codingHome = join(layout.sandboxTemporaryDirectory, "coding-home");
+  const codingTemp = join(layout.sandboxTemporaryDirectory, "coding-tmp");
+  await Promise.all([
+    mkdir(codingHome, { recursive: true, mode: 0o700 }),
+    mkdir(codingTemp, { recursive: true, mode: 0o700 }),
+  ]);
+  const controller = new SrtSandboxController();
+  const godotRunner = new SrtGodotRunner({
+    controller,
+    candidateWorkspace: layout.workspaceDirectory,
+    validationRoot: join(
+      layout.hostOperationTemporaryDirectory,
+      "godot-validation",
+    ),
   });
-  const codingPolicy = createSandboxPolicyV1(
-    sandbox.capability.runtimeIdentity,
-    {
-      toolchainId: codingToolchain.capability.toolchainId,
-      targets: codingToolchain.capability.files.map((file) => file.target),
-    },
+  const srtPolicyProfileDigest = asSha256DigestV1(
+    contentHash({
+      schemaVersion: 1,
+      runtime: "@anthropic-ai/sandbox-runtime@0.0.74",
+      network: "denied",
+      codingWorkspace: "read-write",
+      godotProject: "read-only-host-stage",
+    }),
   );
-  const securityEvents: SecurityEventV1[] = [];
-  let broker: DuplexTaskSandboxBrokerV1 =
-    await createDuplexBwrapCgroupTaskSandbox({
-      taskId,
-      capability: sandbox.capability,
-      hostBinding: sandbox.binding,
-      policy: codingPolicy,
-      toolchain: codingToolchain,
-      layout,
-      securityEvents: (event) => {
-        securityEvents.push(event);
-        return Promise.resolve();
-      },
-    });
-  const cleanupBrokerAfterEarlyFailure = async (
-    error: unknown,
-    context: string,
-  ): Promise<never> => {
-    const cleanup = await broker.cleanup();
-    if (
-      !cleanup.processGroupTerminated ||
-      cleanup.cgroupPopulated ||
-      !cleanup.scopeRemoved ||
-      (sandbox.capability.taskStorage !== undefined &&
-        cleanup.storageReconciled !== true)
-    )
-      throw new Error(context, { cause: error });
-    throw error;
-  };
   let sessionFile: string | undefined;
   let validationCapabilitySet: ProjectCapabilitySetV1 | undefined;
   let validationRuntime:
@@ -747,110 +696,30 @@ export async function runProjectEnvironmentPreviewV1(
   let boundEnvironmentRevision: ProjectEnvironmentRevisionV1 | undefined;
   let boundAdapterRevision: ProjectAdapterRevisionV1 | undefined;
 
-  const activateManagedRuntime = async (
+  const activateManagedRuntime = (
     adapterFiles: readonly {
       readonly relativePath: string;
       readonly bytes: Uint8Array;
     }[],
   ) => {
-    const codingCleanup = await broker.cleanup();
-    if (
-      !codingCleanup.processGroupTerminated ||
-      codingCleanup.cgroupPopulated ||
-      !codingCleanup.scopeRemoved ||
-      (sandbox.capability.taskStorage !== undefined &&
-        codingCleanup.storageReconciled !== true)
-    ) {
-      throw new Error(
-        "Project Environment coding sandbox cleanup was incomplete before managed runtime activation",
-      );
-    }
-    validationRuntime = await preflightManagedGodotProjectEnvironmentRuntimeV1({
-      hostConfig,
-      godot,
+    validationRuntime = preflightManagedGodotProjectEnvironmentRuntimeV1({
+      godotReceipt: godot.receipt,
       adapterFiles,
     });
-    const managedPolicy = createSandboxPolicyV2(
-      sandbox.capability.runtimeIdentity,
-      {
-        coding: {
-          toolchainId: codingToolchain.capability.toolchainId,
-          targets: codingToolchain.capability.files.map((file) => file.target),
-        },
-        godot: {
-          toolchainId: validationRuntime.capability.toolchain.toolchainId,
-          managedRuntimeId: validationRuntime.capability.managedRuntimeId,
-          targets: sandboxManagedRuntimePolicyTargets(validationRuntime),
-        },
-      },
-    );
-    broker = await createDuplexBwrapCgroupTaskSandbox({
-      taskId,
-      capability: sandbox.capability,
-      hostBinding: sandbox.binding,
-      policy: managedPolicy,
-      toolchain: codingToolchain,
-      managedRuntime: validationRuntime,
-      layout,
-      securityEvents: (event) => {
-        securityEvents.push(event);
-        return Promise.resolve();
-      },
-    });
-    return managedPolicy;
+    return srtPolicyProfileDigest;
   };
 
-  const activateManagedRuntimeV2 = async (
+  const activateManagedRuntimeV2 = (
     adapterFiles: readonly {
       readonly relativePath: string;
       readonly bytes: Uint8Array;
     }[],
   ) => {
-    const codingCleanup = await broker.cleanup();
-    if (
-      !codingCleanup.processGroupTerminated ||
-      codingCleanup.cgroupPopulated ||
-      !codingCleanup.scopeRemoved ||
-      (sandbox.capability.taskStorage !== undefined &&
-        codingCleanup.storageReconciled !== true)
-    )
-      throw new Error(
-        "Project Environment coding sandbox cleanup was incomplete before V2 activation",
-      );
-    validationRuntimeV2 =
-      await preflightManagedGodotProjectEnvironmentRuntimeV2({
-        hostConfig,
-        godot,
-        adapterFiles,
-      });
-    const managedPolicy = createSandboxPolicyV2(
-      sandbox.capability.runtimeIdentity,
-      {
-        coding: {
-          toolchainId: codingToolchain.capability.toolchainId,
-          targets: codingToolchain.capability.files.map((file) => file.target),
-        },
-        godot: {
-          toolchainId: validationRuntimeV2.capability.toolchain.toolchainId,
-          managedRuntimeId: validationRuntimeV2.capability.managedRuntimeId,
-          targets: sandboxManagedRuntimePolicyTargets(validationRuntimeV2),
-        },
-      },
-    );
-    broker = await createDuplexBwrapCgroupTaskSandbox({
-      taskId,
-      capability: sandbox.capability,
-      hostBinding: sandbox.binding,
-      policy: managedPolicy,
-      toolchain: codingToolchain,
-      managedRuntime: validationRuntimeV2,
-      layout,
-      securityEvents: (event) => {
-        securityEvents.push(event);
-        return Promise.resolve();
-      },
+    validationRuntimeV2 = preflightManagedGodotProjectEnvironmentRuntimeV2({
+      godotReceipt: godot.receipt,
+      adapterFiles,
     });
-    return managedPolicy;
+    return srtPolicyProfileDigest;
   };
 
   const currentIsV2 =
@@ -861,71 +730,57 @@ export async function runProjectEnvironmentPreviewV1(
   let reusable: ReturnType<
     typeof inspectReusableProjectEnvironmentRevisionV1
   > | null = null;
-  try {
-    if (
-      currentRevision !== null &&
-      !currentIsV2 &&
-      request.launchTargetId !== undefined
-    )
-      throw Object.assign(
-        new Error(
-          "target_not_validated: a selected launch target requires a Project Adapter V2 revision",
-        ),
-        { code: "target_not_validated" as const },
-      );
-    reusableV2 =
-      currentRevision === null || !currentIsV2
-        ? null
-        : inspectReusableProjectEnvironmentRevisionV2({
-            revision: currentRevision.payload,
-            files: currentRevision.files,
-            expectedSourceId: sourceId,
-            expectedToolchainReceiptId: toolchainReceipt.receiptId,
-            expectedAdapterId: adapterId,
-            expectedMainScene: source.mainScene,
-            ...(request.launchTargetId === undefined
-              ? {}
-              : { selectedLaunchTargetId: request.launchTargetId }),
-          });
-    reusable =
-      currentRevision === null || currentIsV2
-        ? null
-        : inspectReusableProjectEnvironmentRevisionV1({
-            revision: currentRevision.payload,
-            files: currentRevision.files,
-            expectedSourceId: sourceId,
-            expectedToolchainReceiptId: toolchainReceipt.receiptId,
-            expectedAdapterId: adapterId,
-            expectedMainScene: source.mainScene,
-          });
-    if (currentRevision !== null && reusable === null && reusableV2 === null)
-      throw Object.assign(
-        new Error(
-          "review_required: current adapter protocol version or evidence layout is unsupported",
-        ),
-        { code: "review_required" as const },
-      );
-  } catch (error) {
-    return cleanupBrokerAfterEarlyFailure(
-      error,
-      "Project Environment sandbox cleanup failed while rejecting current revision",
+  if (
+    currentRevision !== null &&
+    !currentIsV2 &&
+    request.launchTargetId !== undefined
+  )
+    throw Object.assign(
+      new Error(
+        "target_not_validated: a selected launch target requires a Project Adapter V2 revision",
+      ),
+      { code: "target_not_validated" as const },
     );
-  }
+  reusableV2 =
+    currentRevision === null || !currentIsV2
+      ? null
+      : inspectReusableProjectEnvironmentRevisionV2({
+          revision: currentRevision.payload,
+          files: currentRevision.files,
+          expectedSourceId: sourceId,
+          expectedToolchainReceiptId: toolchainReceipt.receiptId,
+          expectedAdapterId: adapterId,
+          expectedMainScene: source.mainScene,
+          ...(request.launchTargetId === undefined
+            ? {}
+            : { selectedLaunchTargetId: request.launchTargetId }),
+        });
+  reusable =
+    currentRevision === null || currentIsV2
+      ? null
+      : inspectReusableProjectEnvironmentRevisionV1({
+          revision: currentRevision.payload,
+          files: currentRevision.files,
+          expectedSourceId: sourceId,
+          expectedToolchainReceiptId: toolchainReceipt.receiptId,
+          expectedAdapterId: adapterId,
+          expectedMainScene: source.mainScene,
+        });
+  if (currentRevision !== null && reusable === null && reusableV2 === null)
+    throw Object.assign(
+      new Error(
+        "review_required: current adapter protocol version or evidence layout is unsupported",
+      ),
+      { code: "review_required" as const },
+    );
   if (reusable === null && reusableV2 === null) {
-    try {
-      await initializeProjectAdapterCandidateWorkspaceV2({
-        workspaceDirectory: layout.workspaceDirectory,
-        taskId,
-        projectSourceIdentity: source.projectSourceIdentity,
-        adapterId,
-        mainScene: source.mainScene,
-      });
-    } catch (error) {
-      return cleanupBrokerAfterEarlyFailure(
-        error,
-        "Project Environment sandbox cleanup failed after candidate workspace initialization failed",
-      );
-    }
+    await initializeProjectAdapterCandidateWorkspaceV2({
+      workspaceDirectory: layout.workspaceDirectory,
+      taskId,
+      projectSourceIdentity: source.projectSourceIdentity,
+      adapterId,
+      mainScene: source.mainScene,
+    });
   }
 
   const createCompatibleGameRuntime = async (input: {
@@ -982,7 +837,9 @@ export async function runProjectEnvironmentPreviewV1(
     ): ProjectEnvironmentGameRuntimeV1 =>
       new ProjectEnvironmentGameRuntimeV1({
         sidecar: new GodotProjectEnvironmentSidecarPortV1({
-          broker,
+          runner: godotRunner,
+          nodePath: runtimeConfig.nodePath,
+          godotPath: godot.binding.executablePath,
           managedRuntime,
         }),
         managedRuntime: managedRuntime.capability,
@@ -1127,7 +984,9 @@ export async function runProjectEnvironmentPreviewV1(
         capabilitySet: input.adapterRevision.capabilitySet,
         managedRuntime: managedRuntime.capability,
         sidecar: new GodotProjectEnvironmentSidecarPortV2({
-          broker,
+          runner: godotRunner,
+          nodePath: runtimeConfig.nodePath,
+          godotPath: godot.binding.executablePath,
           managedRuntime,
         }),
         adapterManifestSha256: input.adapterPackage.manifestSha256,
@@ -1193,7 +1052,12 @@ export async function runProjectEnvironmentPreviewV1(
       turn.budget.toolCallLimit,
     );
     const codingTools = createVNextCodingToolDefinitions(
-      new SandboxPiCodingToolPort(broker),
+      new SandboxPiCodingToolPort(controller, {
+        workspacePath: layout.workspaceDirectory,
+        homePath: codingHome,
+        tempPath: codingTemp,
+        artifactsPath: layout.sandboxArtifactScratchDirectory,
+      }),
       {
         toolCallAdmission,
         projectAdapterFinalizeV2:
@@ -1386,7 +1250,7 @@ export async function runProjectEnvironmentPreviewV1(
         },
       );
       validatedAdapterPackageV2 = loaded;
-      const managedPolicy = await activateManagedRuntimeV2(
+      const policyProfileDigest = activateManagedRuntimeV2(
         candidateFiles.map((file) => ({
           relativePath: file.path,
           bytes: file.bytes,
@@ -1398,7 +1262,9 @@ export async function runProjectEnvironmentPreviewV1(
         );
       }
       const sidecar = new GodotProjectEnvironmentSidecarPortV2({
-        broker,
+        runner: godotRunner,
+        nodePath: runtimeConfig.nodePath,
+        godotPath: godot.binding.executablePath,
         managedRuntime: validationRuntimeV2,
       });
       const driver = createProjectEnvironmentConformanceDriverV2({
@@ -1442,9 +1308,7 @@ export async function runProjectEnvironmentPreviewV1(
             : { selectedLaunchTargetId: request.launchTargetId }),
           sdkDigest: validationRuntimeV2.sdkDigest,
           bridgeDigest: validationRuntimeV2.bridgeDigest,
-          policyProfileDigest: asSha256DigestV1(
-            contentHash(managedPolicy as never),
-          ),
+          policyProfileDigest,
         },
         driver,
       );
@@ -1624,16 +1488,13 @@ export async function runProjectEnvironmentPreviewV1(
         failureMessage = result.goalTurn.terminalMessage;
       }
     } else if (reusableV2 !== null) {
-      const managedPolicy = await activateManagedRuntimeV2(
+      const policyProfileDigest = activateManagedRuntimeV2(
         reusableV2.adapterFiles,
       );
       if (validationRuntimeV2 === undefined)
         throw new Error(
           "managed Project Environment V2 runtime was not realized",
         );
-      const policyProfileDigest = asSha256DigestV1(
-        contentHash(managedPolicy as never),
-      );
       assertReusableProjectEnvironmentRuntimeDigestsV2({
         revision: reusableV2.revision,
         sdkDigest: validationRuntimeV2.sdkDigest,
@@ -1713,13 +1574,10 @@ export async function runProjectEnvironmentPreviewV1(
         failureMessage = reuseGoal.turn.terminalMessage;
       }
     } else if (reusable !== null) {
-      const managedPolicy = await activateManagedRuntime(reusable.adapterFiles);
+      const policyProfileDigest = activateManagedRuntime(reusable.adapterFiles);
       if (validationRuntime === undefined) {
         throw new Error("managed Project Environment runtime was not realized");
       }
-      const policyProfileDigest = asSha256DigestV1(
-        contentHash(managedPolicy as never),
-      );
       if (
         validationRuntime.sdkDigest !== reusable.revision.sdkDigest ||
         validationRuntime.bridgeDigest !== reusable.revision.bridgeDigest ||
@@ -1804,7 +1662,12 @@ export async function runProjectEnvironmentPreviewV1(
     ) {
       const tools = Object.freeze([
         ...createVNextCodingToolDefinitions(
-          new SandboxPiCodingToolPort(broker),
+          new SandboxPiCodingToolPort(controller, {
+            workspacePath: layout.workspaceDirectory,
+            homePath: codingHome,
+            tempPath: codingTemp,
+            artifactsPath: layout.sandboxArtifactScratchDirectory,
+          }),
         ),
         ...createProjectEnvironmentGameToolDefinitions(
           gameRuntime ??
@@ -1850,21 +1713,9 @@ export async function runProjectEnvironmentPreviewV1(
       recordPreviewFailure(error, "game_runtime_cleanup_failed");
     }
     try {
-      const cleanup = await broker.cleanup();
-      if (
-        !cleanup.processGroupTerminated ||
-        cleanup.cgroupPopulated ||
-        !cleanup.scopeRemoved ||
-        (sandbox.capability.taskStorage !== undefined &&
-          cleanup.storageReconciled !== true)
-      ) {
-        throw Object.assign(
-          new Error("Project Environment Task sandbox cleanup was incomplete"),
-          { code: "sandbox_cleanup_incomplete" },
-        );
-      }
+      await controller.close();
     } catch (error) {
-      recordPreviewFailure(error, "sandbox_cleanup_failed");
+      recordPreviewFailure(error, "srt_cleanup_failed");
     }
   }
 
@@ -1901,9 +1752,6 @@ export async function runProjectEnvironmentPreviewV1(
       "Only the default and current selected launch target are publication-validated; other declared targets remain unavailable until a later reviewed revision validates them.",
       "Dynamic traces prove observation order and entity binding, not Signal causality or adapter semantic correctness.",
       "A changed workspace becomes launchable only after game_capabilities or game_launch freezes the exact candidate Build and its Adapter compatibility smoke succeeds.",
-      ...(securityEvents.length === 0
-        ? []
-        : [`${securityEvents.length} sandbox denial event(s) occurred.`]),
       ...additionalLimitations,
     ]),
   });

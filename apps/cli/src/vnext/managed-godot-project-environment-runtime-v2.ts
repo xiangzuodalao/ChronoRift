@@ -7,9 +7,7 @@ import {
   type Sha256DigestV1,
 } from "@chronorift/domain";
 import {
-  DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1,
   GODOT_PROJECT_ENVIRONMENT_OVERRIDE_SOURCE_V2,
-  LIFECYCLE_MANAGED_FONTCONFIG_SOURCE,
   PROJECT_ADAPTER_SDK_FILES_V2,
   PROJECT_ENVIRONMENT_BRIDGE_FILES_V2,
   PROJECT_ENVIRONMENT_RUNTIME_PROFILE_V2,
@@ -17,16 +15,11 @@ import {
 import { contentHash } from "@chronorift/json-artifacts";
 import { z } from "zod";
 
-import {
-  SandboxToolchainCapabilityV1Schema,
-  SandboxToolchainTargetV1Schema,
-  type SandboxToolchainCapabilityV1,
-} from "./contracts.js";
-import { ManagedGodotAddonFileV1Schema } from "./managed-godot-runtime.js";
-import type { SandboxToolchainBindingV1 } from "./sandbox-toolchain.js";
+import { ManagedRuntimeFileV1Schema } from "./managed-runtime-file.js";
 
 const sha256 = (bytes: Uint8Array): Sha256DigestV1 =>
   asSha256DigestV1(createHash("sha256").update(bytes).digest("hex"));
+
 export const projectEnvironmentRuntimeTreeHashV2 = (
   files: readonly {
     readonly relativePath: string;
@@ -34,18 +27,14 @@ export const projectEnvironmentRuntimeTreeHashV2 = (
   }[],
 ): Sha256DigestV1 => {
   const hash = createHash("sha256");
-  for (const file of [...files].sort((a, b) =>
-    a.relativePath.localeCompare(b.relativePath),
+  for (const file of [...files].sort((left, right) =>
+    left.relativePath.localeCompare(right.relativePath),
   )) {
     hash.update(file.relativePath).update("\0").update(file.bytes).update("\0");
   }
   return asSha256DigestV1(hash.digest("hex"));
 };
 
-const fontconfigBytes = Buffer.from(
-  LIFECYCLE_MANAGED_FONTCONFIG_SOURCE,
-  "utf8",
-);
 const overlayBytes = Buffer.from(
   GODOT_PROJECT_ENVIRONMENT_OVERRIDE_SOURCE_V2,
   "utf8",
@@ -56,8 +45,16 @@ const managedFiles = Object.freeze(
       relativePath: file.relativePath,
       bytes: Uint8Array.from(file.bytes),
     }))
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath)),
 );
+const managedFileIdentities = Object.freeze(
+  managedFiles.map((file) => ({
+    relativePath: file.relativePath,
+    byteLength: file.bytes.byteLength,
+    sha256: sha256(file.bytes),
+  })),
+);
+
 const contentShape = {
   schemaVersion: z.literal(2),
   runtimeProfile: z.literal(PROJECT_ENVIRONMENT_RUNTIME_PROFILE_V2),
@@ -68,39 +65,27 @@ const contentShape = {
   engineVersion: z.literal("4.7.1-stable (official)"),
   protocolProfile: z.literal("chronorift-godot-project-environment-v2"),
   protocolVersion: z.literal(2),
-  nodeTarget: SandboxToolchainTargetV1Schema,
-  godotTarget: SandboxToolchainTargetV1Schema,
-  toolchain: SandboxToolchainCapabilityV1Schema,
-  vanillaSidecarSourceSha256: Sha256DigestV1Schema,
-  projectEnvironmentSidecarSourceSha256: Sha256DigestV1Schema,
-  fontconfigTarget: z.literal(
-    DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.fontconfigFile,
-  ),
-  fontconfigByteLength: z.number().int().positive().max(4_096),
-  fontconfigSha256: Sha256DigestV1Schema,
-  overlayTarget: z.literal(
-    DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedOverrideFile,
-  ),
-  overlayByteLength: z.number().int().positive().max(4_096),
   overlayHash: Sha256DigestV1Schema,
-  addonParentTarget: z.literal(
-    DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAddonParent,
-  ),
-  addonTarget: z.literal(
-    DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAddonRoot,
-  ),
   addonHash: Sha256DigestV1Schema,
-  addonFiles: z.array(ManagedGodotAddonFileV1Schema).min(3).max(32),
-  adapterParentTarget: z.literal(
-    DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAdapterParent,
-  ),
-  adapterTarget: z.literal(
-    DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAdapterRoot,
-  ),
+  addonFiles: z.array(ManagedRuntimeFileV1Schema).min(3).max(32),
   adapterHash: Sha256DigestV1Schema,
-  adapterFiles: z.array(ManagedGodotAddonFileV1Schema).min(2).max(256),
+  adapterFiles: z.array(ManagedRuntimeFileV1Schema).min(2).max(256),
 } as const;
 const ContentSchema = z.object(contentShape).strict();
+
+const matchesManagedFiles = (
+  actual: readonly z.infer<typeof ManagedRuntimeFileV1Schema>[],
+): boolean =>
+  actual.length === managedFileIdentities.length &&
+  actual.every((file, index) => {
+    const expected = managedFileIdentities[index];
+    return (
+      expected !== undefined &&
+      file.relativePath === expected.relativePath &&
+      file.byteLength === expected.byteLength &&
+      file.sha256 === expected.sha256
+    );
+  });
 
 export const ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema = z
   .object({
@@ -114,30 +99,34 @@ export const ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema = z
     const { managedRuntimeId, ...content } = value;
     if (
       managedRuntimeId !==
-      `managed-godot-project-environment:v2:${contentHash(content as unknown as JsonValue)}`
-    )
+      `managed-godot-project-environment:v2:${contentHash(
+        content as unknown as JsonValue,
+      )}`
+    ) {
       context.addIssue({
         code: "custom",
         path: ["managedRuntimeId"],
         message: "managed V2 runtime identity mismatch",
       });
+    }
     if (
-      value.fontconfigSha256 !== sha256(fontconfigBytes) ||
       value.overlayHash !== sha256(overlayBytes) ||
-      value.addonHash !== projectEnvironmentRuntimeTreeHashV2(managedFiles)
-    )
+      value.addonHash !== projectEnvironmentRuntimeTreeHashV2(managedFiles) ||
+      !matchesManagedFiles(value.addonFiles)
+    ) {
       context.addIssue({
         code: "custom",
         path: ["addonHash"],
-        message: "managed V2 bridge/SDK/overlay bytes changed",
+        message: "managed V2 bridge, SDK, or overlay bytes changed",
       });
+    }
   });
 export type ManagedGodotProjectEnvironmentRuntimeCapabilityV2 = z.infer<
   typeof ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema
 >;
+
 export interface ManagedGodotProjectEnvironmentRuntimeBindingV2 {
   readonly managedRuntimeId: string;
-  readonly toolchain: SandboxToolchainBindingV1;
   readonly addonFiles: readonly {
     readonly relativePath: string;
     readonly bytes: Uint8Array;
@@ -147,19 +136,10 @@ export interface ManagedGodotProjectEnvironmentRuntimeBindingV2 {
     readonly bytes: Uint8Array;
   }[];
   readonly overlayBytes: Uint8Array;
-  readonly fontconfigBytes: Uint8Array;
 }
 
 export const createManagedGodotProjectEnvironmentRuntimeV2 = (input: {
   readonly doctorVersion: string;
-  readonly nodeTarget: string;
-  readonly godotTarget: string;
-  readonly toolchain: {
-    readonly capability: SandboxToolchainCapabilityV1;
-    readonly binding: SandboxToolchainBindingV1;
-  };
-  readonly vanillaSidecarSource: string;
-  readonly projectEnvironmentSidecarSource: string;
   readonly adapterFiles: readonly {
     readonly relativePath: string;
     readonly bytes: Uint8Array;
@@ -173,7 +153,7 @@ export const createManagedGodotProjectEnvironmentRuntimeV2 = (input: {
       relativePath: file.relativePath,
       bytes: Uint8Array.from(file.bytes),
     }))
-    .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   const content = ContentSchema.parse({
     schemaVersion: 2,
     runtimeProfile: PROJECT_ENVIRONMENT_RUNTIME_PROFILE_V2,
@@ -182,35 +162,9 @@ export const createManagedGodotProjectEnvironmentRuntimeV2 = (input: {
     engineVersion: "4.7.1-stable (official)",
     protocolProfile: "chronorift-godot-project-environment-v2",
     protocolVersion: 2,
-    nodeTarget: input.nodeTarget,
-    godotTarget: input.godotTarget,
-    toolchain: input.toolchain.capability,
-    vanillaSidecarSourceSha256: sha256(Buffer.from(input.vanillaSidecarSource)),
-    projectEnvironmentSidecarSourceSha256: sha256(
-      Buffer.from(input.projectEnvironmentSidecarSource),
-    ),
-    fontconfigTarget:
-      DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.fontconfigFile,
-    fontconfigByteLength: fontconfigBytes.byteLength,
-    fontconfigSha256: sha256(fontconfigBytes),
-    overlayTarget:
-      DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedOverrideFile,
-    overlayByteLength: overlayBytes.byteLength,
     overlayHash: sha256(overlayBytes),
-    addonParentTarget:
-      DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAddonParent,
-    addonTarget:
-      DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAddonRoot,
     addonHash: projectEnvironmentRuntimeTreeHashV2(managedFiles),
-    addonFiles: managedFiles.map((file) => ({
-      relativePath: file.relativePath,
-      byteLength: file.bytes.byteLength,
-      sha256: sha256(file.bytes),
-    })),
-    adapterParentTarget:
-      DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAdapterParent,
-    adapterTarget:
-      DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.managedAdapterRoot,
+    addonFiles: managedFileIdentities,
     adapterHash: projectEnvironmentRuntimeTreeHashV2(adapterFiles),
     adapterFiles: adapterFiles.map((file) => ({
       relativePath: file.relativePath,
@@ -221,15 +175,15 @@ export const createManagedGodotProjectEnvironmentRuntimeV2 = (input: {
   const capability =
     ManagedGodotProjectEnvironmentRuntimeCapabilityV2Schema.parse({
       ...content,
-      managedRuntimeId: `managed-godot-project-environment:v2:${contentHash(content as unknown as JsonValue)}`,
+      managedRuntimeId: `managed-godot-project-environment:v2:${contentHash(
+        content as unknown as JsonValue,
+      )}`,
     });
   const binding = Object.freeze({
     managedRuntimeId: capability.managedRuntimeId,
-    toolchain: input.toolchain.binding,
     addonFiles: managedFiles,
     adapterFiles: Object.freeze(adapterFiles),
     overlayBytes: Uint8Array.from(overlayBytes),
-    fontconfigBytes: Uint8Array.from(fontconfigBytes),
   });
   assertManagedGodotProjectEnvironmentRuntimeBindingV2(capability, binding);
   return Object.freeze({ capability, binding });
@@ -245,15 +199,35 @@ export const assertManagedGodotProjectEnvironmentRuntimeBindingV2 = (
     );
   if (
     binding.managedRuntimeId !== capability.managedRuntimeId ||
-    binding.toolchain.toolchainId !== capability.toolchain.toolchainId ||
     sha256(binding.overlayBytes) !== capability.overlayHash ||
-    sha256(binding.fontconfigBytes) !== capability.fontconfigSha256 ||
     projectEnvironmentRuntimeTreeHashV2(binding.addonFiles) !==
       capability.addonHash ||
     projectEnvironmentRuntimeTreeHashV2(binding.adapterFiles) !==
       capability.adapterHash
-  )
+  ) {
     throw new TypeError(
       "managed V2 Project Environment runtime binding mismatch",
     );
+  }
+  for (const [declared, files] of [
+    [capability.addonFiles, binding.addonFiles],
+    [capability.adapterFiles, binding.adapterFiles],
+  ] as const) {
+    if (declared.length !== files.length) {
+      throw new TypeError("managed V2 Project Environment file count mismatch");
+    }
+    for (const [index, file] of files.entries()) {
+      const expected = declared[index];
+      if (
+        expected === undefined ||
+        expected.relativePath !== file.relativePath ||
+        expected.byteLength !== file.bytes.byteLength ||
+        expected.sha256 !== sha256(file.bytes)
+      ) {
+        throw new TypeError(
+          "managed V2 Project Environment file identity mismatch",
+        );
+      }
+    }
+  }
 };

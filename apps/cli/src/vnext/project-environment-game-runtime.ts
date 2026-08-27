@@ -749,7 +749,8 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
       (result) => {
         if (active.phase === "stopping" || active.phase === "stopped") return;
         active.phase =
-          result.kind === "executed" && result.receipt.status === "timed_out"
+          result.kind === "executed" &&
+          result.process.process.status === "timed_out"
             ? "timed_out"
             : "crashed";
       },
@@ -810,18 +811,22 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
         `Sandbox completion after handshake failure failed: ${this.errorMessage(error)}`,
       );
     }
-    const sandboxReceipt =
-      completed?.kind === "executed" ? completed.receipt : null;
+    const sandboxProcess =
+      completed?.kind === "executed" ? completed.process : null;
+    const processExited = sandboxProcess?.process.status === "exited";
+    const processSucceeded =
+      processExited &&
+      sandboxProcess.process.exitCode === 0 &&
+      sandboxProcess.sourceUnchanged;
     const cleanup: ProjectRuntimeCleanupReceiptV1 = {
       schemaVersion: 1,
-      processTreeTerminated:
-        sandboxReceipt?.cleanup.processGroupTerminated ?? false,
-      runtimeExited: sandboxReceipt?.status === "succeeded",
-      bridgeExited: sandboxReceipt?.status === "succeeded",
-      isolationGroupEmpty: !(sandboxReceipt?.cleanup.cgroupPopulated ?? true),
-      scopeRemoved: sandboxReceipt?.cleanup.scopeRemoved ?? false,
-      scratchRemoved: sandboxReceipt?.cleanup.scopeRemoved ?? false,
-      storageReconciled: sandboxReceipt?.cleanup.storageReconciled === true,
+      processTreeTerminated: sandboxProcess !== null,
+      runtimeExited: processSucceeded,
+      bridgeExited: processSucceeded,
+      isolationGroupEmpty: sandboxProcess !== null,
+      scopeRemoved: sandboxProcess !== null,
+      scratchRemoved: sandboxProcess !== null,
+      storageReconciled: sandboxProcess?.sourceUnchanged === true,
     };
     if (!projectRuntimeCleanupCompleteV1(cleanup)) {
       failures.push(
@@ -1448,18 +1453,22 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
     const observedAt = this.now();
     active.phase = "stopped";
     if (this.#active === active) this.#active = null;
-    const sandboxReceipt =
-      completed?.kind === "executed" ? completed.receipt : null;
+    const sandboxProcess =
+      completed?.kind === "executed" ? completed.process : null;
+    const processExited = sandboxProcess?.process.status === "exited";
+    const processSucceeded =
+      processExited &&
+      sandboxProcess.process.exitCode === 0 &&
+      sandboxProcess.sourceUnchanged;
     const cleanup: ProjectRuntimeCleanupReceiptV1 = {
       schemaVersion: 1,
-      processTreeTerminated:
-        sandboxReceipt?.cleanup.processGroupTerminated ?? false,
-      runtimeExited: sandboxReceipt?.status === "succeeded",
-      bridgeExited: sandboxReceipt?.status === "succeeded",
-      isolationGroupEmpty: !(sandboxReceipt?.cleanup.cgroupPopulated ?? true),
-      scopeRemoved: sandboxReceipt?.cleanup.scopeRemoved ?? false,
-      scratchRemoved: sandboxReceipt?.cleanup.scopeRemoved ?? false,
-      storageReconciled: sandboxReceipt?.cleanup.storageReconciled === true,
+      processTreeTerminated: sandboxProcess !== null,
+      runtimeExited: processSucceeded,
+      bridgeExited: processSucceeded,
+      isolationGroupEmpty: sandboxProcess !== null,
+      scopeRemoved: sandboxProcess !== null,
+      scratchRemoved: sandboxProcess !== null,
+      storageReconciled: sandboxProcess?.sourceUnchanged === true,
     };
     const finalCoverage = {
       ...active.latestCoverage,
@@ -1550,7 +1559,7 @@ export class ProjectEnvironmentGameRuntimeV1 implements ProjectEnvironmentGameTo
       coverage: observedCoverage,
       loss: observedLoss,
       limitations: [
-        ...(sandboxReceipt?.status === "succeeded"
+        ...(processSucceeded
           ? []
           : ["The runtime did not return a successful sandbox receipt."]),
         ...this.managedImportLimitations(active.sidecar.diagnostics()),

@@ -17,3 +17,4 @@ minimumReleaseAgeExclude:
   - "@typescript-eslint/utils@8.66.0"
   - "@typescript-eslint/visitor-keys@8.66.0"
   - typescript-eslint@8.66.0
+  - "@anthropic-ai/sandbox-runtime@0.0.74"

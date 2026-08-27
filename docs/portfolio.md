@@ -10,8 +10,9 @@
 可比较的起点？工具是否越过了用户授权的项目和 Host 边界？
 
 ChronoRift 的目标不是替 Agent 编写固定诊断脚本，而是提供一个 **Agent 可以自由使用、Host 可以严格约束、reviewer
-可以事后核查** 的运行环境。当前实现包含 legacy v0.4、实验性 Project Environment Preview、固定项目 GN-1，以及若干
-兼容/历史路径；[目标架构](architecture.md) 中的完整 runtime primitive 集合并非都已进入当前产品路径。
+可以事后核查** 的运行环境。当前实现包含 legacy v0.4、实验性 Project Environment Preview 和固定项目案例。旧
+Task CLI 与 M3/M4/E2 实现已从 current HEAD 删除，只能从历史 tag/归档复现；[目标架构](architecture.md) 中的完整
+runtime primitive 集合并非当前功能清单。
 
 ## 五个关键设计决定
 
@@ -27,37 +28,38 @@ ChronoRift 直接使用固定版本的 Pi SDK 创建 `AgentSession`，保留 Pi 
 
 `completed` 因此只表示 turn 结束并留下 assistant output、候选 diff 和执行记录。它不等于项目已经接受候选。
 
-### 2. `cwd` 不是 sandbox，Git worktree 也不是权限边界
+### 2. coding 可写，Godot 验证源码只读
 
-Pi 的 workspace 指向 `/workspace`，但真正的隔离由 Host broker 建立。当前 Linux Host 路径在显式 provision 后使用
-bubblewrap namespace、delegated cgroup、bounded Task storage、冻结的 executable identity 和 read-only runtime/source
-mount；网络、Host 路径、凭据、端口、设备、display、audio 和 GPU 默认拒绝。
+当前 vNext Host 只保留一层薄封装：Linux x86_64 上精确固定
+`@anthropic-ai/sandbox-runtime@0.0.74`。Agent 的 coding command 在私有物理 candidate workspace 中拥有读写权限，
+否则无法修 bug。Godot 验证不直接运行该可写树：Host 递归复制普通文件、拒绝 symlink/特殊文件和路径逃逸，叠加受管
+overlay 后，把 stage 项目源码只读交给 SRT；只有 `.godot/`、home、tmp 和 artifacts 可写，并在运行前后比较 source
+SHA-256。两种模式都使用 strict empty network allowlist，Pi 凭据不进入 command environment。
 
-请求的 policy 只有通过 Host preflight、资源绑定和 operation-time revalidation 后才是 realized fact。结构化 security
-event、cleanup receipt 和实际 process output 比“sandbox 已开启”的配置声明更可信。v0.4 Host process 没有这一 OS
-隔离保证，不能把 vNext 边界反向写到 legacy 路径上。
+这次 cutover 退役了自研 sandbox broker、cgroup/storage ledger、Host-config schema 和复杂 receipt framework。当前边界适合
+单人作品项目，但不宣称 CPU/memory/PID/容量 quota 或外部 attestation。v0.4 Host process 也没有这一 SRT 隔离保证。
 
 ### 3. 工具输入、能力与资源归属都在边界处验证
 
-Agent 看到的 game tools 来自显式 `ToolDefinition` metadata 和精确 input schema。Harness 会验证：
+Agent 看到的 game tools 来自显式 `ToolDefinition` metadata 和精确 input schema。当前维护路径会验证：
 
 - tool name 是否属于当前暴露 surface；
 - input/output 是否符合严格、版本化 schema；
-- capability module 是 `implemented`、`degraded` 还是不可用；
-- `taskId`、Build、Execution、checkpoint 等引用是否真实存在且属于同一 Task；
-- budget、并发、runtime lifecycle 和 cleanup 是否允许当前操作。
+- project-relative path 是否越界、指向 symlink/特殊文件或占用受管 overlay；
+- `taskId`、Build 和 Execution 等当前 operation 使用的引用是否真实且属于同一运行；
+- timeout、cancellation、输出上限和 runtime lifecycle 是否允许当前操作。
 
-不支持的能力、resource mismatch、history gap 或 runtime crash 返回结构化结果；不会通过猜测资源、吞掉缺口或伪造
-成功来维持流程。
+不支持的能力、resource mismatch 或 runtime crash 返回明确结果；不会通过猜测资源、吞掉缺口或伪造成功来维持流程。
 
 ### 4. 记录 observation，不制造结论
 
-runtime receipt 区分 requested 与 realized control，也保留 clock、quantization、coverage、loss、overwrite、observer effect
-和 nondeterminism。raw events 是事实来源，Runtime State Index 只是可重建查询视图；compare 可以报告 observable
-difference 和 confounder，但不能宣布因果关系。
+当前 SRT process result 保留 exit/timeout/cancellation、stdout/stderr 截断和 duration；Godot runner 另外返回 stage
+source 的启动前与完成后 SHA-256 以及 `sourceUnchanged`。ProjectAdapter observation 记录运行时实际报告的 state，不能
+宣布因果关系或修复正确。
 
-同一原则延伸到 candidate：source identity、diff bytes、Build、Execution、tool call 和 cleanup 通过 lineage 连接。Hash
-用于绑定 bytes 和检测损坏，不是签名或外部 attestation。最终 acceptance 属于用户、项目 CI、独立 Eval 或人工 review。
+同一原则延伸到 candidate：实际 diff、process output 和 runtime observation 高于 Agent prose。Hash 用于绑定 bytes 和
+检测变化，不是签名或外部 attestation。最终 acceptance 属于用户、项目 CI、独立 Eval 或人工 review；当前实现不为此
+新建 receipt/index/compare framework。
 
 ### 5. 用窄 vertical slice 消除一个主要不确定性
 
@@ -84,11 +86,12 @@ difference 和 confounder，但不能宣布因果关系。
    SDK-neutral game-tool contract 到 Pi `ToolDefinition` 的桥。它按 capability 选择工具、严格检查 input/output、维持
    `toolCallId` 绑定、执行 budget admission，并把 unsupported/budget/runtime failure 保留为结构化结果。
 
-3. [`apps/cli/src/vnext/sandbox-broker.ts`](../apps/cli/src/vnext/sandbox-broker.ts)
+3. [`apps/cli/src/vnext/srt-sandbox-controller.ts`](../apps/cli/src/vnext/srt-sandbox-controller.ts)
 
-   Host 隔离边界的实现核心：校验 sandbox capability/policy 与 immutable binding，建立 bubblewrap/cgroup execution，
-   管理 bounded scratch、duplex process、resource cleanup 和 security events。这个文件也直观展示了当前 Host 编排
-   复杂度偏高的技术债。
+   Host 隔离边界的薄适配：把明确的 argv、空白环境、读写目录、timeout/cancellation 和输出上限交给 SRT。coding
+   workspace 可写；Godot source stage 只读并拒绝 mutable candidate。相邻的
+   [`godot-validation-stage.ts`](../apps/cli/src/vnext/godot-validation-stage.ts) 负责安全复制、managed overlay 和运行前后
+   source hash，而不是重新实现 namespace/cgroup sandbox。
 
 4. [`packages/godot-adapter/src/project-adapter-package.ts`](../packages/godot-adapter/src/project-adapter-package.ts)
 
@@ -97,8 +100,8 @@ difference 和 confounder，但不能宣布因果关系。
 
 5. [`apps/cli/src/vnext/platform-alias-demo.ts`](../apps/cli/src/vnext/platform-alias-demo.ts)
 
-   GN-1 的端到端 composition：冻结精确外部 source，建立 private Task workspace，选择 matched tool surface，运行正常
-   Pi turn，生成 candidate Build，执行 Host-only postflight，并记录 diff、runtime lineage、cleanup 和 checkout
+   GN-1 的端到端 composition：冻结精确外部 source，建立 private candidate workspace，选择 matched tool surface，
+   运行正常 Pi turn，生成 candidate Build，执行 Host-staged postflight，并记录 diff、process/runtime result 和 checkout
    cleanliness。它是固定项目 characterization 路径，不是可扩展 campaign framework。
 
 依赖方向保持为 `domain ← gamebranch ← adapters ← CLI`；Agent-facing 路径是
@@ -126,31 +129,31 @@ area 和共享 identity。
 ## 当前工程债与下一层问题
 
 - **CLI 入口仍分裂。** v0.4 legacy、`project preview` 和 GN-1 各有显式入口，目标中的 `chronorift [goal]` 尚不存在。
-- **编排文件过大。** sandbox broker、Godot runtime coordinator 和 task-environment composition 聚集了较多 lifecycle
-  分支；在增加新产品行为前，应按真实 ownership/lifecycle seam 缩小，而不是提前创建空 package。
+- **部分案例编排仍偏大。** 旧 sandbox broker、Task CLI 与 M3/M4/E2 coordinators 已删除；Preview、GN-1 和 Mob V2
+  composition 仍聚集较多 lifecycle 分支，应只在真实 ownership seam 出现时继续拆分。
 - **ProjectAdapter 尚不通用。** Preview 的 author/publish/reuse 仍是实验能力；GN-1 使用 checked-in 项目特定 V1
   adapter，不能外推到任意 Godot 项目。
 - **平台范围窄。** 当前受支持 Host 是 Linux，runtime 是官方 Godot 4.7.1 GDScript；C#、native extension、macOS、
   Windows、visual/audio/GPU 都未覆盖。
-- **runtime fidelity 有边界。** 自动 capture trigger、完整 engine snapshot、bit-exact replay 和第三方 telemetry
-  attestation 未实现；missing state 或 first divergence 不能被静默解释为相等。
-- **协作与交付仍待产品化。** 通用 source migration、multi-writer lease/CAS、conflict-safe apply、失败 Task resume、
-  retention 和 adapter bundle import/export 仍是后续问题。
+- **runtime fidelity 有边界。** 当前观察依赖项目 Adapter；没有完整 engine snapshot、bit-exact replay 或第三方
+  telemetry attestation。缺失观察不能被静默解释为相等。
+- **协作与交付不在当前范围。** 通用 source migration、多人并发编辑、自动 apply/merge 和长期 retention 都不是这个
+  单人作品项目的已承诺路线。
 
 这些缺口是产品路线输入，不是让当前窄 slice 宣称更多能力的理由。架构 §20/§21 是 rollout 和当前映射的权威来源。
 
 ## 验证入口
 
-| 层级                | 命令                                          | 回答的问题                                                                 |
-| ------------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
-| 默认离线 Gate       | `corepack pnpm check`                         | lint、format、strict typecheck 和 deterministic tests 是否通过             |
-| Godot integration   | `corepack pnpm test:godot`                    | Addon、protocol、Project Environment 与 Godot integration 是否通过         |
-| Coding sandbox Host | `corepack pnpm test:sandbox`                  | provisioned namespace/cgroup boundary 是否满足 conformance                 |
-| Godot sandbox Host  | `corepack pnpm test:vnext:godot-sandbox`      | bounded storage、sidecar、managed runtime 与 sandbox 是否共同满足 Gate     |
-| Live Pi             | `corepack pnpm test:live` 或显式 live command | 在有意提供 provider/network/credential 时，真实 Session 路径留下了什么记录 |
+| 层级                 | 命令                                          | 回答的问题                                                                 |
+| -------------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
+| 默认离线 Gate        | `corepack pnpm check`                         | lint、format、strict typecheck 和 deterministic tests 是否通过             |
+| Godot integration    | `corepack pnpm test:godot`                    | Addon、protocol、Project Environment 与 Godot integration 是否通过         |
+| SRT Host integration | `corepack pnpm test:sandbox`                  | coding RW、Godot staged RO、禁网和真实 Preview integration 是否成立        |
+| Live Pi              | `corepack pnpm test:live` 或显式 live command | 在有意提供 provider/network/credential 时，真实 Session 路径留下了什么记录 |
 
-Host suites 缺少 delegated cgroup、bounded Task storage 或固定 executable 时属于 precondition failure。默认 tests 使用
-fake，不接触 provider；只有 `*.live.test.ts` 和显式 live 命令可以联网。
+Host suite 通过 `.github/scripts/run-srt-sandbox-conformance.sh` 运行；非 Linux x86_64、SRT 不是精确 `0.0.74`、缺少
+Bubblewrap/`socat`/ripgrep/Godot 或 user namespace 不可用都属于 precondition failure。默认 tests 使用 fake，不接触
+provider；只有 `*.live.test.ts` 和显式 live 命令可以联系 provider，sandboxed commands 仍默认禁网。
 
 进一步阅读：
 

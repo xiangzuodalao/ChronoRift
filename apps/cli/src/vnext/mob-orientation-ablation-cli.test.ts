@@ -36,8 +36,10 @@ describe("Godot demo Mob orientation ablation CLI", () => {
       "openai-codex",
       "--model",
       "gpt-5.6-luna",
-      "--host-config",
-      "/tmp/host.json",
+      "--state-root",
+      "/tmp/chronorift-state",
+      "--godot-bin",
+      "/opt/godot-4.7.1/godot",
       "--json",
     ]);
 
@@ -47,7 +49,8 @@ describe("Godot demo Mob orientation ablation CLI", () => {
       provider: "openai-codex",
       model: "gpt-5.6-luna",
       thinkingLevel: "max",
-      hostConfigPath: "/tmp/host.json",
+      stateRoot: "/tmp/chronorift-state",
+      godotBin: "/opt/godot-4.7.1/godot",
     });
     expect(write).toHaveBeenCalledWith(
       expect.stringContaining('"arm": "chronorift-v2"'),

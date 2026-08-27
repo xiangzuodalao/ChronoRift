@@ -27,10 +27,7 @@ import {
   preflightCleanGitSubtree,
   preflightCleanProjectEnvironmentV1,
 } from "./source-preflight.js";
-import {
-  createProjectEnvironmentTaskDirectoryLayout,
-  createTaskDirectoryLayout,
-} from "./task-paths.js";
+import { createProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 import {
   ProjectEnvironmentWorkspaceMaterializationReceiptV2Schema,
   materializePrivateTaskWorkspace,
@@ -443,7 +440,7 @@ describe("materializePrivateTaskWorkspace", () => {
       sourceRepositoryExclusionRoots: [runtimeRoot],
     });
     const taskId = asTaskId("task_materialize_external");
-    const layout = await createTaskDirectoryLayout({
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot,
       sourceRepositoryRoot: root,
       taskId,
@@ -478,7 +475,7 @@ describe("materializePrivateTaskWorkspace", () => {
     const marker = join(markerContainer, "filter-ran");
     const repo = await setup({ hostileFilterMarker: marker });
     const taskId = asTaskId("task_materialize_raw_fixture");
-    const layout = await createTaskDirectoryLayout({
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: repo.runtimeRoot,
       sourceRepositoryRoot: repo.root,
       taskId,
@@ -562,7 +559,7 @@ describe("materializePrivateTaskWorkspace", () => {
     );
     await commitAll(repo.root, "binary and executable");
     const taskId = asTaskId("task_materialize_modes");
-    const layout = await createTaskDirectoryLayout({
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: repo.runtimeRoot,
       sourceRepositoryRoot: repo.root,
       taskId,
@@ -586,7 +583,7 @@ describe("materializePrivateTaskWorkspace", () => {
   it("cleans the staging worktree when a destination already exists", async () => {
     const repo = await setup();
     const taskId = asTaskId("task_materialize_write_failure");
-    const layout = await createTaskDirectoryLayout({
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: repo.runtimeRoot,
       sourceRepositoryRoot: repo.root,
       taskId,
@@ -622,7 +619,7 @@ describe("materializePrivateTaskWorkspace", () => {
     }
     const repo = await setup();
     const taskId = asTaskId("task_materialize_cleanup_failure");
-    const layout = await createTaskDirectoryLayout({
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: repo.runtimeRoot,
       sourceRepositoryRoot: repo.root,
       taskId,

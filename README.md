@@ -7,9 +7,9 @@
 
 **让 coding agent 从源码猜测走向可执行的 Godot 运行时证据。**
 
-Pi 负责 Agent Loop；ChronoRift 负责把文件、命令和 Godot 操作约束在声明的 Task sandbox 中，并向 Agent 返回
-Build-bound runtime state、实际 diff、tool result、coverage、loss、lineage 和 cleanup record。Agent 自由选择调查和
-修改策略，最终 acceptance 仍属于项目 CI、独立 Eval 或人工 review。
+Pi 负责 Agent Loop；ChronoRift 使用固定版本的 Anthropic Sandbox Runtime（SRT）约束文件、命令和 Godot 操作，并向
+Agent 返回 Build-bound runtime state、实际 diff 和 tool result。Agent 自由选择调查和修改策略，最终 acceptance 仍属于
+项目 CI、独立 Eval 或人工 review。
 
 > **结果优势 — GN-1：** 在相同源码、prompt、model、thinking、timeout 和共享工具下，coding-only candidate 的
 > geometry oracle 为 `false`；ChronoRift Agent 查询真实 platform geometry 和 Shape identity 后产生不同候选，oracle
@@ -19,7 +19,7 @@ Build-bound runtime state、实际 diff、tool result、coverage、loss、lineag
 > 14 个、修改后 5 个 Mob state，候选通过独立 evaluator 3/3。Coding-only 也通过 3/3，因此本案例证明产品路径复用，
 > 不证明总体修复优势。
 
-**截至 2026-08-25：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
+**截至 2026-08-27：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
 `chronorift [goal]`、任意 Godot 项目支持和自动“修复成功”判定尚未实现。
 
 ![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
@@ -28,10 +28,10 @@ _概念插图，用于表达产品母题；不是产品界面、运行截图或�
 
 ## 两分钟看懂
 
-![ChronoRift 架构概览：Pi Loop 通过工具 broker 操作隔离的 Task sandbox，并留下可供外部验收的记录](docs/assets/chronorift-architecture.png)
+![ChronoRift 架构概览：Pi Loop 通过受控工具操作隔离的 candidate 与 Godot runtime，并留下可供外部验收的记录](docs/assets/chronorift-architecture.png)
 
 - **Pi owns the Loop：** Session、模型调用、消息历史、tool scheduling、compaction 和普通终止。
-- **ChronoRift owns the Harness：** Task workspace、sandbox policy、工具执行、资源 identity、记录和 cleanup。
+- **ChronoRift owns the Harness：** private candidate workspace、SRT 工具执行、Godot staging 和实际结果。
 - **Agent owns the strategy：** 如何调查、编辑、验证和解释结果，不要求固定工具顺序。
 - **外部边界 owns acceptance：** `completed` 只表示 Loop 结束并留下可审阅候选，不等于 `verified` 或 `fixed`。
 
@@ -85,15 +85,16 @@ candidate patch 与 evaluator stdout，并汇总耗时、成本、本地 raw rec
 | Project Environment Preview | 显式 `project preview`；source closure、sandbox、adapter publication/binding/reuse 的实验实现     | 历史 characterization 较窄；尚未成为默认入口或通用项目支持          |
 | GN-1                        | 精确第三方项目、项目特定 adapter、两个 matched arms、公开 candidate patch 和 Host postflight 摘要 | 单项目、单 revision、单 prompt、单 pair；raw live output 仍只在本地 |
 | Godot Demo Mob V2           | 第二个外部项目、state-only Adapter V2、完成的 fresh pair、公开 patch 与独立 evaluator             | 两组均 3/3；未晋级 Hero，也不证明比较优势或自动 onboarding          |
-| Host sandbox                | Linux 上的 bubblewrap、cgroup、bounded Task storage、受控 toolchain/Godot Host 路径               | 需要明确 provision；设置 `cwd` 或 Git worktree 本身不构成隔离       |
-| 历史 M3/M4/E2               | 保留兼容实现和冻结档案                                                                            | 不作为新产品切片模板；其 producer、validator 和一次性 Gate 已退役   |
+| Host sandbox                | Linux x86_64 上精确固定 SRT `0.0.74`；coding workspace 可写，Godot 使用 Host staging              | 默认禁网；不提供旧 broker 的 cgroup、容量或 Host-config 能力        |
+| 历史 M3/M4/E2               | current HEAD 中的实现和命令已删除，只保留冻结档案                                                 | 不作为新产品切片模板，也不从档案恢复 producer 或一次性 Gate         |
 
 ### 还没有
 
 - 默认 `chronorift [goal]` 与任意 Godot 项目的即开即用支持。
 - 通用 ProjectAdapter authoring/migration、跨平台 Host、C#、GDExtension、native plugin、display、audio 或 GPU。
-- 通用 source migration、multi-writer lease/CAS、conflict-safe apply、长期 retention 或失败 Task 的完整 resume。
-- 在主产品路径中普遍可用的 checkpoint/fork/replay/compare；M3 仅有固定 Fixture 上的实验兼容实现。
+- 通用 source migration、multi-writer lease/CAS、conflict-safe apply 或长期 retention；current HEAD 也没有 generic
+  Task resume/discard API。
+- 在主产品路径中普遍可用的 checkpoint/fork/replay/compare；旧 M3 实现已从 current HEAD 删除。
 - 自动 capture trigger、完整 engine snapshot、bit-exact replay、外部 telemetry attestation 或自动 acceptance。
 
 ## 三条审阅路径
@@ -130,8 +131,8 @@ vNext 产品形态。
 
 ### 3. 完整 Host：检查实验路径
 
-Project Environment Preview、GN-1 和 Godot Demo slice 都需要显式 Host 配置、Linux namespace/cgroup、bounded Task storage、固定
-toolchain/Godot identity；两个 case runner 还需要精确外部 checkout 和真实 provider。前置条件和完整命令统一维护在
+Project Environment Preview、GN-1 和 Godot Demo slice 需要 Linux x86_64、精确 SRT `0.0.74`、Bubblewrap/`socat`/ripgrep
+以及官方 Godot 4.7.1；两个 case runner 还需要精确外部 checkout 和真实 provider。前置条件和完整命令统一维护在
 [开发与验证指南](docs/development.md)。
 
 ```text
@@ -140,18 +141,21 @@ corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
 corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
 ```
 
-这些 live 命令不会 clone、修改或 apply 回用户 checkout；候选位于 Task-owned `/workspace`。它们也不会自动
-commit、merge、push 或宣布修复成功。
+这些 live 命令不会 clone、修改或 apply 回用户 checkout。Agent 在私有的物理 candidate workspace 中获得读写权限；
+Godot 验证则使用 Host 复制的独立 stage，项目源码只读，只有 `.godot/`、home、tmp 和 artifacts 可写，并在启动前后比较
+source SHA-256。它们不会自动 commit、merge、push 或宣布修复成功。
 
 ## 安全与证据边界
 
 - 用户 checkout、runtime/source text、Agent 输出、patch、Godot plugin 和 ProjectAdapter 都按不可信内容处理。
-- coding/game tools 必须经过 Task sandbox broker；网络、Host 文件、凭据、端口、设备、display、audio 和 GPU 默认拒绝。
-- Pi 凭据只允许 Host 模型路径使用，不能进入 repository、artifact、Task command environment 或 Godot process。
-- 所有外部、wire、tool 和 persisted DTO 都要求显式版本与 strict runtime validation；跨 Task resource reference 必须拒绝。
-- raw execution records 在运行时 append、终止时 seal；coverage 缺口、丢失、overwrite 和 clock uncertainty 不得隐藏。
+- vNext coding 与 Godot process 经过 SRT；网络使用 strict empty allowlist，默认拒绝。coding 可以写 candidate workspace，
+  Godot process 看不到可写 candidate，并只能写 stage 中明确的 runtime 目录。
+- Pi 凭据只允许 Host 模型路径使用，不能进入 repository、artifact、sandboxed command environment 或 Godot process。
+- 外部、wire、tool 和 persisted DTO 要求显式版本与 strict runtime validation；内部 SRT process result 不额外包装
+  自研 receipt framework。
+- process result 保留 exit/timeout/cancellation、输出截断和 Godot stage source hash mismatch；不能把缺失观察写成成功。
 - content hash 用于绑定 bytes 和发现损坏，不是签名、第三方证明或正确性证明。
-- v0.4 的 Host process 不具备 vNext Task sandbox 的 OS 隔离保证，二者不能混写。
+- v0.4 的 Host process 不具备 vNext SRT 的 OS 隔离保证，二者不能混写。
 
 ## 常用命令
 
@@ -159,15 +163,14 @@ commit、merge、push 或宣布修复成功。
 | ---------------------------------------------------------- | ------------------------------------------------------------ |
 | `corepack pnpm check`                                      | 默认离线 Gate                                                |
 | `corepack pnpm test:godot`                                 | Godot Addon、protocol 和 Project Environment 集成测试        |
-| `corepack pnpm test:sandbox`                               | 独立 coding sandbox Host conformance                         |
-| `corepack pnpm test:vnext:godot-sandbox`                   | Godot sidecar、Preview 与 sandbox Host conformance           |
+| `corepack pnpm test:sandbox`                               | SRT coding 与真实 Godot/Preview Host conformance             |
 | `corepack pnpm project preview -- ...`                     | 实验性 Project Environment 入口                              |
 | `corepack pnpm demo:platform-alias-ablation -- --arm ...`  | GN-1 的一个 fresh arm；两个 JSON 再交给 standalone evaluator |
 | `corepack pnpm demo:mob-orientation-ablation -- --arm ...` | Mob orientation 的一个 fresh arm；已公开 pair 不会自动重跑   |
 | `corepack pnpm demo:v04` / `diagnose:v04`                  | 当前 legacy 离线 / 真实 provider 路径                        |
 
-Host conformance 只能通过 checked-in wrapper 或满足同等前置条件的环境运行；缺少 cgroup、Task storage 或固定 Host
-路径属于 precondition failure，不是产品测试失败或成功。
+Host conformance 通过 `.github/scripts/run-srt-sandbox-conformance.sh` 运行；非 Linux x86_64、SRT 不是精确
+`0.0.74`、缺少 Bubblewrap/`socat`/ripgrep/Godot 或 user namespace 不可用都属于 precondition failure。
 
 ## 文档地图
 

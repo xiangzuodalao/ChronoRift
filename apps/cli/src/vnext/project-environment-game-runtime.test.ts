@@ -163,6 +163,42 @@ const fakeSidecar = {
     Promise.resolve({ kind: "opened" as const, sidecar: fakeManagedSidecar }),
 } as unknown as GodotProjectEnvironmentSidecarPortV1;
 
+const srtCompletion = (
+  input: {
+    readonly status?: "exited" | "timed_out" | "cancelled";
+    readonly exitCode?: number | null;
+    readonly sourceUnchanged?: boolean;
+  } = {},
+) => {
+  const status = input.status ?? "exited";
+  const sourceUnchanged = input.sourceUnchanged ?? true;
+  return {
+    kind: "executed" as const,
+    process: {
+      process: {
+        status,
+        exitCode:
+          input.exitCode === undefined
+            ? status === "exited"
+              ? 0
+              : null
+            : input.exitCode,
+        signal: status === "exited" ? null : ("SIGKILL" as const),
+        stdout: "",
+        stderr: "",
+        durationMs: 10,
+        timedOut: status === "timed_out",
+        cancelled: status === "cancelled",
+        stdoutTruncated: false,
+        stderrTruncated: false,
+      },
+      sourceSha256: sha("a"),
+      observedSourceSha256: sourceUnchanged ? sha("a") : sha("b"),
+      sourceUnchanged,
+    },
+  };
+};
+
 const adapterPackage = {
   manifest: {
     launchTargets: [
@@ -316,10 +352,9 @@ const invoke = async (
 
 const completingRuntime = (input?: {
   readonly cleanup?: {
-    readonly processGroupTerminated?: boolean;
-    readonly cgroupPopulated?: boolean;
-    readonly scopeRemoved?: boolean;
-    readonly storageReconciled?: boolean;
+    readonly status?: "exited" | "timed_out" | "cancelled";
+    readonly exitCode?: number | null;
+    readonly sourceUnchanged?: boolean;
   };
   readonly client?: Partial<GodotProjectEnvironmentRuntimeClientV1>;
   readonly persistPinnedCapture?:
@@ -339,21 +374,7 @@ const completingRuntime = (input?: {
     ...fakeClient,
     ...input?.client,
     shutdown: () => {
-      finish({
-        kind: "executed",
-        receipt: {
-          status: "succeeded",
-          cleanup: {
-            processGroupTerminated:
-              input?.cleanup?.processGroupTerminated ?? true,
-            cgroupPopulated: input?.cleanup?.cgroupPopulated ?? false,
-            termSent: false,
-            killSent: false,
-            scopeRemoved: input?.cleanup?.scopeRemoved ?? true,
-            storageReconciled: input?.cleanup?.storageReconciled ?? true,
-          },
-        },
-      });
+      finish(srtCompletion(input?.cleanup));
       return Promise.resolve({ status: { ...wireStatus, running: false } });
     },
   } as unknown as GodotProjectEnvironmentRuntimeClientV1;
@@ -535,20 +556,7 @@ describe("ProjectEnvironmentGameRuntimeV1", () => {
             completion,
             terminate: () => {
               terminateCalls += 1;
-              finish({
-                kind: "executed",
-                receipt: {
-                  status: "cancelled",
-                  cleanup: {
-                    processGroupTerminated: true,
-                    cgroupPopulated: false,
-                    termSent: true,
-                    killSent: false,
-                    scopeRemoved: true,
-                    storageReconciled: true,
-                  },
-                },
-              });
+              finish(srtCompletion({ status: "cancelled" }));
               return Promise.resolve();
             },
           } as SandboxedGodotProjectEnvironmentSidecarV1,
@@ -1661,7 +1669,7 @@ describe("ProjectEnvironmentGameRuntimeV1", () => {
     "persists an incomplete receipt when %s evidence is missing",
     async (_label, withCapture, withQueries, cleanupComplete) => {
       const { runtime, persisted } = completingRuntime(
-        cleanupComplete ? undefined : { cleanup: { storageReconciled: false } },
+        cleanupComplete ? undefined : { cleanup: { sourceUnchanged: false } },
       );
       const active = await launchForObservation(runtime);
       if (withCapture) {
@@ -1691,20 +1699,7 @@ describe("ProjectEnvironmentGameRuntimeV1", () => {
     const client = {
       ...fakeClient,
       shutdown: () => {
-        finish({
-          kind: "executed",
-          receipt: {
-            status: "succeeded",
-            cleanup: {
-              processGroupTerminated: true,
-              cgroupPopulated: false,
-              termSent: false,
-              killSent: false,
-              scopeRemoved: true,
-              storageReconciled: true,
-            },
-          },
-        });
+        finish(srtCompletion());
         return Promise.resolve({
           status: { ...wireStatus, running: false },
         });

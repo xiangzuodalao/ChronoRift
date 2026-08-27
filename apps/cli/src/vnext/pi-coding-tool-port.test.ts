@@ -1,73 +1,58 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, it } from "vitest";
 
-import type { SandboxExecutionRequestV1 } from "./contracts.js";
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
 import type {
-  SandboxExecutionOptionsV1,
-  SandboxExecutionResultV1,
-  TaskSandboxBrokerV1,
-} from "./sandbox-broker.js";
+  SrtCodingRequest,
+  SrtCommandResult,
+  SrtSandboxController,
+} from "./srt-sandbox-controller.js";
 
-const executed = (input: {
-  readonly request: SandboxExecutionRequestV1;
-  readonly stdout?: string | undefined;
-  readonly stderr?: string | undefined;
-  readonly status?: "succeeded" | "failed" | undefined;
-  readonly exitCode?: number | undefined;
-}): SandboxExecutionResultV1 => {
-  const stdout = Buffer.from(input.stdout ?? "", "utf8");
-  const stderr = Buffer.from(input.stderr ?? "", "utf8");
-  return {
-    kind: "executed",
-    stdout,
-    stderr,
-    receipt: {
-      operationId: input.request.operationId,
-      requested: input.request,
-      status: input.status ?? "succeeded",
-      exitCode: input.exitCode ?? 0,
-    },
-  } as unknown as SandboxExecutionResultV1;
+const paths = Object.freeze({
+  workspacePath: "/tmp/chronorift-task/candidate",
+  homePath: "/tmp/chronorift-task/home",
+  tempPath: "/tmp/chronorift-task/tmp",
+  artifactsPath: "/tmp/chronorift-task/artifacts",
+});
+
+type QueuedResult = Partial<SrtCommandResult> & {
+  readonly streamed?: readonly string[] | undefined;
 };
 
-class RecordingBroker implements TaskSandboxBrokerV1 {
-  public readonly calls: Array<{
-    readonly request: SandboxExecutionRequestV1;
-    readonly options: SandboxExecutionOptionsV1 | undefined;
-  }> = [];
-  public results: Array<
-    Pick<
-      Parameters<typeof executed>[0],
-      "stdout" | "stderr" | "status" | "exitCode"
-    >
-  > = [];
+class RecordingController implements Pick<SrtSandboxController, "runCoding"> {
+  public readonly calls: SrtCodingRequest[] = [];
+  public readonly results: QueuedResult[] = [];
 
-  public execute(
-    request: SandboxExecutionRequestV1,
-    options?: SandboxExecutionOptionsV1,
-  ): Promise<SandboxExecutionResultV1> {
-    this.calls.push({ request, options });
-    return Promise.resolve(executed({ request, ...this.results.shift() }));
-  }
-
-  public cleanup() {
-    return Promise.resolve({
-      processGroupTerminated: true,
-      cgroupPopulated: false,
-      termSent: false,
-      killSent: false,
-      scopeRemoved: true,
-    });
+  public async runCoding(request: SrtCodingRequest): Promise<SrtCommandResult> {
+    this.calls.push(request);
+    const next = this.results.shift() ?? {};
+    for (const chunk of next.streamed ?? []) {
+      request.onOutput?.(Buffer.from(chunk, "utf8"));
+    }
+    return {
+      status: "exited",
+      exitCode: 0,
+      signal: null,
+      stdout: "",
+      stderr: "",
+      durationMs: 1,
+      timedOut: false,
+      cancelled: false,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      ...next,
+    };
   }
 }
 
 describe("SandboxPiCodingToolPort", () => {
-  it("routes read, Bash, and atomic writes through the task broker", async () => {
-    const broker = new RecordingBroker();
-    broker.results.push({ stdout: "source\n" }, { stdout: "done\n" }, {});
-    const port = new SandboxPiCodingToolPort(broker);
+  it("runs read, Bash, and atomic writes in the physical candidate workspace", async () => {
+    const controller = new RecordingController();
+    controller.results.push(
+      { stdout: "source\n" },
+      { stdout: "done\n", streamed: ["do", "ne\n"] },
+      {},
+    );
+    const port = new SandboxPiCodingToolPort(controller, paths);
     const streamed: Uint8Array[] = [];
 
     await port.read("src/main.ts");
@@ -78,46 +63,70 @@ describe("SandboxPiCodingToolPort", () => {
     const content = Buffer.from([0, 1, 2, 255]);
     await port.write("src/data.bin", content);
 
-    expect(broker.calls[0]?.request.argv).toEqual([
-      "/bin/busybox",
-      "cat",
+    expect(controller.calls[0]?.argv).toEqual([
+      "/usr/bin/cat",
       "--",
-      "/workspace/src/main.ts",
+      "src/main.ts",
     ]);
-    expect(broker.calls[1]?.request).toMatchObject({
-      argv: ["/bin/bash", "-c", "npm test"],
-      timeoutMs: 4_000,
-      cwd: "/workspace",
+    expect(controller.calls[0]).toMatchObject({
+      cwd: paths.workspacePath,
+      ...paths,
     });
-    expect(broker.calls[1]?.options?.onStdoutChunk).toBeDefined();
-    expect(broker.calls[1]?.options?.onStderrChunk).toBeDefined();
-    expect(broker.calls[2]?.request.argv).toEqual([
-      "/bin/busybox",
-      "sh",
+    expect(controller.calls[1]).toMatchObject({
+      argv: ["/bin/bash", "-c", "npm test"],
+      cwd: paths.workspacePath,
+      timeoutMs: 4_000,
+    });
+    expect(controller.calls[2]?.argv).toEqual([
+      "/bin/bash",
       "-c",
       expect.stringContaining("chronorift-tmp"),
       "chronorift-write",
-      "/workspace/src/data.bin",
+      "src/data.bin",
     ]);
-    expect(broker.calls[2]?.request.stdin).toEqual({
-      byteLength: content.byteLength,
-      sha256: createHash("sha256").update(content).digest("hex"),
-    });
-    expect(Array.from(broker.calls[2]?.options?.stdin ?? [])).toEqual(
-      Array.from(content),
-    );
-    expect(broker.calls[2]?.request).not.toHaveProperty("stdin.bytes");
-    expect(streamed).toEqual([]);
+    const writeStdin = controller.calls[2]?.stdin;
+    if (!(writeStdin instanceof Uint8Array)) {
+      throw new Error("expected binary write stdin");
+    }
+    expect(Array.from(writeStdin)).toEqual(Array.from(content));
+    expect(
+      streamed.map((chunk) => Buffer.from(chunk).toString("utf8")),
+    ).toEqual(["do", "ne\n"]);
   });
 
-  it("uses GNU search tools, applies result bounds, and preserves an rg no-match receipt", async () => {
-    const broker = new RecordingBroker();
-    broker.results.push(
-      { status: "failed", exitCode: 1 },
+  it("maps SRT process outcomes without manufacturing execution receipts", async () => {
+    const controller = new RecordingController();
+    controller.results.push(
+      { status: "exited", exitCode: 7, stderr: "failed" },
+      { status: "timed_out", exitCode: null, timedOut: true },
+      { status: "cancelled", exitCode: null, cancelled: true },
+    );
+    const port = new SandboxPiCodingToolPort(controller, paths);
+
+    await expect(port.bash("exit 7", {})).resolves.toEqual({
+      stdout: Buffer.from(""),
+      stderr: Buffer.from("failed"),
+      exitCode: 7,
+      status: "failed",
+    });
+    await expect(port.bash("sleep 10", {})).resolves.toMatchObject({
+      exitCode: null,
+      status: "timed_out",
+    });
+    await expect(port.bash("sleep 10", {})).resolves.toMatchObject({
+      exitCode: null,
+      status: "cancelled",
+    });
+  });
+
+  it("uses physical paths for search tools and applies result bounds", async () => {
+    const controller = new RecordingController();
+    controller.results.push(
+      { exitCode: 1 },
       { stdout: "a.ts\nb.ts\nc.ts\n" },
       { stdout: "src/\nREADME.md\npackage.json\n" },
     );
-    const port = new SandboxPiCodingToolPort(broker);
+    const port = new SandboxPiCodingToolPort(controller, paths);
 
     const grep = await port.grep({
       pattern: "needle",
@@ -131,7 +140,7 @@ describe("SandboxPiCodingToolPort", () => {
     const find = await port.find({ pattern: "*.ts", path: ".", limit: 2 });
     const ls = await port.ls({ path: ".", limit: 2 });
 
-    expect(broker.calls[0]?.request.argv).toEqual([
+    expect(controller.calls[0]?.argv).toEqual([
       "/usr/bin/rg",
       "--line-number",
       "--color=never",
@@ -143,25 +152,38 @@ describe("SandboxPiCodingToolPort", () => {
       "*.ts",
       "--",
       "needle",
-      "/workspace",
+      ".",
     ]);
-    expect(grep.status).toBe("succeeded");
-    expect(grep.exitCode).toBe(1);
-    expect(grep.receipt).toMatchObject({ status: "failed", exitCode: 1 });
+    expect(grep).toMatchObject({
+      status: "succeeded",
+      exitCode: 1,
+      stdout: new Uint8Array(),
+    });
     expect(Buffer.from(find.stdout).toString("utf8")).toBe("a.ts\nb.ts");
     expect(find.resultLimitReached).toBe(2);
     expect(Buffer.from(ls.stdout).toString("utf8")).toBe("src/\nREADME.md");
     expect(ls.resultLimitReached).toBe(2);
   });
 
-  it("rejects Host and traversal paths before the broker sees them", async () => {
-    const broker = new RecordingBroker();
-    const port = new SandboxPiCodingToolPort(broker);
+  it("rejects Host and traversal paths before SRT sees them", async () => {
+    const controller = new RecordingController();
+    const port = new SandboxPiCodingToolPort(controller, paths);
 
     expect(() => port.read("/etc/passwd")).toThrow(/relative workspace path/u);
     expect(() => port.write("../outside", Buffer.from("no", "utf8"))).toThrow(
       /relative workspace path/u,
     );
-    expect(broker.calls).toHaveLength(0);
+    expect(controller.calls).toHaveLength(0);
+  });
+
+  it("rejects non-absolute Task paths at construction", () => {
+    const controller = new RecordingController();
+    expect(
+      () =>
+        new SandboxPiCodingToolPort(controller, {
+          ...paths,
+          workspacePath: "relative",
+        }),
+    ).toThrow(/workspacePath must be an absolute path/u);
   });
 });

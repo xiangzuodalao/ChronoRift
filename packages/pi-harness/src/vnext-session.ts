@@ -26,11 +26,9 @@ import {
 } from "./project-adapter-skill.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
 
-export const VNEXT_PI_WORKSPACE_CWD = "/workspace";
-
 export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
-- Your file and command tools execute inside the task sandbox at /workspace. Their outputs and receipts are the execution record.
-- Network, Host files, credentials, ports, and devices are unavailable unless the task policy explicitly grants them.
+- Your file and command tools execute inside the task workspace shown as your current working directory.
+- Network and Host credentials are unavailable inside sandboxed commands.
 - Game tools operate on task-owned resource IDs; resource IDs are not filesystem paths.
 - Requested controls are requests. Runtime receipts report realized values and known side effects.
 - Runtime records carry observation coverage, checkpoint fidelity, clock uncertainty, and capture loss.
@@ -38,8 +36,8 @@ export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
 - Report only checks you actually ran and their observed results. Finishing the Agent Loop does not prove a bug is fixed.`;
 
 export const VNEXT_CODING_ENVIRONMENT_APPENDIX = `Task environment:
-- Your file and command tools execute inside the task sandbox at /workspace. Their outputs and receipts are the execution record.
-- Network, Host files, credentials, ports, and devices are unavailable unless the task policy explicitly grants them.
+- Your file and command tools execute inside the task workspace shown as your current working directory.
+- Network and Host credentials are unavailable inside sandboxed commands.
 - Unsupported operations and exhausted budgets are returned as structured tool results when recovery is available.
 - Report only checks you actually ran and their observed results. Finishing the Agent Loop does not prove a bug is fixed.`;
 
@@ -304,7 +302,7 @@ export async function runVNextPiTurn(
   }
   const sessionManager =
     options.resumeSessionFile === undefined
-      ? SessionManager.create(VNEXT_PI_WORKSPACE_CWD, sessionDirectory, {
+      ? SessionManager.create(resourceWorkspaceDirectory, sessionDirectory, {
           ...(options.newSessionId === undefined
             ? {}
             : { id: options.newSessionId }),
@@ -312,7 +310,7 @@ export async function runVNextPiTurn(
       : SessionManager.open(
           resolve(options.resumeSessionFile),
           sessionDirectory,
-          VNEXT_PI_WORKSPACE_CWD,
+          resourceWorkspaceDirectory,
         );
   if (
     options.resumeSessionFile !== undefined &&
@@ -322,7 +320,7 @@ export async function runVNextPiTurn(
   }
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
   const created = await dependencies.createSession({
-    cwd: VNEXT_PI_WORKSPACE_CWD,
+    cwd: resourceWorkspaceDirectory,
     agentDir,
     modelRuntime: options.modelRuntime,
     model: options.model,

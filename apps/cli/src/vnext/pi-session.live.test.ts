@@ -6,7 +6,7 @@ import { join } from "node:path";
 import {
   createVNextCodingToolDefinitions,
   runVNextPiTurnWithSdk,
-  type BrokerToolResult,
+  type CodingToolResult,
   type VNextCodingToolPort,
 } from "@chronorift/pi-harness";
 import { afterEach, expect, test } from "vitest";
@@ -21,13 +21,12 @@ afterEach(async () => {
 
 const result = (
   stdout: string,
-  status: BrokerToolResult["status"] = "succeeded",
-): BrokerToolResult => ({
+  status: CodingToolResult["status"] = "succeeded",
+): CodingToolResult => ({
   stdout: Buffer.from(stdout, "utf8"),
   stderr: new Uint8Array(),
   exitCode: status === "succeeded" ? 0 : 1,
   status,
-  receipt: { schemaVersion: 1, kind: "vnext-pi-live-smoke" },
 });
 
 test("real Luna max drives the vNext Pi Session and consumes an actual tool result", async () => {

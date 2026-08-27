@@ -50,7 +50,7 @@ export interface ProjectEnvironmentProcessObservationV1 {
   readonly stderrTruncated: boolean;
   readonly elapsedMonotonicMs: number;
   readonly resourceUsage: {
-    readonly cpuUsageUsec: number;
+    readonly cpuUsageUsec: number | null;
     readonly memoryPeakBytes: number | null;
     readonly pidsPeak: number | null;
   };

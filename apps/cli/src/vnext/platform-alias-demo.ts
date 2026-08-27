@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { lstat, mkdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
@@ -29,41 +29,21 @@ import {
 } from "@chronorift/pi-harness";
 
 import { prepareProjectEnvironmentDebugBuildV1 } from "./candidate-godot-build.js";
-import {
-  SandboxCleanupReceiptV1Schema,
-  SecurityEventV1Schema,
-  type SecurityEventV1,
-} from "./contracts.js";
 import { preflightManagedGodotProjectEnvironmentRuntimeV1 } from "./managed-godot-project-environment-runtime-preflight.js";
 import { NodeHostGitPort } from "./host-git.js";
 import { extractTaskPatch } from "./patch-handoff.js";
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
-import {
-  defaultProjectEnvironmentHostConfigPath,
-  readProjectEnvironmentHostConfigV1,
-  resolveProjectEnvironmentGodotToolchainV1,
-} from "./project-environment-host-config.js";
 import { ProjectEnvironmentGameRuntimeV1 } from "./project-environment-game-runtime.js";
 import { GodotProjectEnvironmentSidecarPortV1 } from "./project-environment-sidecar-port.js";
-import {
-  createDuplexBwrapCgroupTaskSandbox,
-  sandboxManagedRuntimePolicyTargets,
-} from "./sandbox-broker.js";
-import {
-  createSandboxPolicyV2,
-  sandboxPolicyV2Content,
-} from "./sandbox-policy.js";
-import {
-  createSandboxTaskRuntimeRoot,
-  preflightSandboxHost,
-} from "./sandbox-preflight.js";
-import { inspectSandboxToolchain } from "./sandbox-toolchain.js";
 import {
   preflightCleanProjectEnvironmentV1,
   type VerifiedProjectEnvironmentSourceV1,
 } from "./source-preflight.js";
 import { createProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
+import { SrtGodotRunner } from "./srt-godot-runner.js";
+import { resolveSrtRuntimeConfig } from "./srt-runtime-config.js";
+import { SrtSandboxController } from "./srt-sandbox-controller.js";
 import {
   createPlatformAliasGodotRunToolV1,
   PlatformAliasGodotRunCallV1Schema,
@@ -289,8 +269,7 @@ export const PlatformAliasDemoResultV1Schema = z
     candidateObservationError: BoundedMessageSchema.nullable(),
     workspaceDirectory: AbsolutePathSchema,
     taskDirectory: AbsolutePathSchema,
-    cleanupReceipt: SandboxCleanupReceiptV1Schema,
-    securityEvents: z.array(SecurityEventV1Schema),
+    sandboxRuntime: z.literal("anthropic-srt"),
     limitations: z.array(z.string().min(1).max(4_096)).min(1),
   })
   .strict()
@@ -438,7 +417,8 @@ export interface PlatformAliasDemoRequestV1 {
   readonly provider: string;
   readonly model: string;
   readonly thinkingLevel: PiThinkingLevel;
-  readonly hostConfigPath?: string | undefined;
+  readonly stateRoot?: string | undefined;
+  readonly godotBin?: string | undefined;
   readonly agentDir?: string | undefined;
   readonly timeoutMs?: number | undefined;
 }
@@ -793,15 +773,6 @@ const agentResult = (
         },
   );
 
-const cleanupComplete = (
-  receipt: z.infer<typeof SandboxCleanupReceiptV1Schema>,
-  storageReconciliationRequired: boolean,
-): boolean =>
-  receipt.processGroupTerminated === true &&
-  receipt.cgroupPopulated === false &&
-  receipt.scopeRemoved === true &&
-  (!storageReconciliationRequired || receipt.storageReconciled === true);
-
 interface PlatformAliasCaseRunV1 {
   readonly result: PlatformAliasDemoResultV1;
   readonly rawGodotToolCalls: readonly PlatformAliasGodotRunCallV1[];
@@ -821,34 +792,22 @@ async function runPlatformAliasCaseV1(
   ) {
     throw new Error("GN-1 provider and model must not be empty");
   }
-  const hostConfig = await readProjectEnvironmentHostConfigV1(
-    request.hostConfigPath ?? defaultProjectEnvironmentHostConfigPath(),
-  );
-  const runtimeRoot = await createSandboxTaskRuntimeRoot(
-    hostConfig.taskStorageRoot,
-    hostConfig.runtimeRoot,
-  );
+  const runtimeConfig = await resolveSrtRuntimeConfig({
+    ...(request.stateRoot === undefined
+      ? {}
+      : { stateRoot: request.stateRoot }),
+    ...(request.godotBin === undefined ? {} : { godotBin: request.godotBin }),
+  });
+  const runtimeRoot = runtimeConfig.stateRoot;
   const inspectedSource = await inspectFixedSource(
     request.projectPath,
-    hostConfig.taskStorageRoot,
+    runtimeRoot,
   );
   const source = inspectedSource.source;
-  const sandbox = await preflightSandboxHost({
-    delegatedCgroupRoot: hostConfig.delegatedCgroupRoot,
-    bwrapPath: hostConfig.bwrapPath,
-    prlimitPath: hostConfig.prlimitPath,
-    busyboxPath: hostConfig.busyboxPath,
-    taskStorageRoot: hostConfig.taskStorageRoot,
-  });
-  if (sandbox.kind !== "supported") {
-    throw new Error(
-      `GN-1 sandbox preflight failed: ${JSON.stringify(sandbox.receipt.blockers)}`,
-    );
+  if (source.requestedGodotVersion !== "4.7.1") {
+    throw new Error("GN-1 requires Godot 4.7.1");
   }
-  const godot = await resolveProjectEnvironmentGodotToolchainV1(
-    hostConfig,
-    source.requestedGodotVersion,
-  );
+  const godot = runtimeConfig.godot;
   const adapter = await loadProjectAdapterPackageWithBytesV1(
     PLATFORM_ALIAS_ADAPTER_DIRECTORY,
     {
@@ -857,22 +816,12 @@ async function runPlatformAliasCaseV1(
       requireEmptyLaunchParameters: true,
     },
   );
-  const managed = await preflightManagedGodotProjectEnvironmentRuntimeV1({
-    hostConfig,
-    godot,
+  const managed = preflightManagedGodotProjectEnvironmentRuntimeV1({
+    godotReceipt: godot.receipt,
     adapterFiles: adapter.fileBytes.map((file) => ({
       relativePath: file.path,
       bytes: Uint8Array.from(file.bytes),
     })),
-  });
-  const codingToolchain = await inspectSandboxToolchain({
-    lddPath: hostConfig.lddPath,
-    commands: [
-      { target: "/bin/bash", hostPath: hostConfig.bashPath },
-      { target: "/usr/bin/rg", hostPath: hostConfig.rgPath },
-      { target: "/usr/bin/find", hostPath: hostConfig.findPath },
-      { target: "/usr/bin/ls", hostPath: hostConfig.lsPath },
-    ],
   });
   const taskId = asProjectEnvironmentTaskId(randomUUID());
   const layout = await createProjectEnvironmentTaskDirectoryLayout({
@@ -885,17 +834,6 @@ async function runPlatformAliasCaseV1(
     source,
     layout,
   });
-  const policy = createSandboxPolicyV2(sandbox.capability.runtimeIdentity, {
-    coding: {
-      toolchainId: codingToolchain.capability.toolchainId,
-      targets: codingToolchain.capability.files.map((file) => file.target),
-    },
-    godot: {
-      toolchainId: managed.capability.toolchain.toolchainId,
-      managedRuntimeId: managed.capability.managedRuntimeId,
-      targets: sandboxManagedRuntimePolicyTargets(managed),
-    },
-  });
   const payloadSchemaDigest = asSha256DigestV1(
     contentHash({
       schemaVersion: 1,
@@ -906,7 +844,13 @@ async function runPlatformAliasCaseV1(
     }),
   );
   const policyProfileDigest = asSha256DigestV1(
-    contentHash(sandboxPolicyV2Content(policy) as unknown as JsonValue),
+    contentHash({
+      schemaVersion: 1,
+      runtime: "@anthropic-ai/sandbox-runtime@0.0.74",
+      network: "denied",
+      codingWorkspace: "read-write",
+      godotProject: "read-only-host-stage",
+    }),
   );
   const prepareBuild = () =>
     prepareProjectEnvironmentDebugBuildV1({
@@ -927,19 +871,20 @@ async function runPlatformAliasCaseV1(
   if (defaultTarget === undefined) {
     throw new Error("GN-1 adapter lost its validated default launch target");
   }
-  const securityEvents: SecurityEventV1[] = [];
-  const broker = await createDuplexBwrapCgroupTaskSandbox({
-    taskId,
-    capability: sandbox.capability,
-    hostBinding: sandbox.binding,
-    policy,
-    toolchain: codingToolchain,
-    managedRuntime: managed,
-    layout,
-    securityEvents: (event) => {
-      securityEvents.push(event);
-      return Promise.resolve();
-    },
+  const codingHome = join(layout.sandboxTemporaryDirectory, "coding-home");
+  const codingTemp = join(layout.sandboxTemporaryDirectory, "coding-tmp");
+  await Promise.all([
+    mkdir(codingHome, { mode: 0o700 }),
+    mkdir(codingTemp, { mode: 0o700 }),
+  ]);
+  const controller = new SrtSandboxController();
+  const runner = new SrtGodotRunner({
+    controller,
+    candidateWorkspace: materialized.workspaceDirectory,
+    validationRoot: join(
+      layout.hostOperationTemporaryDirectory,
+      "godot-validation",
+    ),
   });
 
   let baselineObservation: PlatformAliasRuntimeObservationV1;
@@ -952,13 +897,14 @@ async function runPlatformAliasCaseV1(
   let candidateObservationError: string | null = null;
   let candidateRuntimeErrors: JsonValue | null = null;
   let candidateRuntimeErrorsError: string | null = null;
-  let cleanupReceipt: z.infer<typeof SandboxCleanupReceiptV1Schema>;
   let runtime: ProjectEnvironmentGameRuntimeV1 | null = null;
   let sharedToolNames: readonly string[] = [];
   let chronoriftToolNames: readonly string[] = [];
   try {
     const sidecar = new GodotProjectEnvironmentSidecarPortV1({
-      broker,
+      runner,
+      nodePath: runtimeConfig.nodePath,
+      godotPath: godot.binding.executablePath,
       managedRuntime: managed,
     });
     runtime = new ProjectEnvironmentGameRuntimeV1({
@@ -995,7 +941,12 @@ async function runPlatformAliasCaseV1(
       },
     );
     const codingTools = createVNextCodingToolDefinitions(
-      new SandboxPiCodingToolPort(broker),
+      new SandboxPiCodingToolPort(controller, {
+        workspacePath: materialized.workspaceDirectory,
+        homePath: codingHome,
+        tempPath: codingTemp,
+        artifactsPath: layout.sandboxArtifactScratchDirectory,
+      }),
     );
     const godotRunTool = createPlatformAliasGodotRunToolV1({
       sidecar,
@@ -1078,23 +1029,14 @@ async function runPlatformAliasCaseV1(
     }
   } finally {
     await runtime?.close().catch(() => undefined);
-    cleanupReceipt = SandboxCleanupReceiptV1Schema.parse(
-      await broker.cleanup(),
-    );
+    await controller.close();
   }
   const checkoutCleanAfter = await platformAliasSourceStillExactV1(
     source.repositoryRoot,
   );
-  const parsedSecurityEvents = securityEvents.map((event) =>
-    SecurityEventV1Schema.parse(event),
-  );
-  const commandStatus =
-    cleanupComplete(
-      cleanupReceipt,
-      sandbox.capability.taskStorage !== undefined,
-    ) && checkoutCleanAfter
-      ? "completed"
-      : "cleanup_or_source_drift";
+  const commandStatus = checkoutCleanAfter
+    ? "completed"
+    : "cleanup_or_source_drift";
   const result = PlatformAliasDemoResultV1Schema.parse({
     schemaVersion: 1,
     commandStatus,
@@ -1115,8 +1057,7 @@ async function runPlatformAliasCaseV1(
     candidateObservationError,
     workspaceDirectory: materialized.workspaceDirectory,
     taskDirectory: layout.taskRootDirectory,
-    cleanupReceipt,
-    securityEvents: parsedSecurityEvents,
+    sandboxRuntime: "anthropic-srt",
     limitations: [
       "This is one arm of one project-specific ablation pair at one exact third-party commit and tree.",
       "The Host postflight is not visible to the Agent and does not establish a canonical fix verdict.",

@@ -7,10 +7,9 @@
 
 **Move coding agents from source-level guesses to executable Godot runtime evidence.**
 
-Pi owns the Agent Loop. ChronoRift confines file, command, and Godot operations to a declared Task sandbox and gives
-the Agent Build-bound runtime state, actual diffs, tool results, coverage, loss, lineage, and cleanup records. The
-Agent chooses its investigation and edit strategy; project CI, an independent Eval, or human review still owns final
-acceptance.
+Pi owns the Agent Loop. ChronoRift uses an exactly pinned Anthropic Sandbox Runtime (SRT) to confine file, command,
+and Godot operations and gives the Agent Build-bound runtime state, actual diffs, and tool results. The Agent chooses
+its investigation and edit strategy; project CI, an independent Eval, or human review still owns final acceptance.
 
 > **Outcome advantage — GN-1:** with source, prompt, model, thinking, timeout, and shared tools held constant, the
 > coding-only candidate's geometry oracle was `false`. After querying realized platform geometry and Shape identity,
@@ -21,7 +20,7 @@ acceptance.
 > evaluator 3/3. Coding-only also passed 3/3, so this case supports product-path reuse rather than a general efficacy
 > claim.
 
-**Status on 2026-08-25:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
+**Status on 2026-08-27:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
 A default `chronorift [goal]`, arbitrary-project support, and automatic “fixed” verdicts do not exist yet.
 
 ![ChronoRift concept art showing an isolated Godot runtime, baseline and candidate executions, and runtime records](docs/assets/chronorift-hero.jpg)
@@ -30,7 +29,7 @@ _Concept art for the product theme; not a UI screenshot, runtime capture, or pie
 
 ## Architecture at a glance
 
-![ChronoRift architecture overview: the Pi Loop reaches an isolated Task sandbox through a tool broker and leaves records for external acceptance](docs/assets/chronorift-architecture.png)
+![ChronoRift architecture overview: the Pi Loop reaches an isolated candidate and Godot runtime through controlled tools and leaves records for external acceptance](docs/assets/chronorift-architecture.png)
 
 `completed` means the Loop ended with reviewable candidate changes and execution records. It does not mean
 `verified`, `fixed`, or logically proved. Diffs, command output, tool results, and raw runtime records outrank the
@@ -45,12 +44,12 @@ implemented features.
 | Project Environment Preview | Explicit `project preview`; experimental source closure, sandbox, adapter publication/binding, and reuse                                | Narrow historical characterization; not the default command or general project support |
 | GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary | One project, prompt, revision, and pair; raw live outputs remain local-only            |
 | Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                    | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim       |
-| Host sandbox                | Linux bubblewrap, cgroup, bounded Task storage, and pinned toolchain/Godot paths                                                        | Requires explicit Host provisioning; `cwd` or a Git worktree is not isolation          |
-| M3/M4/E2                    | Compatibility implementations and frozen historical archives remain                                                                     | Not templates for new product slices; their dedicated producers and Gates are retired  |
+| Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                       | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer      |
+| M3/M4/E2                    | Implementations and commands are removed from current HEAD; frozen historical archives remain                                           | Not templates for new slices and not restored to reproduce old producers or Gates      |
 
 Not yet available: a default `chronorift [goal]`, arbitrary Godot projects, general adapter authoring/migration,
 cross-platform Hosts, automatic acceptance, or generally available checkpoint/fork/replay on the current product
-path. The M3 compatibility path implements some runtime primitives for one fixed fixture only.
+path. The retired M3 implementation exists only in historical tags and archives.
 
 ## Runtime evidence changed the candidate: GN-1
 
@@ -110,9 +109,12 @@ cost, failed tool responses retained in local raw records, and runtime limitatio
 
    The default Gate runs lint, formatting checks, strict TypeScript checking, and deterministic credential-free tests.
 
-3. **Provisioned Host:** follow the [development guide](docs/development.md) for the Linux namespace/cgroup,
-   bounded-storage, immutable-toolchain, Godot, external-checkout, and provider prerequisites required by Project
-   Environment Preview, GN-1, or the Godot Demo slice.
+3. **Provisioned Host:** follow the [development guide](docs/development.md) for Linux x86_64, exact SRT `0.0.74`,
+   Bubblewrap/`socat`/ripgrep, Godot, external-checkout, and provider prerequisites required by Project Environment
+   Preview, GN-1, or the Godot Demo slice.
+
+   Run `.github/scripts/run-srt-sandbox-conformance.sh`; it verifies the Host prerequisites and then runs the single
+   `corepack pnpm test:sandbox` suite for coding and real Godot/Preview integration.
 
 The explicit experimental entry points are:
 
@@ -122,16 +124,18 @@ corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
 corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
 ```
 
-They operate on a Task-owned `/workspace`, do not modify or apply changes to the source checkout, and do not
-automatically commit, merge, push, or declare a fix.
+They do not modify or apply changes to the source checkout. The Agent can write a private physical candidate
+workspace. Godot validation instead runs against a Host-copied stage whose project source is read-only; only
+`.godot/`, home, temp, and artifacts are writable, and source SHA-256 is checked before and after execution. The
+commands do not automatically commit, merge, push, or declare a fix.
 
 ## Trust boundary
 
 - Project code, runtime data, adapters, plugins, model output, patches, and tool output are untrusted content.
-- Coding and game operations pass through the Task sandbox broker; network, credentials, Host paths, ports, devices,
-  display, audio, and GPU are denied by default.
-- Pi credentials stay on the Host model path and must not enter the repository, artifacts, Task command environment,
-  or Godot process.
+- vNext coding and Godot processes run through SRT with a strict empty network allowlist. Coding can write the
+  candidate workspace; Godot cannot see that mutable tree and can write only its declared runtime directories.
+- Pi credentials stay on the Host model path and must not enter the repository, artifacts, sandboxed command
+  environment, or Godot process.
 - External, wire, tool, and persisted DTOs are explicitly versioned and strictly validated at runtime.
 - Runtime records expose coverage, loss, overwrite, fidelity, and clock limitations rather than hiding them.
 - Content hashes bind bytes and detect corruption; they are not signatures, attestation, or proof of correctness.

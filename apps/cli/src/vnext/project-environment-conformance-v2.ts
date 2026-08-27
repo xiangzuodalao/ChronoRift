@@ -184,6 +184,7 @@ const resourceComplete = (
     ReturnType<ProjectEnvironmentConformanceDriverV2["runVanilla"]>
   >,
 ) =>
+  value.resourceUsage.cpuUsageUsec !== null &&
   value.resourceUsage.memoryPeakBytes !== null &&
   value.resourceUsage.pidsPeak !== null;
 const addDifference = (
@@ -391,6 +392,9 @@ export async function validateProjectAdapterCandidateV2(
       : []),
     ...(observation.stderrTruncated
       ? [`${label} stderr capture was truncated.`]
+      : []),
+    ...(observation.resourceUsage.cpuUsageUsec === null
+      ? [`${label} CPU usage was unavailable under SRT.`]
       : []),
     ...(observation.resourceUsage.memoryPeakBytes === null
       ? [`${label} memory-peak usage was unavailable.`]

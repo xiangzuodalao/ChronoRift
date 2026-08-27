@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, readFile, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -22,11 +22,6 @@ import {
 } from "@chronorift/pi-harness";
 
 import { prepareProjectEnvironmentDebugBuildV1 } from "./candidate-godot-build.js";
-import {
-  SandboxCleanupReceiptV1Schema,
-  SecurityEventV1Schema,
-  type SecurityEventV1,
-} from "./contracts.js";
 import { NodeHostGitPort } from "./host-git.js";
 import { preflightManagedGodotProjectEnvironmentRuntimeV2 } from "./managed-godot-project-environment-runtime-v2-preflight.js";
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
@@ -35,32 +30,17 @@ import {
   createProjectEnvironmentGodotRunToolV2,
   type PlatformAliasGodotRunCallV1,
 } from "./platform-alias-godot-run-tool.js";
-import {
-  defaultProjectEnvironmentHostConfigPath,
-  readProjectEnvironmentHostConfigV1,
-  resolveProjectEnvironmentGodotToolchainV1,
-} from "./project-environment-host-config.js";
 import { ProjectEnvironmentGameRuntimeV2 } from "./project-environment-game-runtime-v2.js";
 import { GodotProjectEnvironmentSidecarPortV2 } from "./project-environment-sidecar-port-v2.js";
-import {
-  createDuplexBwrapCgroupTaskSandbox,
-  sandboxManagedRuntimePolicyTargets,
-} from "./sandbox-broker.js";
-import {
-  createSandboxPolicyV2,
-  sandboxPolicyV2Content,
-} from "./sandbox-policy.js";
-import {
-  createSandboxTaskRuntimeRoot,
-  preflightSandboxHost,
-} from "./sandbox-preflight.js";
-import { inspectSandboxToolchain } from "./sandbox-toolchain.js";
 import {
   preflightCleanProjectEnvironmentV1,
   type VerifiedProjectEnvironmentSourceV1,
 } from "./source-preflight.js";
 import { createProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
+import { SrtGodotRunner } from "./srt-godot-runner.js";
+import { resolveSrtRuntimeConfig } from "./srt-runtime-config.js";
+import { SrtSandboxController } from "./srt-sandbox-controller.js";
 
 export const MOB_ORIENTATION_SOURCE_COMMIT =
   "711822a319c4333a8740522f3c71e97783199fb0" as const;
@@ -111,7 +91,8 @@ export interface MobOrientationAblationRequestV1 {
   readonly provider: string;
   readonly model: string;
   readonly thinkingLevel: PiThinkingLevel;
-  readonly hostConfigPath?: string | undefined;
+  readonly stateRoot?: string | undefined;
+  readonly godotBin?: string | undefined;
   readonly agentDir?: string | undefined;
   readonly timeoutMs?: number | undefined;
 }
@@ -314,15 +295,6 @@ const recordGameCalls = (
   },
 });
 
-const cleanupComplete = (
-  receipt: ReturnType<typeof SandboxCleanupReceiptV1Schema.parse>,
-  storageRequired: boolean,
-) =>
-  receipt.processGroupTerminated &&
-  !receipt.cgroupPopulated &&
-  receipt.scopeRemoved &&
-  (!storageRequired || receipt.storageReconciled === true);
-
 const extractCandidatePatch = async (input: {
   readonly taskId: string;
   readonly workspaceDirectory: string;
@@ -456,8 +428,9 @@ func _ready() -> void:
               JSON.parse(line.slice("CHRONORIFT_MOB_EVAL=".length)),
             );
       const accepted =
-        run.result.sandbox.receipt.status === "succeeded" &&
-        run.result.sandbox.receipt.exitCode === 0 &&
+        run.result.sandbox.process.process.status === "exited" &&
+        run.result.sandbox.process.process.exitCode === 0 &&
+        run.result.sandbox.process.sourceUnchanged &&
         observation !== null &&
         !Array.isArray(observation) &&
         typeof observation === "object" &&
@@ -465,9 +438,9 @@ func _ready() -> void:
       results.push({
         attempt,
         accepted,
-        sandboxStatus: run.result.sandbox.receipt.status,
-        exitCode: run.result.sandbox.receipt.exitCode,
-        signal: run.result.sandbox.receipt.signal,
+        sandboxStatus: run.result.sandbox.process.process.status,
+        exitCode: run.result.sandbox.process.process.exitCode,
+        signal: run.result.sandbox.process.process.signal,
         observation,
       });
     }
@@ -500,32 +473,17 @@ export async function runMobOrientationAblationV1(
   if (timeoutMs !== MOB_ORIENTATION_TIMEOUT_MS)
     throw new Error(`timeout is frozen to ${MOB_ORIENTATION_TIMEOUT_MS}`);
 
-  const hostConfig = await readProjectEnvironmentHostConfigV1(
-    request.hostConfigPath ?? defaultProjectEnvironmentHostConfigPath(),
-  );
-  const runtimeRoot = await createSandboxTaskRuntimeRoot(
-    hostConfig.taskStorageRoot,
-    hostConfig.runtimeRoot,
-  );
-  const source = await inspectSource(
-    resolve(request.projectPath),
-    hostConfig.taskStorageRoot,
-  );
-  const sandbox = await preflightSandboxHost({
-    delegatedCgroupRoot: hostConfig.delegatedCgroupRoot,
-    bwrapPath: hostConfig.bwrapPath,
-    prlimitPath: hostConfig.prlimitPath,
-    busyboxPath: hostConfig.busyboxPath,
-    taskStorageRoot: hostConfig.taskStorageRoot,
+  const runtimeConfig = await resolveSrtRuntimeConfig({
+    ...(request.stateRoot === undefined
+      ? {}
+      : { stateRoot: request.stateRoot }),
+    ...(request.godotBin === undefined ? {} : { godotBin: request.godotBin }),
   });
-  if (sandbox.kind !== "supported")
-    throw new Error(
-      `Mob orientation sandbox preflight failed: ${JSON.stringify(sandbox.receipt.blockers)}`,
-    );
-  const godot = await resolveProjectEnvironmentGodotToolchainV1(
-    hostConfig,
-    source.requestedGodotVersion,
-  );
+  const runtimeRoot = runtimeConfig.stateRoot;
+  const source = await inspectSource(resolve(request.projectPath), runtimeRoot);
+  if (source.requestedGodotVersion !== "4.7.1")
+    throw new Error("Mob orientation requires Godot 4.7.1");
+  const godot = runtimeConfig.godot;
   const adapter = await loadProjectAdapterPackageV2(ADAPTER_DIRECTORY, {
     requireSingleLaunchTarget: true,
     expectedMainScene: source.mainScene,
@@ -541,19 +499,9 @@ export async function runMobOrientationAblationV1(
       bytes: await readFile(resolve(ADAPTER_DIRECTORY, file.path)),
     })),
   );
-  const managed = await preflightManagedGodotProjectEnvironmentRuntimeV2({
-    hostConfig,
-    godot,
+  const managed = preflightManagedGodotProjectEnvironmentRuntimeV2({
+    godotReceipt: godot.receipt,
     adapterFiles,
-  });
-  const codingToolchain = await inspectSandboxToolchain({
-    lddPath: hostConfig.lddPath,
-    commands: [
-      { target: "/bin/bash", hostPath: hostConfig.bashPath },
-      { target: "/usr/bin/rg", hostPath: hostConfig.rgPath },
-      { target: "/usr/bin/find", hostPath: hostConfig.findPath },
-      { target: "/usr/bin/ls", hostPath: hostConfig.lsPath },
-    ],
   });
   const taskId = asProjectEnvironmentTaskId(randomUUID());
   const layout = await createProjectEnvironmentTaskDirectoryLayout({
@@ -566,17 +514,6 @@ export async function runMobOrientationAblationV1(
     source,
     layout,
   });
-  const policy = createSandboxPolicyV2(sandbox.capability.runtimeIdentity, {
-    coding: {
-      toolchainId: codingToolchain.capability.toolchainId,
-      targets: codingToolchain.capability.files.map((file) => file.target),
-    },
-    godot: {
-      toolchainId: managed.capability.toolchain.toolchainId,
-      managedRuntimeId: managed.capability.managedRuntimeId,
-      targets: sandboxManagedRuntimePolicyTargets(managed),
-    },
-  });
   const payloadSchemaDigest = asSha256DigestV1(
     contentHash({
       schemaVersion: 1,
@@ -587,7 +524,13 @@ export async function runMobOrientationAblationV1(
     }),
   );
   const policyProfileDigest = asSha256DigestV1(
-    contentHash(sandboxPolicyV2Content(policy) as unknown as JsonValue),
+    contentHash({
+      schemaVersion: 1,
+      runtime: "@anthropic-ai/sandbox-runtime@0.0.74",
+      network: "denied",
+      codingWorkspace: "read-write",
+      godotProject: "read-only-host-stage",
+    }),
   );
   const prepareBuild = () =>
     prepareProjectEnvironmentDebugBuildV1({
@@ -602,22 +545,25 @@ export async function runMobOrientationAblationV1(
       policyProfileDigest,
     });
   const initial = await prepareBuild();
-  const securityEvents: SecurityEventV1[] = [];
-  const broker = await createDuplexBwrapCgroupTaskSandbox({
-    taskId,
-    capability: sandbox.capability,
-    hostBinding: sandbox.binding,
-    policy,
-    toolchain: codingToolchain,
-    managedRuntime: managed,
-    layout,
-    securityEvents: (event) => {
-      securityEvents.push(event);
-      return Promise.resolve();
-    },
+  const codingHome = join(layout.sandboxTemporaryDirectory, "coding-home");
+  const codingTemp = join(layout.sandboxTemporaryDirectory, "coding-tmp");
+  await Promise.all([
+    mkdir(codingHome, { mode: 0o700 }),
+    mkdir(codingTemp, { mode: 0o700 }),
+  ]);
+  const controller = new SrtSandboxController();
+  const runner = new SrtGodotRunner({
+    controller,
+    candidateWorkspace: materialized.workspaceDirectory,
+    validationRoot: join(
+      layout.hostOperationTemporaryDirectory,
+      "godot-validation",
+    ),
   });
   const sidecar = new GodotProjectEnvironmentSidecarPortV2({
-    broker,
+    runner,
+    nodePath: runtimeConfig.nodePath,
+    godotPath: godot.binding.executablePath,
     managedRuntime: managed,
   });
   const environmentRevisionId = `environment.mob.${source.selectedTreeSha256.slice(0, 32)}`;
@@ -648,7 +594,6 @@ export async function runMobOrientationAblationV1(
       persistRuntimeObservation: () => Promise.resolve(),
     });
   let runtime: ProjectEnvironmentGameRuntimeV2 | null = makeRuntime();
-  let cleanupReceipt: ReturnType<typeof SandboxCleanupReceiptV1Schema.parse>;
   let baselineObservation: Awaited<ReturnType<typeof observe>>;
   let candidateObservation: Awaited<ReturnType<typeof observe>> | null = null;
   let candidateObservationError: string | null = null;
@@ -665,7 +610,12 @@ export async function runMobOrientationAblationV1(
   try {
     baselineObservation = await observe(runtime, taskId, "main");
     const codingTools = createVNextCodingToolDefinitions(
-      new SandboxPiCodingToolPort(broker),
+      new SandboxPiCodingToolPort(controller, {
+        workspacePath: materialized.workspaceDirectory,
+        homePath: codingHome,
+        tempPath: codingTemp,
+        artifactsPath: layout.sandboxArtifactScratchDirectory,
+      }),
       { toolCallAdmission },
     );
     const godotRun = createProjectEnvironmentGodotRunToolV2({
@@ -753,9 +703,7 @@ export async function runMobOrientationAblationV1(
     }
   } finally {
     await runtime?.close().catch(() => undefined);
-    cleanupReceipt = SandboxCleanupReceiptV1Schema.parse(
-      await broker.cleanup(),
-    );
+    await controller.close();
   }
   const patch = await extractCandidatePatch({
     taskId,
@@ -807,24 +755,10 @@ export async function runMobOrientationAblationV1(
     },
     evaluator,
     evaluatorError,
-    cleanupReceipt,
-    cleanupComplete: cleanupComplete(
-      cleanupReceipt,
-      sandbox.capability.taskStorage !== undefined,
-    ),
-    runIntegrity:
-      checkoutCleanAfter &&
-      cleanupComplete(
-        cleanupReceipt,
-        sandbox.capability.taskStorage !== undefined,
-      )
-        ? "valid"
-        : "invalid",
+    sandboxRuntime: "anthropic-srt",
+    runIntegrity: checkoutCleanAfter ? "valid" : "invalid",
     workspaceDirectory: materialized.workspaceDirectory,
     taskDirectory: layout.taskRootDirectory,
-    securityEvents: securityEvents.map((event) =>
-      SecurityEventV1Schema.parse(event),
-    ),
   } as const;
   return result;
 }

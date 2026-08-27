@@ -19,7 +19,6 @@ import {
   runVNextPiTurn,
   VNEXT_CODING_ENVIRONMENT_APPENDIX,
   VNEXT_ENVIRONMENT_APPENDIX,
-  VNEXT_PI_WORKSPACE_CWD,
 } from "../src/index.js";
 
 const roots: string[] = [];
@@ -182,7 +181,9 @@ describe("vNext Pi AgentSession host", () => {
   });
 
   it("provides a coding-only appendix without game or semantic runtime affordances", async () => {
-    expect(VNEXT_CODING_ENVIRONMENT_APPENDIX).toMatch(/task sandbox/u);
+    expect(VNEXT_CODING_ENVIRONMENT_APPENDIX).toMatch(
+      /task workspace shown as your current working directory/u,
+    );
     expect(VNEXT_CODING_ENVIRONMENT_APPENDIX).toMatch(
       /checks you actually ran/u,
     );
@@ -247,7 +248,7 @@ describe("vNext Pi AgentSession host", () => {
     });
     expect(events).toHaveLength(1);
     expect(captures[0]).toMatchObject({
-      cwd: VNEXT_PI_WORKSPACE_CWD,
+      cwd: root.workspace,
       noTools: "all",
       tools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
     });
@@ -326,9 +327,7 @@ describe("vNext Pi AgentSession host", () => {
 
     expect(continued.sessionId).toBe(first.sessionId);
     expect(continued.sessionFile).toBe(first.sessionFile);
-    expect(continuedCaptures[0]?.sessionManager?.getCwd()).toBe(
-      VNEXT_PI_WORKSPACE_CWD,
-    );
+    expect(continuedCaptures[0]?.sessionManager?.getCwd()).toBe(root.workspace);
   });
 
   it("adds the pinned Project Adapter skill without replacing normal Pi resources", async () => {

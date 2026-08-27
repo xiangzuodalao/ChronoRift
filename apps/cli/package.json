@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.74",
     "@chronorift/agent-protocol": "workspace:*",
     "@chronorift/domain": "workspace:*",
     "@chronorift/gamebranch": "workspace:*",

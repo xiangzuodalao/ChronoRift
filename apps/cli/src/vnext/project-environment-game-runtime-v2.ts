@@ -763,16 +763,21 @@ export class ProjectEnvironmentGameRuntimeV2 implements ProjectEnvironmentGameTo
       await active.sidecar.terminate().catch(() => undefined);
     }
     const completed = await active.sidecar.completion;
-    const receipt = completed.kind === "executed" ? completed.receipt : null;
+    const process = completed.kind === "executed" ? completed.process : null;
+    const processExited = process?.process.status === "exited";
+    const processSucceeded =
+      processExited &&
+      process.process.exitCode === 0 &&
+      process.sourceUnchanged;
     const cleanup: ProjectRuntimeCleanupReceiptV1 = {
       schemaVersion: 1,
-      processTreeTerminated: receipt?.cleanup.processGroupTerminated ?? false,
-      runtimeExited: receipt?.status === "succeeded",
-      bridgeExited: receipt?.status === "succeeded",
-      isolationGroupEmpty: !(receipt?.cleanup.cgroupPopulated ?? true),
-      scopeRemoved: receipt?.cleanup.scopeRemoved ?? false,
-      scratchRemoved: receipt?.cleanup.scopeRemoved ?? false,
-      storageReconciled: receipt?.cleanup.storageReconciled === true,
+      processTreeTerminated: process !== null,
+      runtimeExited: processSucceeded,
+      bridgeExited: processSucceeded,
+      isolationGroupEmpty: process !== null,
+      scopeRemoved: process !== null,
+      scratchRemoved: process !== null,
+      storageReconciled: process?.sourceUnchanged === true,
     };
     let traces: ReturnType<ActiveV2["ring"]["dynamicTraces"]> = [];
     try {

@@ -35,8 +35,8 @@ import {
 } from "@chronorift/domain";
 import { contentHash } from "@chronorift/json-artifacts";
 
-export const PROJECT_ADAPTER_CANDIDATE_SANDBOX_PATH_V1 =
-  "/workspace/.chronorift/adapter-candidate" as const;
+export const PROJECT_ADAPTER_CANDIDATE_WORKSPACE_PATH_V1 =
+  ".chronorift/adapter-candidate" as const;
 
 const cleanText = (value: string, label: string, maximum = 4_096): string => {
   const trimmed = value.trim();
@@ -57,8 +57,8 @@ export const composeProjectEnvironmentInitializationPromptV1 = (input: {
   return [
     "Initialize this Godot project environment so later turns can work on the project normally.",
     "Use your normal coding-agent judgment to inspect the project; there is no required tool order.",
-    `Create the one ProjectAdapter candidate below ${PROJECT_ADAPTER_CANDIDATE_SANDBOX_PATH_V1}.`,
-    "Inspect the managed SDK and manifest reference at /workspace/.chronorift/adapter-sdk-v1 before writing adapter code; the Host separately pins the runtime SDK bytes.",
+    `Create the one ProjectAdapter candidate at ${PROJECT_ADAPTER_CANDIDATE_WORKSPACE_PATH_V1} in the current working directory.`,
+    "Inspect the managed SDK and manifest reference at .chronorift/adapter-sdk-v1 in the current working directory before writing adapter code; the Host separately pins the runtime SDK bytes.",
     "Follow the loaded project-adapter skill and its exact manifest, SDK, schema, and capability rules.",
     `The manifest adapterId must be exactly: ${input.adapterId}`,
     "Do not edit game source during this initialization turn. Do not claim readiness yourself: after this turn returns, the Host independently freezes, validates, and publishes the candidate.",
@@ -79,8 +79,8 @@ export const composeProjectEnvironmentInitializationPromptV2 = (input: {
     .replace("adapter-sdk-v1", "adapter-sdk-v2")
     .replace("loaded project-adapter skill", "loaded project-adapter-v2 skill")
     .replace(
-      "Create the one ProjectAdapter candidate below /workspace/.chronorift/adapter-candidate.",
-      "Edit the pre-created ProjectAdapter scaffold at /workspace/.chronorift/adapter-candidate in place; do not copy the reference package.",
+      "Create the one ProjectAdapter candidate at .chronorift/adapter-candidate in the current working directory.",
+      "Edit the pre-created ProjectAdapter scaffold at .chronorift/adapter-candidate in the current working directory; do not copy the reference package.",
     )
     .concat(
       "\nAuthor a manifest/SDK/observation V2 adapter. Inspect project source first, replace every dynamic-placeholder identifier, and implement only source-derived node and Signal semantics. Keep the existing schema files and change each document's schemaId as needed; preserve their small payload shapes when they honestly represent the project and do not invent extra fields. Once the semantic declarations and GDScript agree, call project_adapter_finalize_v2 once. It rebuilds the manifest schema inventory and hashes from the actual schema documents, restores Host-bound adapter, launch, SDK, and engine fields, and freezes the candidate for the rest of this turn. If that call rejects a semantic reference, fix exactly that reference and retry once; do not manually repair hashes or schema declaration paths. After it succeeds, do not call bash, edit, write, or finalize again; finish immediately. Ready requires one lossless declared dynamic trace with entity-bound state and event observations across exactly consecutive incarnations. Do not run Godot or perform conformance yourself because the Host performs authoritative validation after this turn.",

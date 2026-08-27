@@ -82,7 +82,6 @@ import {
   prepareProjectEnvironmentGodotBuildV1,
 } from "./candidate-godot-build.js";
 import type { TaskFixtureCapabilityV1 } from "./contracts.js";
-import type { ManagedGodotRuntimeCapabilityV1 } from "./managed-godot-runtime.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -477,7 +476,7 @@ const fixtureCapability: TaskFixtureCapabilityV1 = {
 const managedRuntime = {
   managedRuntimeId: `managed-godot-runtime:v1:${"b".repeat(64)}`,
   addonHash: asSha256DigestV1("c".repeat(64)),
-} as ManagedGodotRuntimeCapabilityV1;
+} as const;
 
 const createWorkspace = async (): Promise<string> => {
   const root = await mkdtemp(join(tmpdir(), "chronorift-candidate-"));

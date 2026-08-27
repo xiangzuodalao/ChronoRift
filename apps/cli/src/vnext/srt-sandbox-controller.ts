@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Readable, Writable } from "node:stream";
@@ -349,13 +350,17 @@ export class SrtSandboxController {
         );
       }
 
+      const projectReadPaths = (await readdir(request.projectStagePath))
+        .filter((entry) => entry !== ".godot")
+        .map((entry) => join(request.projectStagePath, entry));
+
       const writableRuntimePaths = [
         request.homePath,
         request.tempPath,
         request.artifactsPath,
       ];
       const allowedGodotPaths = [
-        request.projectStagePath,
+        ...projectReadPaths,
         ...writableRuntimePaths,
         ...(request.readOnlyPaths ?? []),
       ];
@@ -385,7 +390,7 @@ export class SrtSandboxController {
           ]),
           allowRead: unique([
             SRT_APPLY_SECCOMP_PATH,
-            request.projectStagePath,
+            ...projectReadPaths,
             request.homePath,
             request.tempPath,
             request.artifactsPath,

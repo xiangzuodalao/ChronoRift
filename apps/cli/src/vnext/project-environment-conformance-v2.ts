@@ -633,10 +633,9 @@ export async function validateProjectAdapterCandidateV2(
     unknowns: observerUnknowns,
     observedAt: completedAt,
   });
-  if (observerEffect.status !== "measured")
-    throw new Error(
-      `ProjectAdapter V2 observer-effect comparison was incomplete: ${alignmentGaps.join("; ")}`,
-    );
+  // SRT does not expose the retired broker's cgroup CPU/memory/PID counters.
+  // Preserve that as an incomplete observation instead of making unrelated
+  // adapter publication depend on custom sandbox accounting.
   const adapterRevisionId = asProjectAdapterRevisionId(
     `adapter-revision:v1:${loaded.candidateSha256}`,
   );

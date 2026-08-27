@@ -97,7 +97,8 @@ it("enforces the small coding and Godot SRT policies on Linux", async () => {
       tempPath,
       artifactsPath,
     });
-    await expect(godot.wait()).resolves.toMatchObject({
+    const godotResult = await godot.wait();
+    expect(godotResult, JSON.stringify(godotResult)).toMatchObject({
       status: "exited",
       exitCode: 0,
     });

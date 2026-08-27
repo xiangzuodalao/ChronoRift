@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -75,6 +75,7 @@ describe("SrtSandboxController", () => {
         artifactsPath,
       ].map(async (path) => mkdir(path, { recursive: true })),
     );
+    await writeFile(join(projectStagePath, "project.godot"), "[application]\n");
   });
 
   afterEach(async () => {
@@ -210,7 +211,7 @@ describe("SrtSandboxController", () => {
       ],
       allowRead: [
         seccompPath,
-        projectStagePath,
+        join(projectStagePath, "project.godot"),
         homePath,
         tempPath,
         artifactsPath,

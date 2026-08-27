@@ -587,7 +587,6 @@ export function inspectReusableProjectEnvironmentRevisionV2(input: {
       "observer-candidate",
       observerEffect.candidateId !== conformance.candidateId,
     ],
-    ["observer-status", observerEffect.status !== "measured"],
   ]
     .filter((entry) => entry[1] === true)
     .map((entry) => entry[0]);

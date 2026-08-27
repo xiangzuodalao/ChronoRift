@@ -3,7 +3,6 @@ export * from "./errors.js";
 export * from "./v01-json-artifact-repository.js";
 export * from "./v03-json-artifact-repository.js";
 export * from "./v04-json-artifact-repository.js";
-export * from "./vnext-task-store.js";
 export * from "./vnext-runtime-store.js";
 export * from "./project-environment-task-store.js";
 export * from "./project-environment-store.js";

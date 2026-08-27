@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { PassThrough } from "node:stream";
+import { dirname, join } from "node:path";
+import { PassThrough, type Writable } from "node:stream";
 
-import { asSha256DigestV1 } from "@chronorift/domain";
 import {
   createProjectEnvironmentRuntimeSidecarSource,
   createProjectEnvironmentVanillaSmokeSidecarSource,
@@ -22,20 +21,19 @@ import {
 } from "@chronorift/godot-protocol";
 import type { z } from "zod";
 
-import type { SandboxExecutionRequestV1 } from "./contracts.js";
+import type {
+  GodotValidationOverlayFile,
+  GodotValidationStage,
+} from "./godot-validation-stage.js";
 import {
   assertManagedGodotProjectEnvironmentRuntimeBinding,
   type ManagedGodotProjectEnvironmentRuntimeBindingV1,
   type ManagedGodotProjectEnvironmentRuntimeCapabilityV1,
 } from "./managed-godot-project-environment-runtime.js";
 import type {
-  DuplexTaskSandboxBrokerV1,
-  SandboxDuplexHandleV1,
-  SandboxExecutionResultV1,
-} from "./sandbox-broker.js";
-
-const sha256 = (bytes: Uint8Array | string): string =>
-  createHash("sha256").update(bytes).digest("hex");
+  SrtGodotProcessResult,
+  SrtGodotRunner,
+} from "./srt-godot-runner.js";
 
 class DiagnosticFramesV1<T> {
   #buffer = Buffer.alloc(0);
@@ -95,9 +93,21 @@ class DiagnosticFramesV1<T> {
   }
 }
 
+export interface ProjectEnvironmentSidecarDeniedV1 {
+  readonly kind: "denied";
+  readonly [key: string]: unknown;
+}
+
+export type ProjectEnvironmentSidecarExecutionResultV1 =
+  | {
+      readonly kind: "executed";
+      readonly process: SrtGodotProcessResult;
+    }
+  | ProjectEnvironmentSidecarDeniedV1;
+
 export interface ProjectEnvironmentVanillaSmokeResultV1 {
   readonly sandbox: Extract<
-    SandboxExecutionResultV1,
+    ProjectEnvironmentSidecarExecutionResultV1,
     { readonly kind: "executed" }
   >;
   readonly diagnostics: readonly GodotLifecycleVanillaSmokeDiagnosticV1[];
@@ -105,51 +115,85 @@ export interface ProjectEnvironmentVanillaSmokeResultV1 {
 
 export interface SandboxedGodotProjectEnvironmentSidecarV1 {
   readonly transport: GodotByteTransport;
-  readonly completion: Promise<SandboxExecutionResultV1>;
+  readonly completion: Promise<ProjectEnvironmentSidecarExecutionResultV1>;
   diagnostics(): readonly GodotLifecycleSidecarDiagnosticV1[];
   terminate(): Promise<void>;
 }
 
+const asBytes = (chunk: Buffer | string): Uint8Array =>
+  typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+
+const writeBytes = async (
+  stream: Writable,
+  bytes: Uint8Array,
+): Promise<void> => {
+  if (!stream.write(bytes)) await once(stream, "drain");
+};
+
+const endInput = async (stream: Writable, bytes?: Uint8Array): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const onError = (error: Error): void => {
+      stream.off("error", onError);
+      reject(error);
+    };
+    stream.once("error", onError);
+    stream.end(bytes, () => {
+      stream.off("error", onError);
+      resolve();
+    });
+  });
+
+const sourceOptions = (
+  stage: GodotValidationStage,
+  godotPath: string,
+): LifecycleSidecarSourceOptions => ({
+  godotExecutable: godotPath,
+  workspaceRoot: stage.projectStagePath,
+  runtimeRoot: stage.tempPath,
+  preStagedProject: true,
+  fontconfigFile: "/etc/fonts/fonts.conf",
+});
+
+const managedOverlays = (
+  binding: ManagedGodotProjectEnvironmentRuntimeBindingV1,
+): readonly GodotValidationOverlayFile[] => [
+  ...binding.addonFiles.map((file) => ({
+    relativePath: join(
+      "addons",
+      "chronorift_project_environment",
+      file.relativePath,
+    ),
+    bytes: Uint8Array.from(file.bytes),
+  })),
+  ...binding.adapterFiles.map((file) => ({
+    relativePath: join(".chronorift", "project-adapter", file.relativePath),
+    bytes: Uint8Array.from(file.bytes),
+  })),
+  {
+    relativePath: "override.cfg",
+    bytes: Uint8Array.from(binding.overlayBytes),
+  },
+];
+
 export class GodotProjectEnvironmentSidecarPortV1 {
-  readonly #vanillaSource: string;
-  readonly #managedSource: string;
+  readonly #overlayFiles: readonly GodotValidationOverlayFile[];
 
   public constructor(
     private readonly options: {
-      readonly broker: Pick<
-        DuplexTaskSandboxBrokerV1,
-        "execute" | "openDuplex"
-      >;
+      readonly runner: Pick<SrtGodotRunner, "open">;
+      readonly nodePath: string;
+      readonly godotPath: string;
       readonly managedRuntime: {
         readonly capability: ManagedGodotProjectEnvironmentRuntimeCapabilityV1;
         readonly binding: ManagedGodotProjectEnvironmentRuntimeBindingV1;
       };
-      readonly sourceOptions?: LifecycleSidecarSourceOptions | undefined;
     },
   ) {
     assertManagedGodotProjectEnvironmentRuntimeBinding(
       options.managedRuntime.capability,
       options.managedRuntime.binding,
     );
-    const sourceOptions = options.sourceOptions ?? {
-      godotExecutable: options.managedRuntime.capability.godotTarget,
-      workspaceRoot: "/workspace",
-      runtimeRoot: "/run/chronorift",
-    };
-    this.#vanillaSource =
-      createProjectEnvironmentVanillaSmokeSidecarSource(sourceOptions);
-    this.#managedSource =
-      createProjectEnvironmentRuntimeSidecarSource(sourceOptions);
-    if (
-      sha256(this.#vanillaSource) !==
-        options.managedRuntime.capability.vanillaSidecarSourceSha256 ||
-      sha256(this.#managedSource) !==
-        options.managedRuntime.capability.projectEnvironmentSidecarSourceSha256
-    ) {
-      throw new TypeError(
-        "PE sidecar sources do not match the runtime binding",
-      );
-    }
+    this.#overlayFiles = managedOverlays(options.managedRuntime.binding);
   }
 
   public async runVanilla(
@@ -160,60 +204,56 @@ export class GodotProjectEnvironmentSidecarPortV1 {
         readonly kind: "completed";
         readonly result: ProjectEnvironmentVanillaSmokeResultV1;
       }
-    | Extract<SandboxExecutionResultV1, { readonly kind: "denied" }>
+    | ProjectEnvironmentSidecarDeniedV1
   > {
     const launch = GodotProjectEnvironmentVanillaSmokeLaunchV1Schema.parse({
       ...input,
       managedRuntimeId: this.options.managedRuntime.capability.managedRuntimeId,
     });
-    const stdin = encodeWireFrame(JSON.stringify(launch));
     const parser = this.parser(
       launch,
       GodotLifecycleVanillaSmokeDiagnosticV1Schema,
     );
-    const abort = new AbortController();
-    let parserError: unknown;
-    const result = await this.options.broker.execute(
-      {
-        schemaVersion: 1,
-        operationId: `pe-vanilla:${sha256(
-          `${launch.taskId}\0${launch.executionId}`,
-        ).slice(0, 24)}`,
-        profile: "godot-headless",
-        argv: [
-          this.options.managedRuntime.capability.nodeTarget,
-          "--input-type=commonjs",
-          "--eval",
-          this.#vanillaSource,
-        ],
-        cwd: "/workspace",
-        environment: {},
-        stdin: {
-          byteLength: stdin.byteLength,
-          sha256: asSha256DigestV1(sha256(stdin)),
-        },
-        timeoutMs: Math.min(
-          600_000,
-          launch.importTimeoutMs + launch.vanillaTimeoutMs + 5_000,
+    const opened = await this.options.runner.open({
+      argv: (stage) => [
+        this.options.nodePath,
+        "--input-type=commonjs",
+        "--eval",
+        createProjectEnvironmentVanillaSmokeSidecarSource(
+          sourceOptions(stage, this.options.godotPath),
         ),
-      },
-      {
-        signal:
-          signal === undefined
-            ? abort.signal
-            : AbortSignal.any([signal, abort.signal]),
-        stdin,
-        onStderrChunk: (chunk) => {
-          try {
-            parser.push(chunk);
-          } catch (error) {
-            parserError = error;
-            abort.abort(error);
-          }
-        },
-      },
-    );
-    if (result.kind === "denied") return result;
+      ],
+      timeoutMs: Math.min(
+        600_000,
+        launch.importTimeoutMs + launch.vanillaTimeoutMs + 5_000,
+      ),
+      readOnlyPaths: [
+        dirname(this.options.nodePath),
+        dirname(this.options.godotPath),
+      ],
+      ...(signal === undefined ? {} : { signal }),
+    });
+
+    let parserError: unknown;
+    opened.process.stderr.on("data", (chunk: Buffer | string) => {
+      try {
+        parser.push(asBytes(chunk));
+      } catch (error) {
+        if (parserError !== undefined) return;
+        parserError = error;
+        void opened.terminate().catch(() => undefined);
+      }
+    });
+    try {
+      await endInput(
+        opened.process.stdin,
+        encodeWireFrame(JSON.stringify(launch)),
+      );
+    } catch (error) {
+      await opened.terminate().catch(() => undefined);
+      throw error;
+    }
+    const process = await opened.completion;
     if (parserError !== undefined) {
       throw parserError instanceof Error
         ? parserError
@@ -222,7 +262,10 @@ export class GodotProjectEnvironmentSidecarPortV1 {
     parser.end();
     return {
       kind: "completed",
-      result: { sandbox: result, diagnostics: parser.records() },
+      result: {
+        sandbox: { kind: "executed", process },
+        diagnostics: parser.records(),
+      },
     };
   }
 
@@ -234,7 +277,7 @@ export class GodotProjectEnvironmentSidecarPortV1 {
         readonly kind: "opened";
         readonly sidecar: SandboxedGodotProjectEnvironmentSidecarV1;
       }
-    | SandboxExecutionResultV1
+    | ProjectEnvironmentSidecarExecutionResultV1
   > {
     const launch = GodotProjectEnvironmentSidecarLaunchV1Schema.parse({
       ...input,
@@ -242,29 +285,31 @@ export class GodotProjectEnvironmentSidecarPortV1 {
       overlayHash: this.options.managedRuntime.capability.overlayHash,
       addonHash: this.options.managedRuntime.capability.addonHash,
     });
-    const request: SandboxExecutionRequestV1 = {
-      schemaVersion: 1,
-      operationId: `pe-managed:${sha256(
-        `${launch.taskId}\0${launch.executionId}\0${launch.instrumentationMode}`,
-      ).slice(0, 24)}`,
-      profile: "godot-headless",
-      argv: [
-        this.options.managedRuntime.capability.nodeTarget,
+    const opened = await this.options.runner.open({
+      overlayFiles: this.#overlayFiles,
+      argv: (stage) => [
+        this.options.nodePath,
         "--input-type=commonjs",
         "--eval",
-        this.#managedSource,
+        createProjectEnvironmentRuntimeSidecarSource(
+          sourceOptions(stage, this.options.godotPath),
+        ),
       ],
-      cwd: "/workspace",
-      environment: {},
       timeoutMs: Math.min(
         600_000,
         launch.importTimeoutMs + launch.executionTimeoutMs + 5_000,
       ),
-    };
+      readOnlyPaths: [
+        dirname(this.options.nodePath),
+        dirname(this.options.godotPath),
+      ],
+      ...(signal === undefined ? {} : { signal }),
+    });
+
     const readable = new PassThrough();
     readable.on("error", () => undefined);
+    opened.process.stdout.pipe(readable, { end: false });
     const parser = this.parser(launch, GodotLifecycleSidecarDiagnosticV1Schema);
-    const callback: { handle?: SandboxDuplexHandleV1 } = {};
     let failure: unknown;
     const fail = (error: unknown): void => {
       if (failure !== undefined) return;
@@ -272,46 +317,47 @@ export class GodotProjectEnvironmentSidecarPortV1 {
       readable.destroy(
         error instanceof Error ? error : new Error(String(error)),
       );
-      void callback.handle?.terminate().catch(() => undefined);
+      void opened.terminate().catch(() => undefined);
     };
-    const opened = await this.options.broker.openDuplex(request, {
-      ...(signal === undefined ? {} : { signal }),
-      onStdoutChunk: async (chunk) => {
-        if (!readable.write(chunk)) await once(readable, "drain");
-      },
-      onStderrChunk: (chunk) => {
-        try {
-          parser.push(chunk);
-        } catch (error) {
-          fail(error);
-        }
-      },
-    });
-    if (opened.kind !== "opened") {
-      readable.end();
-      return opened;
-    }
-    callback.handle = opened.handle;
-    try {
-      await opened.handle.write(encodeWireFrame(JSON.stringify(launch)));
-    } catch (error) {
-      fail(error);
-      await opened.handle.terminate();
-      return opened.handle.completion;
-    }
-    const completion = opened.handle.completion.then((result) => {
+    opened.process.stderr.on("data", (chunk: Buffer | string) => {
       try {
-        parser.end();
+        parser.push(asBytes(chunk));
       } catch (error) {
         fail(error);
       }
-      if (failure === undefined) readable.end();
-      return result;
     });
+
+    const completion: Promise<ProjectEnvironmentSidecarExecutionResultV1> =
+      opened.completion.then(
+        (process) => {
+          try {
+            parser.end();
+          } catch (error) {
+            fail(error);
+          }
+          if (failure === undefined) readable.end();
+          return { kind: "executed", process };
+        },
+        (error: unknown) => {
+          fail(error);
+          throw error;
+        },
+      );
+    try {
+      await writeBytes(
+        opened.process.stdin,
+        encodeWireFrame(JSON.stringify(launch)),
+      );
+    } catch (error) {
+      fail(error);
+      await opened.terminate().catch(() => undefined);
+      return completion;
+    }
+
     const transport: GodotByteTransport = {
       readable,
-      write: (bytes) => opened.handle.write(bytes),
-      close: () => opened.handle.endInput(),
+      write: (bytes) => writeBytes(opened.process.stdin, bytes),
+      close: () => endInput(opened.process.stdin),
     };
     return {
       kind: "opened",
@@ -319,7 +365,7 @@ export class GodotProjectEnvironmentSidecarPortV1 {
         transport,
         completion,
         diagnostics: () => parser.records(),
-        terminate: () => opened.handle.terminate(),
+        terminate: () => opened.terminate(),
       }),
     };
   }

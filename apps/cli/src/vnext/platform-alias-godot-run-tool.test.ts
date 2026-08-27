@@ -123,14 +123,22 @@ const completed = (
   result: {
     sandbox: {
       kind: "executed" as const,
-      stdout: Buffer.alloc(0),
-      stderr: Buffer.alloc(0),
-      receipt: {
-        status,
-        exitCode: status === "succeeded" ? 0 : 1,
-        signal: null,
-        startedAtMonotonicMs: 100,
-        endedAtMonotonicMs: 2_300,
+      process: {
+        process: {
+          status: "exited" as const,
+          exitCode: status === "succeeded" ? 0 : 1,
+          signal: null,
+          stdout: "",
+          stderr: "",
+          durationMs: 2_200,
+          timedOut: false,
+          cancelled: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        },
+        sourceSha256: candidateHash,
+        observedSourceSha256: candidateHash,
+        sourceUnchanged: true,
       },
     },
     diagnostics,

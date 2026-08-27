@@ -1,6 +1,6 @@
 # Godot Demo Mob Orientation：第二项目 runtime vertical slice（未晋级 Hero）
 
-这次切片已经完成。它把 ChronoRift 的公共 ProjectAdapter V2 loader、managed runtime、Task sandbox、lineage 和
+这次切片已经完成。它把 ChronoRift 的公共 ProjectAdapter V2 loader、managed runtime、当时的 Host sandbox、lineage 和
 game tools 用在 GN-1 之外的第二个真实 Godot 项目上；Treatment Agent 在源码修改前后都实际查询了运行时状态，并产出
 了连续三次通过独立 evaluator 的候选。
 
@@ -54,9 +54,10 @@ discoverability appendix：
   不注入输入，也不替项目作“已修复”裁决。
 - Agent 结束后，Host 才临时物化窄 evaluator；它在同一 Godot sandbox 中连续运行三次，随后删除，且不进入 candidate patch。
 
-为让本机 Host 满足真实边界，本次使用固定 Node 22.23.1、Godot 4.7.1、固定容器 digest、bubblewrap、cgroup v2、
-private cgroup namespace、1 GiB / 131072 inode 的 Task storage，并在 Task sandbox 内拒绝网络和 Host 凭据。Pi 凭据只
-挂载到 Host 模型路径，Task command 与 Godot process 均不可见。
+为让本机 Host 满足当时冻结的真实边界，本次使用固定 Node 22.23.1、Godot 4.7.1、固定容器 digest、bubblewrap、
+cgroup v2、private cgroup namespace、1 GiB / 131072 inode 的 Task storage，并在当时的 sandbox 内拒绝网络和 Host
+凭据。Pi 凭据只挂载到 Host 模型路径，sandboxed command 与 Godot process 均不可见。这些是 2026-08-24 结果的历史
+运行条件；current HEAD 已改用 exact SRT `0.0.74`，不再提供自研 cgroup/storage Host layer。
 
 ## Evaluator 资格控制
 
@@ -154,7 +155,7 @@ observation。后两项满足，第一项不满足。Standalone evaluator 的原
 | [ChronoRift V2 candidate](./godot-demo-mob-orientation/chronorift-v2-candidate.patch) |   539 | `ef227866c26b30e8baf46dd38a9363a0b9f4aabe7a1323941ee70d75cf66d177` |
 
 这些 hash 只检查公开 bytes 与本地结果是否一致，不是签名或第三方 attestation。Raw arm 与完整 Pi transcript 保留在
-本机，不公开其中的 Host 绝对路径、Task/workspace/Session/operation identity、完整 tool payload 或模型 prose；没有 raw
+本机，不公开其中的 Host 绝对路径、Task、workspace、Session、operation identity、完整 tool payload 或模型 prose；没有 raw
 arm 的读者不能独立重跑 standalone evaluator。
 
 候选 patch 派生自 MIT-licensed upstream source。版权、许可及“不代表上游接受或背书”的说明见

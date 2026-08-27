@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   appendFile,
   mkdir,
@@ -30,7 +29,6 @@ import {
 } from "@chronorift/json-artifacts";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ProjectEnvironmentHostConfigV1Schema } from "./project-environment-host-config.js";
 import {
   runProjectEnvironmentPreviewV1,
   type ProjectEnvironmentPreviewDependenciesV1,
@@ -57,9 +55,6 @@ const requiredEnvironment = (name: string): string => {
   }
   return value;
 };
-
-const sha256 = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
 
 const git = async (cwd: string, args: readonly string[]): Promise<void> => {
   await execFileAsync("/usr/bin/git", [...args], {
@@ -338,7 +333,7 @@ const createFakePiDependencies =
       if (options.resumeSessionFile === undefined) {
         await writeFile(
           sessionFile,
-          `${JSON.stringify({ type: "session", id: sessionId, cwd: "/workspace" })}\n`,
+          `${JSON.stringify({ type: "session", id: sessionId, cwd: options.resourceWorkspaceDirectory })}\n`,
         );
         sessionIds.set(sessionFile, sessionId);
       }
@@ -384,18 +379,12 @@ const createFakePiDependencies =
 
 describe("PE-B complete Preview Host integration", () => {
   it("initializes, publishes, runs one same-Session goal, and reuses in a new Session", async () => {
-    const taskStorageRoot = requiredEnvironment(
-      "CHRONORIFT_TEST_TASK_STORAGE_ROOT",
-    );
-    const godotPath = requiredEnvironment("CHRONORIFT_TEST_GODOT_BIN");
+    const godotPath = requiredEnvironment("GODOT_BIN");
     const root = await mkdtemp(join(tmpdir(), "chronorift-pe-b-preview-host-"));
     const projectRoot = join(root, "project");
-    const runtimeRoot = await mkdtemp(
-      join(taskStorageRoot, "chronorift-pe-b-preview-runtime-"),
-    );
+    const runtimeRoot = join(root, "state");
     temporaryRoots.add(root);
-    temporaryRoots.add(runtimeRoot);
-    await mkdir(projectRoot);
+    await Promise.all([projectRoot, runtimeRoot].map((path) => mkdir(path)));
     const fixtureRoot = join(
       process.cwd(),
       "fixtures/godot-project-environment-dynamic",
@@ -416,45 +405,10 @@ describe("PE-B complete Preview Host integration", () => {
     await git(projectRoot, ["add", "--all"]);
     await git(projectRoot, ["commit", "--quiet", "-m", "frozen fixture"]);
 
-    const hostConfig = ProjectEnvironmentHostConfigV1Schema.parse({
-      schemaVersion: 1,
-      configKind: "chronorift-project-environment-host",
-      taskStorageRoot,
-      runtimeRoot,
-      delegatedCgroupRoot: requiredEnvironment("CHRONORIFT_TEST_CGROUP_ROOT"),
-      bwrapPath: requiredEnvironment("CHRONORIFT_TEST_BWRAP_BIN"),
-      prlimitPath: requiredEnvironment("CHRONORIFT_TEST_PRLIMIT_BIN"),
-      busyboxPath: requiredEnvironment("CHRONORIFT_TEST_BUSYBOX_BIN"),
-      fontconfigProbePath: requiredEnvironment(
-        "CHRONORIFT_TEST_FONTCONFIG_PROBE_BIN",
-      ),
-      xdgUserDirPath: requiredEnvironment("CHRONORIFT_TEST_XDG_USER_DIR_BIN"),
-      nodePath: requiredEnvironment("CHRONORIFT_TEST_NODE_BIN"),
-      bashPath: requiredEnvironment("CHRONORIFT_TEST_BASH_BIN"),
-      rgPath: requiredEnvironment("CHRONORIFT_TEST_RG_BIN"),
-      findPath: requiredEnvironment("CHRONORIFT_TEST_FIND_BIN"),
-      lsPath: requiredEnvironment("CHRONORIFT_TEST_LS_BIN"),
-      lddPath: requiredEnvironment("CHRONORIFT_TEST_LDD_BIN"),
-      godotToolchains: [
-        {
-          schemaVersion: 1,
-          key: "godot-4.7.1-linux-x86_64-official",
-          version: "4.7.1",
-          platform: "linux-x86_64",
-          channel: "stable-official",
-          executablePath: godotPath,
-          executableSha256: sha256(await readFile(godotPath)),
-          buildFeatures: ["gdscript", "headless"],
-          renderer: "gl_compatibility",
-        },
-      ],
-    });
-    const hostConfigPath = join(root, "host-config.json");
-    await writeFile(hostConfigPath, `${JSON.stringify(hostConfig)}\n`);
     const dependencies = createFakePiDependencies();
     const source = await preflightCleanProjectEnvironmentV1({
       projectPath: projectRoot,
-      sourceRepositoryExclusionRoots: [taskStorageRoot],
+      sourceRepositoryExclusionRoots: [runtimeRoot],
     });
 
     const first = await runProjectEnvironmentPreviewV1(
@@ -464,7 +418,8 @@ describe("PE-B complete Preview Host integration", () => {
         model: "fake-model",
         thinkingLevel: "off",
         goal: "OBSERVE_DYNAMIC_PROJECTION",
-        hostConfigPath,
+        stateRoot: runtimeRoot,
+        godotBin: godotPath,
       },
       dependencies,
     );
@@ -491,7 +446,8 @@ describe("PE-B complete Preview Host integration", () => {
         model: "fake-model",
         thinkingLevel: "off",
         goal: "OBSERVE_REUSED_ENVIRONMENT",
-        hostConfigPath,
+        stateRoot: runtimeRoot,
+        godotBin: godotPath,
       },
       dependencies,
     );

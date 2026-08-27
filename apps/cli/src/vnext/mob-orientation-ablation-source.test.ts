@@ -1,23 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type * as ProjectEnvironmentHostConfigModule from "./project-environment-host-config.js";
-import type * as SandboxPreflightModule from "./sandbox-preflight.js";
+import type * as SrtRuntimeConfigModule from "./srt-runtime-config.js";
 import type * as SourcePreflightModule from "./source-preflight.js";
 
 const mocks = vi.hoisted(() => ({
-  createRuntimeRoot: vi.fn(),
   preflightSource: vi.fn(),
-  readHostConfig: vi.fn(),
+  resolveRuntimeConfig: vi.fn(),
 }));
 
-vi.mock("./project-environment-host-config.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof ProjectEnvironmentHostConfigModule>()),
-  readProjectEnvironmentHostConfigV1: mocks.readHostConfig,
-}));
-
-vi.mock("./sandbox-preflight.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof SandboxPreflightModule>()),
-  createSandboxTaskRuntimeRoot: mocks.createRuntimeRoot,
+vi.mock("./srt-runtime-config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof SrtRuntimeConfigModule>()),
+  resolveSrtRuntimeConfig: mocks.resolveRuntimeConfig,
 }));
 
 vi.mock("./source-preflight.js", async (importOriginal) => ({
@@ -36,11 +29,14 @@ afterEach(() => {
 
 describe("Mob orientation source admission", () => {
   it("selects the frozen project explicitly inside the upstream multi-project repository", async () => {
-    mocks.readHostConfig.mockResolvedValue({
-      taskStorageRoot: "/task-storage",
-      runtimeRoot: "/task-storage/runtime",
+    mocks.resolveRuntimeConfig.mockResolvedValue({
+      stateRoot: "/task-storage",
+      nodePath: "/usr/bin/node",
+      godot: {
+        receipt: {},
+        binding: { executablePath: "/usr/bin/godot" },
+      },
     });
-    mocks.createRuntimeRoot.mockResolvedValue("/task-storage/runtime");
     const sentinel = new Error("stop after source admission request");
     mocks.preflightSource.mockRejectedValueOnce(sentinel);
 
@@ -52,9 +48,14 @@ describe("Mob orientation source admission", () => {
         model: "gpt-5.6-luna",
         thinkingLevel: "max",
         timeoutMs: 600_000,
-        hostConfigPath: "/host-config.json",
+        stateRoot: "/task-storage",
+        godotBin: "/usr/bin/godot",
       }),
     ).rejects.toBe(sentinel);
+    expect(mocks.resolveRuntimeConfig).toHaveBeenCalledWith({
+      stateRoot: "/task-storage",
+      godotBin: "/usr/bin/godot",
+    });
     expect(mocks.preflightSource).toHaveBeenCalledWith({
       projectPath: "/source/godot-demo-projects/3d/squash_the_creeps",
       projectRoot: MOB_ORIENTATION_PROJECT_PREFIX,

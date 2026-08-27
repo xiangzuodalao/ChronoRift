@@ -1,6 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 import { asSha256DigestV1, type Sha256DigestV1 } from "@chronorift/domain";
 import {
   DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1,
@@ -16,17 +13,8 @@ import {
   type ManagedGodotProjectEnvironmentRuntimeBindingV2,
   type ManagedGodotProjectEnvironmentRuntimeCapabilityV2,
 } from "./managed-godot-project-environment-runtime-v2.js";
-import type {
-  ProjectEnvironmentHostConfigV1,
-  ProjectEnvironmentToolchainBindingV1,
-  ProjectEnvironmentToolchainReceiptV1,
-} from "./project-environment-host-config.js";
-import {
-  inspectSandboxToolchain,
-  type SandboxToolchainInspectionPort,
-} from "./sandbox-toolchain.js";
+import type { SrtGodotToolchainReceipt } from "./srt-runtime-config.js";
 
-const execFileAsync = promisify(execFile);
 const roleDigest = (
   files: readonly {
     readonly relativePath: string;
@@ -44,66 +32,13 @@ export interface ManagedGodotProjectEnvironmentRuntimePreflightResultV2 {
   readonly bridgeDigest: Sha256DigestV1;
 }
 
-export async function preflightManagedGodotProjectEnvironmentRuntimeV2(input: {
-  readonly hostConfig: ProjectEnvironmentHostConfigV1;
-  readonly godot: {
-    readonly receipt: ProjectEnvironmentToolchainReceiptV1;
-    readonly binding: ProjectEnvironmentToolchainBindingV1;
-  };
+export function preflightManagedGodotProjectEnvironmentRuntimeV2(input: {
+  readonly godotReceipt: SrtGodotToolchainReceipt;
   readonly adapterFiles: readonly {
     readonly relativePath: string;
     readonly bytes: Uint8Array;
   }[];
-  readonly toolchainInspection?: SandboxToolchainInspectionPort | undefined;
-  readonly probeNodeVersion?: ((path: string) => Promise<string>) | undefined;
-}): Promise<ManagedGodotProjectEnvironmentRuntimePreflightResultV2> {
-  const probe =
-    input.probeNodeVersion ??
-    (async (path: string) =>
-      (
-        await execFileAsync(path, ["--version"], {
-          encoding: "utf8",
-          env: { HOME: "/nonexistent", LANG: "C", LC_ALL: "C" },
-          maxBuffer: 4_096,
-          timeout: 10_000,
-        })
-      ).stdout);
-  if ((await probe(input.hostConfig.nodePath)).trim() !== "v22.23.1")
-    throw new Error("Project Environment V2 requires exact Node v22.23.1");
-  const toolchain = await inspectSandboxToolchain({
-    lddPath: input.hostConfig.lddPath,
-    commands: [
-      {
-        target: DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.nodeExecutable,
-        hostPath: input.hostConfig.nodePath,
-      },
-      {
-        target: DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.godotExecutable,
-        hostPath: input.godot.binding.executablePath,
-      },
-    ],
-    dependencyAnchors: [
-      {
-        target:
-          DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.fontconfigProbeExecutable,
-        hostPath: input.hostConfig.fontconfigProbePath,
-      },
-    ],
-    runtimeExecutableFiles: [
-      {
-        target: DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.shellExecutable,
-        hostPath: input.hostConfig.busyboxPath,
-      },
-      {
-        target:
-          DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.xdgUserDirExecutable,
-        hostPath: input.hostConfig.xdgUserDirPath,
-      },
-    ],
-    ...(input.toolchainInspection === undefined
-      ? {}
-      : { inspection: input.toolchainInspection }),
-  });
+}): ManagedGodotProjectEnvironmentRuntimePreflightResultV2 {
   const sourceOptions = {
     godotExecutable:
       DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.godotExecutable,
@@ -116,13 +51,7 @@ export async function preflightManagedGodotProjectEnvironmentRuntimeV2(input: {
     createProjectEnvironmentRuntimeSidecarSourceV2(sourceOptions);
   return Object.freeze({
     ...createManagedGodotProjectEnvironmentRuntimeV2({
-      doctorVersion: input.godot.receipt.realizedVersionOutput,
-      nodeTarget: DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.nodeExecutable,
-      godotTarget:
-        DEFAULT_PROJECT_ENVIRONMENT_SIDECAR_TARGETS_V1.godotExecutable,
-      toolchain,
-      vanillaSidecarSource,
-      projectEnvironmentSidecarSource,
+      doctorVersion: input.godotReceipt.realizedVersionOutput,
       adapterFiles: input.adapterFiles,
     }),
     vanillaSidecarSource,

@@ -49,6 +49,12 @@ export interface LifecycleSidecarSourceOptions {
   readonly godotExecutable: string;
   readonly workspaceRoot: string;
   readonly runtimeRoot: string;
+  /**
+   * Run the project directly from a Host-prepared read-only validation stage.
+   * SRT-backed callers use this instead of letting the sidecar copy source.
+   */
+  readonly preStagedProject?: boolean | undefined;
+  readonly fontconfigFile?: string | undefined;
   readonly godotArgsPrefix?: readonly string[] | undefined;
   readonly managedProfile?:
     | {
@@ -98,6 +104,9 @@ const createLifecycleSidecarSource = (
   assertAbsoluteNormalized("godotExecutable", options.godotExecutable);
   assertAbsoluteNormalized("workspaceRoot", options.workspaceRoot);
   assertAbsoluteNormalized("runtimeRoot", options.runtimeRoot);
+  const fontconfigFile =
+    options.fontconfigFile ?? DEFAULT_LIFECYCLE_SIDECAR_TARGETS.fontconfigFile;
+  assertAbsoluteNormalized("fontconfigFile", fontconfigFile);
   const argsPrefix = [...(options.godotArgsPrefix ?? [])];
   const managedProfile = options.managedProfile ?? {
     runtimeProfile: GODOT_LIFECYCLE_RUNTIME_PROFILE_V1,
@@ -150,7 +159,8 @@ const GODOT_EXECUTABLE = ${JSON.stringify(options.godotExecutable)};
 const GODOT_ARGS_PREFIX = Object.freeze(${JSON.stringify(argsPrefix)});
 const WORKSPACE_ROOT = ${JSON.stringify(options.workspaceRoot)};
 const RUNTIME_ROOT = ${JSON.stringify(options.runtimeRoot)};
-const PROJECT_ROOT = path.join(RUNTIME_ROOT, OPERATION === "vanilla_smoke" ? "vanilla/project" : "overlay/project");
+const PRE_STAGED_PROJECT = ${JSON.stringify(options.preStagedProject === true)};
+const PROJECT_ROOT = PRE_STAGED_PROJECT ? WORKSPACE_ROOT : path.join(RUNTIME_ROOT, OPERATION === "vanilla_smoke" ? "vanilla/project" : "overlay/project");
 const ADDON_ROOT = path.join(PROJECT_ROOT, "addons", ADDON_DIRECTORY);
 const OVERRIDE_FILE = path.join(PROJECT_ROOT, "override.cfg");
 const PROC_SELF_FD = "/proc/self/fd";
@@ -513,6 +523,7 @@ const sealStagedCandidate = async () => {
 };
 
 const verifyStagedCandidate = async (expectedStage) => {
+  if (PRE_STAGED_PROJECT) return;
   const actual = [];
   const visit = async (directory, prefix, atRoot) => {
     const before = await fsp.lstat(directory, { bigint: true });
@@ -663,7 +674,7 @@ const processEnvironment = (processRoot, extra = {}) => ({
   HOME: path.join(processRoot, "home"),
   PATH: ${JSON.stringify(DEFAULT_LIFECYCLE_SIDECAR_TARGETS.godotPath)},
   LANG: "C.UTF-8", LC_ALL: "C.UTF-8",
-  FONTCONFIG_FILE: ${JSON.stringify(DEFAULT_LIFECYCLE_SIDECAR_TARGETS.fontconfigFile)},
+  FONTCONFIG_FILE: ${JSON.stringify(fontconfigFile)},
   XDG_DATA_HOME: path.join(processRoot, "data"), XDG_CONFIG_HOME: path.join(processRoot, "config"), XDG_CACHE_HOME: path.join(processRoot, "cache"),
   DISPLAY: "", WAYLAND_DISPLAY: "", PULSE_SERVER: "", SDL_AUDIODRIVER: "dummy",
   ...extra
@@ -775,7 +786,7 @@ const runVanillaSmoke = async (launch, stage, remainder) => {
   }
   try {
     await verifyStagedCandidate(stage);
-    diagnostic({ kind: "source_verified", phase: "import", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
+    if (!PRE_STAGED_PROJECT) diagnostic({ kind: "source_verified", phase: "import", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
   } catch (error) {
     error.phase = "import"; error.smokeStage = stage; error.importReceipt = importRun.receipt; error.vanillaReceipt = null;
     throw error;
@@ -797,7 +808,7 @@ const runVanillaSmoke = async (launch, stage, remainder) => {
   }
   try {
     await verifyStagedCandidate(stage);
-    diagnostic({ kind: "source_verified", phase: "vanilla", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
+    if (!PRE_STAGED_PROJECT) diagnostic({ kind: "source_verified", phase: "vanilla", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
   } catch (error) {
     error.phase = "vanilla"; error.smokeStage = stage; error.importReceipt = importRun.receipt; error.vanillaReceipt = vanillaRun.receipt;
     throw error;
@@ -856,7 +867,7 @@ const startManagedRuntime = async (launch, stage, remainder) => {
   }
   try {
     await verifyStagedCandidate(stage);
-    diagnostic({
+    if (!PRE_STAGED_PROJECT) diagnostic({
       kind: "source_verified",
       phase: "managed_import",
       candidateSourceHash: stage.candidateSourceHash,
@@ -930,7 +941,7 @@ const startManagedRuntime = async (launch, stage, remainder) => {
       try {
         await assertPhaseProcessQuiescence(processBaseline);
         await verifyStagedCandidate(stage);
-        diagnostic({ kind: "source_verified", phase: "managed", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
+        if (!PRE_STAGED_PROJECT) diagnostic({ kind: "source_verified", phase: "managed", candidateSourceHash: stage.candidateSourceHash, fileCount: stage.fileCount, byteLength: stage.byteLength }, true);
         process.exitCode = signal === null && exitCode === 0 ? 0 : 1;
       } catch (error) {
         fail("managed", error?.code ?? "BUILD_IDENTITY_MISMATCH", error);
@@ -970,11 +981,13 @@ process.once("SIGINT", shutdown);
     diagnosticFrameMaxBytes = launch.diagnosticFrameMaxBytes;
     diagnosticTotalMaxBytes = launch.diagnosticTotalMaxBytes;
     diagnosticMaxCount = launch.diagnosticMaxCount;
-    const stage = await copyCandidate();
+    const stage = PRE_STAGED_PROJECT
+      ? { candidateSourceHash: launch.candidateSourceHash, fileCount: 0, byteLength: 0 }
+      : await copyCandidate();
     if (stage.candidateSourceHash !== launch.candidateSourceHash) {
       const mismatch = new Error("staged candidate source identity mismatch"); mismatch.code = "BUILD_IDENTITY_MISMATCH"; throw mismatch;
     }
-    await sealStagedCandidate();
+    if (!PRE_STAGED_PROJECT) await sealStagedCandidate();
     if (OPERATION === "vanilla_smoke") await runVanillaSmoke(launch, stage, remainder);
     else await startManagedRuntime(launch, stage, remainder);
   } catch (error) {

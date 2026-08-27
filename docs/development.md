@@ -10,6 +10,8 @@ lives in the [README](../README.md) and Architecture Section 21, and frozen resu
 - Node.js `>=22.19`; `.nvmrc` pins `22.23.1` for repository Gate evidence.
 - pnpm `11.20.0`, invoked as `corepack pnpm` when no global pnpm is installed.
 - The managed installer pins official Godot `4.7.1` for Linux x86_64.
+- `apps/cli` pins `@anthropic-ai/sandbox-runtime` to exactly `0.0.74`; upgrades require an explicit compatibility
+  change and Host conformance run.
 - Live Pi paths use the repository-pinned Pi packages. Provider/model must be supplied at the command boundary;
   `--thinking` currently defaults to `max` when omitted.
 
@@ -36,38 +38,37 @@ corepack pnpm test:godot
 ```
 
 `test:godot` covers the legacy suites plus current lifecycle/semantic Addons, Project Environment snapshot/runtime,
-and PE-B V2 Godot integration. It does not exercise the Linux namespace, cgroup, bounded-storage, sidecar, or
-read-only-mount boundary.
+and Godot integration. It does not exercise the Linux namespace or SRT filesystem boundary.
 
 ## Host-bound sandbox gates
 
-Host conformance is explicit and never silently skipped. The standalone coding-sandbox wrapper needs an empty
-delegated cgroup v2 parent with `cpu`, `memory`, and `pids` controllers; it does not require Project Environment Task
-storage, Godot, or an Addon.
+Host conformance is explicit and never silently skipped. The Linux SRT gate requires Node `22.23.1`, Godot `4.7.1`,
+Bubblewrap, `socat`, and ripgrep. Unprivileged user namespaces must be enabled; on Ubuntu 24.04 this normally means:
 
-The Godot Host gate additionally requires:
+```bash
+sudo apt-get install bubblewrap socat ripgrep fontconfig xdg-user-dirs
+sudo sysctl --write kernel.unprivileged_userns_clone=1
+sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
+```
 
-- a fresh, user-owned, mode `0700` Task-storage mount, no larger than 1 GiB and 131072 inodes. Product preflight accepts
-  exact `tmpfs`, `ext4`, or `xfs`; the checked-in Godot-sandbox wrapper further requires exact `tmpfs`;
-- immutable Host paths for Node `22.23.1`, Godot `4.7.1`, bubblewrap, prlimit, static BusyBox, bash, ripgrep, GNU
-  `find`/`ls`, `ldd`, `fc-match`, and `xdg-user-dir`;
-- the exact managed Addon root required by the selected profile.
+Install Godot with `corepack pnpm godot:install`, then run:
 
-The Task `runtimeRoot` must be a canonical strict child of the storage mount, never the mount itself, the source tree,
-or a symlink path. All tasks, runtimes, evaluator work, scratch space, and artifacts on that filesystem share the
-aggregate limit.
+```bash
+.github/scripts/run-srt-sandbox-conformance.sh
+```
 
-Use the checked-in wrappers as the executable specification for provisioning and cleanup:
+The wrapper verifies Linux x86_64 and the installed SRT package version, checks the required executables, exercises a
+real Bubblewrap user namespace, selects the repository-pinned Godot binary when `GODOT_BIN` is unset, and runs the
+single `corepack pnpm test:sandbox` suite for coding and real Godot/Preview integration. It does not require root, delegated
+cgroups, a bounded-storage mount, immutable toolchain copies, or a Host-config file. SRT initialization failures are
+test failures; the product must never fall back to an unsandboxed process.
 
-| Boundary                             | Command / wrapper                                                                                   |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| Coding sandbox                       | `corepack pnpm test:sandbox` / `.github/scripts/run-sandbox-conformance.sh`                         |
-| Godot + sidecar + sandbox Host paths | `corepack pnpm test:vnext:godot-sandbox` / `.github/scripts/run-vnext-godot-sandbox-conformance.sh` |
-
-The wrappers create or validate the exact test boundary, require fresh storage, and check cleanup. Do not use lazy
-unmount or a reused storage directory to turn residual state into an apparent success. The retired PE-A/PE-B/M4/E2/
-PE-C evidence producers and one-off Host Gate wrappers are available only through Git history and their frozen
-archives; current HEAD does not present them as supported validation commands.
+The sandbox deliberately has two modes. Agent coding commands can read and write their private physical candidate
+workspace plus private home/temp/artifact directories. A Godot validation first copies the candidate to a disjoint
+Host stage, adds only managed overlays, and runs with project source read-only; only `.godot/`, home, temp, and
+artifacts are writable. The mutable candidate is denied to that process, and the stage source SHA-256 is compared
+before and after launch. Both modes use SRT's strict empty network allowlist. This is a practical single-user project
+boundary, not a claim of cgroup resource quotas, storage accounting, or external attestation.
 
 ## Project Environment Preview
 
@@ -78,7 +79,8 @@ corepack pnpm project preview -- [GOAL] \
   --provider PROVIDER \
   --model MODEL \
   [--thinking LEVEL] \
-  [--host-config PATH] \
+  [--state-root PATH] \
+  [--godot-bin PATH] \
   [--project-root RELATIVE_PATH] \
   [--include-untracked RELATIVE_FILE]... \
   [--launch-target TARGET_ID]
@@ -90,13 +92,11 @@ and `--launch-target` selects a declared target (the default is used when omitte
 interfaces; the historical narrow characterization did not promote the default command or establish arbitrary-project
 support.
 
-The default Host config is `$XDG_CONFIG_HOME/chronorift/project-environment-host.v1.json`, or
-`~/.config/chronorift/project-environment-host.v1.json` when `XDG_CONFIG_HOME` is unset. Its strict field schema lives
-in [project-environment-host-config.ts](../apps/cli/src/vnext/project-environment-host-config.ts); the frozen PE-B
-archive contains a [sanitized complete example](evidence/vnext-project-environment-pe-b-local-r1/gate/host-config.v1.json).
-Replace every path and the Godot digest with facts from the current Host, or pass a canonical file via `--host-config`.
-Unknown fields are rejected. The config and preflight, rather than project-supplied environment variables, select the
-sandbox, toolchain, storage, Godot binary, and managed overlay.
+`--state-root` selects private ChronoRift state. If omitted, resolution is `CHRONORIFT_STATE_ROOT`, then
+`$XDG_STATE_HOME/chronorift`, then `~/.local/state/chronorift`. `--godot-bin` selects the executable; if omitted,
+`GODOT_BIN` and then the repository-managed Godot are tried. Paths are canonicalized, the state directory must be
+writable, and Godot must report an exact official 4.7.1 Linux x86_64 build. Project-supplied environment variables do
+not configure sandbox policy.
 
 With that Host boundary provisioned, an executable Preview invocation is:
 
@@ -118,7 +118,7 @@ of `endlessm/moddable-platformer` at exact commit `e78b339500dec8e480b33723c4156
 `9941cb045b3cd73c4554ca1de337a341b383590b`. The checkout must be clean and must not contain `.chronorift/`; each
 command validates these facts and does not clone, fetch, alter, or apply a patch to the source checkout.
 
-Use the same fail-closed Host config and sandbox prerequisites described above. Run each arm as a fresh Task and save
+Use the same fail-closed SRT prerequisites described above. Run each arm with a fresh private workspace and save
 its versioned JSON separately:
 
 ```bash
@@ -129,7 +129,8 @@ corepack pnpm demo:platform-alias-ablation -- \
   --model gpt-5.6-luna \
   --thinking max \
   --timeout-ms 600000 \
-  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --state-root /absolute/path/to/chronorift-state \
+  --godot-bin /absolute/path/to/Godot_v4.7.1-stable_linux.x86_64 \
   --json > coding-only.json
 
 corepack pnpm demo:platform-alias-ablation -- \
@@ -139,25 +140,26 @@ corepack pnpm demo:platform-alias-ablation -- \
   --model gpt-5.6-luna \
   --thinking max \
   --timeout-ms 600000 \
-  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --state-root /absolute/path/to/chronorift-state \
+  --godot-bin /absolute/path/to/Godot_v4.7.1-stable_linux.x86_64 \
   --json > chronorift.json
 
 node scripts/evaluate-platform-alias-ablation.mjs coding-only.json chronorift.json
 ```
 
-`--host-config` is optional under the normal Host-config lookup. The matched command fixes provider/model to
+`--state-root` and `--godot-bin` are optional under the lookup described above. The matched command fixes provider/model to
 `openai-codex/gpt-5.6-luna`, thinking to `max`, and the default timeout to 600 seconds; mismatching values fail closed.
 There is no fake-model fallback. Each arm receives the same exact source, neutral symptom prompt, `coding`
 environment profile, and task-id-only environment instruction profile. It receives the same `read`, `bash`, `edit`,
 `write`, `grep`, `find`, `ls`, and raw `godot_run` tools. The treatment's only tool-surface addition is
 `game_capabilities`, `game_launch`, `game_stop`, and `game_query`; the common prompt does not name ChronoRift, a game
-tool, `platform_geometry`, a cause, a patch, or a required tool order. The two runs intentionally have distinct Task,
-workspace, and Pi Session identities.
+tool, `platform_geometry`, a cause, a patch, or a required tool order. The two runs intentionally have distinct
+fresh-run namespaces, physical workspaces, and Pi Session identities.
 
-Each command materializes a private Task workspace, records the Agent's candidate diff, and performs a Host-only
+Each command materializes a private candidate workspace, records the Agent's candidate diff, and performs a Host-only
 candidate observation on the resulting Build. The treatment may additionally launch and query ProjectAdapter V1
 during its normal Pi Loop. Every Godot launch copies the exact Build into an execution-private tree, seals admitted
-source read-only, and leaves only `.godot/` writable for import cache. Runtime/tool results bind the Task, Build,
+source read-only, and leaves only `.godot/` writable for import cache. Runtime/tool results bind the fresh run, Build,
 runtime, Execution, and tool-call identities. Cleanup receipts and the untouched source-checkout status are retained.
 
 The standalone evaluator is independent of product TypeScript. It strictly validates both result envelopes, matched
@@ -188,7 +190,8 @@ corepack pnpm demo:mob-orientation-ablation -- \
   --model gpt-5.6-luna \
   --thinking max \
   --timeout-ms 600000 \
-  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --state-root /absolute/path/to/chronorift-state \
+  --godot-bin /absolute/path/to/Godot_v4.7.1-stable_linux.x86_64 \
   --json > .chronorift/godot-demo-mob-orientation/coding-only.json
 
 corepack pnpm demo:mob-orientation-ablation -- \
@@ -198,7 +201,8 @@ corepack pnpm demo:mob-orientation-ablation -- \
   --model gpt-5.6-luna \
   --thinking max \
   --timeout-ms 600000 \
-  --host-config /absolute/path/to/project-environment-host.v1.json \
+  --state-root /absolute/path/to/chronorift-state \
+  --godot-bin /absolute/path/to/Godot_v4.7.1-stable_linux.x86_64 \
   --json > .chronorift/godot-demo-mob-orientation/chronorift-v2.json
 
 node scripts/evaluate-mob-orientation-ablation.mjs \
@@ -208,8 +212,8 @@ node scripts/evaluate-mob-orientation-ablation.mjs \
 ```
 
 The runner rejects a different source commit/tree, model, thinking level, timeout, or arm name. Both arms receive the
-same neutral prompt, coding tools, bounded `godot_run`, 128-call shared admission budget, pure source materialization,
-fresh Task/Session, and a common environment appendix containing only the opaque Task ID. The treatment receives four
+same neutral prompt, coding tools, sandboxed `godot_run`, 128-call shared admission budget, pure source materialization,
+fresh-run namespace/Session, and a common environment appendix containing only the opaque run ID. The treatment receives four
 public game-tool definitions and their metadata plus two concise discoverability lines: a prevalidated V2 environment
 is available through `game_*`, and runtime records are observations rather than verdicts while strategy remains the
 Agent's choice. This is a full product intervention, not a tool-only comparison. Host baseline and postflight
@@ -241,7 +245,7 @@ opaque runtime identities. Do not rerun the published pair to search for a diffe
 | `corepack pnpm test:live`                                  | All live provider smokes selected by `vitest.live.config.ts`     |
 
 Only `*.live.test.ts` and explicit live commands may contact a provider. Pi credentials remain in the Host credential
-store and must never enter the repository, evidence, Task command environment, or Godot process. A live success is
+store and must never enter the repository, evidence, sandboxed command environment, or Godot process. A live success is
 reportable only when its required execution, artifact, and cleanup records were actually produced and retained.
 
 ## Historical archives

@@ -20,10 +20,7 @@ import {
 } from "./project-adapter-skill.js";
 import type { PiThinkingLevel } from "./types.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
-import {
-  VNEXT_ENVIRONMENT_APPENDIX,
-  VNEXT_PI_WORKSPACE_CWD,
-} from "./vnext-session.js";
+import { VNEXT_ENVIRONMENT_APPENDIX } from "./vnext-session.js";
 
 export interface RunProjectEnvironmentInteractivePiSessionV1Options {
   readonly resourceWorkspaceDirectory: string;
@@ -73,6 +70,9 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
   }
 
   const agentDir = resolve(options.agentDir ?? getAgentDir());
+  const resourceWorkspaceDirectory = resolve(
+    options.resourceWorkspaceDirectory,
+  );
   const sessionDirectory = resolve(options.sessionDirectory);
   let sessionFile =
     options.sessionFile === undefined
@@ -83,7 +83,7 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     retry: { enabled: true, maxRetries: 2 },
   });
   const resourceLoader = new DefaultResourceLoader({
-    cwd: resolve(options.resourceWorkspaceDirectory),
+    cwd: resourceWorkspaceDirectory,
     agentDir,
     settingsManager,
     noExtensions: true,
@@ -102,7 +102,7 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     throw new Error("Pi TUI did not load the managed ProjectAdapter skill");
   }
   const services: AgentSessionServices = {
-    cwd: VNEXT_PI_WORKSPACE_CWD,
+    cwd: resourceWorkspaceDirectory,
     agentDir,
     modelRuntime,
     settingsManager,
@@ -112,13 +112,13 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
   const exactSessionManager = (): SessionManager => {
     const manager =
       sessionFile === undefined
-        ? SessionManager.create(VNEXT_PI_WORKSPACE_CWD, sessionDirectory, {
+        ? SessionManager.create(resourceWorkspaceDirectory, sessionDirectory, {
             id: options.expectedSessionId,
           })
         : SessionManager.open(
             sessionFile,
             sessionDirectory,
-            VNEXT_PI_WORKSPACE_CWD,
+            resourceWorkspaceDirectory,
           );
     if (manager.getSessionId() !== options.expectedSessionId) {
       throw new Error(
@@ -162,7 +162,7 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     return { ...created, services, diagnostics: [] };
   };
   const runtime = await createAgentSessionRuntime(createRuntime, {
-    cwd: VNEXT_PI_WORKSPACE_CWD,
+    cwd: resourceWorkspaceDirectory,
     agentDir,
     sessionManager: exactSessionManager(),
   });

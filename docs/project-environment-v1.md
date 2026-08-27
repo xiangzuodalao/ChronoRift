@@ -1,14 +1,14 @@
 # Project Environment V1 RFC
 
-> 状态：**设计冻结；PE-A 至 PE-C implementation present；历史 characterization 已归档，专用 evidence/Gate
-> 基础设施已退役；尚未晋升默认入口**
+> 状态：**历史 V1 设计参考；Preview 保留最窄实现；不是 current HEAD 必须完整遵从的不可变 contract**
 > 决策日期：2026-08-12
 > 目标入口：Project Environment Preview；经过显式产品验证与评审后才可成为默认 `chronorift [goal]` 入口
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
 
-Project Environment V1 定义实验性 Preview 的产品契约、数据和信任边界；它不是完整的当前实现说明。当前源码已有
-PE-A 至 PE-C 的 strict DTO、stores、ProjectAdapter SDK/wire/loader、初始化与 publication、exact Build compatibility、
-same/new-Session reuse、V2 dynamic observation，以及 narrow dirty/source/import/target closure。旧 PE-A/PE-B real-model
+Project Environment V1 记录实验性 Preview 的历史设计、数据和信任边界；它不是完整的当前实现说明或实施清单。
+current HEAD 保留 strict DTO/store、ProjectAdapter SDK/wire/loader、初始化/publication/reuse、V2 observation 和 narrow
+source/import/target closure，并把 Host process 收敛到 Linux x86_64 上 exact SRT `0.0.74`。Agent coding 使用 fresh-run
+physical workspace RW；Godot 使用 Host-copied stage source RO + 前后 hash；两者默认禁网。旧 PE-A/PE-B real-model
 bundles 与 PE-C CI run metadata 只作为冻结历史归档保留；当前 HEAD 不再包含它们的 producer、standalone validator
 或一次性 Host Gate。历史结果不能描述成外部项目普遍受支持或默认入口已经切换。
 
@@ -16,9 +16,8 @@ PE-B 在 Project Environment V1 store 上增加内部 manifest/SDK/observation p
 PE-A revision 原样保留；新初始化默认生成 V2 adapter，未知版本或 digest 返回 `review_required`，不自动迁移。V2
 使用 Execution-bound EntityRef、event-driven ordered queue、Host continuous validated ring 与 durable capture replay。
 
-M3、M4 与 E2 的 schema、wire、证据和原语义保持不变。Project Environment V1 使用独立 namespace，
-只复用已经有真实依赖和生命周期边界的 workspace、sandbox、Pi Session、Godot sidecar、runtime store 与 patch
-handoff 实现；它不把冻结 profile 原地迁移成新产品 API。
+M3、M4 与 E2 的 active implementation/command 已从 current HEAD 删除；其 schema、wire 和证据只在历史 tag/归档中按
+原语义保留。Preview 不恢复旧 broker、cgroup/storage layer、Host-config 或 runtime coordinator。
 
 ## 1. 产品目标与支持范围
 
@@ -30,7 +29,7 @@ handoff 实现；它不把冻结 profile 原地迁移成新产品 API。
 cd <godot-project-root>
 chronorift [optional goal]
 → 自动发现 project.godot、source closure 与受管 Godot toolchain
-→ 创建 managed workspace、sandbox 与可见 Pi Session
+→ 创建 fresh `srt-tasks-v1` physical workspace、SRT boundary 与可见 Pi Session
 → 首次进入时，Agent 生成 ProjectAdapter candidate
 → Harness 执行 conformance，完整落盘 revision 后原子切换 current pointer
 → 在同一 Session 的下一 turn 处理已排队目标
@@ -95,9 +94,9 @@ Project Environment V1 接受 Git 工作区快照，而不只接受 clean checko
 
 `.git/`、ignored files、未选择的 untracked 文件和 `.chronorift/` 永不进入 closure。Persisted closure 只保存 opaque
 source-root ID、安全 project-relative reference、mode、content identity 和 lineage；Host canonical absolute path 只在
-broker preflight 内短暂使用，不能写入 environment、artifact 或 export bundle。
+Host source admission 内短暂使用，不能写入 environment、artifact 或 export bundle。
 
-Task sandbox 不自动 clone、fetch、更新 submodule 或下载 LFS object。LFS pointer 尚未 materialize、source root 缺失、
+当前 sandboxed run 不自动 clone、fetch、更新 submodule 或下载 LFS object。LFS pointer 尚未 materialize、source root 缺失、
 symlink 逃逸、unsupported tree entry 或 identity 在冻结期间漂移时 fail closed。URL、commit 名称或 lockfile 不是已取得
 字节的替代品。
 
@@ -109,9 +108,8 @@ materialize 后必须重新计算 closure identity，漂移时在 Agent、import
 
 Source admission 在 hashing、copy 和模型可见之前拒绝 Pi auth/credential roots、`.env*`、private key、常见 cloud
 credential 文件及由 operator policy 标记的敏感路径；submodule、LFS 实体和 vendored addon 使用同一规则。拒绝日志
-只能记录脱敏的 project-relative category，不能回显 secret bytes。项目确实需要的 secret 只能由独立的
-task/tool/service-scoped credential broker 临时注入获准主体，不能成为 source closure、adapter、artifact identity、
-bundle 或普通 command/Godot environment。
+只能记录脱敏的 project-relative category，不能回显 secret bytes。current HEAD 不提供 secret injection；项目 secret
+不能成为 source closure、adapter、artifact identity、bundle 或普通 command/Godot environment。
 
 ### 3.2 Project Environment 与 Task 分离
 
@@ -129,16 +127,12 @@ runtime、Execution、capture、checkpoint 和 artifact 配额。
   history；既有 v0.3/v0.4 namespace 与字节仍按原语义共存；
 - 在根级 `.chronorift/` 已被 Git 跟踪、经过 symlink 映射或不能安全排除时拒绝初始化。
 
-未发布 ProjectAdapter candidate、初始化 Session、验证日志、runtime artifacts 与失败 attempt 保存在仓库外的
-bounded Task storage。Project Environment 不绕过 Task storage 的容量、inode、cleanup 和 lineage 约束。
+未发布 ProjectAdapter candidate、初始化 Session、验证日志和 runtime artifacts 保存在仓库外的 fresh-run
+`srt-tasks-v1` namespace。current HEAD 不提供旧 bounded-storage mount、inode ledger 或跨命令 failed-attempt manager。
+project-local environment store 只保留 Preview 实际使用的 revision/publication 数据；不把容量 policy 写成已实现事实。
 
-这两个 store 是不同物理配额域：仓库外 Task store 约束 Session、candidate 和 runtime；project-local environment
-store 另有 project-level aggregate bytes/inodes/revision-count 配额、retention owner 和 admission preflight。达到
-上限时拒绝新 publication，不能删除 current、pinned 或仍被 Task/Build/Execution lineage 引用的 revision；只允许按
-显式 policy 清理未引用历史 revision。该本地 store 不能借用 Task mount 的容量声明。
-
-Agent 的普通 coding tools 只能修改 sandbox candidate，不能直接写 Host `.chronorift/`。只有 Host publication
-broker 可以创建 immutable revision 并通过 compare-and-swap 更新 current pointer。
+Agent 的普通 coding tools 只能修改 SRT candidate，不能直接写 Host `.chronorift/`。Host publication code 创建 revision
+并更新 current pointer；不再经过独立 publication broker framework。
 
 ### 3.3 Host drift 与游戏 patch
 
@@ -183,21 +177,17 @@ commit、merge 或 push。`ApplyReceiptV1` 绑定 input patch、目标 pre/post 
 physical store DTO 留在对应 source adapter、Godot adapter、CLI composition 或 artifact adapter 边界，不能让
 `domain` 知道 Git、Godot 或 filesystem layout。
 
-### 4.1 Task、Session、Turn 与 binding
+### 4.1 Fresh run、Session、Turn 与 binding
 
-`Task` 是一个交互工作上下文，不等于单个用户 goal。它拥有 exactly one managed workspace 和 Pi Session、零到多个
-用户 goal turn，以及环境初始化/维护 turn。每个 turn 都记录 `purpose = environment_initialization |
-environment_maintenance | user_goal`、task/session ID、nullable attempt ID、显式预算与精确 environment binding；排队
-goal 不进入初始化 prompt，初始化失败时不存在 user-goal turn。
+current HEAD 中 `taskId` 是一次 fresh-run record identity。每条 command 在 `srt-tasks-v1` 下创建一个新的 physical
+workspace 和 Pi Session；它不是可以通过通用 Task CLI 跨命令继续的长生命周期对象。初始化与同一 command 内的 goal
+turn 可以共享 Session，Project Environment revision 则独立保存在 project-local store，供后续 fresh run 复用。
 
-Task 的 append-only `EnvironmentBindingEpochV1` 起始可以是 `pending(attemptId)`。Publication 与 project store receipt
-核对成功后，Task ledger 才追加精确 environment/adapter revision binding；queued goal 只能在该 epoch 之后开始。
-外部 current pointer 变化不更新已有 Task。若同一 Task 主动发布新 adapter，只能在没有 active runtime 的 turn boundary
-追加新 epoch；之后的 Build/Execution 使用新 epoch，历史资源继续绑定旧 epoch。
+保留的 `EnvironmentBindingEpochV1` 只记录该 run 使用的精确 environment/adapter revision。Publication 成功后才投递
+同一 command 排队的 goal；初始化失败时 goal 不执行。current pointer 的后续变化不重写已经完成的 run record。
 
-Attempt、turn、candidate 与尚未 promotion 的 conformance Execution 属于 Task；published environment/adapter revision
-属于 project。Published revision 自带最小、path-free conformance evidence closure，或对外部 evidence 建立不能被
-Task discard 静默删除的 retention pin，避免 project revision 指向已消失的 Task artifact。
+Attempt、turn、candidate 与 conformance Execution 属于该 fresh run；published environment/adapter revision 属于
+project-local store，并拥有其发布所需的 bytes，不依赖通用 Task retention manager。
 
 关键 identity 关系是：
 
@@ -212,14 +202,14 @@ ProjectEnvironmentRevision ──pins── ProjectAdapterRevision
         │
         └──pins SDK + bridge + Godot toolchain + conformance
                                  │
-Task ──pins environment revision ▼
+Fresh run ──binds environment revision ▼
 Build ──binds source + adapter + probe + compatibility receipt
                                  │
 Execution ──binds Build + runtime + capture/checkpoint lineage
 ```
 
-Adapter bytes 未变化时，Agent 针对新 source closure 的审阅仍产生新的 Project Environment revision。Task 必须
-pin 精确 environment/adapter revision；current pointer 的后续变化不热更新已有 Task。Build 和 Execution 同时绑定
+Adapter bytes 未变化时，Agent 针对新 source closure 的审阅仍产生新的 Project Environment revision。Fresh-run result
+记录精确 environment/adapter revision；current pointer 的后续变化不重写旧 result。Build 和 Execution 同时绑定
 source、adapter、probe、payload schema、toolchain 与 compatibility receipt，不能仅记录一个笼统的“项目版本”。
 
 Content hash 用于 identity 和损坏检测，不是签名、外部 attestation 或同用户权限下的防篡改保证。
@@ -362,23 +352,21 @@ Validation 可以在 Agent Loop 中重复、交错运行，这些结果都是 pr
 `session.prompt()` 正常返回后，Host 才冻结本 turn 的唯一 candidate identity，重跑 authoritative conformance 与
 cleanup，然后自动 publication；不要求 submit tool 或固定调查顺序。Turn timeout、abort、provider failure 或没有
 唯一合法 candidate 时绝不 publication。`succeeded`、`failed`、`cancelled` 与 `binding_failed` 都是 sealed terminal
-states。Resume 不回写失败 attempt，而是创建带 `predecessorAttemptId` 的 successor attempt；
-在 Session、candidate、source identity、SDK/toolchain 和最低 conformance profile 仍匹配时可以复用保留内容，否则
-必须先形成新 candidate 或拒绝 resume。Discard 只清理未被 publication/lineage pin 的 candidate bytes，同时保留
-bounded tombstone、terminal receipt 与 predecessor identity。
+states。current HEAD 不恢复失败 run 的 Pi Session/candidate，也不提供跨命令 resume/discard；下一次 invocation 创建
+新的 fresh-run namespace。Project-local publication 若中断，只允许用 path-free operation identity 收敛其原子 store
+状态，不自动投递旧 goal。
 
-首次启动创建同一个可见 Pi Session。Provider、model 与 thinking 在命令边界显式选择且禁止 silent fallback；Task
-在创建 Session 时冻结该选择，初始化和排队 goal 使用同一 Session/model/thinking，变更选择需要显式创建新的 Task。
-初始化 turn 与用户目标 turn 分别声明和记录 token、time、tool-call、runtime 与 storage budget，但共享该 Session 的
-正常历史与 compaction。预算耗尽时可以由用户提高预算后创建 successor attempt，不伪装成成功。初始化 prompt 是
+首次启动创建同一个可见 Pi Session。Provider、model 与 thinking 在命令边界显式选择且禁止 silent fallback；fresh run
+在创建 Session 时冻结该选择，初始化和排队 goal 使用同一 Session/model/thinking。初始化 turn 与用户目标 turn 可以
+记录 token、time、tool-call 和 runtime facts，并共享该 Session 的正常历史与 compaction。预算耗尽不伪装成成功。初始化 prompt 是
 普通 `session.prompt()` 加简短环境 appendix/skill，保留 Pi 默认 system prompt。Agent 可以自由读码、运行隔离命令、
 编写 adapter 和调用验证工具；Harness 不要求固定工具顺序或 `submit_project_adapter`。若用户同时提供目标，该目标
 排队但不与初始化 prompt 合并。
 
 PE-A 对 wall timeout 取请求值与 turn budget 的较小值；coding/game tools 共享 turn-scoped tool-call admission，第
-`limit + 1` 次调用在触达 broker/runtime 前拒绝并把 turn 封为 `budget_exhausted`。SDK 能返回的 token 计数与其他
+`limit + 1` 次调用在触达 tool backend/runtime 前拒绝并把 turn 封为 `budget_exhausted`。SDK 能返回的 token 计数与其他
 已观测 counter 在 turn 结束时重验；不能精确逐 turn 观测的 runtime/storage counter 保持 `null/partial`，只由既有
-sandbox execution timeout 与 bounded store 的物理硬上限约束，不能写成主动精确计量。
+sandbox execution timeout 约束，不能写成主动精确计量或 SRT 未提供的 storage quota。
 
 Authoritative validator 通过后，broker 把 bytes 复制到目标 `.chronorift/` 内的新临时目录，
 逐项重验、写入最小 path-free conformance evidence closure、sync 并以 create-new 方式 materialize immutable revision；
@@ -412,9 +400,9 @@ reconciliation 形成 receipt 时采样；若 receipt 已 durable 而后续事�
 不能用新的时间制造第二份 receipt。
 
 首次初始化未达到最低 conformance 时命令非零退出、Project Environment 仍为 uninitialized、排队目标不执行。
-已有环境的 review/migration 失败时，旧 immutable current 不被覆盖，但本 Task 保持 `review_required` 且不执行排队
-目标。失败 candidate、Pi Session、预算、实际验证与 cleanup 记录可留在 bounded Task storage，供下次显式 resume
-或 discard；它们不能作为 degraded current revision 发布。
+已有环境的 review/migration 失败时，旧 immutable current 不被覆盖，但本 fresh run 保持 `review_required` 且不执行排队
+目标。失败 candidate、Pi Session、实际验证与 cleanup 结果可以留在该 fresh-run directory 供 review，但不会被后续
+command 作为可恢复 Task 打开，也不能作为 degraded current revision 发布。
 
 ### 6.2 Ready 最低门槛
 
@@ -428,7 +416,7 @@ Ready revision 至少必须真实完成：
 6. entity lifecycle 与 adapter 声明 event 的严格记录；
 7. 有界 rolling capture、Harness 计算的 transport coverage/loss、adapter 声明的 semantic coverage/unknown、budget
    和 observer-effect receipt；
-8. stop、process/cgroup/scope 与 operation-private scratch cleanup 的实际成功记录，以及预期保留的 Session、candidate、
+8. stop、process scope 与 operation-private scratch cleanup 的实际成功记录，以及预期保留的 Session、candidate、
    revision 和 evidence inventory；
 9. 未覆盖或不可恢复状态域的明确分类。
 
@@ -442,7 +430,7 @@ Input、自定义深层事件、snapshot/restore、alignment、render capture �
 后续进入项目时：
 
 - source、SDK/bridge、toolchain 和最低 conformance policy profile 未变：重验 schema/binding 并运行 quick smoke 后
-  直接复用；Task 的实际 network/display/credential grant 另行 realization，不触发 environment revision；
+  直接复用；每次 sandboxed run 仍默认禁网，不存在隐式 network/display/credential grant；
 - Host source closure 变化：向同一可见 Agent 提供精确 diff、旧 adapter 与旧 capability report；Agent 可以保持或
   修订 adapter，但都必须产生绑定新 source 的 environment revision；
 - managed workspace 内的普通候选代码变化：不要求每次发布 environment revision；每个 candidate Build 先运行
@@ -457,8 +445,8 @@ Compatibility receipt 只证明该精确 adapter revision 能在该精确 Build 
 
 ### 6.4 并发与 revision pinning
 
-多个 Session 可以同时使用同一个项目，但各自拥有独立 managed workspace、Task、Pi Session、runtime storage、
-cgroup 和端口，并 pin 启动时的精确 Project Environment revision。Adapter candidate 可以并行产生；current
+并发多 Session 不是当前承诺。每次顺序执行的 command 拥有独立 fresh-run workspace、Pi Session 和 SRT directories，
+并记录启动时的精确 Project Environment revision。若未来支持并发 publication，才需要项目级租约/CAS；current
 publication 必须持有项目级租约并进行 expected-revision CAS。CAS 冲突保留 candidate，不能覆盖另一 Session 的
 revision。旧 Session 不因 current 更新而热切换。
 
@@ -466,8 +454,8 @@ revision。旧 Session 不因 current 更新而热切换。
 
 ### 7.1 Managed overlay
 
-Bridge、Adapter SDK runtime、ProjectAdapter 与可选 probe overlay 分别冻结并以只读 managed overlay 注入
-Task-owned runtime stage。Host checkout 不挂入 sandbox；游戏 source snapshot、writable import cache、operation
+Bridge、Adapter SDK runtime、ProjectAdapter 与可选 probe overlay 分别冻结并注入 Host-created Godot stage。Host
+checkout 和 mutable candidate 不挂入 Godot sandbox；stage source 只读，`.godot` import cache、home/tmp/artifacts、operation
 scratch 与 overlay 分离。Adapter 不进入候选游戏 patch。
 
 Probe overlay 可以在 runtime-only stage 对项目源码插桩，以观测公开 API 之外的内部状态；它不能修改 Host checkout
@@ -498,7 +486,7 @@ effect，也不要求动态项目完全等价。
 
 | 区域                                             | 信任范围                                                                                   |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Host control plane / sandbox broker              | 只信其执行权限、路径、进程、配额、identity、append/seal 与 publication enforcement         |
+| Host control plane / SRT wrapper                 | 只信其实际 SRT policy、路径、process result、staging/hash 与 publication enforcement       |
 | Pi Loop / model / Agent prose                    | 作为决策者和普通内容使用；不信其环境状态、conformance、权限或 acceptance 声明              |
 | ProjectAdapter / probe / project / Godot plugins | 全部是不可信同一 runtime principal；只接受经过 strict bridge validation 的有界 observation |
 | Source closure / imported bundle                 | 用户授权但内容不可信；identity 与 containment 可验证，不据此信任代码行为或语义             |
@@ -511,31 +499,21 @@ Godot 内同进程的项目代码可能伪造、遗漏或干扰 adapter observat
 adapter 声明的 semantic coverage/unknown，后者不能被写成完整世界覆盖。
 
 Adapter、probe、项目源码、日志、Godot strings、payload 和模型输出都是不可信内容，不能提升 capability 或改变
-sandbox policy。网络默认 deny；没有 Host 用户批准的 project template 时全部 Task 主体禁网，adapter/project bytes
-不能创建或扩大模板。模板本身也不开放网络；每个 Task 必须把它编译成精确、task-scoped 的主体、域名、
-协议和端口 policy，并记录 requested/realized scope。新目标或新执行主体仍需用户授权。Adapter 只能声明网络需求，
-不能批准；局域网、link-local、Host 管理端口、DNS/target drift 和未授权目标继续拒绝。Adapter、项目、`@tool` 与
-EditorPlugin 同属 Godot principal；一旦该主体获准某 allowlist，Harness 不能声称这些代码在进程内彼此隔离使用它。
-
-`ProjectNetworkPolicyTemplateV1` 由 Host policy broker 持久化在项目 source、`.chronorift/` 和 Task artifact 之外的
-用户 policy store，以 Project Environment ID 作为不透明作用域；只有 Host 用户操作能 create-new version、收窄、
-撤销或延长有效期。它不包含 credential，也不属于 environment revision，模板变化不重写历史 revision。每个 Task
-仍生成 `TaskNetworkPolicyReceiptV1`，绑定使用的 template version、具体 sandbox principal、DNS 解析、目标与有效
-窗口。撤销立即阻止新连接并终止适用的临时 grant；历史 receipt 不被改写。
+sandbox policy。current HEAD 的 SRT 使用 strict empty network allowlist，所有 sandboxed process 禁网；adapter/project
+bytes 不能扩大 policy。当前没有 project network template、policy broker、domain approval UI 或 network receipt。只有
+维护产品路径出现真实联网需求时，才单独设计最小授权 surface。
 
 Source closure 所需 submodule、LFS 与 addon 必须在进入 Harness 前 materialize；初始化不以自动联网下载依赖补齐
 source。凭据按工具和目标服务单独授权，永不进入 `.chronorift/`、ProjectAdapter、普通 command environment 或
 Godot process。Pi credential 只供 Host 模型路径使用。
 
-Headless 是默认和最低 conformance。Render/display/GPU 必须由 adapter 声明需求并由用户对 Task 显式授权；未
-授权时报告 `unavailable_by_policy`；环境不具备设备时报告 `unavailable_by_environment`，不能静默打开 Host display
+Headless 是当前默认和最低 conformance。Render/display/GPU 不属于已支持 SRT surface，不能静默打开 Host display
 或 device。Process frame、physics tick、render completion 与
 Host monotonic time 保持不同 clock。Audio 不属于 V1。
 
-Project Environment、Task、Execution、capture、checkpoint 和 render artifact 使用硬配额与显式 retention policy。
-达到上限时可以降采样、拒绝新 capture 或拒绝新 Execution，但不能静默删除 pinned capture、checkpoint、sealed
-Execution、已导出交付物或 lineage。Unpin、discard、cleanup 与 export 都产生 receipt；清理后保留必要 tombstone 和
-identity。ProjectAdapter 无权扩大预算。
+current SRT cutover 只提供 process timeout 与 output prefix limit，不宣称 CPU/memory/PID/storage hard quota 或通用
+retention policy。若未来实现 capture/checkpoint/render artifact，容量与清理必须如实记录且不能静默删除仍被引用的
+结果；这不是当前 Preview 的前置 framework。
 
 ## 9. Adapter bundle 与团队共享
 
@@ -557,10 +535,10 @@ PE-A baseline freeze 同时首次冻结 project-local `project-environment-v1` s
 Host Task bytes，再协调地显式清理/重新初始化；Harness 不自动迁移、删除未知 bytes 或只清理其中一侧。PE-B 不提供
 静默升级，也不原地重解释任何已冻结 revision；任一物理域发生不兼容变更都必须使用新的 namespace/marker。
 
-## 10. 实现 rollout
+## 10. 历史实现 rollout
 
-本 RFC 冻结完整 V1 contract，但实现必须按主要不确定性拆成窄切片，不能把最终默认入口 Gate 当成首个 commit 的
-完成条件。
+本节解释 PE-A 至 PE-C 的历史切片，不是 current HEAD 的 backlog 或不可变完成条件。后续能力只有在真实维护路径出现
+依赖时才重新评估。
 
 ### 10.1 PE-A：Author → Validate → Publish → Use
 
@@ -568,36 +546,33 @@ Host Task bytes，再协调地显式清理/重新初始化；Harness 不自动�
 项目生成达到最低观测门槛的 ProjectAdapter，由 Harness 验证并发布，然后在下一独立 turn 开始用户目标。**
 
 PE-A 冻结为：clean、single-root、single project、single default launch target、headless、deny-all network；新
-namespace 与严格 DTO；Task-owned candidate；manifest + GDScript SDK；只读 overlay；固定工具与 optional module 的
+namespace 与严格 DTO；fresh-run physical candidate；manifest + GDScript SDK；只读 overlay；固定工具与 optional module 的
 结构化 unsupported；§6.2 的 lifecycle/clock/error/entity/state/event/query/rolling-capture Ready 门槛；vanilla /
 bridge-only / instrumented smoke；fully-materialized revision + atomic current-pointer switch；同一 Session 的下一
 goal turn；adapter 未变化时对每个精确 candidate Build 执行 quick compatibility smoke/receipt；以及新 Task/Session
 对完全未变 source 的 quick-smoke reuse，不重新生成 adapter。
 
 PE-A 不支持 dynamic projection generalization、dirty/untracked/multi-source、addon/`@tool`、multiple launch targets、
-通用 failed-attempt/Session cross-command resume、source/adapter migration、compatibility failure 后的 adapter migration、并发 publication、Host
+generic failed-attempt/Session cross-command resume、source/adapter migration、compatibility failure 后的 adapter migration、并发 publication、Host
 drift/refresh/apply 或 bundle。PE-A 仍冻结全部 optional deep-state DTO，并用一个预置 characterization adapter 跑通
 snapshot → controlled mutation → restore → read-back；该 fixture 证明 contract 可执行，不让 snapshot 成为外部项目
 Ready 要求，也不扩张为通用 snapshot 支持。安全边界不能延期：sandbox、ownership、path/schema validation、secret
-rejection、bounded output/store、cleanup failure、corruption 和 goal-not-delivered behavior 必须随 PE-A 完成。
+rejection、bounded output、cleanup failure、corruption 和 goal-not-delivered behavior 必须随 PE-A 完成。
 minimal reference package 的 `scene-root` entity 与 `project` state domain 是保留 placeholder；权威 validator
 要求 publishable candidate 同时包含非 placeholder 的项目 entity type 与 state domain，不能把原样复制模板当成
 Agent-authored 项目语义。
-这里不包含 §6.1 强制的 broker-only publication reconciliation：新命令只按 path-free recovery authority、精确 Task
-intent 和 revision operation identity 收敛 publication/binding；它不恢复 Pi Session，也不自动投递旧 queued goal。
+这里不包含独立 publication broker：新命令只按 path-free recovery authority 与 revision operation identity 收敛
+publication/binding；它不恢复 Pi Session，也不自动投递旧 queued goal。
 
 ### 10.2 后续单轴切片
 
-| Slice | 主要新增不确定性                                                                                                    |
+| Slice | 历史单轴增量                                                                                                        |
 | ----- | ------------------------------------------------------------------------------------------------------------------- |
 | PE-B  | dynamic nodes、custom Signal 与状态变化下 entity/state/event projection 的结构泛化                                  |
 | PE-C  | narrow dirty closure、显式 untracked、项目选择、addon/import、default + selected target、稳定 reuse/review boundary |
-| PE-D  | source review、新 environment revision、compatibility failure 后的 adapter 更新与 SDK migration                     |
-| PE-E  | sealed failed attempt 的跨命令 successor resume、budget increase、discard 与 retention                              |
-| PE-F  | lease/CAS conflict、multi-Session workspace、revision pin 与 binding epoch                                          |
-| PE-G  | Host drift、显式 refresh、游戏 patch review/apply、冲突与 `ApplyReceiptV1`                                          |
-| PE-H  | adapter bundle export/import；import 永远只创建重新验证的 untrusted candidate                                       |
-| PE-P  | project network preauthorization 到每 Task 精确 realized policy                                                     |
+
+旧 PE-D 至 PE-H/PE-P 仅是 2026-08-12 的设计候选，current HEAD 不承诺 generic Task resume/discard、multi-Session
+workspace、network preauthorization、bundle framework 或 apply framework，也不为它们预建基础设施。
 
 Input/probe/alignment/render 各自等待真实依赖再成为独立切片。首发仍不实现 daemon、多项目 Task、C#、GDExtension、
 native plugin、audio、macOS、Windows、完整 physics/Timer/Tween/coroutine snapshot、bit-exact replay 或任意项目
@@ -630,13 +605,13 @@ Gate。产品是否可接受由用户、项目 CI、review 或独立外部 Eval 
 
 ## 12. 明确延期与非目标
 
-- 跨命令 open-Execution durable cleanup owner 与 Host `SIGKILL` 后的进程/cgroup reconciliation；
+- 跨命令 open-Execution durable cleanup owner 与 Host `SIGKILL` 后的长期 runtime reconciliation；
 - C#/.NET、GDExtension、native library/plugin 与未知 engine build；
 - macOS、Windows、WSL2 及其等价 sandbox；
 - audio、默认 display/GPU、完整视觉诊断；
 - 任意项目完整 snapshot、physics internals、Timer/Tween/coroutine、线程、外部服务或全局 Signal 拦截；
 - adapter 自定义 Pi tools、自由 runtime code execution、任意场景路径或未验证 launch 参数；
-- Task sandbox 自动获取 source dependency 或未经用户授权自动扩大网络；
+- sandboxed run 自动获取 source dependency 或未经用户授权自动扩大网络；
 - daemon、多客户端共享 workspace、跨项目 Task 或多 Agent；
 - 自动 commit、merge、push、部署或 canonical Bug/fix verdict；
 - hidden evaluator、campaign denominator、独立 acceptance 或大规模项目成功率 benchmark。

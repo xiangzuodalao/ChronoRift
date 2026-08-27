@@ -15,29 +15,18 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type * as ProjectEnvironmentHostConfigModule from "./project-environment-host-config.js";
-import type * as SandboxPreflightModule from "./sandbox-preflight.js";
+import type * as SrtRuntimeConfigModule from "./srt-runtime-config.js";
 import type { ProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 import type * as WorkspaceMaterializerModule from "./workspace-materializer.js";
 
 const mocks = vi.hoisted(() => ({
-  createRuntimeRoot: vi.fn(),
   materialize: vi.fn(),
-  preflightSandboxHost: vi.fn(),
-  readHostConfig: vi.fn(),
-  resolveGodot: vi.fn(),
+  resolveRuntimeConfig: vi.fn(),
 }));
 
-vi.mock("./project-environment-host-config.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof ProjectEnvironmentHostConfigModule>()),
-  readProjectEnvironmentHostConfigV1: mocks.readHostConfig,
-  resolveProjectEnvironmentGodotToolchainV1: mocks.resolveGodot,
-}));
-
-vi.mock("./sandbox-preflight.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof SandboxPreflightModule>()),
-  createSandboxTaskRuntimeRoot: mocks.createRuntimeRoot,
-  preflightSandboxHost: mocks.preflightSandboxHost,
+vi.mock("./srt-runtime-config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof SrtRuntimeConfigModule>()),
+  resolveSrtRuntimeConfig: mocks.resolveRuntimeConfig,
 }));
 
 vi.mock("./workspace-materializer.js", async (importOriginal) => ({
@@ -81,8 +70,7 @@ const setup = async () => {
   temporaryRoots.add(container);
   const repositoryRoot = join(container, "repository");
   const projectRoot = join(repositoryRoot, "game");
-  const taskStorageRoot = join(container, "task-storage");
-  const runtimeRoot = join(taskStorageRoot, "runtime");
+  const runtimeRoot = join(container, "state");
   await Promise.all([
     mkdir(projectRoot, { recursive: true }),
     mkdir(runtimeRoot, { recursive: true }),
@@ -92,21 +80,14 @@ const setup = async () => {
   await git(repositoryRoot, ["add", "--all"]);
   await git(repositoryRoot, ["commit", "--quiet", "-m", "fixture"]);
 
-  mocks.readHostConfig.mockResolvedValue({
-    taskStorageRoot,
-    runtimeRoot,
-    delegatedCgroupRoot: "/unused/cgroup",
-    bwrapPath: "/unused/bwrap",
-    prlimitPath: "/unused/prlimit",
-    busyboxPath: "/unused/busybox",
+  mocks.resolveRuntimeConfig.mockResolvedValue({
+    stateRoot: runtimeRoot,
+    nodePath: process.execPath,
+    godot: {
+      receipt: {},
+      binding: { executablePath: "/unused/godot" },
+    },
   });
-  mocks.createRuntimeRoot.mockResolvedValue(runtimeRoot);
-  mocks.preflightSandboxHost.mockResolvedValue({
-    kind: "supported",
-    capability: {},
-    binding: {},
-  });
-  mocks.resolveGodot.mockResolvedValue({});
   return { projectRoot, runtimeRoot };
 };
 
@@ -150,7 +131,7 @@ describe("Project Environment Preview Task rollback", () => {
       runProjectEnvironmentPreviewV1(requestFor(projectRoot), unusedPi),
     ).rejects.toBe(drift);
 
-    expect(await readdir(join(runtimeRoot, "tasks"))).toEqual([]);
+    expect(await readdir(join(runtimeRoot, "srt-tasks-v1"))).toEqual([]);
   });
 
   it("fails visibly and preserves unknown Task content when rollback ownership is not exact", async () => {
@@ -191,7 +172,7 @@ describe("Project Environment Preview Task rollback", () => {
         "utf8",
       ),
     ).toBe("must survive\n");
-    expect(await readdir(join(runtimeRoot, "tasks"))).toEqual([
+    expect(await readdir(join(runtimeRoot, "srt-tasks-v1"))).toEqual([
       retainedTaskDirectory!.split("/").at(-1),
     ]);
   });

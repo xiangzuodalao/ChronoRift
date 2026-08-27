@@ -17,23 +17,16 @@ import {
   type ProjectEnvironmentToolCallAdmissionV1,
 } from "./project-environment-tool-call-budget.js";
 
-export interface BrokerToolResult {
+export interface CodingToolResult {
   readonly stdout: Uint8Array;
   readonly stderr: Uint8Array;
   readonly exitCode: number | null;
-  readonly status:
-    | "succeeded"
-    | "failed"
-    | "timed_out"
-    | "cancelled"
-    | "launch_failed"
-    | "denied";
-  readonly receipt: unknown;
+  readonly status: "succeeded" | "failed" | "timed_out" | "cancelled";
   readonly resultLimitReached?: number | undefined;
 }
 
 export interface VNextCodingToolPort {
-  read(path: string, signal?: AbortSignal): Promise<BrokerToolResult>;
+  read(path: string, signal?: AbortSignal): Promise<CodingToolResult>;
   bash(
     command: string,
     options: {
@@ -41,12 +34,12 @@ export interface VNextCodingToolPort {
       readonly signal?: AbortSignal | undefined;
       readonly onOutput?: ((chunk: Uint8Array) => void) | undefined;
     },
-  ): Promise<BrokerToolResult>;
+  ): Promise<CodingToolResult>;
   write(
     path: string,
     content: Uint8Array,
     signal?: AbortSignal,
-  ): Promise<BrokerToolResult>;
+  ): Promise<CodingToolResult>;
   grep(
     request: {
       readonly pattern: string;
@@ -58,7 +51,7 @@ export interface VNextCodingToolPort {
       readonly limit: number;
     },
     signal?: AbortSignal,
-  ): Promise<BrokerToolResult>;
+  ): Promise<CodingToolResult>;
   find(
     request: {
       readonly pattern: string;
@@ -66,15 +59,14 @@ export interface VNextCodingToolPort {
       readonly limit: number;
     },
     signal?: AbortSignal,
-  ): Promise<BrokerToolResult>;
+  ): Promise<CodingToolResult>;
   ls(
     request: { readonly path: string; readonly limit: number },
     signal?: AbortSignal,
-  ): Promise<BrokerToolResult>;
+  ): Promise<CodingToolResult>;
 }
 
-export interface BrokerToolDetails {
-  readonly receipt: unknown;
+export interface CodingToolDetails {
   readonly truncation?: ReturnType<typeof truncateHead> | undefined;
   readonly patch?: string | undefined;
   readonly diff?: string | undefined;
@@ -174,7 +166,7 @@ function positiveInteger(
   return resolved;
 }
 
-function executionFailure(result: BrokerToolResult, operation: string) {
+function executionFailure(result: CodingToolResult, operation: string) {
   if (result.status === "succeeded") return undefined;
   const diagnostic =
     decode(result.stderr).trim() || decode(result.stdout).trim();
@@ -182,7 +174,7 @@ function executionFailure(result: BrokerToolResult, operation: string) {
     content: text(
       `${operation} failed (${result.status}, exitCode=${String(result.exitCode)})${diagnostic ? `: ${diagnostic}` : ""}`,
     ),
-    details: { receipt: result.receipt },
+    details: {},
   };
 }
 
@@ -191,8 +183,7 @@ const projectAdapterSchemaPathV2 = (value: unknown): string => {
     throw new Error("Every ProjectAdapter V2 schema path must be a string");
   const normalized = value
     .replace(/^\.\//u, "")
-    .replace(/^\.chronorift\/adapter-candidate\//u, "")
-    .replace(/^\/workspace\/\.chronorift\/adapter-candidate\//u, "");
+    .replace(/^\.chronorift\/adapter-candidate\//u, "");
   if (!normalized.startsWith("schemas/") || !normalized.endsWith(".json"))
     throw new Error(
       "Every ProjectAdapter V2 schema path must be below schemas/ and end in .json",
@@ -454,7 +445,7 @@ const finalizeProjectAdapterManifestV2 = async (
     content: text(
       `Updated ${declarations.length} exact schema SHA-256 declaration(s), restored the Host-bound fields, and froze the ProjectAdapter V2 candidate for the remainder of this turn. Only read, grep, find, and ls remain available for review. Host validation still determines whether the candidate conforms.`,
     ),
-    details: { receipt: write.receipt },
+    details: {},
   };
 };
 
@@ -576,7 +567,7 @@ export function createVNextCodingToolDefinitions(
       const truncation = truncateHead(selected);
       return {
         content: text(truncation.content),
-        details: { receipt: result.receipt, truncation },
+        details: { truncation },
       };
     },
   });
@@ -602,7 +593,7 @@ export function createVNextCodingToolDefinitions(
           const snapshot = truncateTail(streamed);
           onUpdate?.({
             content: text(snapshot.content),
-            details: { receipt: undefined, truncation: snapshot },
+            details: { truncation: snapshot },
           });
         },
       });
@@ -617,7 +608,7 @@ export function createVNextCodingToolDefinitions(
       const truncation = truncateTail(output + status);
       return {
         content: text(truncation.content),
-        details: { receipt: result.receipt, truncation },
+        details: { truncation },
       };
     },
   });
@@ -645,7 +636,7 @@ export function createVNextCodingToolDefinitions(
           content: text(
             `Successfully wrote ${Buffer.byteLength(input.content, "utf8")} bytes to ${path}`,
           ),
-          details: { receipt: result.receipt },
+          details: {},
         };
       });
     },
@@ -683,7 +674,6 @@ export function createVNextCodingToolDefinitions(
             `Successfully replaced ${input.edits.length} block(s) in ${path}.`,
           ),
           details: {
-            receipt: after.receipt,
             diff: applied.diff,
             patch: applied.patch,
             firstChangedLine: applied.firstChangedLine,
@@ -718,7 +708,6 @@ export function createVNextCodingToolDefinitions(
       return {
         content: text(decode(result.stdout)),
         details: {
-          receipt: result.receipt,
           ...(result.resultLimitReached === undefined
             ? {}
             : { resultLimitReached: result.resultLimitReached }),
@@ -748,7 +737,6 @@ export function createVNextCodingToolDefinitions(
       return {
         content: text(decode(result.stdout)),
         details: {
-          receipt: result.receipt,
           ...(result.resultLimitReached === undefined
             ? {}
             : { resultLimitReached: result.resultLimitReached }),
@@ -774,7 +762,6 @@ export function createVNextCodingToolDefinitions(
       return {
         content: text(decode(result.stdout)),
         details: {
-          receipt: result.receipt,
           ...(result.resultLimitReached === undefined
             ? {}
             : { resultLimitReached: result.resultLimitReached }),

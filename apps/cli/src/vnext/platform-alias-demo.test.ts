@@ -407,14 +407,7 @@ describe("GN-1 platform alias observation", () => {
       candidateObservationError: null,
       workspaceDirectory: "/tmp/workspace",
       taskDirectory: "/tmp/task",
-      cleanupReceipt: {
-        processGroupTerminated: true,
-        cgroupPopulated: false,
-        termSent: false,
-        killSent: false,
-        scopeRemoved: true,
-      },
-      securityEvents: [],
+      sandboxRuntime: "anthropic-srt" as const,
       limitations: ["single pair"],
     };
     const configuration = {

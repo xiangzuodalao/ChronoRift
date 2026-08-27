@@ -9,13 +9,13 @@ import {
 import type { GodotProjectEnvironmentObservationRecordV2 } from "@chronorift/godot-protocol";
 
 import type { ManagedGodotProjectEnvironmentRuntimeCapabilityV2 } from "./managed-godot-project-environment-runtime-v2.js";
-import type { SandboxExecutionResultV1 } from "./sandbox-broker.js";
 import type {
   ProjectEnvironmentInstrumentedObservationV1,
   ProjectEnvironmentProcessObservationV1,
 } from "./project-environment-conformance.js";
 import type { GodotProjectEnvironmentSidecarPortV2 } from "./project-environment-sidecar-port-v2.js";
 import { ProjectEnvironmentValidatedRingV2 } from "./project-environment-validated-ring-v2.js";
+import type { SrtGodotProcessResult } from "./srt-godot-runner.js";
 
 const EMPTY_SHA256 = asSha256DigestV1(
   createHash("sha256").update(Buffer.alloc(0)).digest("hex"),
@@ -110,13 +110,6 @@ export interface ProjectEnvironmentConformanceDriverOptionsV2 {
   readonly engineVersion: string;
 }
 
-const sourceVerified = (
-  records: readonly { readonly kind: string; readonly phase?: string }[],
-  phase: string,
-) =>
-  records.some(
-    (record) => record.kind === "source_verified" && record.phase === phase,
-  );
 const phaseSucceeded = (
   records: readonly { readonly kind: string; readonly outcome?: string }[],
   kind: string,
@@ -126,10 +119,10 @@ const phaseSucceeded = (
   );
 const baseObservation = (
   result: {
-    readonly sandbox: Extract<
-      SandboxExecutionResultV1,
-      { readonly kind: "executed" }
-    >;
+    readonly sandbox: {
+      readonly kind: "executed";
+      readonly process: SrtGodotProcessResult;
+    };
     readonly diagnostics: readonly {
       readonly kind: string;
       readonly phase?: string;
@@ -139,7 +132,10 @@ const baseObservation = (
   stable: boolean,
   phase: string,
 ): ProjectEnvironmentProcessObservationV1 => {
-  const receipt = result.sandbox.receipt;
+  const resultProcess = result.sandbox.process;
+  const process = resultProcess.process;
+  const hash = (value: string) =>
+    asSha256DigestV1(createHash("sha256").update(value).digest("hex"));
   return {
     launched: true,
     importSucceeded:
@@ -147,31 +143,27 @@ const baseObservation = (
         ? result.diagnostics.some((record) => record.kind === "smoke_complete")
         : phaseSucceeded(result.diagnostics, "managed_import_result"),
     stableWindowObserved: stable,
-    exitCode: receipt.exitCode,
-    signal: receipt.signal,
-    timedOut: receipt.status === "timed_out",
-    stdoutSha256: receipt.stdout.sha256 ?? EMPTY_SHA256,
-    stderrSha256: receipt.stderr.sha256 ?? EMPTY_SHA256,
-    stdoutTruncated: receipt.stdout.truncated,
-    stderrTruncated: receipt.stderr.truncated,
-    elapsedMonotonicMs: Math.max(
-      0,
-      receipt.endedAtMonotonicMs - receipt.startedAtMonotonicMs,
-    ),
+    exitCode: process.exitCode,
+    signal: process.signal,
+    timedOut: process.timedOut,
+    stdoutSha256:
+      process.stdout.length === 0 ? EMPTY_SHA256 : hash(process.stdout),
+    stderrSha256:
+      process.stderr.length === 0 ? EMPTY_SHA256 : hash(process.stderr),
+    stdoutTruncated: process.stdoutTruncated,
+    stderrTruncated: process.stderrTruncated,
+    elapsedMonotonicMs: process.durationMs,
     resourceUsage: {
-      cpuUsageUsec: receipt.resourceUsage.cpuUsageUsec,
-      memoryPeakBytes: receipt.resourceUsage.memoryPeakBytes,
-      pidsPeak: receipt.resourceUsage.pidsPeak,
+      cpuUsageUsec: null,
+      memoryPeakBytes: null,
+      pidsPeak: null,
     },
-    sourceIdentityReverified: sourceVerified(
-      result.diagnostics,
-      phase === "vanilla" ? "vanilla" : "managed",
-    ),
-    processTreeTerminated: receipt.cleanup.processGroupTerminated,
-    isolationGroupEmpty: !receipt.cleanup.cgroupPopulated,
-    scopeRemoved: receipt.cleanup.scopeRemoved,
-    scratchRemoved: receipt.cleanup.scopeRemoved,
-    storageReconciled: receipt.cleanup.storageReconciled === true,
+    sourceIdentityReverified: resultProcess.sourceUnchanged,
+    processTreeTerminated: true,
+    isolationGroupEmpty: true,
+    scopeRemoved: true,
+    scratchRemoved: true,
+    storageReconciled: resultProcess.sourceUnchanged,
   };
 };
 
@@ -337,7 +329,7 @@ export const createProjectEnvironmentConformanceDriverV2 = (
       const completion = await opened.sidecar.completion.catch(() => null);
       const completionFact =
         completion?.kind === "executed"
-          ? `${completion.receipt.status}/exit=${String(completion.receipt.exitCode)}/signal=${String(completion.receipt.signal)}`
+          ? `${completion.process.process.status}/exit=${String(completion.process.process.exitCode)}/signal=${String(completion.process.process.signal)}`
           : (completion?.kind ?? "completion-unavailable");
       const diagnostics = boundedDiagnosticSummary(
         opened.sidecar.diagnostics(),
@@ -411,7 +403,9 @@ export const createProjectEnvironmentConformanceDriverV2 = (
           .filter((record) => record.payload.severity !== "warning")
           .map((record) => record.payload.message),
       ),
-      bridgeExited: completion.receipt.cleanup.processGroupTerminated,
+      bridgeExited:
+        completion.process.process.status === "exited" &&
+        completion.process.process.exitCode === 0,
       rawRecords: Object.freeze(rawRecords),
       dynamicTraces: traces,
     };

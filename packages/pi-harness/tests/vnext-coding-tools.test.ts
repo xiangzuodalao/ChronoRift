@@ -6,19 +6,15 @@ import {
   createProjectEnvironmentToolCallAdmissionV1,
   createVNextCodingToolDefinitions,
   ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
-  type BrokerToolResult,
+  type CodingToolResult,
   type VNextCodingToolPort,
 } from "../src/index.js";
 
-const ok = (
-  stdout = "",
-  receipt: unknown = { operationId: "fixture" },
-): BrokerToolResult => ({
+const ok = (stdout = ""): CodingToolResult => ({
   stdout: Buffer.from(stdout),
   stderr: new Uint8Array(),
   exitCode: 0,
   status: "succeeded",
-  receipt,
 });
 
 class MemoryPort implements VNextCodingToolPort {
@@ -27,7 +23,7 @@ class MemoryPort implements VNextCodingToolPort {
   ]);
   public readonly calls: string[] = [];
 
-  public read(path: string): Promise<BrokerToolResult> {
+  public read(path: string): Promise<CodingToolResult> {
     this.calls.push(`read:${path}`);
     const bytes = this.files.get(path);
     return Promise.resolve(
@@ -39,25 +35,25 @@ class MemoryPort implements VNextCodingToolPort {
   public bash(
     command: string,
     options: Parameters<VNextCodingToolPort["bash"]>[1],
-  ): Promise<BrokerToolResult> {
+  ): Promise<CodingToolResult> {
     this.calls.push(`bash:${command}:${String(options.timeoutMs)}`);
     options.onOutput?.(Buffer.from("streamed"));
     return Promise.resolve(ok("streamed"));
   }
-  public write(path: string, content: Uint8Array): Promise<BrokerToolResult> {
+  public write(path: string, content: Uint8Array): Promise<CodingToolResult> {
     this.calls.push(`write:${path}`);
     this.files.set(path, Uint8Array.from(content));
     return Promise.resolve(ok());
   }
   public grep(
     request: Parameters<VNextCodingToolPort["grep"]>[0],
-  ): Promise<BrokerToolResult> {
+  ): Promise<CodingToolResult> {
     this.calls.push(`grep:${request.path}:${request.limit}`);
     return Promise.resolve(ok("src/a.ts:2:two\n"));
   }
   public find(
     request: Parameters<VNextCodingToolPort["find"]>[0],
-  ): Promise<BrokerToolResult> {
+  ): Promise<CodingToolResult> {
     this.calls.push(`find:${request.path}:${request.limit}`);
     if (request.path === ".chronorift/adapter-candidate/schemas") {
       return Promise.resolve(
@@ -78,7 +74,7 @@ class MemoryPort implements VNextCodingToolPort {
   }
   public ls(
     request: Parameters<VNextCodingToolPort["ls"]>[0],
-  ): Promise<BrokerToolResult> {
+  ): Promise<CodingToolResult> {
     this.calls.push(`ls:${request.path}:${request.limit}`);
     return Promise.resolve(ok("src/\n"));
   }
@@ -108,7 +104,7 @@ const execute = async (
   );
 };
 
-describe("vNext broker-only Pi coding tools", () => {
+describe("vNext sandboxed Pi coding tools", () => {
   it("registers exactly the seven normal coding tools", () => {
     const names = createVNextCodingToolDefinitions(new MemoryPort()).map(
       (tool) => tool.name,
@@ -512,7 +508,7 @@ describe("vNext broker-only Pi coding tools", () => {
     expect(port.calls).toEqual(["read:src/a.ts"]);
   });
 
-  it("returns failed broker receipts to the Agent without continuing the operation", async () => {
+  it("returns a failed command result to the Agent without continuing the operation", async () => {
     const port = new MemoryPort();
     const result = await execute(port, "read", { path: "missing.ts" });
     expect(result.content).toEqual([
@@ -521,7 +517,7 @@ describe("vNext broker-only Pi coding tools", () => {
         text: "read failed (failed, exitCode=1)",
       },
     ]);
-    expect(result.details).toEqual({ receipt: { operationId: "fixture" } });
+    expect(result.details).toEqual({});
   });
 
   it("serializes writes and applies unique exact edits against the original file", async () => {

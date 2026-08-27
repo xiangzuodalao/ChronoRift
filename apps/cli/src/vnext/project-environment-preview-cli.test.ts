@@ -54,8 +54,10 @@ describe("Project Environment Preview CLI", () => {
       "gpt-5.6-luna",
       "--thinking",
       "high",
-      "--host-config",
-      "/etc/chronorift/pe.json",
+      "--state-root",
+      "/tmp/chronorift-state",
+      "--godot-bin",
+      "/opt/godot-4.7.1/godot",
       "--project-root",
       "game",
       "--include-untracked",
@@ -76,7 +78,8 @@ describe("Project Environment Preview CLI", () => {
       includeUntrackedPaths: ["local-input.json", "local-addon.gd"],
       launchTargetId: "secondary",
       interactive: false,
-      hostConfigPath: "/etc/chronorift/pe.json",
+      stateRoot: "/tmp/chronorift-state",
+      godotBin: "/opt/godot-4.7.1/godot",
     });
     expect(write).toHaveBeenCalledWith(
       expect.stringContaining('"status": "ready"'),

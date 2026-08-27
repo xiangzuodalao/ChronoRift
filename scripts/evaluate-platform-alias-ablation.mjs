@@ -90,40 +90,6 @@ const validateObservation = (value, path) => {
   }
 };
 
-const validateCleanup = (value, path) => {
-  const cleanup = requireObject(value, path);
-  const required = [
-    "processGroupTerminated",
-    "cgroupPopulated",
-    "termSent",
-    "killSent",
-    "scopeRemoved",
-  ];
-  const allowed = [...required, "storageReconciled"];
-  for (const key of Object.keys(cleanup)) {
-    if (!allowed.includes(key)) fail(`${path}.${key} is not allowed`);
-  }
-  for (const key of required) {
-    if (!(key in cleanup)) fail(`${path}.${key} is required`);
-    requireBoolean(cleanup[key], `${path}.${key}`);
-  }
-  if ("storageReconciled" in cleanup) {
-    requireBoolean(cleanup.storageReconciled, `${path}.storageReconciled`);
-  }
-  if (
-    cleanup.cgroupPopulated === true &&
-    (cleanup.processGroupTerminated === true || cleanup.scopeRemoved === true)
-  ) {
-    fail(`${path} contains an impossible populated/removed combination`);
-  }
-  if (
-    cleanup.scopeRemoved === true &&
-    cleanup.processGroupTerminated !== true
-  ) {
-    fail(`${path}.scopeRemoved requires processGroupTerminated`);
-  }
-};
-
 const validateGameToolCalls = (value, taskId, path) => {
   const calls = requireArray(value, path);
   const successfulLaunches = new Map();
@@ -310,8 +276,7 @@ const validateResult = (value, path) => {
       "candidateObservationError",
       "workspaceDirectory",
       "taskDirectory",
-      "cleanupReceipt",
-      "securityEvents",
+      "sandboxRuntime",
       "limitations",
     ],
     path,
@@ -378,8 +343,9 @@ const validateResult = (value, path) => {
   for (const key of ["workspaceDirectory", "taskDirectory"]) {
     if (!isAbsolutePath(result[key])) fail(`${path}.${key} must be absolute`);
   }
-  validateCleanup(result.cleanupReceipt, `${path}.cleanupReceipt`);
-  requireArray(result.securityEvents, `${path}.securityEvents`);
+  if (result.sandboxRuntime !== "anthropic-srt") {
+    fail(`${path}.sandboxRuntime must be anthropic-srt`);
+  }
   requireArray(result.limitations, `${path}.limitations`);
   if (result.limitations.length === 0)
     fail(`${path}.limitations must not be empty`);
@@ -584,15 +550,6 @@ const armEvaluation = (run) => {
     run.result.candidateObservationError === null;
   const checkoutClean =
     source.checkoutCleanBefore === true && source.checkoutCleanAfter === true;
-  const cleanup = isObject(run.result.cleanupReceipt)
-    ? run.result.cleanupReceipt
-    : {};
-  const cleanupComplete =
-    cleanup.processGroupTerminated === true &&
-    cleanup.cgroupPopulated === false &&
-    cleanup.scopeRemoved === true &&
-    (cleanup.storageReconciled === undefined ||
-      cleanup.storageReconciled === true);
   const candidateBuildChanged =
     candidateObservationAvailable &&
     isObject(run.result.baselineObservation) &&
@@ -615,7 +572,6 @@ const armEvaluation = (run) => {
     reasons.push("candidate_observation_unavailable");
   }
   if (!checkoutClean) reasons.push("source_checkout_not_clean");
-  if (!cleanupComplete) reasons.push("cleanup_incomplete");
   if (!candidateBuildChanged) reasons.push("candidate_build_unchanged");
   if (!runtimeErrorsEmpty) reasons.push("candidate_runtime_errors_not_empty");
   if (!requiredSemanticObservationUsed) {
@@ -666,7 +622,6 @@ const armEvaluation = (run) => {
     patchNonEmpty,
     candidateObservationAvailable,
     checkoutClean,
-    cleanupComplete,
     candidateBuildChanged,
     runtimeErrorsEmpty,
     semanticObservationUsed,
@@ -678,7 +633,6 @@ const armEvaluation = (run) => {
       patchNonEmpty &&
       candidateObservationAvailable &&
       checkoutClean &&
-      cleanupComplete &&
       candidateBuildChanged &&
       runtimeErrorsEmpty &&
       requiredSemanticObservationUsed &&

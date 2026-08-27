@@ -220,27 +220,23 @@ const capture = (
   });
 };
 
-const executionReceipt = (
-  result: CompletedVanillaResult,
-  expectedCandidateSourceHash: string,
-) => {
+const executionReceipt = (result: CompletedVanillaResult) => {
   const terminal = terminalReceipt(result.diagnostics);
-  const sourceIdentityReverified = result.diagnostics.some(
-    (record) =>
-      record.kind === "source_verified" &&
-      record.phase === "vanilla" &&
-      record.candidateSourceHash === expectedCandidateSourceHash,
-  );
+  const process = result.sandbox.process;
+  const status =
+    process.process.status === "timed_out"
+      ? "timed_out"
+      : process.process.status === "cancelled"
+        ? "cancelled"
+        : process.process.exitCode === 0
+          ? "succeeded"
+          : "failed";
   return ExecutionReceiptSchema.parse({
-    sandboxStatus: result.sandbox.receipt.status,
-    sandboxExitCode: result.sandbox.receipt.exitCode,
-    sandboxSignal: result.sandbox.receipt.signal,
-    elapsedMonotonicMs: Math.max(
-      0,
-      result.sandbox.receipt.endedAtMonotonicMs -
-        result.sandbox.receipt.startedAtMonotonicMs,
-    ),
-    sourceIdentityReverified,
+    sandboxStatus: status,
+    sandboxExitCode: process.process.exitCode,
+    sandboxSignal: process.process.signal,
+    elapsedMonotonicMs: process.process.durationMs,
+    sourceIdentityReverified: process.sourceUnchanged,
     ...terminal,
   });
 };
@@ -334,7 +330,7 @@ const createPort = (
         build,
       });
     }
-    const receipt = executionReceipt(run.result, build.candidateSourceHash);
+    const receipt = executionReceipt(run.result);
     const rawCapture = capture(run.result.diagnostics);
     const completed = run.result.diagnostics.some(
       (record) =>
@@ -342,7 +338,8 @@ const createPort = (
         record.candidateSourceHash === build.candidateSourceHash,
     );
     if (
-      run.result.sandbox.receipt.status !== "succeeded" ||
+      run.result.sandbox.process.process.status !== "exited" ||
+      run.result.sandbox.process.process.exitCode !== 0 ||
       !completed ||
       !receipt.sourceIdentityReverified
     ) {
@@ -460,7 +457,7 @@ const createPortV2 = (
         build,
       });
     }
-    const receipt = executionReceipt(run.result, build.candidateSourceHash);
+    const receipt = executionReceipt(run.result);
     const rawCapture = capture(run.result.diagnostics);
     const completed = run.result.diagnostics.some(
       (record) =>
@@ -468,7 +465,8 @@ const createPortV2 = (
         record.candidateSourceHash === build.candidateSourceHash,
     );
     if (
-      run.result.sandbox.receipt.status !== "succeeded" ||
+      run.result.sandbox.process.process.status !== "exited" ||
+      run.result.sandbox.process.process.exitCode !== 0 ||
       !completed ||
       !receipt.sourceIdentityReverified
     ) {

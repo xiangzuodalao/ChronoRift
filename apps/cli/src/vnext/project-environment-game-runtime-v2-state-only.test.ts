@@ -228,14 +228,22 @@ const fixture = () => {
         shutdown: async () => {
           completeSidecar({
             kind: "executed",
-            receipt: {
-              status: "succeeded",
-              cleanup: {
-                processGroupTerminated: true,
-                cgroupPopulated: false,
-                scopeRemoved: true,
-                storageReconciled: true,
+            process: {
+              process: {
+                status: "exited",
+                exitCode: 0,
+                signal: null,
+                stdout: "",
+                stderr: "",
+                durationMs: 10,
+                timedOut: false,
+                cancelled: false,
+                stdoutTruncated: false,
+                stderrTruncated: false,
               },
+              sourceSha256: "a".repeat(64),
+              observedSourceSha256: "a".repeat(64),
+              sourceUnchanged: true,
             },
           });
         },

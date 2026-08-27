@@ -700,6 +700,8 @@ describe("PE-A initialization sequencing", () => {
       sourceIdentity: digest("5"),
     });
     expect(prompt).toContain("no required tool order");
+    expect(prompt).toContain("current working directory");
+    expect(prompt).not.toContain("/workspace");
     expect(prompt).not.toMatch(/submit|phase 1|step 1/iu);
   });
 
@@ -721,6 +723,8 @@ describe("PE-A initialization sequencing", () => {
     expect(prompt).toContain(
       "Do not run Godot or perform conformance yourself",
     );
+    expect(prompt).toContain("current working directory");
+    expect(prompt).not.toContain("/workspace");
     expect(prompt).not.toContain("Create the one ProjectAdapter candidate");
   });
 

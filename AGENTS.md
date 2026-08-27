@@ -6,8 +6,10 @@ when a subtree develops genuinely different rules.
 
 ## Sources of truth
 
-- `docs/architecture.md` defines the vNext product contract, boundaries, terminology, and rollout. It is
-  a target architecture, not a list of implemented features.
+- `docs/architecture.md` records vNext design direction, boundaries, terminology, and rollout. It is a target, not an
+  immutable implementation prerequisite or a list of implemented features. For this personal portfolio project,
+  prefer the smallest maintained product path; revise or retire target machinery when it would require bespoke
+  infrastructure without current product value.
 - Architecture Section 20 records the rollout and current experiment; Section 21 maps current code to
   the target. Never describe planned behavior as implemented.
 - `README.md` is the user entry point. Keep its commands, status, limitations, and next slice accurate.
@@ -17,7 +19,8 @@ when a subtree develops genuinely different rules.
 - Deliver narrow, tested vertical slices with one major uncertainty dimension at a time.
 - Legacy v0.1-v0.4 behavior may remain for compatibility. New paths must not copy or widen that debt.
 - The current maintained surfaces are the v0.4 legacy release, experimental Project Environment Preview, and the
-  fixed-project GN-1 ablation. M3/M4/E2 remain compatibility or historical paths, not templates for new slices.
+  fixed-project GN-1/Mob V2 case runners. The old Task CLI and M3/M4/E2 implementations are absent from current HEAD;
+  reproduce historical behavior from its tag/archive instead of restoring it to active code.
 - Active v0.3 benchmark/formal machinery and PE/M4/E2 evidence campaigns are retired. Reproduce them from their
   historical tag when necessary; do not restore their producers, validators, publishers, or one-off Gates in current
   HEAD merely to revalidate frozen archives.
@@ -27,7 +30,7 @@ when a subtree develops genuinely different rules.
 - Start from the smallest product behavior that answers the user's question. Prefer one project, Bug, runtime
   primitive, candidate diff, and external acceptance boundary over a reusable experiment framework.
 - Do not add a campaign manager, evidence bundle builder, standalone validator, canary, publisher, freeze ledger,
-  Gate matrix, or failure-resume system unless the current product contract—not experiment bookkeeping—requires it.
+  Gate matrix, or failure-resume system unless a maintained product path—not experiment bookkeeping—requires it.
 - A transcript, diff, runtime receipt, and independent project test may be sufficient characterization output. Do not
   freeze or promote a one-off result by default.
 - Keep GN-1 independent from Project Environment initialization/publication/reuse. Keep Preview reusable rather than
@@ -37,6 +40,9 @@ when a subtree develops genuinely different rules.
   retired.
 
 ## vNext product contract
+
+The points below guide current product behavior. They are review criteria, not a requirement to preserve old schemas,
+commands, or custom infrastructure when a smaller implementation satisfies the user-visible boundary.
 
 - ChronoRift owns the Harness; Pi is the embedded Loop Engine and owns the Session, Agent Loop, model
   calls, tool scheduling, message history, compaction, and ordinary termination.
@@ -83,12 +89,17 @@ when a subtree develops genuinely different rules.
   tool-only comparison.
 - Provider and model selection stay explicit at the command boundary. Unit tests use fakes; only
   `*.live.test.ts` may contact a provider.
-- Normal coding and game tools must use the task sandbox broker. Setting Pi's `cwd` is not isolation, and
-  a Git worktree is not an OS sandbox.
-- The target workspace is `/workspace` in an unprivileged task container or equivalent namespace.
-  Restrict writes to task workspace, temp, and artifact paths; mount required Host inputs read-only.
-- Network, credentials, Host ports, devices, display, audio, and GPU are denied by default and opened only
-  by explicit task-scoped policy. Reject violations before execution and record a structured denial.
+- vNext coding and Godot commands use the exactly pinned `@anthropic-ai/sandbox-runtime@0.0.74` on Linux x86_64.
+  Keep the wrapper thin; do not recreate the retired broker, cgroup controller, storage ledger, Host-config schema, or
+  receipt framework around SRT.
+- Setting Pi's `cwd` is not isolation. Coding commands may read and write the private physical candidate workspace,
+  home, temp, and artifact directories so the Agent can edit and validate code.
+- Godot validation must not run against that mutable tree. Host-stage ordinary source files and managed overlays in a
+  disjoint directory; reject symlinks, special files, and path escapes; expose project source read-only with only
+  `.godot/`, home, temp, and artifacts writable; compare the staged source hash before and after execution.
+- Sandboxed commands use a strict empty network allowlist. Do not add an allowlist/prompt surface until a maintained
+  product path needs one. Treat SRT initialization or wrapping failure as fatal; never fall back to an unsandboxed
+  process.
 - Pi credentials may be used only by the Host model path. Never copy them into the repository, artifacts,
   tool environment, or Godot process.
 - Do not expose unrestricted vNext coding tools until this sandbox exists and is tested. Do not claim the
@@ -96,40 +107,27 @@ when a subtree develops genuinely different rules.
 
 ## vNext runtime truth
 
-- Requested controls are not facts. Record realized values, clock position, quantization, mismatches, and
-  known side effects in the runtime receipt.
-- Validate tool inputs and resource references. Referenced resources must exist, match the requested
-  identity, and belong to the same task.
-- Execution records append while running and seal at termination. Raw events remain authoritative; the
-  Runtime State Index is a rebuildable query view and must not infer causality.
-- Preserve applicable task, workspace, source, diff, build, runtime, adapter, probe, checkpoint, trace,
-  control, capture, schema, and lineage identities.
-- Fork may change authorized code, adapters, probes, input, seed, settings, or capture profile. Record all
-  requested and realized changes; do not judge the experiment design.
-- Compare reports observable differences, alignment uncertainty, coverage changes, and confounders. It
-  never decides causality, hypothesis truth, or fix correctness.
-- Mark incompatible build, adapter, probe, coverage, or checkpoint fidelity as `confounded` or
-  `descriptive_only` without hiding the comparison.
-- Checkpoint manifests distinguish captured, reset, externally controlled, unsupported, and uncontrolled
-  state. Missing state is never silently equal or restored.
-- Without a project snapshot adapter, only the ChronoRift-controlled execution shell is rebuildable.
-  Agent-added adapters and probes affect only later executions and checkpoints.
-- Restore success means declared state was written back. No observed replay divergence does not prove an
-  equivalent start; preserve the first divergence and fidelity boundary when known.
-- Never hide dropped events, buffer overwrite, sampling degradation, observer effect, clock uncertainty,
-  incomplete coverage, or nondeterminism. Return unavailable history/checkpoints explicitly.
+- Requested controls are not facts. Return the realized process output, exit/timeout/cancellation status, truncation,
+  and applicable Godot runtime observations.
+- Validate tool inputs and paths at the boundary. Reject absolute/parent traversal, symlink escape, special-file, and
+  cross-workspace references where the current operation accepts project-relative content.
+- Runtime observations describe what the adapter/process reported. They do not decide causality, hypothesis truth,
+  fix correctness, or project acceptance.
+- Never hide missing observations, output truncation, timeout, source-hash mismatch, sampling loss, or known
+  nondeterminism. Do not add a receipt, lineage graph, state index, checkpoint, replay, or compare framework unless a
+  maintained user path actually needs it.
 - A capture trigger is a retention hint, not confirmation of a Bug, Contract failure, or root cause.
 - Keep physics tick, process frame, simulation time, render completion, and Host monotonic time distinct.
   Record requested versus realized Godot behavior and negotiated capabilities.
 
 ## Artifacts, code, and security
 
-- Validate stored data with strict runtime schemas and an explicit `schemaVersion`.
+- Validate persisted/public DTOs with strict runtime schemas and an explicit `schemaVersion`; an internal SRT process
+  result does not need a new receipt schema merely to wrap the library.
 - Never mutate historical raw artifacts. Derive new views with source/result hashes and preserve lineage,
   revision history, and frozen v0.1-v0.4 bytes and semantics.
 - Content hashes detect corruption; do not present them as signatures or external attestation.
-- New vNext executions use a separate task namespace. Do not reinterpret legacy Proposal/Verdict output
-  as a vNext result or make legacy write paths the new default.
+- Do not reinterpret legacy Proposal/Verdict output as a vNext result or make legacy write paths the new default.
 - Reject absolute paths, `..`, symlink escapes, and canonical-path escapes. Artifact IDs are not paths.
 - Keep `.chronorift/` local. Do not edit generated `dist/` or `*.tsbuildinfo` files.
 - Preserve strict TypeScript settings and ESM/NodeNext `.js` import suffixes. Validate `unknown` input and
@@ -146,15 +144,16 @@ when a subtree develops genuinely different rules.
   be used without changing package-manager metadata; report that fallback in the handoff.
 - Use `corepack pnpm test:godot` for relevant Godot changes. Run `corepack pnpm test:live` only when the Pi
   path changed and valid credentials and network access are intentionally available.
-- Run Host sandbox suites through their checked-in conformance wrapper or an explicitly equivalent provisioned
-  boundary with the required delegated cgroup and bounded Task storage. A raw invocation that lacks required Host
-  environment variables is a precondition failure, not a product test result.
+- Run Host sandbox suites through `.github/scripts/run-srt-sandbox-conformance.sh` or an explicitly equivalent Linux
+  x86_64 boundary. The wrapper checks exact SRT `0.0.74`, Bubblewrap, `socat`, ripgrep, user namespaces, and Godot, then
+  runs the single `corepack pnpm test:sandbox` suite for coding and real Godot/Preview integration. A missing
+  prerequisite is not a product pass or failure.
 - Reproduce a Bug with a test before fixing it. Do not weaken schemas, lint, compiler flags, or tests.
-- Test schemas, real IDs, task ownership, receipts, lineage, recoverable failures, and security boundaries;
-  do not assert exact model prose or one mandatory tool sequence.
-- Runtime-state changes need proportionate success, failure, corruption, history-loss, first-divergence,
-  budget-degradation, and determinism/nondeterminism coverage.
+- Test maintained schemas, path ownership, process failures, source immutability, and security boundaries; do not
+  assert exact model prose or one mandatory tool sequence.
+- Runtime-state changes need proportionate success and failure coverage. Add corruption, history-loss,
+  first-divergence, or budget tests only when the changed path implements those behaviors.
 - Update README or architecture status when commands, behavior, capabilities, terminology, trust
   boundaries, or rollout change.
-- A change is complete only when boundaries hold, external data is validated, lineage is preserved,
-  proportionate tests pass, the default gate passes, and claims do not exceed the evidence.
+- A change is complete when its maintained boundary holds, external data is validated, proportionate tests pass, the
+  relevant gates pass, and claims do not exceed the evidence.

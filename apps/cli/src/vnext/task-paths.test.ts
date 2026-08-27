@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, mkdtemp, rmdir, symlink } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -8,9 +8,7 @@ import { asTaskId, taskNamespaceDigestV1 } from "@chronorift/domain";
 
 import {
   createProjectEnvironmentTaskDirectoryLayout,
-  createTaskDirectoryLayout,
   openProjectEnvironmentTaskDirectoryLayout,
-  openTaskDirectoryLayout,
 } from "./task-paths.js";
 
 const roots: string[] = [];
@@ -28,8 +26,8 @@ afterEach(async () => {
   );
 });
 
-describe("vNext task paths", () => {
-  it("creates and reopens an exact PE-A layout without widening legacy open", async () => {
+describe("SRT Project Environment task paths", () => {
+  it("creates and reopens the exact maintained layout", async () => {
     const base = await createRoot("chronorift-project-environment-paths-");
     const runtimeRoot = join(base, "runtime");
     const sourceRepositoryRoot = join(base, "source");
@@ -51,9 +49,6 @@ describe("vNext task paths", () => {
     await expect(
       openProjectEnvironmentTaskDirectoryLayout({ runtimeRoot, taskId }),
     ).resolves.toEqual(created);
-    await expect(
-      openTaskDirectoryLayout({ runtimeRoot, taskId }),
-    ).rejects.toThrow(/exact owned lifecycle directories/u);
   });
 
   it("creates the exact private layout under an opaque Task namespace", async () => {
@@ -63,7 +58,7 @@ describe("vNext task paths", () => {
     await Promise.all([mkdir(runtimeRoot), mkdir(sourceRepositoryRoot)]);
     const taskId = asTaskId("../malicious/raw-task-id");
 
-    const layout = await createTaskDirectoryLayout({
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot,
       sourceRepositoryRoot,
       taskId,
@@ -82,6 +77,7 @@ describe("vNext task paths", () => {
       layout.piSessionDirectory,
       layout.hostBaselineGitDirectory,
       layout.hostOperationTemporaryDirectory,
+      layout.projectEnvironmentRecordDirectory,
     ];
     expect([...directories].sort()).toEqual(
       [
@@ -94,6 +90,7 @@ describe("vNext task paths", () => {
         join(layout.taskRootDirectory, "pi-sessions"),
         join(layout.taskRootDirectory, "host-baseline.git"),
         join(layout.taskRootDirectory, "host-tmp"),
+        join(layout.taskRootDirectory, "project-environment-records"),
       ].sort(),
     );
     for (const directory of directories) {
@@ -102,36 +99,13 @@ describe("vNext task paths", () => {
     expect(layout.taskRootDirectory).not.toContain("malicious");
   });
 
-  it("opens the exact pre-M3 layout without inventing its runtime store", async () => {
-    const base = await createRoot("chronorift-task-paths-legacy-");
-    const runtimeRoot = join(base, "runtime");
-    const sourceRepositoryRoot = join(base, "source");
-    await Promise.all([mkdir(runtimeRoot), mkdir(sourceRepositoryRoot)]);
-    const taskId = asTaskId("task_legacy_layout");
-    const created = await createTaskDirectoryLayout({
-      runtimeRoot,
-      sourceRepositoryRoot,
-      taskId,
-    });
-    await rmdir(created.runtimeRecordDirectory);
-
-    const opened = await openTaskDirectoryLayout({ runtimeRoot, taskId });
-
-    expect(opened.runtimeRecordDirectory).toBe(
-      join(opened.taskRootDirectory, "runtime-records"),
-    );
-    await expect(lstat(opened.runtimeRecordDirectory)).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  });
-
   it("rejects either ancestor direction between runtime and source", async () => {
     const base = await createRoot("chronorift-task-overlap-");
     const source = join(base, "source");
     const runtimeInsideSource = join(source, "runtime");
     await mkdir(runtimeInsideSource, { recursive: true });
     await expect(
-      createTaskDirectoryLayout({
+      createProjectEnvironmentTaskDirectoryLayout({
         runtimeRoot: runtimeInsideSource,
         sourceRepositoryRoot: source,
         taskId: asTaskId("task_1"),
@@ -142,7 +116,7 @@ describe("vNext task paths", () => {
     const sourceInsideRuntime = join(runtime, "source");
     await mkdir(sourceInsideRuntime, { recursive: true });
     await expect(
-      createTaskDirectoryLayout({
+      createProjectEnvironmentTaskDirectoryLayout({
         runtimeRoot: runtime,
         sourceRepositoryRoot: sourceInsideRuntime,
         taskId: asTaskId("task_2"),
@@ -158,7 +132,7 @@ describe("vNext task paths", () => {
     await Promise.all([mkdir(actualRuntime), mkdir(source)]);
     await symlink(actualRuntime, runtimeLink, "dir");
     await expect(
-      createTaskDirectoryLayout({
+      createProjectEnvironmentTaskDirectoryLayout({
         runtimeRoot: runtimeLink,
         sourceRepositoryRoot: source,
         taskId: asTaskId("task_1"),
@@ -166,13 +140,13 @@ describe("vNext task paths", () => {
     ).rejects.toThrow(/symbolic link/u);
 
     const taskId = asTaskId("task_duplicate");
-    await createTaskDirectoryLayout({
+    await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: actualRuntime,
       sourceRepositoryRoot: source,
       taskId,
     });
     await expect(
-      createTaskDirectoryLayout({
+      createProjectEnvironmentTaskDirectoryLayout({
         runtimeRoot: actualRuntime,
         sourceRepositoryRoot: source,
         taskId,
@@ -187,7 +161,7 @@ describe("vNext task paths", () => {
     await Promise.all([mkdir(runtime), mkdir(source)]);
     await chmod(runtime, 0o777);
 
-    const layout = await createTaskDirectoryLayout({
+    const layout = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: runtime,
       sourceRepositoryRoot: source,
       taskId: asTaskId("task_modes"),
@@ -199,13 +173,13 @@ describe("vNext task paths", () => {
     const base = await createRoot("chronorift-task-existing-mode-");
     const runtime = join(base, "runtime");
     const source = join(base, "source");
-    const tasks = join(runtime, "tasks");
+    const tasks = join(runtime, "srt-tasks-v1");
     await Promise.all([mkdir(runtime), mkdir(source)]);
     await mkdir(tasks);
     await chmod(tasks, 0o755);
 
     await expect(
-      createTaskDirectoryLayout({
+      createProjectEnvironmentTaskDirectoryLayout({
         runtimeRoot: runtime,
         sourceRepositoryRoot: source,
         taskId: asTaskId("task_existing_mode"),
@@ -220,18 +194,24 @@ describe("vNext task paths", () => {
     const source = join(base, "source");
     await Promise.all([mkdir(runtime), mkdir(source)]);
     const taskId = asTaskId("task_reopen");
-    const created = await createTaskDirectoryLayout({
+    const created = await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: runtime,
       sourceRepositoryRoot: source,
       taskId,
     });
 
     await expect(
-      openTaskDirectoryLayout({ runtimeRoot: runtime, taskId }),
+      openProjectEnvironmentTaskDirectoryLayout({
+        runtimeRoot: runtime,
+        taskId,
+      }),
     ).resolves.toEqual(created);
     await chmod(created.piSessionDirectory, 0o755);
     await expect(
-      openTaskDirectoryLayout({ runtimeRoot: runtime, taskId }),
+      openProjectEnvironmentTaskDirectoryLayout({
+        runtimeRoot: runtime,
+        taskId,
+      }),
     ).rejects.toThrow(/permissions changed/u);
   });
 
@@ -243,19 +223,22 @@ describe("vNext task paths", () => {
       const source = join(base, "source");
       await Promise.all([mkdir(runtime), mkdir(source)]);
       const taskId = asTaskId(`task_resume_${tamperCase}`);
-      const created = await createTaskDirectoryLayout({
+      const created = await createProjectEnvironmentTaskDirectoryLayout({
         runtimeRoot: runtime,
         sourceRepositoryRoot: source,
         taskId,
       });
       const tamperedPath =
         tamperCase === "tasks"
-          ? join(runtime, "tasks")
+          ? join(runtime, "srt-tasks-v1")
           : created.taskRootDirectory;
       await chmod(tamperedPath, 0o755);
 
       await expect(
-        openTaskDirectoryLayout({ runtimeRoot: runtime, taskId }),
+        openProjectEnvironmentTaskDirectoryLayout({
+          runtimeRoot: runtime,
+          taskId,
+        }),
       ).rejects.toThrow(/permissions changed/u);
     }
   });
@@ -271,7 +254,7 @@ describe("vNext task paths", () => {
     const resumeSource = join(resumeBase, "source");
     await Promise.all([mkdir(resumeRuntime), mkdir(resumeSource)]);
     const resumeTaskId = asTaskId("task_owner_resume");
-    await createTaskDirectoryLayout({
+    await createProjectEnvironmentTaskDirectoryLayout({
       runtimeRoot: resumeRuntime,
       sourceRepositoryRoot: resumeSource,
       taskId: resumeTaskId,
@@ -281,20 +264,20 @@ describe("vNext task paths", () => {
     const createRuntime = join(createBase, "runtime");
     const createSource = join(createBase, "source");
     await Promise.all([mkdir(createRuntime), mkdir(createSource)]);
-    await mkdir(join(createRuntime, "tasks"), { mode: 0o700 });
+    await mkdir(join(createRuntime, "srt-tasks-v1"), { mode: 0o700 });
 
     const getEffectiveUserId = vi
       .spyOn(process, "geteuid")
       .mockReturnValue(actualEffectiveUserId + 1);
     try {
       await expect(
-        openTaskDirectoryLayout({
+        openProjectEnvironmentTaskDirectoryLayout({
           runtimeRoot: resumeRuntime,
           taskId: resumeTaskId,
         }),
       ).rejects.toThrow(/ownership changed/u);
       await expect(
-        createTaskDirectoryLayout({
+        createProjectEnvironmentTaskDirectoryLayout({
           runtimeRoot: createRuntime,
           sourceRepositoryRoot: createSource,
           taskId: asTaskId("task_owner_create"),

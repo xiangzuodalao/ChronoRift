@@ -39,8 +39,10 @@ describe("GN-1 platform alias ablation CLI", () => {
       "openai-codex",
       "--model",
       "gpt-5.6-luna",
-      "--host-config",
-      "/tmp/host.json",
+      "--state-root",
+      "/tmp/chronorift-state",
+      "--godot-bin",
+      "/opt/godot-4.7.1/godot",
       "--json",
     ]);
 
@@ -50,7 +52,8 @@ describe("GN-1 platform alias ablation CLI", () => {
       provider: "openai-codex",
       model: "gpt-5.6-luna",
       thinkingLevel: "max",
-      hostConfigPath: "/tmp/host.json",
+      stateRoot: "/tmp/chronorift-state",
+      godotBin: "/opt/godot-4.7.1/godot",
     });
     expect(write).toHaveBeenCalledWith(
       expect.stringContaining('"arm": "coding-only"'),

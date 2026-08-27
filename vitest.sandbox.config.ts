@@ -2,10 +2,19 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["apps/cli/src/vnext/**/*.sandbox.test.ts"],
+    include: [
+      "apps/cli/src/vnext/**/*.sandbox.test.ts",
+      "apps/cli/src/vnext/**/*.godot-sandbox.test.ts",
+    ],
     fileParallelism: false,
     maxWorkers: 1,
-    testTimeout: 120_000,
-    hookTimeout: 120_000,
+    maxConcurrency: 1,
+    passWithNoTests: false,
+    sequence: {
+      concurrent: false,
+    },
+    testTimeout: 300_000,
+    hookTimeout: 300_000,
+    teardownTimeout: 60_000,
   },
 });

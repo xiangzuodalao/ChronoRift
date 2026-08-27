@@ -384,7 +384,7 @@ describe("PE-B complete Preview Host integration", () => {
     const projectRoot = join(root, "project");
     const runtimeRoot = join(root, "state");
     temporaryRoots.add(root);
-    await mkdir(projectRoot);
+    await Promise.all([projectRoot, runtimeRoot].map((path) => mkdir(path)));
     const fixtureRoot = join(
       process.cwd(),
       "fixtures/godot-project-environment-dynamic",

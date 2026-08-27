@@ -145,6 +145,11 @@ describe("SrtSandboxController", () => {
     });
 
     expect(facade.initializeCalls).toHaveLength(1);
+    const seccompPath = facade.initializeCalls[0]?.[0].seccomp?.applyPath;
+    if (seccompPath === undefined) {
+      throw new Error("SRT seccomp path was not configured");
+    }
+    expect(seccompPath).toMatch(/vendor\/seccomp\/x64\/apply-seccomp$/u);
     expect(facade.initializeCalls[0]?.[0]).toMatchObject({
       network: {
         allowedDomains: [],
@@ -162,10 +167,11 @@ describe("SrtSandboxController", () => {
           "/var/tmp",
           protectedPath,
         ],
-        allowRead: [],
+        allowRead: [seccompPath],
         allowWrite: [],
         denyWrite: nonDeviceSrtWritePaths,
       },
+      seccomp: { applyPath: seccompPath },
       enableWeakerNestedSandbox: false,
     });
     expect(facade.wrapCalls).toHaveLength(2);
@@ -180,7 +186,13 @@ describe("SrtSandboxController", () => {
         "/var/tmp",
         protectedPath,
       ],
-      allowRead: [workspacePath, homePath, tempPath, artifactsPath],
+      allowRead: [
+        seccompPath,
+        workspacePath,
+        homePath,
+        tempPath,
+        artifactsPath,
+      ],
       allowWrite: [workspacePath, homePath, tempPath, artifactsPath],
       denyWrite: nonDeviceSrtWritePaths,
     });
@@ -196,7 +208,13 @@ describe("SrtSandboxController", () => {
         protectedPath,
         workspacePath,
       ],
-      allowRead: [projectStagePath, homePath, tempPath, artifactsPath],
+      allowRead: [
+        seccompPath,
+        projectStagePath,
+        homePath,
+        tempPath,
+        artifactsPath,
+      ],
       allowWrite: [
         join(projectStagePath, ".godot"),
         homePath,

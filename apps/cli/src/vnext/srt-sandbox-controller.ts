@@ -1,7 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { isAbsolute, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Readable, Writable } from "node:stream";
+import { fileURLToPath } from "node:url";
 
 import {
   getDefaultWritePaths,
@@ -15,6 +16,16 @@ const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const POSIX_ENV = "/usr/bin/env";
 const POSIX_SHELL = "/bin/bash";
+const SRT_PACKAGE_ROOT = dirname(
+  dirname(fileURLToPath(import.meta.resolve("@anthropic-ai/sandbox-runtime"))),
+);
+const SRT_APPLY_SECCOMP_PATH = join(
+  SRT_PACKAGE_ROOT,
+  "vendor",
+  "seccomp",
+  "x64",
+  "apply-seccomp",
+);
 const DEFAULT_DENY_READ_PATHS = [
   "/home",
   "/root",
@@ -291,6 +302,7 @@ export class SrtSandboxController {
             ...this.#protectedReadPaths,
           ]),
           allowRead: unique([
+            SRT_APPLY_SECCOMP_PATH,
             request.workspacePath,
             request.homePath,
             request.tempPath,
@@ -372,6 +384,7 @@ export class SrtSandboxController {
             request.mutableWorkspacePath,
           ]),
           allowRead: unique([
+            SRT_APPLY_SECCOMP_PATH,
             request.projectStagePath,
             request.homePath,
             request.tempPath,
@@ -503,10 +516,11 @@ export class SrtSandboxController {
               ...DEFAULT_DENY_READ_PATHS,
               ...this.#protectedReadPaths,
             ]),
-            allowRead: [],
+            allowRead: [SRT_APPLY_SECCOMP_PATH],
             allowWrite: [],
             denyWrite: DEFAULT_DENY_WRITE_PATHS,
           },
+          seccomp: { applyPath: SRT_APPLY_SECCOMP_PATH },
           enableWeakerNestedSandbox: false,
         },
         undefined,

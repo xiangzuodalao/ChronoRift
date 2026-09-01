@@ -27,14 +27,36 @@ A default `chronorift [goal]`, arbitrary-project support, and automatic “fixed
 
 _Concept art for the product theme; not a UI screenshot, runtime capture, or piece of experimental evidence. [Open the 2560×1280 master](docs/assets/chronorift-hero-master.jpg)._
 
-## Architecture at a glance
+## Architecture in two minutes
 
-![ChronoRift architecture overview: the Pi Loop reaches an isolated candidate and Godot runtime through controlled tools and leaves records for external acceptance](docs/assets/chronorift-architecture.png)
+![ChronoRift high-level architecture: the Pi Agent debugging loop, isolated execution, and a final validation path independent of the Agent](docs/assets/chronorift-architecture.png)
 
-`completed` means the Loop ended with reviewable candidate changes and execution records. It does not mean
-`verified`, `fixed`, or logically proved. Diffs, command output, tool results, and raw runtime records outrank the
-Agent's final prose. See the [target architecture](docs/architecture.md) for the full contract; it is not a list of
-implemented features.
+ChronoRift does **not** reimplement a coding agent. **Pi SDK owns the Agent Loop**: LLM calls, conversation/session
+state, tool scheduling, compaction, and normal termination, including scheduling familiar coding tools and ChronoRift
+`game_*` tools. **ChronoRift owns the surrounding Harness / Runtime**: private candidate workspaces and Build identity,
+execution through an exactly pinned SRT, Godot staging, runtime evidence, and patch handoff. The Agent remains free to
+choose how it investigates, edits, and reruns.
+
+- **A · Agent debugging loop:** Source snapshot → writable Candidate Workspace / Build → Godot execution → runtime
+  observation → Agent hypothesis → code patch / new Build. Observations can include scene/node/resource identity,
+  runtime state, physics/process/render clocks, and coverage/loss. They are debugging signals, not evaluator verdicts.
+- **Execution boundary:** the coding sandbox may modify the private candidate. Godot validation uses a disjoint Host
+  stage produced from the selected candidate; the validation process sees project source read-only and cannot see the
+  same writable candidate tree. The current Linux SRT boundary includes Bubblewrap namespaces, seccomp, deny-network,
+  and timeout/output bounds, but no ChronoRift-owned custom cgroup quota.
+- **B · Final trust path:** only after the Agent turn do the current fixed GN-1 / Mob cases perform case-specific
+  independent evaluation; the evaluator does not guide the Agent's fix. Patch handoff separately applies the Candidate
+  Patch to a fresh baseline and verifies the reconstructed source tree and patch bytes with SHA-256. That round-trip and
+  the validation-stage/evaluator check are separate checks—not an implemented generic “fresh replay → evaluator”
+  pipeline.
+- **Acceptance stays outside the Loop:** the checks produce reviewable evidence. SHA-256 binds bytes and detects
+  corruption; it is not a signature or proof of correctness. `completed` only means the Loop left candidate changes
+  and execution records. Project CI, an external Eval, or human review decides `accepted` / `rejected`.
+
+**Core value:** execution consistency + isolation + runtime evidence + independently reviewable validation.
+
+See the [target architecture](docs/architecture.md) for the full contract; it describes the vNext direction, not a list
+of implemented features.
 
 ## What exists today
 

@@ -28,12 +28,29 @@ _概念插图，用于表达产品母题；不是产品界面、运行截图或�
 
 ## 两分钟看懂
 
-![ChronoRift 架构概览：Pi Loop 通过受控工具操作隔离的 candidate 与 Godot runtime，并留下可供外部验收的记录](docs/assets/chronorift-architecture.png)
+![ChronoRift high-level 架构：Pi Agent 调试回路、隔离执行，以及独立于 Agent 的最终验证路径](docs/assets/chronorift-architecture.png)
 
-- **Pi owns the Loop：** Session、模型调用、消息历史、tool scheduling、compaction 和普通终止。
-- **ChronoRift owns the Harness：** private candidate workspace、SRT 工具执行、Godot staging 和实际结果。
-- **Agent owns the strategy：** 如何调查、编辑、验证和解释结果，不要求固定工具顺序。
-- **外部边界 owns acceptance：** `completed` 只表示 Loop 结束并留下可审阅候选，不等于 `verified` 或 `fixed`。
+ChronoRift **不重新实现 Coding Agent**。**Pi SDK owns the Agent Loop**：负责 LLM 调用、conversation/session、
+tool scheduling、compaction 和普通终止，并调度常规 coding tools 与 ChronoRift `game_*` tools。
+**ChronoRift owns the Harness / Runtime**：负责 private candidate workspace 与 Build identity、固定版本 SRT
+执行、Godot staging、runtime evidence 和 patch handoff。Agent 自由选择如何调查、修改和重跑。
+
+- **A · Agent debugging loop：** Source snapshot → 可写 Candidate Workspace / Build → Godot execution → runtime
+  observation → Agent hypothesis → code patch / new Build。Observation 可包含 scene/node/resource identity、runtime
+  state、physics/process/render clocks 及 coverage/loss；它们是调试信号，不是 evaluator verdict。
+- **Execution boundary：** coding sandbox 可以修改 private candidate；Godot validation 使用从选定 candidate
+  生成的不相交 Host stage，validation process 只读访问项目源码，并且看不到同一个可写 candidate tree。当前 Linux
+  SRT 边界包含 Bubblewrap namespaces、seccomp、deny-network 及 timeout/output bounds，没有 ChronoRift 自定义
+  cgroup quota。
+- **B · Final trust path：** Agent turn 结束后，当前固定 GN-1 / Mob case 才进行 case-specific independent
+  evaluation；evaluator 不参与 Agent 的修复决策。Patch handoff 另行把 Candidate Patch 应用到 fresh baseline，
+  并用 SHA-256 验证重建的 source tree 与 patch bytes。它与 validation stage / evaluator 是两项独立检查，不是通用的
+  “fresh replay → evaluator” 自动流水线。
+- **Acceptance 在 Loop 外：** 两项检查汇成可审阅 evidence；SHA-256 绑定 bytes、检测损坏，但不是签名或正确性证明。
+  `completed` 只表示 Loop 留下 candidate changes 与 execution records；最终 `accepted` / `rejected` 由项目 CI、
+  外部 Eval 或人工 review 决定。
+
+**核心价值：** execution consistency + isolation + runtime evidence + independently reviewable validation。
 
 完整目标契约见 [架构文档](docs/architecture.md)；它描述 vNext 方向，不等于当前功能清单。
 

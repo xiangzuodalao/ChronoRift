@@ -29,31 +29,19 @@ _Concept art for the product theme; not a UI screenshot, runtime capture, or pie
 
 ## Architecture in two minutes
 
-![ChronoRift high-level architecture: the Pi Agent debugging loop, isolated execution, and a final validation path independent of the Agent](docs/assets/chronorift-architecture.png)
+![ChronoRift high-level architecture](docs/assets/chronorift-architecture.png)
 
-ChronoRift does **not** reimplement a coding agent. **Pi SDK owns the Agent Loop**: LLM calls, conversation/session
-state, tool scheduling, compaction, and normal termination, including scheduling familiar coding tools and ChronoRift
-`game_*` tools. **ChronoRift owns the surrounding Harness / Runtime**: private candidate workspaces and Build identity,
-execution through an exactly pinned SRT, Godot staging, runtime evidence, and patch handoff. The Agent remains free to
-choose how it investigates, edits, and reruns.
+ChronoRift does not reimplement a coding agent: Pi SDK owns models, sessions, and tool scheduling; ChronoRift provides
+the surrounding workspace, sandbox, Godot execution, and runtime evidence.
 
-- **A · Agent debugging loop:** Source snapshot → writable Candidate Workspace / Build → Godot execution → runtime
-  observation → Agent hypothesis → code patch / new Build. Observations can include scene/node/resource identity,
-  runtime state, physics/process/render clocks, and coverage/loss. They are debugging signals, not evaluator verdicts.
-- **Execution boundary:** the coding sandbox may modify the private candidate. Godot validation uses a disjoint Host
-  stage produced from the selected candidate; the validation process sees project source read-only and cannot see the
-  same writable candidate tree. The current Linux SRT boundary includes Bubblewrap namespaces, seccomp, deny-network,
-  and timeout/output bounds, but no ChronoRift-owned custom cgroup quota.
-- **B · Final trust path:** only after the Agent turn do the current fixed GN-1 / Mob cases perform case-specific
-  independent evaluation; the evaluator does not guide the Agent's fix. Patch handoff separately applies the Candidate
-  Patch to a fresh baseline and verifies the reconstructed source tree and patch bytes with SHA-256. That round-trip and
-  the validation-stage/evaluator check are separate checks—not an implemented generic “fresh replay → evaluator”
-  pipeline.
-- **Acceptance stays outside the Loop:** the checks produce reviewable evidence. SHA-256 binds bytes and detects
-  corruption; it is not a signature or proof of correctness. `completed` only means the Loop left candidate changes
-  and execution records. Project CI, an external Eval, or human review decides `accepted` / `rejected`.
+- **A · Debugging loop:** the Agent edits a writable candidate, runs Godot, and iterates from runtime observations.
+  Observations are debugging signals, not verdicts.
+- **B · Independent validation:** Godot validation uses a separate read-only stage. For the current fixed cases, the
+  evaluator runs only after the Agent and does not guide the fix. Patch round-trip and evaluation are separate checks.
+- **Acceptance stays outside the Loop:** `completed` does not mean `fixed`; project CI, an external Eval, or human
+  review makes the final decision.
 
-**Core value:** execution consistency + isolation + runtime evidence + independently reviewable validation.
+**Core value:** consistent execution, workspace isolation, runtime evidence, and independently reviewable validation.
 
 See the [target architecture](docs/architecture.md) for the full contract; it describes the vNext direction, not a list
 of implemented features.

@@ -14,13 +14,9 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
-import {
-  PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
-  PROJECT_ADAPTER_SKILL_V1_NAME,
-} from "./project-adapter-skill.js";
 import type { PiThinkingLevel } from "./types.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
-import { VNEXT_ENVIRONMENT_APPENDIX } from "./vnext-session.js";
+import { VNEXT_CODING_ENVIRONMENT_APPENDIX } from "./vnext-session.js";
 
 export interface RunProjectEnvironmentInteractivePiSessionV1Options {
   readonly resourceWorkspaceDirectory: string;
@@ -89,18 +85,11 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     noExtensions: true,
     noThemes: true,
     appendSystemPrompt: [
-      VNEXT_ENVIRONMENT_APPENDIX,
+      VNEXT_CODING_ENVIRONMENT_APPENDIX,
       options.additionalEnvironmentInstructions,
     ],
-    additionalSkillPaths: [PROJECT_ADAPTER_SKILL_V1_DIRECTORY],
   });
   await resourceLoader.reload();
-  const loadedSkills = resourceLoader
-    .getSkills()
-    .skills.filter((skill) => skill.name === PROJECT_ADAPTER_SKILL_V1_NAME);
-  if (loadedSkills.length !== 1) {
-    throw new Error("Pi TUI did not load the managed ProjectAdapter skill");
-  }
   const services: AgentSessionServices = {
     cwd: resourceWorkspaceDirectory,
     agentDir,

@@ -1,4 +1,5 @@
 export * from "./framing.js";
+export * from "./inspection-messages.js";
 export * from "./lifecycle-messages.js";
 export * from "./lifecycle-sidecar.js";
 export * from "./semantic-messages.js";

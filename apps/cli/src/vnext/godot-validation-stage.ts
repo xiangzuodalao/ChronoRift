@@ -29,6 +29,11 @@ export interface GodotValidationOverlayFile {
   readonly bytes: Uint8Array;
 }
 
+/** Ordinary files read through the Host's pinned source-admission handles. */
+export interface GodotValidationSourceFile extends GodotValidationOverlayFile {
+  readonly executable: boolean;
+}
+
 export interface GodotValidationSourceCheck {
   readonly observedSourceSha256: string;
   readonly sourceUnchanged: boolean;
@@ -54,7 +59,21 @@ export interface StageGodotValidationOptions {
   /** Must be an absolute path that does not already exist. */
   readonly stageRoot: string;
   readonly overlayFiles?: readonly GodotValidationOverlayFile[] | undefined;
+  /** If supplied, stage exactly this snapshot without rereading mutable source. */
+  readonly sourceFiles?: readonly GodotValidationSourceFile[] | undefined;
+  /** Validated outputs of a completed disposable import, never candidate cache. */
+  readonly importCacheFiles?: readonly GodotValidationOverlayFile[] | undefined;
 }
+
+export const isGodotImportCachePath = (path: string): boolean =>
+  !path.includes("\\") &&
+  !path.includes("\0") &&
+  !path
+    .split("/")
+    .some((part) => part === "" || part === "." || part === "..") &&
+  (path.startsWith(".godot/imported/") ||
+    path === ".godot/global_script_class_cache.cfg" ||
+    path === ".godot/uid_cache.bin");
 
 const compareNames = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -118,6 +137,9 @@ const assertOverlayPath = (path: string): readonly string[] => {
       segments[0] === "addons" &&
       segments[1] === "chronorift_project_environment") ||
     (segments.length >= 3 &&
+      segments[0] === "addons" &&
+      segments[1] === "chronorift_inspection") ||
+    (segments.length >= 3 &&
       segments[0] === ".chronorift" &&
       segments[1] === "project-adapter");
   if (!isManagedOverlay) {
@@ -157,6 +179,48 @@ const copySourceDirectory = async (
     }
     await copyFile(sourcePath, targetPath);
     await chmod(targetPath, status.mode & 0o777);
+  }
+};
+
+const validateSnapshotPaths = (
+  files: readonly GodotValidationSourceFile[],
+): void => {
+  const seen = new Set<string>();
+  for (const file of files) {
+    const path = file.relativePath;
+    if (
+      isAbsolute(path) ||
+      path.includes("\\") ||
+      path.includes("\0") ||
+      path
+        .split("/")
+        .some(
+          (segment) =>
+            segment.length === 0 ||
+            segment === "." ||
+            segment === ".." ||
+            EXCLUDED_SOURCE_ENTRIES.has(segment),
+        ) ||
+      seen.has(path)
+    )
+      throw new TypeError(
+        `source snapshot path must be a unique ordinary project-relative file: ${path}`,
+      );
+    seen.add(path);
+  }
+};
+
+const writeSourceSnapshot = async (
+  projectPath: string,
+  files: readonly GodotValidationSourceFile[],
+): Promise<void> => {
+  for (const file of files) {
+    const target = join(projectPath, file.relativePath);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, file.bytes, {
+      flag: "wx",
+      mode: file.executable ? 0o700 : 0o600,
+    });
   }
 };
 
@@ -249,6 +313,17 @@ export const stageGodotValidation = async (
   const overlayFiles = options.overlayFiles ?? [];
   // Validate every caller-controlled path before creating the stage.
   for (const overlay of overlayFiles) assertOverlayPath(overlay.relativePath);
+  if (options.sourceFiles !== undefined)
+    validateSnapshotPaths(options.sourceFiles);
+  const cacheFiles = options.importCacheFiles ?? [];
+  if (
+    cacheFiles.some((file) => !isGodotImportCachePath(file.relativePath)) ||
+    new Set(cacheFiles.map((file) => file.relativePath)).size !==
+      cacheFiles.length
+  )
+    throw new TypeError(
+      "import cache must contain unique supported .godot paths",
+    );
 
   let stageCreated = false;
   try {
@@ -261,13 +336,37 @@ export const stageGodotValidation = async (
     const artifactsPath = join(stageRoot, "artifacts");
 
     await mkdir(projectStagePath);
-    await copySourceDirectory(candidateWorkspace, projectStagePath);
+    if (options.sourceFiles === undefined)
+      await copySourceDirectory(candidateWorkspace, projectStagePath);
+    else await writeSourceSnapshot(projectStagePath, options.sourceFiles);
+    if (
+      overlayFiles.some((file) =>
+        file.relativePath.startsWith("addons/chronorift_inspection/"),
+      )
+    ) {
+      for (const reserved of ["override.cfg", "addons/chronorift_inspection"]) {
+        try {
+          await lstat(join(projectStagePath, reserved));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw error;
+        }
+        throw new Error(
+          `candidate source occupies Host-managed inspection path: ${reserved}`,
+        );
+      }
+    }
     await writeOverlays(projectStagePath, overlayFiles);
     await Promise.all(
       [godotCachePath, homePath, tempPath, artifactsPath].map(async (path) =>
         mkdir(path, { mode: 0o700 }),
       ),
     );
+    for (const file of cacheFiles) {
+      const target = join(projectStagePath, file.relativePath);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, file.bytes, { flag: "wx", mode: 0o600 });
+    }
     const sourceSha256 = await hashSourceTree(projectStagePath);
 
     return {

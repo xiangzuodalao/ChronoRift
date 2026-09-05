@@ -124,6 +124,36 @@ describe("SrtSandboxController", () => {
     return controller;
   };
 
+  it("only makes a separate disposable import copy writable, retaining candidate and network denial", async () => {
+    const facade = new FakeSrtFacade();
+    const controller = setup(facade);
+    const imported = await controller.openGodotImport(
+      godotRequest([process.execPath, "-e", "process.exit(0)"]),
+    );
+    await imported.wait();
+    expect(facade.wrapCalls[0]?.[2]?.filesystem).toMatchObject({
+      allowWrite: [projectStagePath, homePath, tempPath, artifactsPath],
+      denyRead: expect.arrayContaining([workspacePath]) as unknown,
+    });
+    expect(facade.initializeCalls[0]?.[0].network).toMatchObject({
+      allowedDomains: [],
+      strictAllowlist: true,
+    });
+    await expect(
+      controller.openGodotImport(
+        godotRequest(["/bin/true"], {
+          projectStagePath: workspacePath,
+          cwd: workspacePath,
+        }),
+      ),
+    ).rejects.toThrow("separate");
+    await expect(
+      controller.openGodotImport(
+        godotRequest(["/bin/true"], { readOnlyPaths: [workspacePath] }),
+      ),
+    ).rejects.toThrow("separate");
+  });
+
   it("initializes once and applies distinct per-call coding and Godot policies", async () => {
     const facade = new FakeSrtFacade();
     const protectedPath = join(root, "credentials");

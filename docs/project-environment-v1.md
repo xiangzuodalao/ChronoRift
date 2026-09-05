@@ -1,19 +1,23 @@
 # Project Environment V1 RFC
 
-> 状态：**历史 V1 设计参考；Preview 保留最窄实现；不是 current HEAD 必须完整遵从的不可变 contract**
+> 状态：**历史 V1 设计参考；自 2026-09-05 起被 adapter-free Preview 替代，不是当前产品契约**
 > 决策日期：2026-08-12
-> 目标入口：Project Environment Preview；经过显式产品验证与评审后才可成为默认 `chronorift [goal]` 入口
+> 当时目标入口：Project Environment Preview；默认 `chronorift [goal]` 尚未实现
 > 当前 release：ChronoRift v0.4.0 legacy diagnosis slice
 
-Project Environment V1 记录实验性 Preview 的历史设计、数据和信任边界；它不是完整的当前实现说明或实施清单。
-current HEAD 保留 strict DTO/store、ProjectAdapter SDK/wire/loader、初始化/publication/reuse、V2 observation 和 narrow
-source/import/target closure，并把 Host process 收敛到 Linux x86_64 上 exact SRT `0.0.74`。Agent coding 使用 fresh-run
-physical workspace RW；Godot 使用 Host-copied stage source RO + 前后 hash；两者默认禁网。旧 PE-A/PE-B real-model
-bundles 与 PE-C CI run metadata 只作为冻结历史归档保留；当前 HEAD 不再包含它们的 producer、standalone validator
-或一次性 Host Gate。历史结果不能描述成外部项目普遍受支持或默认入口已经切换。
+Project Environment V1 记录旧 Preview 的历史设计、数据和信任边界。当前 Preview 直接运行用户目标，提供无需
+ProjectAdapter 的 `game_launch`、`game_query` 和 `game_stop`，见 [架构 §20.5/§21](architecture.md#205-adapter-free-preview通用对象检查)。
+初始化、conformance、publication/recovery、revision reuse、managed authoring skill 与项目 publication store 已删除。
+固定 GN-1/Mob 案例仍使用所需的 strict DTO、TaskStore、ProjectAdapter SDK/wire/loader 与 V1/V2 runtime；新 Preview
+不消费这些旧接入状态，也没有 probe 或历史采集。SRT、源码只读 stage 和原始记录的信任边界仍适用。
 
-PE-B 在 Project Environment V1 store 上增加内部 manifest/SDK/observation protocol V2。V1 bridge/SDK bytes 和已发布
-PE-A revision 原样保留；新初始化默认生成 V2 adapter，未知版本或 digest 返回 `review_required`，不自动迁移。V2
+**以下正文保留的是历史设计上下文；其中“当前”“Preview”“首个”等措辞均指当时的设计或实现，不能作为 current HEAD
+的命令、功能、发布状态或后续实施要求。** 当前入口和限制以 README、开发指南与架构 §20/§21 为准。旧 PE-A/PE-B
+real-model bundles 与 PE-C CI run metadata 保持冻结；它们的 producer、standalone validator 和一次性 Host Gate
+已经退役，历史结果不证明新 Preview 的模型效果或任意项目兼容性。
+
+PE-B 当时在 Project Environment V1 store 上增加内部 manifest/SDK/observation protocol V2。V1 bridge/SDK bytes 和已发布
+PE-A revision 原样保留；当时的新初始化默认生成 V2 adapter，未知版本或 digest 返回 `review_required`，不自动迁移。V2
 使用 Execution-bound EntityRef、event-driven ordered queue、Host continuous validated ring 与 durable capture replay。
 
 M3、M4 与 E2 的 active implementation/command 已从 current HEAD 删除；其 schema、wire 和证据只在历史 tag/归档中按

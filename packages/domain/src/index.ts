@@ -13,6 +13,7 @@ export * from "./project-environment.js";
 export * from "./project-environment-v2.js";
 export * from "./project-environment-characterization.js";
 export * from "./runtime.js";
+export * from "./runtime-inspection.js";
 export * from "./task.js";
 export * from "./telemetry.js";
 export * from "./time.js";

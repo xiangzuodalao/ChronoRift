@@ -41,7 +41,10 @@ import {
   runPlatformAliasAblationV1,
 } from "./vnext/platform-alias-demo.js";
 import { runMobOrientationAblationV1 } from "./vnext/mob-orientation-ablation.js";
-import { runProjectEnvironmentPreviewV1 } from "./vnext/project-environment-preview.js";
+import {
+  ProjectEnvironmentPreviewStartupFailureV2Schema,
+  runProjectEnvironmentPreviewV2,
+} from "./vnext/project-environment-preview.js";
 
 interface Arguments {
   readonly command: string;
@@ -522,12 +525,11 @@ async function projectPreviewCommand(
     "agent-dir",
     "project-root",
     "include-untracked",
-    "launch-target",
     "json",
   ]);
-  let result: Awaited<ReturnType<typeof runProjectEnvironmentPreviewV1>>;
+  let result: Awaited<ReturnType<typeof runProjectEnvironmentPreviewV2>>;
   try {
-    result = await runProjectEnvironmentPreviewV1({
+    result = await runProjectEnvironmentPreviewV2({
       projectPath: cwd,
       provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
       model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
@@ -537,9 +539,6 @@ async function projectPreviewCommand(
         ? {}
         : { projectRoot: flag(args, "project-root")! }),
       includeUntrackedPaths: repeatableFlag(args, "include-untracked"),
-      ...(flag(args, "launch-target") === undefined
-        ? {}
-        : { launchTargetId: flag(args, "launch-target")! }),
       interactive:
         !hasFlag(args, "json") &&
         process.stdin.isTTY === true &&
@@ -572,13 +571,13 @@ async function projectPreviewCommand(
         .replace(/[\r\n\0]/gu, " ")
         .trim()
         .slice(0, 4_096) || "Project Environment Preview failed";
-    const failure = {
-      schemaVersion: 1 as const,
+    const failure = ProjectEnvironmentPreviewStartupFailureV2Schema.parse({
+      schemaVersion: 2 as const,
       status: "failed" as const,
       goalDelivered: false as const,
       failureCode,
       failureMessage,
-    };
+    });
     if (hasFlag(args, "json")) {
       printJson(failure);
     } else {
@@ -590,7 +589,7 @@ async function projectPreviewCommand(
     return;
   }
   const unsuccessful =
-    result.status !== "ready" ||
+    result.status !== "completed" ||
     !result.goalDelivered ||
     result.failureCode !== null;
   if (hasFlag(args, "json")) {
@@ -601,17 +600,12 @@ async function projectPreviewCommand(
   process.stdout.write(
     [
       `ChronoRift Project Environment Preview — ${result.status}`,
-      `project environment: ${result.environmentId}`,
-      `source closure: ${result.sourceId}`,
+      `task: ${result.taskId}`,
+      `source: ${result.sourceSha256}`,
       `selected project root: ${result.projectRoot.length === 0 ? "." : result.projectRoot}`,
-      `launch target: ${result.launchTargetId ?? "not resolved"}`,
-      `validated launch targets: ${result.validatedLaunchTargetIds.length === 0 ? "none" : result.validatedLaunchTargetIds.join(", ")}`,
-      `revision: ${result.environmentRevisionId ?? "not published"}`,
-      `adapter: ${result.adapterRevisionId ?? "not published"}`,
-      `environment setup: ${result.reused ? "reused current revision" : "initialized and published"}`,
-      `compatible build: ${result.buildId ?? "unavailable"}`,
       `candidate source: ${result.candidateSourceChanged ? "changed" : "unchanged"}`,
-      `runtime observation: ${result.runtimeObservationReceiptId ?? "not recorded"}`,
+      `candidate patch: ${result.candidatePatch?.path ?? "unavailable"}`,
+      `runtime executions: ${result.executions.length}`,
       `Pi: ${result.provider}/${result.model} (${result.thinkingLevel})`,
       `session: ${result.sessionFile ?? "not persisted"}`,
       `queued goal: ${result.goalDelivered ? "delivered" : "not delivered"}`,
@@ -797,7 +791,7 @@ function printHelp(): void {
     `  Runs one fresh Godot demo Mob-orientation arm through the fixed ProjectAdapter V2 slice. One arm is not a comparative result.\n\n`,
   );
   process.stdout.write(
-    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--launch-target TARGET_ID] [--thinking LEVEL --state-root PATH --godot-bin PATH]\n`,
+    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--thinking LEVEL --state-root PATH --godot-bin PATH]\n`,
   );
   process.stdout.write(
     `  Project Environment Preview freezes tracked working-tree bytes plus explicitly repeated untracked files for one selected Godot 4.7.1 GDScript project. It remains separate from the default entry point.\n\n`,

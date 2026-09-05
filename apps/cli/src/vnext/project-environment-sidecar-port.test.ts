@@ -91,6 +91,7 @@ class FakeRunner {
     } satisfies FakeRunCall;
     this.calls.push(call);
     return {
+      sourceSha256: hash("a"),
       process: {
         pid: 123,
         stdin,

@@ -5,7 +5,6 @@ export * from "./v03-json-artifact-repository.js";
 export * from "./v04-json-artifact-repository.js";
 export * from "./vnext-runtime-store.js";
 export * from "./project-environment-task-store.js";
-export * from "./project-environment-store.js";
 // These shared PE store symbols are re-exported by both concrete stores. Make
 // the public binding explicit so ESM star-export ambiguity cannot hide them.
 export {

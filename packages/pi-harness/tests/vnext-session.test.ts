@@ -14,8 +14,6 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
-  PROJECT_ADAPTER_SKILL_V1_NAME,
   runVNextPiTurn,
   VNEXT_CODING_ENVIRONMENT_APPENDIX,
   VNEXT_ENVIRONMENT_APPENDIX,
@@ -328,39 +326,6 @@ describe("vNext Pi AgentSession host", () => {
     expect(continued.sessionId).toBe(first.sessionId);
     expect(continued.sessionFile).toBe(first.sessionFile);
     expect(continuedCaptures[0]?.sessionManager?.getCwd()).toBe(root.workspace);
-  });
-
-  it("adds the pinned Project Adapter skill without replacing normal Pi resources", async () => {
-    const root = await createRoot();
-    const captures: CreateAgentSessionOptions[] = [];
-    await runVNextPiTurn(
-      {
-        resourceWorkspaceDirectory: root.workspace,
-        sessionDirectory: root.sessions,
-        agentDir: root.agentDir,
-        modelRuntime,
-        model,
-        thinkingLevel: "max",
-        prompt: "Author the project adapter candidate.",
-        tools,
-        loadProjectAdapterSkillV1: true,
-      },
-      { createSession: fakeSessionFactory(captures) },
-    );
-
-    const loader = captures[0]?.resourceLoader;
-    expect(loader?.getSkills().skills).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: PROJECT_ADAPTER_SKILL_V1_NAME,
-          baseDir: PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
-        }),
-      ]),
-    );
-    expect(loader?.getAgentsFiles().agentsFiles).toEqual([
-      expect.objectContaining({ content: "# Project guidance\n" }),
-    ]);
-    expect(loader?.getExtensions().extensions).toEqual([]);
   });
 
   it("aborts only for a turn timeout and reports the observed termination", async () => {

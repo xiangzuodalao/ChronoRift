@@ -1,6 +1,7 @@
 export * from "./api.js";
 export * from "./capabilities.js";
 export * from "./handles.js";
+export * from "./inspection-game-tools.js";
 export * from "./proposal.js";
 export * from "./project-environment-game-tool-inputs.js";
 export * from "./project-environment-game-tool-outputs.js";

@@ -16,14 +16,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiThinkingLevel } from "./types.js";
-import {
-  PROJECT_ADAPTER_SKILL_V1_DIRECTORY,
-  PROJECT_ADAPTER_SKILL_V1_NAME,
-  PROJECT_ADAPTER_SKILL_V2_DIRECTORY,
-  PROJECT_ADAPTER_SKILL_V2_NAME,
-  projectAdapterSkillResourceOptionsV1,
-  projectAdapterSkillResourceOptionsV2,
-} from "./project-adapter-skill.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
 
 export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
@@ -63,8 +55,6 @@ export interface RunVNextPiTurnOptions {
   /** Defaults to the game-capable appendix retained by existing vNext paths. */
   readonly environmentProfile?: "game" | "coding" | undefined;
   readonly additionalEnvironmentInstructions?: string | undefined;
-  readonly loadProjectAdapterSkillV1?: boolean | undefined;
-  readonly loadProjectAdapterSkillV2?: boolean | undefined;
   readonly onEvent?: ((event: AgentSessionEvent) => void) | undefined;
 }
 
@@ -257,15 +247,6 @@ export async function runVNextPiTurn(
       ? []
       : [options.additionalEnvironmentInstructions]),
   ];
-  if (options.loadProjectAdapterSkillV1 && options.loadProjectAdapterSkillV2)
-    throw new Error(
-      "only one ProjectAdapter authoring skill version may be loaded",
-    );
-  const projectAdapterSkill = options.loadProjectAdapterSkillV2
-    ? projectAdapterSkillResourceOptionsV2()
-    : options.loadProjectAdapterSkillV1
-      ? projectAdapterSkillResourceOptionsV1()
-      : undefined;
   const resourceLoader = new DefaultResourceLoader({
     cwd: resourceWorkspaceDirectory,
     agentDir,
@@ -273,33 +254,8 @@ export async function runVNextPiTurn(
     noExtensions: true,
     noThemes: true,
     appendSystemPrompt,
-    ...(projectAdapterSkill === undefined
-      ? {}
-      : {
-          additionalSkillPaths: [...projectAdapterSkill.additionalSkillPaths],
-        }),
   });
   await resourceLoader.reload();
-  if (projectAdapterSkill !== undefined) {
-    const expectedName = options.loadProjectAdapterSkillV2
-      ? PROJECT_ADAPTER_SKILL_V2_NAME
-      : PROJECT_ADAPTER_SKILL_V1_NAME;
-    const expectedDirectory = options.loadProjectAdapterSkillV2
-      ? PROJECT_ADAPTER_SKILL_V2_DIRECTORY
-      : PROJECT_ADAPTER_SKILL_V1_DIRECTORY;
-    const loaded = resourceLoader
-      .getSkills()
-      .skills.filter((skill) => skill.name === expectedName);
-    const expectedFile = resolve(expectedDirectory, "SKILL.md");
-    if (
-      loaded.length !== 1 ||
-      resolve(loaded[0]?.filePath ?? "") !== expectedFile
-    ) {
-      throw new Error(
-        `Pi did not load the pinned Project Adapter ${options.loadProjectAdapterSkillV2 ? "V2" : "V1"} skill from the managed package`,
-      );
-    }
-  }
   const sessionManager =
     options.resumeSessionFile === undefined
       ? SessionManager.create(resourceWorkspaceDirectory, sessionDirectory, {
@@ -491,12 +447,6 @@ export async function runVNextPiTurnWithSdk(
           additionalEnvironmentInstructions:
             options.additionalEnvironmentInstructions,
         }),
-    ...(options.loadProjectAdapterSkillV1 === undefined
-      ? {}
-      : { loadProjectAdapterSkillV1: options.loadProjectAdapterSkillV1 }),
-    ...(options.loadProjectAdapterSkillV2 === undefined
-      ? {}
-      : { loadProjectAdapterSkillV2: options.loadProjectAdapterSkillV2 }),
     ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
   });
 }

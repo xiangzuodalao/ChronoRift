@@ -1,0 +1,8 @@
+Godot Engine v4.7.1.stable.official.a13da4feb - https://godotengine.org
+
+GN1_CHECK_CONTEXT {"global_autoload":"/root/Global","main_scene":"res://main.tscn","physics_frame":10,"process_frame":2,"scope":"initial platform dimensions and resource identity only; no input simulation","settled_process_frames":2}
+GN1_CHECK_OBSERVATION {"area_instance_id":"-9223372004457970123","area_size":[768.0,40.0],"platform":"Platform","solid_instance_id":"-9223372000515324327","solid_size":[256.0,128.0],"sprite_count":2,"width":2}
+GN1_CHECK_OBSERVATION {"area_instance_id":"-9223372004457970123","area_size":[768.0,40.0],"platform":"Platform2","solid_instance_id":"-9223372000448215393","solid_size":[128.0,128.0],"sprite_count":1,"width":1}
+GN1_CHECK_OBSERVATION {"area_instance_id":"-9223372004457970123","area_size":[768.0,40.0],"platform":"Platform3","solid_instance_id":"-9223372000397883742","solid_size":[384.0,128.0],"sprite_count":3,"width":3}
+GN1_CHECK_OBSERVATION {"area_instance_id":"-9223372004457970123","area_size":[768.0,40.0],"platform":"Platform4","solid_instance_id":"-9223372000313997657","solid_size":[768.0,128.0],"sprite_count":6,"width":6}
+GN1_CHECK_RESULT {"observed_platforms":4,"passed":false,"problems":["Platform: area size differs","Platform2: area size differs","Platform3: area size differs","Platform / Platform2: area shape is shared","Platform / Platform3: area shape is shared","Platform / Platform4: area shape is shared","Platform2 / Platform3: area shape is shared","Platform2 / Platform4: area shape is shared","Platform3 / Platform4: area shape is shared"]}

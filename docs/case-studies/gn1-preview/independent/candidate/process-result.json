@@ -1,0 +1,17 @@
+{
+  "process": {
+    "status": "exited",
+    "exitCode": 0,
+    "signal": null,
+    "stdout": "Godot Engine v4.7.1.stable.official.a13da4feb - https://godotengine.org\n\nGN1_CHECK_CONTEXT {\"global_autoload\":\"/root/Global\",\"main_scene\":\"res://main.tscn\",\"physics_frame\":9,\"process_frame\":2,\"scope\":\"initial platform dimensions and resource identity only; no input simulation\",\"settled_process_frames\":2}\nGN1_CHECK_OBSERVATION {\"area_instance_id\":\"-9223372000498547044\",\"area_size\":[256.0,40.0],\"platform\":\"Platform\",\"solid_instance_id\":\"-9223372000515324327\",\"solid_size\":[256.0,128.0],\"sprite_count\":2,\"width\":2}\nGN1_CHECK_OBSERVATION {\"area_instance_id\":\"-9223372000414660959\",\"area_size\":[128.0,40.0],\"platform\":\"Platform2\",\"solid_instance_id\":\"-9223372000431438176\",\"solid_size\":[128.0,128.0],\"sprite_count\":1,\"width\":1}\nGN1_CHECK_OBSERVATION {\"area_instance_id\":\"-9223372000347552091\",\"area_size\":[384.0,40.0],\"platform\":\"Platform3\",\"solid_instance_id\":\"-9223372000364329308\",\"solid_size\":[384.0,128.0],\"sprite_count\":3,\"width\":3}\nGN1_CHECK_OBSERVATION {\"area_instance_id\":\"-9223372000246888789\",\"area_size\":[768.0,40.0],\"platform\":\"Platform4\",\"solid_instance_id\":\"-9223372000263666006\",\"solid_size\":[768.0,128.0],\"sprite_count\":6,\"width\":6}\nGN1_CHECK_RESULT {\"observed_platforms\":4,\"passed\":true,\"problems\":[]}\n",
+    "stderr": "",
+    "durationMs": 466.31856999999945,
+    "timedOut": false,
+    "cancelled": false,
+    "stdoutTruncated": false,
+    "stderrTruncated": false
+  },
+  "sourceSha256": "4b27d99967c448c078af736e56c440ac615baece745cbcf14a907065be2c4f3a",
+  "observedSourceSha256": "4b27d99967c448c078af736e56c440ac615baece745cbcf14a907065be2c4f3a",
+  "sourceUnchanged": true
+}

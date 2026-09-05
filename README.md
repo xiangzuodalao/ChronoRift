@@ -47,7 +47,18 @@ Agent 自行选择如何调查、修改和验证，无需为项目编写 Adapter
 
 ## 案例
 
-### GN-1：共享的碰撞资源
+### 当前 Preview：GN-1 无 Adapter 调查
+
+真实 Pi 从“玩家仍在平台可见宽度外就触发下落”的症状出发，自主找节点、查询 Shape 引用与尺寸，
+修改一行源码，再重启查询。会话结束后的独立检查中，原始版本不满足初始几何／资源身份要求，保存的候选满足。
+
+公开材料包含真实调用摘录与异常、实际 patch、独立检查器和五步截图回放。
+提供**不需要模型凭据的候选复查命令**；它检查保存的修改，不假装重新跑模型。
+这是**功能演示与回归案例**：GN-1 参与过接口设计，不是未知项目泛化证明，也没有验证完整 gameplay 时序。
+
+[查看新 Preview 案例、截图和可运行检查 →](docs/case-studies/gn1-preview.md)
+
+### 历史 GN-1：共享的碰撞资源
 
 在 `endlessm/moddable-platformer` 中，四个平台的触发区共享 Shape，使较窄平台的触发区超出可见宽度。
 一组固定条件的对照中，coding-only 候选仍保留共享资源；ChronoRift Agent 查询运行时几何与资源身份后，
@@ -57,14 +68,14 @@ Agent 自行选择如何调查、修改和验证，无需为项目编写 Adapter
 
 [查看候选 patch、检查结果与案例边界 →](docs/case-studies/gn1-platform-alias.md)
 
-### Godot Demo：第二个项目中的运行时检查
+### 历史 Godot Demo：第二个项目中的运行时检查
 
 在 `squash_the_creeps` 中，Agent 使用公共 V2 runtime 路径检查 Mob 朝向与速度，并在修改前后查询状态。
 ChronoRift 与 coding-only 候选都通过了独立检查（各 **3/3**）：展示了第二项目的路径复用，没有显示比较优势。
 
 [查看调查过程与两组结果 →](docs/case-studies/godot-demo-mob-orientation.md)
 
-这两个公开案例使用早期的项目专用 Adapter，不是当前无 Adapter Preview 的泛化验证。
+以上两个历史案例使用早期的项目专用 Adapter，不是当前无 Adapter Preview 的泛化验证。
 公开材料包含候选 patch 与检查摘要，完整原始会话未公开。
 
 ## 深入了解

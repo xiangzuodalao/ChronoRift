@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChronoRift · GN-1 已保存会话回放</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        color: #e7eeeb;
+        background: #101918;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      a {
+        color: #9de1cb;
+        text-underline-offset: 4px;
+      }
+      .page {
+        max-width: 1440px;
+        margin: auto;
+        padding: 30px 48px 24px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        border-bottom: 1px solid #34413c;
+        padding-bottom: 20px;
+      }
+      .brand {
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+      .brand span {
+        color: #9baaa3;
+        font-weight: 400;
+        margin-left: 12px;
+      }
+      .tag {
+        color: #b5c5bb;
+        border: 1px solid #536255;
+        border-radius: 30px;
+        padding: 8px 15px;
+        font-size: 13px;
+      }
+      nav {
+        display: flex;
+        gap: 10px;
+        margin: 22px 0 27px;
+      }
+      nav a {
+        flex: 1;
+        padding: 12px 16px;
+        background: #1a2522;
+        text-decoration: none;
+        font-size: 14px;
+        color: #a9b6ae;
+        border-radius: 6px;
+        border: 1px solid transparent;
+      }
+      nav a[aria-current="step"] {
+        background: #234238;
+        color: #b6f5d9;
+        border-color: #538975;
+      }
+      .eyebrow {
+        color: #9bd8bd;
+        letter-spacing: 2px;
+        font-size: 12px;
+        text-transform: uppercase;
+        margin: 0 0 10px;
+      }
+      h1 {
+        font-size: 34px;
+        letter-spacing: -1px;
+        margin: 0 0 12px;
+        font-weight: 650;
+      }
+      .intro {
+        color: #b0bdb5;
+        font-size: 15px;
+        line-height: 1.65;
+        margin: 0 0 22px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .card {
+        border: 1px solid #35453c;
+        border-radius: 9px;
+        padding: 18px 20px;
+        background: #19251f;
+        min-width: 0;
+      }
+      .card h2 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 12px;
+        color: #d3e0d6;
+      }
+      .card p {
+        color: #b8c4bc;
+        font-size: 14px;
+        line-height: 1.7;
+        margin: 10px 0;
+      }
+      .card .source {
+        font-size: 11px;
+        color: #94a89b;
+        margin: 12px 0 0;
+      }
+      pre {
+        font-family: "DejaVu Sans Mono", Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        margin: 0;
+        color: #daebe0;
+        tab-size: 2;
+      }
+      blockquote {
+        border-left: 3px solid #8bceaa;
+        margin: 8px 0 18px;
+        padding: 8px 0 8px 22px;
+        font-size: 24px;
+        line-height: 1.6;
+        color: #edf3ea;
+      }
+      .wide {
+        grid-column: 1 / -1;
+      }
+      .note {
+        background: #302d20;
+        border: 1px solid #685f36;
+        border-radius: 7px;
+        padding: 12px 16px;
+        color: #d4c99d;
+        font-size: 13px;
+        line-height: 1.6;
+        margin: 18px 0 0;
+      }
+      .stat {
+        font-size: 32px;
+        color: #b3e2c7;
+        margin: 5px 0 12px;
+        letter-spacing: -0.5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        padding: 10px 8px;
+        text-align: left;
+        border-bottom: 1px solid #38493c;
+      }
+      th {
+        color: #aebeb1;
+        font-weight: 400;
+      }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid #34413c;
+        color: #91a498;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .links {
+        display: flex;
+        gap: 20px;
+        white-space: nowrap;
+      }
+      .error {
+        color: #efbd95;
+      }
+      @media (max-width: 800px) {
+        .page {
+          padding: 24px;
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        nav {
+          flex-wrap: wrap;
+        }
+        nav a {
+          flex-basis: 28%;
+        }
+        header,
+        footer {
+          align-items: start;
+          flex-direction: column;
+        }
+        h1 {
+          font-size: 28px;
+        }
+        blockquote {
+          font-size: 21px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <div class="brand">ChronoRift <span>/ GN-1 Preview</span></div>
+        <div class="tag">已保存会话回放 · 非现场录屏 · 2026-09-05</div>
+      </header>
+      <nav aria-label="回放步骤">
+        <a href="#1">01 · 症状</a><a href="#2">02 · 调查</a
+        ><a href="#3">03 · 修改</a><a href="#4">04 · 重启检查</a
+        ><a href="#5">05 · 交付</a>
+      </nav>
+      <main id="content" aria-live="polite">
+        <p>正在读取同目录中的公开记录……</p>
+      </main>
+      <footer>
+        <div>
+          真实记录的整理视图；字段节选不构成完整会话。<br />功能演示与回归案例，不是未知项目泛化证明。
+        </div>
+        <div class="links">
+          <a href="candidate.patch" download>下载 patch</a>
+          <a href="trace.md">调用与异常</a><a href="trace.json">完整公开摘录</a
+          ><a href="provenance.json">来源</a
+          ><a href="../gn1-preview.md">案例说明</a>
+        </div>
+      </footer>
+    </div>
+    <script type="module">
+      // This fixed case view reads published records, never fabricates tool output.
+      // All record content is inserted as text, not interpreted as HTML.
+      const content = document.querySelector("#content");
+      const node = (tag, text, className) => {
+        const item = document.createElement(tag);
+        if (text !== undefined) item.textContent = text;
+        if (className) item.className = className;
+        return item;
+      };
+      const json = (value) => JSON.stringify(value);
+      const read = async (name, asJson = true) => {
+        const response = await fetch(name);
+        if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
+        return asJson ? response.json() : response.text();
+      };
+      const panel = (title, text, source) => {
+        const card = node("section", undefined, "card");
+        card.append(node("h2", title), node("pre", text));
+        if (source) card.append(node("p", source, "source"));
+        return card;
+      };
+      const source = (entry) =>
+        `trace.json · ${entry.callId || entry.kind} · 原会话行 ${entry.sourceLines.join(" / ")}`;
+      const value = (entry, name) =>
+        entry.output.output.values.find(
+          (v) => v.name === name && v.status === "success",
+        ).value;
+      const request = (entry) =>
+        Object.entries(entry.input)
+          .filter(([key]) => key !== "schemaVersion" && key !== "executionId")
+          .map(([key, val]) => `${key}: ${json(val)}`)
+          .join("\n");
+      const clocks = (entry) =>
+        `processFrame: ${entry.output.output.sample.processFrame} · physicsTick: ${entry.output.output.sample.physicsTick}`;
+      const titles = [
+        "一个症状，交给 Agent 自行调查",
+        "先找到节点，再沿 Shape 引用读尺寸",
+        "实际候选：隔离 Area 的 Shape",
+        "从修改后的候选重新启动",
+        "交付 patch，用环境结果验收",
+      ];
+      const intros = [
+        "唯一用户 prompt；没有指定原因、源码位置、工具顺序或修复方式。",
+        "以下为真实请求与返回字段节选。修改前只直接查询了 Platform3 的一个 Area Shape。",
+        "原会话中的 edit 与 Host 保存的 patch。没有修改场景配置或验收检查器。",
+        "新 execution 中查询四个 Shape 引用及其 size；引用身份只在同一次执行内比较。",
+        "会话结束后的独立检查，与 Agent 当时的调查记录分开呈现；不使用最终回复评分。",
+      ];
+      try {
+        const [trace, patch, baselineLog, candidateLog, provenance] =
+          await Promise.all([
+            read("trace.json"),
+            read("candidate.patch", false),
+            read("independent/baseline/stdout.log", false),
+            read("independent/candidate/stdout.log", false),
+            read("provenance.json"),
+          ]);
+        if (trace.schemaVersion !== 1 || !Array.isArray(trace.entries))
+          throw new Error("Unsupported trace format");
+        const entries = trace.entries;
+        const tools = entries.filter((entry) => entry.kind === "tool");
+        const atLine = (line) =>
+          tools.find((entry) => entry.sourceLines.includes(line));
+        const parseLog = (log, marker) =>
+          log
+            .split("\n")
+            .filter((line) => line.startsWith(marker + " "))
+            .map((line) => JSON.parse(line.slice(marker.length + 1)));
+        const render = () => {
+          const step = Math.max(
+            1,
+            Math.min(5, Number(location.hash.slice(1)) || 1),
+          );
+          content.replaceChildren(
+            node(
+              "p",
+              `SAVED SESSION / ${String(step).padStart(2, "0")}`,
+              "eyebrow",
+            ),
+            node("h1", titles[step - 1]),
+            node("p", intros[step - 1], "intro"),
+          );
+          document.querySelectorAll("nav a").forEach((link, index) => {
+            if (index === step - 1) link.setAttribute("aria-current", "step");
+            else link.removeAttribute("aria-current");
+          });
+          const grid = node("div", undefined, "grid");
+          content.append(grid);
+          if (step === 1) {
+            const prompt = entries.find((entry) => entry.kind === "user");
+            const card = node("section", undefined, "card wide");
+            card.append(
+              node("h2", "USER · 原始症状"),
+              node("blockquote", prompt.text),
+              node("p", source(prompt), "source"),
+            );
+            grid.append(
+              card,
+              panel(
+                "实际运行条件",
+                `${provenance.originalRun.provider} / ${provenance.originalRun.model} / ${provenance.originalRun.thinkingLevel}\nPi ${provenance.originalRun.versions.piCodingAgent} · Godot ${provenance.originalRun.versions.godot}\nSRT ${provenance.originalRun.versions.srt} · 一次真实 Pi Session · 约 ${(provenance.originalRun.durationMs / 1000).toFixed(3)} 秒`,
+                "provenance.json · 历史运行 metadata",
+              ),
+              panel(
+                "源码与可见信息",
+                `endlessm/moddable-platformer\n${provenance.sourceIdentity.project.commit}\n项目源码 + 普通 coding tools + 三个 game tools`,
+                "ChronoRift：5122828… + 当时工作树，源码对应关系见 provenance.json",
+              ),
+            );
+            content.append(
+              node(
+                "p",
+                "没有项目 Adapter 或 probe；独立检查器未提供给本轮 Agent。",
+                "note",
+              ),
+            );
+          } else if (step === 2) {
+            const children = tools.find(
+              (entry) =>
+                entry.toolName === "game_query" &&
+                entry.input.target.path === "Platforms" &&
+                entry.input.select === "children",
+            );
+            const width = atLine(32),
+              shape = atLine(37),
+              size = atLine(39);
+            grid.append(
+              panel(
+                "1 · 发现平台节点",
+                `${request(children)}\n\nitems[].path:\n${children.output.output.items.map((child) => child.path).join("\n")}`,
+                source(children),
+              ),
+              panel(
+                "2 · 查询实例属性",
+                `${request(width)}\n\nwidth: ${json(value(width, "width"))}\nfall_time: ${json(value(width, "fall_time"))}\n${clocks(width)}`,
+                source(width),
+              ),
+              panel(
+                "3 · 取得 Area Shape 引用",
+                `${request(shape)}\n\nshape: ${json(value(shape, "shape"))}\n${clocks(shape)}`,
+                source(shape),
+              ),
+              panel(
+                "4 · 沿资源引用查询尺寸",
+                `${request(size)}\n\nsize: ${json(value(size, "size"))}\n${clocks(size)}`,
+                source(size),
+              ),
+            );
+            content.append(
+              node(
+                "p",
+                "已观察：width = 3，但 Area 宽度为 768。共享原因来自源码与此异常的推断；这里没有四实例修改前的身份比较。各次查询不是原子快照。",
+                "note",
+              ),
+            );
+          } else if (step === 3) {
+            const edit = tools.find((entry) => entry.toolName === "edit");
+            grid.append(
+              panel(
+                "实际 edit 请求",
+                JSON.stringify(edit.input, null, 2),
+                source(edit),
+              ),
+              panel(
+                "候选 patch · 原始字节",
+                patch,
+                "candidate.patch · 651 bytes · SHA-256 81f3453f…57120",
+              ),
+            );
+            content.append(
+              node(
+                "p",
+                "过程并非一路顺利：保留了 4 次 shell 命令失败、一次 WebSocket 错误与一个无执行结果的请求。完整异常见「调用与异常」，未为展示重跑模型。",
+                "note",
+              ),
+            );
+          } else if (step === 4) {
+            const launch = atLine(57);
+            const launchNote = node(
+              "p",
+              `game_launch(${json(launch.input)}) → executionId: ${json(launch.output.output.executionId)} · mainScene: ${json(launch.output.output.mainScene)} · 原会话行 ${launch.sourceLines.join(" / ")}`,
+              "intro",
+            );
+            content.insertBefore(launchNote, grid);
+            const shapes = tools.filter(
+              (entry) =>
+                entry.toolName === "game_query" &&
+                entry.input.executionId === "inspection.after" &&
+                entry.input.names?.includes("shape"),
+            );
+            for (const shape of shapes) {
+              const ref = value(shape, "shape").objectRef;
+              const size = tools.find(
+                (entry) =>
+                  entry.toolName === "game_query" &&
+                  entry.input.target.objectRef === ref &&
+                  entry.input.names?.includes("size"),
+              );
+              grid.append(
+                panel(
+                  shape.input.target.path.split("/")[1],
+                  `${request(shape)}\n\nshape.objectRef: ${json(ref)}\n\n${request(size)}\nsize: ${json(value(size, "size"))}\n${clocks(size)}`,
+                  `${source(shape)}；size 行 ${size.sourceLines.join(" / ")}`,
+                ),
+              );
+            }
+            content.append(
+              node(
+                "p",
+                "两次运行均由 game_stop 显式停止：Godot child 为 SIGTERM / exitCode=null，不是自然退出 0。记录中的 sourceUnchanged=true；未报告截断或超时。",
+                "note",
+              ),
+            );
+          } else {
+            const baseline = parseLog(baselineLog, "GN1_CHECK_OBSERVATION"),
+              candidate = parseLog(candidateLog, "GN1_CHECK_OBSERVATION");
+            const beforeResult = parseLog(baselineLog, "GN1_CHECK_RESULT")[0],
+              afterResult = parseLog(candidateLog, "GN1_CHECK_RESULT")[0];
+            const card = node("section", undefined, "card wide");
+            card.append(node("h2", "独立检查 · 初始几何与资源身份"));
+            const table = node("table"),
+              head = node("tr");
+            for (const title of [
+              "平台",
+              "配置宽度 / sprite 数",
+              "原始 Area 尺寸",
+              "候选 Area 尺寸",
+            ])
+              head.append(node("th", title));
+            const thead = node("thead");
+            thead.append(head);
+            table.append(thead);
+            const tbody = node("tbody");
+            for (const before of baseline) {
+              const after = candidate.find(
+                  (item) => item.platform === before.platform,
+                ),
+                row = node("tr");
+              for (const cell of [
+                before.platform,
+                `${before.width} / ${before.sprite_count}`,
+                before.area_size.join(" × "),
+                after.area_size.join(" × "),
+              ])
+                row.append(node("td", cell));
+              tbody.append(row);
+            }
+            table.append(tbody);
+            card.append(
+              table,
+              node(
+                "p",
+                `Area Shape 身份数：原始 ${new Set(baseline.map((item) => item.area_instance_id)).size} → 候选 ${new Set(candidate.map((item) => item.area_instance_id)).size}；仅分别统计每次独立进程内的身份。`,
+                "source",
+              ),
+            );
+            grid.append(
+              card,
+              panel(
+                "原始版本 · checker exit 1",
+                `passed: ${beforeResult.passed}\nproblems: ${beforeResult.problems.length}\nobserved_platforms: ${beforeResult.observed_platforms}`,
+                "independent/baseline/stdout.log · GN1_CHECK_RESULT",
+              ),
+              panel(
+                "已保存候选 · checker exit 0",
+                JSON.stringify(afterResult, null, 2),
+                "independent/candidate/stdout.log · GN1_CHECK_RESULT",
+              ),
+            );
+            const command = panel(
+              "不调用模型，检查已保存候选",
+              "corepack pnpm run check:gn1-preview \\\n  --project /path/to/moddable-platformer --godot-bin /path/to/godot",
+              "下载 candidate.patch 与 independent-check.gd；详细前提见案例说明。此命令是现在重查候选，不是历史 Agent 调用。",
+            );
+            command.classList.add("wide");
+            grid.append(command);
+            content.append(
+              node(
+                "p",
+                "只支持初始尺寸与资源身份检查通过。未模拟玩家输入，未证明完整 gameplay 因果；Agent 的 completed 或最终回复不是验收依据。",
+                "note",
+              ),
+            );
+          }
+        };
+        addEventListener("hashchange", render);
+        render();
+      } catch (error) {
+        content.replaceChildren(
+          node("h1", "无法读取公开记录"),
+          node(
+            "p",
+            `${error.message}。请通过本地 HTTP 服务打开本页；不要用空白或示例数据替代。`,
+            "error",
+          ),
+        );
+      }
+    </script>
+  </body>
+</html>

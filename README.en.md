@@ -50,7 +50,21 @@ The published `v0.4.0` release is a separate legacy path, not the Preview produc
 
 ## Case studies
 
-### GN-1: a shared collision resource
+### Current Preview: GN-1 without an Adapter
+
+Starting from a symptom—a falling platform activates while the player is outside its visible width—a real Pi Session
+found nodes, queried Shape references and sizes, changed one line, and relaunched to inspect the candidate.
+An independent check after the Session found that the baseline failed the initial geometry/resource-identity checks
+and the saved candidate passed.
+
+Public materials include actual tool-call excerpts and failures, the patch, an independent checker, and five screenshots
+of a saved-session replay. A **credential-free candidate-check command** checks the saved patch; it does not rerun a model.
+This is a **functional demonstration and regression case**: GN-1 informed interface design, so it is not unseen-project
+generalization evidence, and it does not validate complete gameplay timing.
+
+[Review the new Preview case, screenshots, and runnable checks →](docs/case-studies/gn1-preview.md)
+
+### Historical GN-1: a shared collision resource
 
 In `endlessm/moddable-platformer`, four platform trigger areas shared one Shape, making the narrower platforms'
 trigger areas wider than their visible platforms. In one matched pair, the coding-only candidate retained the shared
@@ -61,7 +75,7 @@ This is a retrospectively selected **N=1 qualitative case**, not evidence of gen
 
 [Inspect the candidate patches, results, and limitations →](docs/case-studies/gn1-platform-alias.md)
 
-### Godot Demo: runtime inspection on a second project
+### Historical Godot Demo: runtime inspection on a second project
 
 In `squash_the_creeps`, the Agent used the shared V2 runtime path to inspect Mob orientation and velocity before and after
 editing. Both ChronoRift and coding-only candidates passed the independent checks (**3/3 each**): the case demonstrates
@@ -69,7 +83,7 @@ second-project reuse, not a comparative advantage.
 
 [Review the investigation and both outcomes →](docs/case-studies/godot-demo-mob-orientation.md)
 
-These public cases used earlier project-specific Adapters. They do not establish generalization for today's
+These two historical cases used earlier project-specific Adapters. They do not establish generalization for today's
 Adapter-free Preview. Public materials include candidate patches and check summaries, not complete raw Sessions.
 
 ## Explore further

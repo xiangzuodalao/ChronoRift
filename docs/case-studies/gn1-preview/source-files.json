@@ -1,0 +1,1734 @@
+{
+  "schemaVersion": 1,
+  "historicalHead": "5122828d1d16f467d4bddf20a6afc3b0b1893570",
+  "historicalWorktreeWasDirty": true,
+  "comparedCommit": "68f8a55006fa91c80b03b977f312ff7a0a3db5ed",
+  "scope": "All apps/ and packages/ files recorded in source-identity.json at launch, including three then-untracked source files. Each listed SHA-256 matches the blob in comparedCommit. This is a later byte correspondence check, not a claim that the historical run used that commit.",
+  "files": [
+    {
+      "path": "apps/cli/package.json",
+      "sha256": "96f1a7d881ed0f6d9072fe72656ee4254be496f6e598321049eaabb16084363a",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/diagnosis.live.test.ts",
+      "sha256": "fb82fe3911b94f4b77addcbd9af6a03f70a13c10bcd582835cfc2b7305b7b1d3",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/diagnosis.ts",
+      "sha256": "5151bf28d3aecb484776af9b98198551517ae53542b14f79d4838e18314b8d5f",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/entity-reuse.godot.test.ts",
+      "sha256": "0ba4357e7b4974785948e3fb62368fcf18bd4cdf3860b4d1e4fd9002e3205e0c",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/frame-input-window-checkpoint.godot.test.ts",
+      "sha256": "b3b06a7634d5a3c32698b348ff4e3228637991c40e264c40105996d50d71971f",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/godot-vertical-slice.godot.test.ts",
+      "sha256": "54120a4de46039a0fc71db71bdd6f4780862cc22edc7b5aa27eb514e0836f99e",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/main.ts",
+      "sha256": "2ac8467acb4da565375c520050e17eb9d048aa1ecf18ca615684574d21400132",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/pi-defaults.ts",
+      "sha256": "14448a2850e9d2e1d51d7c4a88f90bd9ea131372d51b9821b17a2775e9a2476d",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/pi-smoke.test.ts",
+      "sha256": "0263fbf26dc55e0221fa384937dd0958d24a25b858e61babb5aa985fd9b90f69",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/pi-smoke.ts",
+      "sha256": "8ebf90237bc6111d939347edb7cbfe1cb1d96a1d95cfbc29f348f4a26ff1206a",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/runtime.test.ts",
+      "sha256": "cb89c646581ee08649656582dc5e3f6d574aadbd614e5974754b626fd0682a75",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v01-agent-game-api.ts",
+      "sha256": "89efaf8ddc357a47260e5df31dc4ed7ee3c1d566cb3c4ab6d0043afc29db6b4d",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v01-runtime.ts",
+      "sha256": "7a12d4cd2b6ee97c473996b03d47f42f188643120bd3d6405bb29128d4b3676f",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v03-runtime.ts",
+      "sha256": "0564b5930283a16f18ba08275652a3ef935ef47e03704427469542276a933439",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v04-diagnosis.ts",
+      "sha256": "68e7d8bfdc621a92fa153dcfd824dceae97ed093c16ac7026ceaadb5c9446449",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v04-investigation-api.test.ts",
+      "sha256": "bc96e8a550dec717095e6c90aed20bd120a89cda5602bb4e8bc4ceaf20e4593d",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v04-investigation-api.ts",
+      "sha256": "c24a0604ddf7d2952123d73a05a922db9bd61f81f9530676428d9a8a37668e02",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v04-runtime.ts",
+      "sha256": "3dd774b05acc042d0129813ce2f7f1527e1b7ab8bf81f2c8f818d69ab9d636bf",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/v04-vertical-slice.godot.test.ts",
+      "sha256": "be0e118d85d4e03b92c85be4134646c5e7aa4db997daff8bfc10bc8c912ae57f",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/bounded-output.test.ts",
+      "sha256": "509807f59c52f6b5dcb89d2f509a683fbd41c41f5b698fbbcb27a002030deed8",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/bounded-output.ts",
+      "sha256": "8fd203024adcf44ba5a8713f3924e99e7f79bd87689244071db3d1adf6b75f4d",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/candidate-godot-build.test.ts",
+      "sha256": "3861b7d78fb1123b926b8fc204a2e410a11751c9f7d933a504da249dbc828e25",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/candidate-godot-build.ts",
+      "sha256": "6f4dfcfe45deede32923ab72ee41b67e5ecdf57b77d471629accb514a8859fb5",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/contracts.ts",
+      "sha256": "55019e1c1d3688e23fcd8cb8145eb6b6d2b6769643b62b201c936c51537991c4",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/errors.ts",
+      "sha256": "c935a36b4ec64534eb1f3a4fc920be398d37d581dc06ce4f122d38e0edab0038",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/external-godot-source-policy.ts",
+      "sha256": "e95bfb490cdd8b7f719036119835ac93bbe0187d7381f4277cd73d0d693a52e4",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/fixture-manifest.test.ts",
+      "sha256": "c7b9776b59354f57ed4fd0a427d8342c13bcf3701fb3c98837e49fb69608cd7f",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/fixture-manifest.ts",
+      "sha256": "d6b3fe3d7d151b3d10a1ceb893b00845d48c6b883bc55ac1d07c10503851c1e8",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-import-preparation.test.ts",
+      "sha256": "7d675e53f3002ca4d30131f174557d6e4d881cb799acfada634d3f7fb30bf1d2",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-import-preparation.ts",
+      "sha256": "3adb7b71df50c0eb1364d43bb6a6a3ec2c75e92e2266b11add63cefc0f45c8dc",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-inspection-runtime.sandbox.test.ts",
+      "sha256": "6534a38de862b005994f10b8b6f7f337a856adfa8703631ed98b410a4194a15e",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-inspection-runtime.test.ts",
+      "sha256": "9b97c5a1ee449012dc5a437006b6bf9d177ef2241be1576d4d72c8565709fa89",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-inspection-runtime.ts",
+      "sha256": "d72ebb4c84e4609871677856cbb31a6ea895fe161a3231fccfa7eef32c22136c",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-inspection-source.test.ts",
+      "sha256": "674014e40374782cbdf86e681e4f9d0c2723de1122beaa2df0a1ac32cb06ae71",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-inspection-source.ts",
+      "sha256": "a88cbe02a1e4ee85f3608ba60afcb81cd707d32e39f720c7701b1c47ffef79bc",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-project-descriptor.test.ts",
+      "sha256": "874842abff6fe4e0e113fdf5ffa76f005742d3058a15368226261af4a0c99f0e",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-project-descriptor.ts",
+      "sha256": "752963dcd3dc7d4b438ecfe80e44ab4c3f76170159e29ff6cccc7d9eb9546ca4",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-validation-stage.test.ts",
+      "sha256": "49beb61c9f490a67245d1e1c84ab1da95dff3abd7f5857f6d09070dfe1a8ae63",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/godot-validation-stage.ts",
+      "sha256": "31c8948792648023116b9299488948431402ab51f2f8c41b21ffc735d82551f4",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/host-git.ts",
+      "sha256": "0f15f583c4987269bc7a7102d8c54dd0f4a5a330b060baeec2aef8ffbb34cc3e",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/managed-godot-project-environment-runtime-preflight.test.ts",
+      "sha256": "82281801704f341cd256247a6d2a8ec90ba533db6a530e7c85b68971e0ba4906",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/managed-godot-project-environment-runtime-preflight.ts",
+      "sha256": "cbbd8c09ef0619dbf6bf416751541f1fd2e1d48697d9e16a340d90063c22422a",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/managed-godot-project-environment-runtime-v2-preflight.ts",
+      "sha256": "2386d6dd5b605271bca90de8f2fe2c5fcd2fdd4e295899249434217430881be6",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/managed-godot-project-environment-runtime-v2.ts",
+      "sha256": "19b4c09b743e3cfb4d5cdea2852b1980dc25b93871d7640a0b93888de0e6817d",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/managed-godot-project-environment-runtime.test.ts",
+      "sha256": "230e297f4cc18f0bf3ca2258a73ae2c5069423d6fb8785e9ff54f194357974a1",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/managed-godot-project-environment-runtime.ts",
+      "sha256": "3fe643eebc4446b340b1cd93da061936f13acabd3798bc248e7881c08b2d878c",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/managed-runtime-file.ts",
+      "sha256": "ccd55a618b20bb529500f6fdcb1f94b42709c0a8a1819b96e58b83d274f588f3",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/mob-orientation-ablation-cli.test.ts",
+      "sha256": "d739c4a7dbae56af872515745252fbbadb180de2d95f42c0f1388d249032cc0e",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/mob-orientation-ablation-evaluator.test.ts",
+      "sha256": "33aefcc64d0484b8d62913a0361f0e5f3ac815a19cc02e2b105b8bc7741dd757",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/mob-orientation-ablation-source.test.ts",
+      "sha256": "e66fd0f69d4b07e125a68995d39935139a3025bc3a6ec3df59690988ee9bb0d0",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/mob-orientation-ablation.ts",
+      "sha256": "0de0030e0a8500361ac0d7c9107d643593af6e8ea56d061927d648e7eadc5dc9",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/mob-orientation-evaluator.godot.test.ts",
+      "sha256": "146a0d9ea84e65851896b86b42c279270e9c54254e0219010a10bb489019bfea",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/patch-handoff.test.ts",
+      "sha256": "d5b17ec8e55018cb412a21fbfcc431cd1c3436dc85fca0ac710ca33a2f108b8e",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/patch-handoff.ts",
+      "sha256": "743e4b847e3e1800fd8ea0124a0afadc3b7b7a596fc3ba4c1c2a892bf17e6caa",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/pi-coding-tool-port.test.ts",
+      "sha256": "8c602e9257f70501aa18bc9f5ca73bf1e001e4303a53bd22bbd3af8d340cea33",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/pi-coding-tool-port.ts",
+      "sha256": "73263c24e517789cdcd43a99326223fc234b026a7bd133bc44ec0f5f4f8c03a5",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/pi-session.live.test.ts",
+      "sha256": "68e87342668ecab91ced9490382b719aeb2b8eafd99e8fade495f08d4dcb6985",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/platform-alias-ablation-cli.test.ts",
+      "sha256": "925fdaad453f14de1ed38866c06eb3d8b4229ec0af01e8c9e08b21e5face5215",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/platform-alias-ablation-evaluator.test.ts",
+      "sha256": "610c28d7386cfd0d09a47da9a77a5416f745efeca61bd078bcb2d24db31a507b",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/platform-alias-demo.test.ts",
+      "sha256": "5d97868cd54fd1573508d541a3870bdb05a3c6d8d60bed48fdc6b08b0319a83a",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/platform-alias-demo.ts",
+      "sha256": "6ad187c8ee0baa73de6a0f7883afeb13317d350d8775ba8246e5394cb063a1cf",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/platform-alias-godot-run-tool.test.ts",
+      "sha256": "8f5fe2f65aa067dcd27da5548fab2db48787b4640ac20051723abc88df67444c",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/platform-alias-godot-run-tool.ts",
+      "sha256": "4acdd98a233e2dad1919fb554cc2fab3117f613fd12b17d80da490ac0444807e",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/process-driver.test.ts",
+      "sha256": "b34c85ac99950dd6ef9ffe53895f33b80c078ae329f80ac649132e77dab0496f",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/process-driver.ts",
+      "sha256": "9ae88739ca68863b5a863577c2397c483e4ebff5abe6918fec0651a9807e2eda",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-game-runtime-v2-state-only.test.ts",
+      "sha256": "0f86aa2e374a61b1f6a44f1e16bf9144dad59384426952d8e52322b036f43e1b",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-game-runtime-v2.test.ts",
+      "sha256": "af2a5b6664aaad06aa0085b151a69bc9a271a628ec64c2b5f1b084720cc49569",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-game-runtime-v2.ts",
+      "sha256": "947738374d591c79498bbc5268cc9634450af0d2bbd269972efee124a22ef4ca",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-game-runtime.test.ts",
+      "sha256": "0830a37fa3b5940a35160aef18c876ddce6d3d381f98bb8aef64ae66bacf832a",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-game-runtime.ts",
+      "sha256": "734a14337591ba65ff8e041919a8eccc97b1c1cd5885932827d337491dc9997c",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-preview-cli.test.ts",
+      "sha256": "33fb19abc3bb7e5d1befdcbf295ebc5e2186d01b61444924429063a965af4116",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-preview-result.test.ts",
+      "sha256": "1614b8f3e299fcd5f0293821273d7a013e07e2d422ad044f8cb485a3ec659b73",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-preview-task-rollback.test.ts",
+      "sha256": "eaea078ec3e6a83e44e8d23ed99ccfc4ba3057972d32472c7f65fb7381a5aeff",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-preview.godot-sandbox.test.ts",
+      "sha256": "70ec4524336539970704d7a0501c88fa4d0a056b0d4f39c8371376b85389901d",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-preview.ts",
+      "sha256": "7ec444147509a5848ca4d4918721890a77fe2c63e141bf9fd7443a742e00f8dc",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-sidecar-port-v2.ts",
+      "sha256": "43434794445b09a87543efe39f4f8f6278e3d89687abfb1f87425f49c5550ebb",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-sidecar-port.test.ts",
+      "sha256": "199791a53620f17d8e2a3336b500791b306be069b137f3c613225874363ff5b5",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-sidecar-port.ts",
+      "sha256": "f31c005ab398c0c169bf4ac9f65249172843be5742663da57170167f7d4160f6",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-source-policy.ts",
+      "sha256": "24de59f9c06dccf71e91af1474deeceda5a7198051cd58944b005d42a0655a72",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-validated-ring-v2.test.ts",
+      "sha256": "e5bf738754cde6687acd40063cfca897587aee9fb8de757a4d17b9bcd4857065",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/project-environment-validated-ring-v2.ts",
+      "sha256": "ab9cb2a559be10e25cf80936fa7f0b4484b6df75362356a442b6d19c1a09366c",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/selected-tree.test.ts",
+      "sha256": "727b41fe8debbb4fa49b24aed8954c50187ec49a5b1729a3d59d5f933b5b6324",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/selected-tree.ts",
+      "sha256": "d7c01b11b3896b56b6e5c88e9b6b99435f1ebb7dbb090ddccf837cb0c6032182",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/source-preflight.test.ts",
+      "sha256": "21201b38af2a6f0bfaa339a08890004aaef4f1c91c8282cf70cf72ecc17917c7",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/source-preflight.ts",
+      "sha256": "e91a21aa88ad6ae91fc327cae416a4ea2d77a06927a9a5966248e5fe19e9cae5",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/srt-godot-runner.ts",
+      "sha256": "801c342af765aee7b57bea040ce35a65334e60291782e5f033495d854beabce7",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/srt-runtime-config.test.ts",
+      "sha256": "5f4363b46574094e52ec7f0c63cc3221d0a071e43b255927fee14f13faf04469",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/srt-runtime-config.ts",
+      "sha256": "eaeb1d6ee84914a2689e0f4398a00ad8b8231e61f85d20a81033246a100e4105",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/srt-sandbox-controller.sandbox.test.ts",
+      "sha256": "acd38285ed06da343ea2f897c954331b55b3670d0c91e05111867a98e0c341f4",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/srt-sandbox-controller.test.ts",
+      "sha256": "59fe3056af68b4d34ec5ff1d21fc99cd3554d74fcc4f35dd76ad4965c211d1f7",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/srt-sandbox-controller.ts",
+      "sha256": "72ce52d5dce05bdbd133d9c50d2fc4ca077ae09017c7e4d9997700e15c490a84",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/task-paths.test.ts",
+      "sha256": "bf611a71760733488f7b4022f51ba721d228d7dc8bfed726f86a76a172d4ec47",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/task-paths.ts",
+      "sha256": "8e632882afe4e14520daa0288c1c2ad16b19b2a8db80c3f08b2278684dab4da9",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/workspace-materializer.test.ts",
+      "sha256": "71158499c0d77b8a3fa925f343cc3996071a6da9637a113c219f7df09dfc3900",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/src/vnext/workspace-materializer.ts",
+      "sha256": "4752c194bd255da4051b9708c9cc62a24fa487f47c72012a834bdb24bcfbb5dc",
+      "executable": false
+    },
+    {
+      "path": "apps/cli/tsconfig.json",
+      "sha256": "c37b2e5bc6568d533592a4fdf832ddcc9cabbc1084601ccfe9b7c5772779dec5",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/package.json",
+      "sha256": "7a0599f561609425d5561293ae7301005f4cf9e82155491454ebec654cefcf9c",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/api.ts",
+      "sha256": "8bb0ebcb6f906944b1a9bfb81a12bc4326958511ad6550f88c58b246de463a43",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/capabilities.ts",
+      "sha256": "6f559cf3c29cdb812701e9e1e90debc99754679bf804cf342db2820272480fc0",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/handles.ts",
+      "sha256": "595a57508e3c92679afcb1fa56749c56d9b4fd50354542fe8ace5b814af90da6",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/index.ts",
+      "sha256": "a0d2bc6c1026da17221d534efb94eb35e857869730d3a9cecd1c8793d89bee31",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/inspection-game-tools.ts",
+      "sha256": "4c14ee3b8bb6c55cd16286db98b89a26865e06da4b135b122a73dd800d929ba6",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/project-environment-game-tool-inputs.ts",
+      "sha256": "8e2876cf207522349ec08bccdb3c9c43c2ca2383c2a7b730fc9e9e488a09ab99",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/project-environment-game-tool-outputs.ts",
+      "sha256": "387381b74b1d8385a328a9865862abed2e1f7932ff1b791a26e9fa33ebabf886",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/project-environment-game-tools.ts",
+      "sha256": "3b83ce9981da16b63ce3ad6972bea22caad2476394c21d8d9230b67b6661a618",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/proposal.ts",
+      "sha256": "2a33ffcc84cfd71c21bd3fb880cc245c71ec08ef8659e2feee5e6a217d9ee911",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/tools.ts",
+      "sha256": "bcdaf4c8495bb89c634e673eb45d954da725958318df1a6a3f2e6b8a7873d0f3",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/vnext-game-tool-inputs.ts",
+      "sha256": "64d56dc72639673ffb7f5d3688ebc737a1a57cd933a49873c8eda50a79f6830e",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/vnext-game-tool-outputs.ts",
+      "sha256": "401c5ab3913ad99187de50639e778ff840e81d6bc5a690e9cf107b5d354c911c",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/vnext-game-tools.ts",
+      "sha256": "e10ef07090fbf1f0833ff3414a85484764047fd810cb8d653f2e945288e93955",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/vnext-lifecycle-game-tools.ts",
+      "sha256": "46de6e45b6acd4250c8095e2b9f4fe80bd8c650af2119838e23aa911dd253fe5",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/src/vnext-semantic-game-tools.ts",
+      "sha256": "580be6023660164119da0c6583ba04354f84605844b50d4b208aa578395af962",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/agent-protocol.test.ts",
+      "sha256": "b7e7f0a1fb0659d84285131bde1f3fb26877c74a40e27e9e1628a0c6ee8f6c21",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/inspection-game-tools.test.ts",
+      "sha256": "f754afdc9316fec0f23330a85223c2feaac3c25e5c14f98915299739c675068a",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/no-pi-dependency.test.ts",
+      "sha256": "882184ce36dd75f0cb456986752806fddbb5fb938ba1d1ab1a8febae872cb04e",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/project-environment-game-tools.test.ts",
+      "sha256": "13e984cc9db10ddd3c929ddadcae7c0a9aeef91593f94741e4f02be719fcb837",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/tsconfig.json",
+      "sha256": "c1124bab760b91bdcc8183469ca12bac33df02c06e0dec0450e4f85b8216232a",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/vnext-game-tools.test.ts",
+      "sha256": "5d94ca99cb09c5befcc3aa4cf0b687872cac4b136936876993e8a59dbb5dfe52",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/vnext-lifecycle-game-tools.test.ts",
+      "sha256": "917a9934341c7164866d2cecf255a46f851eac7325037a2c401a0a9f6159f000",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/test/vnext-semantic-game-tools.test.ts",
+      "sha256": "d87c935976a9857628d3bfe5f212112d25eb9d40947ef291eb1df4e9910f5ac8",
+      "executable": false
+    },
+    {
+      "path": "packages/agent-protocol/tsconfig.json",
+      "sha256": "b1df01c7b3ffbfde2f65f433286f600e3ff181d47db39bce8337daea3c30a2c7",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/package.json",
+      "sha256": "5a94bff22bc9c23bea9005b718f5f98fe6df4f16adff40f4b74a9a03f7c447db",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/capsule.ts",
+      "sha256": "9d41defa62203cd7f56ffce9c073edbf39aeec50ae5c9b782aefba2f2e8a9915",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/checkpoint.ts",
+      "sha256": "851d25bca23c22c2d9361b921d90cbf3df84941614526d42ed65b8bc383bff50",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/contract.ts",
+      "sha256": "87dc4f60bebfea9671e2ba82c8c6e0b8e9204f9dbb9bdf3c0464d260433ada3c",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/diagnostic-v3.ts",
+      "sha256": "1a8d32af0b687bff297288245ac5fc84af62aa696fa81617437c8db56e10fd7d",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/evidence.ts",
+      "sha256": "c9db591e80185eda039032cdcf1d890d441993a638c5ae628228b25a6c348b1a",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/execution.ts",
+      "sha256": "2784ad7fd377e0a7e5bdeb417fb2f55a81c653a92bed8e9e464a348e4e0ee3ce",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/hash.ts",
+      "sha256": "41996c113ede8a785f3da29bad0b5c6c5795fdc5816ed7dd99ee1dc01e03464d",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/ids.ts",
+      "sha256": "caa050d2bcf725a720b36c9bccccf1a873507e21263b417dc795a27931049eb1",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/index.ts",
+      "sha256": "7d9e82d4a788ea8fa8df2a4eb4c7e7f8e52979849c7da45e6408443ba0ba9d36",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/invariant.ts",
+      "sha256": "18fa1c39245d1679e0d9b3ee59a774a6ea541b7ddeb00b5b5084edbc4b97cfd3",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/json.ts",
+      "sha256": "36c0bacd9c12af833b43da39c99877a52a25d5cfec81e921fc1a6e6376cdeac9",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/project-environment-characterization.ts",
+      "sha256": "b13f05f22be2d35b1fbadd6fbce8a478478b5ab05939bbd149a0de158ff0a23a",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/project-environment-v2.ts",
+      "sha256": "bbfd66a336a8c1dba23323ef10110441e898785e6891573fd081ad5b23bd1213",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/project-environment.ts",
+      "sha256": "bae861120c88d27875c38305cf3f1449a0e4726ef7aefb25b5915c64ae046532",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/proposal.ts",
+      "sha256": "0679685e1834c520c6d32f530c49fe49c7a17ae7e3ae01ae11dd289dbcf92ded",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/runtime-inspection.ts",
+      "sha256": "c4bceae7eac70df0efc97913e828dab03ec96620c1e93e6cefa2589bf9bbb222",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/runtime.ts",
+      "sha256": "62981daed2e1684c53779051202e4bf5e226f7148d609608b3635abb5492844a",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/task.ts",
+      "sha256": "5e9488b568dafb6c666cdbdb03563ec9ce2982df51abce699b1bd11bb9e6b66e",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/telemetry.ts",
+      "sha256": "c9eba15cdec2954d73882fa7c7be1971447ad544bd12ef0648816999d522a265",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/time.ts",
+      "sha256": "3306b6198795b7142f905df8af1e50170dbaabacc3c60956492fe0898441c5f3",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/timeline.ts",
+      "sha256": "5f54a1fbd52518cd1718267279c43e035cba353e76888f4695980209becace62",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/v03.ts",
+      "sha256": "d7768aab78ff0bb6cb9c8e337ccec3b9ea4e97298892108f3f83fee317db4dd7",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/v04.ts",
+      "sha256": "a491692270e3461e81ec8d6ec316b086b95821125cf3cf060bc410c511c514d6",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/vnext-lifecycle-runtime.ts",
+      "sha256": "e28a13f944475886ca0393d7b03848144df9013c3ad3aa363cf751af704c781d",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/vnext-runtime.ts",
+      "sha256": "b37fcb630ab325eb71241cc8f9d344a4e0a50c55299be2b064164852af0f65bf",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/src/vnext-semantic-runtime.ts",
+      "sha256": "d9b88e56dcff7577418252b890f38ef39d9f426bdcb8b651295131f4149e6918",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/diagnostic-v3.test.ts",
+      "sha256": "e9bf04cf44cc917ae62eb1811b6133baaa7b4f614bf47b4812496f254aeb5dec",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/project-environment-characterization.test.ts",
+      "sha256": "f5e195422a9804e829c9dfa1d0f3862ba66191af942a40dd734b7219134c4d35",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/project-environment-pinned-capture.test.ts",
+      "sha256": "7d980e59acd1ca1b999610444f0acd702dbf450b02e305e5ce809ba6b4406538",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/project-environment-runtime-observation.test.ts",
+      "sha256": "fbc694177b5649f31c94b50f15b2aef217c1d7b91426e58ca8565f8f3de7e421",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/project-environment-v2.test.ts",
+      "sha256": "9140326179d05b895015d1fd9833537503bd45feb049bfa6624b3822ec201369",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/project-environment.test.ts",
+      "sha256": "e80546440de4242f55355d2eba9debd4249057ed969ee400a3fcf68fa6dfb10e",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/runtime-inspection.test.ts",
+      "sha256": "37395f236bab1f31a691292229d179aaeb7531173e00ce446f72bd8e9850927f",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/runtime-schemas.test.ts",
+      "sha256": "e718d66479aabfa856ebb323abe1918439d977effcac2ed9ba8c539fb7245167",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/schemas.test.ts",
+      "sha256": "f96f21f3f2226785a8ac185ed6626eab0357722a28c873d924d8d4200243f1d4",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/task-schemas.test.ts",
+      "sha256": "df834ba47246a977414c72010f34d23ac9a1bdae383b6e56bac4e23890fddc17",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/tsconfig.json",
+      "sha256": "c1124bab760b91bdcc8183469ca12bac33df02c06e0dec0450e4f85b8216232a",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/v01-schemas.test.ts",
+      "sha256": "7bc30566b75d0ed0259c0b4ef27a83c3b76f871dca26c8dc0679e22f45df51ec",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/v03-schemas.test.ts",
+      "sha256": "b41b85e037d9a8d92d939387e1ee795c40fbf2445c853c0b3d16bb6807bdb745",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/v04-schemas.test.ts",
+      "sha256": "04b5a968381e43b38c8958a24e9557abc54c63ca4fd4d56afbb2da678cbf3f62",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/vnext-lifecycle-runtime.test.ts",
+      "sha256": "399c1ac0bff5a793cc2f81033bb2c52b3160a6393f30859f044f3e4f1c263043",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/vnext-runtime-contracts.test.ts",
+      "sha256": "5e193ba1611ce4de1b3a4f23274d6e5b3aa4a7c0a94fa4a9337458b51a3eb233",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/test/vnext-semantic-runtime.test.ts",
+      "sha256": "51b375a9a2d18d90deff8f6640cc2affc1316b95af90f89af94090de2efe8383",
+      "executable": false
+    },
+    {
+      "path": "packages/domain/tsconfig.json",
+      "sha256": "b1df01c7b3ffbfde2f65f433286f600e3ff181d47db39bce8337daea3c30a2c7",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/package.json",
+      "sha256": "c7019fe1232a9c545679d337cf37ba4344cea03cea894d9b55caf83e6d9e9feb",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/index.ts",
+      "sha256": "d1fef156b46825aa215b04a8a91a361ae3876e55b2f4027bfda7c07793ddf66c",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/game-environment.ts",
+      "sha256": "77d129c98468847b7ed24f6a34e84a7c00ba4e9bc531030339e2dd92d42b3dd0",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/index.ts",
+      "sha256": "1030cea36cf514d1825af4061a44d9978d2764dab0b3a5ed116053ef441df5b0",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/support.ts",
+      "sha256": "a72003cc9be1f5b41f3d417949ce226210eb6274e768177e30146c776f1f6615",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/v01-artifact-repository.ts",
+      "sha256": "552ca619947911f38f23a55580201a268ebe4e86e36a997970e3c15dc8e3c89b",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/v03-artifact-repository.ts",
+      "sha256": "31e85f663e5830a85af39c26c48618b36231cd05afdc350604c776e8d0d11f34",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/v03-fixture.ts",
+      "sha256": "ad64798b8ba4cc54f2fa6aeae3c18330634121c6ecb2b8949ef96d211c4c71de",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/v04-artifact-repository.ts",
+      "sha256": "f912afff44c66cdd56c94c3a53d25e09138f47aba50195879161e37c3019e833",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/v04-investigation.ts",
+      "sha256": "a9315fc66ede23ee37a89428ff48ba5b4fa717ad17a6e220e063b95d72dde0ae",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/ports/vnext-runtime.ts",
+      "sha256": "e1103ecfc015a318c4676ea1831dcabbfc12711a1b0bc05a6e65fbf3442b7bf8",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/canonical.ts",
+      "sha256": "90d14bb8c2db3b6e059514f764f30b034b60e20fc1e4b5b8d125a23bb515b696",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/claim-evidence-policy.ts",
+      "sha256": "30b050332ae7cb0f61435e5b253980fe36d589360f18ecd0e81560e3b56380b8",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/v01-canonical.ts",
+      "sha256": "bc23dbeb6f0bc8430c13fdcb736e29fc7313f96e8dd30e54b32e039114d00f11",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/v01-gamebranch-service.ts",
+      "sha256": "79c60ba08ca3ab78fafbc9a6c3a3f6093da2ab92691075f8d64f462aa95f5a5f",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/v03-gamebranch-service.ts",
+      "sha256": "5b1e45534b2a6eb823de7b147023e4f24a666884d29c099e8872f6cc3ecd5b7e",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/v04-canonical.ts",
+      "sha256": "8098dabd27e9b5a8e653132c9c67ad7ea6ab60122a753297cad91747482152b1",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/v04-gamebranch-service.ts",
+      "sha256": "807655c33637d97b2d70534f6d8d98c3516f52884dd70eaaf55389f9b504160f",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/vnext-checkpoint-restore.ts",
+      "sha256": "4eb14bbb9fcb8a8f4a93c1f5dd9ec371519ebe82dace6dca571502d4b98b665c",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/vnext-descriptive-comparison.ts",
+      "sha256": "2e064f57320d7d7fd84a0a232229c290a7edd26b2a9480b72420a85535c4f216",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/vnext-rolling-capture.ts",
+      "sha256": "7a78d623ed24654f0de622b95d12691b3f8b4f63e2005b3b1b020f916c49c852",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/vnext-runtime-state-index.ts",
+      "sha256": "dc901dae6ee698cc291c87174279c9cad5c1a35adbc17a8b4bc5ccdc2302e2fe",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/src/services/vnext-trace-replay.ts",
+      "sha256": "b5b1840ec60d1b79073839bede71b38474e941d7783937c1ff170f57c383fd3e",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/test/claim-evidence-policy.test.ts",
+      "sha256": "c604a53dbe570460da117defee49d3abaf1425ab469bd603781b0c395d58f96f",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/test/tsconfig.json",
+      "sha256": "c1124bab760b91bdcc8183469ca12bac33df02c06e0dec0450e4f85b8216232a",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/test/v03-conclusion-service.test.ts",
+      "sha256": "d760b1cc7e374d12a57f1fc2385547ec8fdf36ee097b1a908f337dd6fa52368b",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/test/v03-mechanism-evidence.test.ts",
+      "sha256": "13c7645c0a1d4a8bddda5be69475491529a9d38202a5d3e1aad21961e555c040",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/test/v04-gamebranch-service.test.ts",
+      "sha256": "70fa23223ee9c106f258acdd0272a824672a3dc7c0c320b0f3ececc9a00018ab",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/test/vnext-runtime-services.test.ts",
+      "sha256": "edc74751026e3d107e50504f1c6232e4518a979f6984f287deae37e59c35dabf",
+      "executable": false
+    },
+    {
+      "path": "packages/gamebranch/tsconfig.json",
+      "sha256": "b1df01c7b3ffbfde2f65f433286f600e3ff181d47db39bce8337daea3c30a2c7",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/package.json",
+      "sha256": "e9f3e4014e823bf5e2c50983aa8b930e0ee261d6154fb0c90b6925ddf0402382",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/claim-evidence-policies.test.ts",
+      "sha256": "4a4a480cae0ea7d2b74ad540a2fa840f566e39e16649945fc53ee2204a305207",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/claim-evidence-policies.ts",
+      "sha256": "2fffa0221d8c237babd945d3835ebfbc5f85bfa601338827021744c923f914ab",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/errors.ts",
+      "sha256": "78a3679cb7ed72201930b8c5e5d551cfd4fca8266eca93b8ad69e116ce4c0829",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/external-source-policy.ts",
+      "sha256": "8233c1ad382c0b4c0ee6a9aa62a6b16314de899c948326d6607f717c47d21f08",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/fixture.test.ts",
+      "sha256": "1057e4cd5e7020281d5df365b330afaad932d0fa84ad29f12012206441bba168",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/fixture.ts",
+      "sha256": "86bc31dc5a9481056240412c4b79dc08de4cc4970064d88229e6a1d64b708a4f",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/godot-environment.ts",
+      "sha256": "d34b2c4deac39edf103676330c23fde14972a4a5cd84dab82d30f1ee4da9e219",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/godot-wire-client.test.ts",
+      "sha256": "a33dc0409221d837189f2498bab13ca6123fdeefb4073a736760cc4b0f7b0073",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/godot-wire-client.ts",
+      "sha256": "a785b2e29a85b401c04f698c8f2ac600e4ebecfd712048e8c1d1e985911d9be0",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/index.ts",
+      "sha256": "0f83c4ea9791a919f3fa1bc40b5e40ff8c24b21bfa34e3d9060f092c624d378f",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/inspection-runtime-assets.ts",
+      "sha256": "fc0b1e00a73aab9eaeda76e810f0182849b66e3b067e0039146e61b94a58df1e",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/inspection-sidecar-source.test.ts",
+      "sha256": "b7cfa5ff7ddd39d7eb027c8fa1d12be02213bd9ce81397544b86d6dc79b1d3a3",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/inspection-sidecar-source.ts",
+      "sha256": "7fdc0500a0a6e4c1622dd100d4104b80eac0880734613cc2c6e1858d30ae5ec2",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/inspection-wire-client.test.ts",
+      "sha256": "5c9a71842eaced0d1fdd37058a647bda2a9fa20270bf7fc7339c842effc3e4dc",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/inspection-wire-client.ts",
+      "sha256": "aecacbb2a9f6d25225a1de2149a34fa18d8faf35fd449bd5a2aa3eeedf903284",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/inspection.godot.test.ts",
+      "sha256": "2d2dd4fb9a70ef965e3b32d98d26377a8a411d819b93428379fc7e9d2042cd07",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/installer.ts",
+      "sha256": "5d8c4f601ed1220cfaead0bf47f9a1068594f985d248b2b62b543ce100bfd841",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/lifecycle-addon.godot.test.ts",
+      "sha256": "9f2dba61f4b6ceec593fa01d1c8a4a8a6e52f13f0986559209c77973f4e35b9c",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/lifecycle-sidecar-source.test.ts",
+      "sha256": "6c3b3d973f2728fbadfc3952090e5515cbf99ad797391ee9884376027cd75356",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/lifecycle-sidecar-source.ts",
+      "sha256": "ba64c9fd18b3b32e2f0f0270fb85bb9a6c0d4057cefcf982d96c1d72e13bc6eb",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/lifecycle-wire-client.test.ts",
+      "sha256": "99c9882b5c2e54c723956370a96d62c3c6253a9be6831a3d9b4bbc6fa75fe7e9",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/lifecycle-wire-client.ts",
+      "sha256": "0f79fb084af228e7f999270c82cc6237d3f1dae49155522a376948dd4ef05d1d",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/mob-orientation-adapter.godot.test.ts",
+      "sha256": "67d3f27b82254d41daa8d5edd1f2e53be3eae827dfb2acb4acc8f27de0014bb2",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/mob-orientation-adapter.test.ts",
+      "sha256": "39f54f120d45a4bd3f1428f941e1c42ec79f187a26947b1571c6813a3822861b",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/platform-alias-adapter.godot.test.ts",
+      "sha256": "52b7181b7a89a5e31233149c34427c461ba4b3ee1e24835cfa8b19a13d4bef2b",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-adapter-observation-v2.test.ts",
+      "sha256": "2a127b6b836a429044f1d1baabdcd3e8f15300ef38aaf72486cc4950108ff7b6",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-adapter-observation-v2.ts",
+      "sha256": "beade74bb4323f407f90742dbe1fa0c3bcde522dec10aebed55a57e5604d1212",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-adapter-observation.test.ts",
+      "sha256": "9b56a22cf5817003402bcb483072b0e20233771e4c5f4d2492da9d2837d15f76",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-adapter-observation.ts",
+      "sha256": "11c69ab0cc31335e48beed5a0b0caec10e902aa956adf984fa9c11b2235030ff",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-adapter-package-v2.ts",
+      "sha256": "834f48fa498a2a60a6fbaa0a5b50d45e397711bba838093a5f6b94f52c558ba1",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-adapter-package.test.ts",
+      "sha256": "bfe0b7cef8fd562af4b72ad43d09967a0f29a8b0e75a9c66c80f0010fc83bc6b",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-adapter-package.ts",
+      "sha256": "256d5ef102a62cc0bd499fb806ce39c6ae976f333b50f4889e7a2bc1093dbdbd",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-addon.godot.test.ts",
+      "sha256": "c6c0c8c15dbd283de51933340f5c3985205649036bb1c6544bce417e79ea320d",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-runtime-assets-v2.ts",
+      "sha256": "1203485c7a3d888545d033925f78758344481f9fcd07e7243b5cf94ad8682678",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-runtime-assets.ts",
+      "sha256": "bfcd462acd13f71adc5157b304031f7f7cc272fc8ab2abbcdb00606efcab4bd3",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-snapshot-characterization.godot.test.ts",
+      "sha256": "82d74c5a09f2e2f963f3fafdf6b143aaf480f03bb7467b768e3196124573c654",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-snapshot-characterization.test.ts",
+      "sha256": "71fc70e3203629de91651547a7ac92966259248e70a8d987d9292cdea3691c09",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-snapshot-characterization.ts",
+      "sha256": "dd63780e3eff494d0e72654b21eaeac933186b4ec490eadca82c7e88d74557b7",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-v1-freeze.test.ts",
+      "sha256": "441a6eec657361148b0fef51176163fc488817e70888b09148efaabd8248a7c1",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-v2.godot.test.ts",
+      "sha256": "9ca7095a7c06c3b96916e8a4e3ebcf879e348e30d46f922b14345188cfb1d19d",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-wire-client-v2.test.ts",
+      "sha256": "6aac08ffcdcda71fea6640cc8f3178920922aa0090786a664e99b5372830f391",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-wire-client-v2.ts",
+      "sha256": "1ac2821e8a0c1f6dfb033d256991ba821dd55fdc031aea5d9c3d5e7f5753a189",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-wire-client.test.ts",
+      "sha256": "0b337ad7a7f26a2ee5e796a259b5ba38ad973a76581574673926439ca8be7d02",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/project-environment-wire-client.ts",
+      "sha256": "5447e7e890ce7aabcb943bd42e0bed87cec612d2241cd262f6a5852377d99b6f",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/runtime-sidecar-source.test.ts",
+      "sha256": "bbf5f2e34793b79da5da4c586b531f2c13db3dd70740ff01df6716509c7b4a9b",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/runtime-sidecar-source.ts",
+      "sha256": "f496609f984e8b56f3bd2510814a5ef8c5ef9759e48a38ca92df54220ba2841a",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/semantic-addon.godot.test.ts",
+      "sha256": "2598b02745ae24aabfc0bdd79f6bf8a87ac54c5fe9e60c664e6ca7af96051572",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/semantic-wire-client.test.ts",
+      "sha256": "4d866454d8048da05d78fba708c63c32c811a3a7660614c847aff30e4fb1ba6a",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/semantic-wire-client.ts",
+      "sha256": "b585240b1074694c3c64924928936a359abeac5c89ea8d0228cd3f76178f3ea3",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/v03-fixtures.ts",
+      "sha256": "178f9d25fc34f2626ab565c25da644c91bf29679a0dda1c5641f78aa5014ba82",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/vnext-runtime.test.ts",
+      "sha256": "5b14c23387931335e82357baf55a4a469a44d6e87f82381073123775a86fd8ad",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/src/vnext-runtime.ts",
+      "sha256": "83e91ecfe702df2f1c3d285d7100ddb15219738624938d79596a088af58a946c",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-adapter/tsconfig.json",
+      "sha256": "382eaf9b02f78b9429dd72b12e77cccb000ce6bb0628287516758fbd2e45404a",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/package.json",
+      "sha256": "04aa8c40639dc7b2f7227691e834591b475fba78f63da514e0b031422cae30cb",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/framing.ts",
+      "sha256": "8e16b2b5d8331b0bcf7e768a29a9c0c13716a7577e122d05891f66f04f8830d9",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/index.ts",
+      "sha256": "0436c2b18ad657b993452facb241b647cb113d8774a871cfb9eee63e39c6f55e",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/inspection-messages.ts",
+      "sha256": "b377f6056e23ca1088634dca170663374433c3f5484f5a706411b39180c0fae8",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/lifecycle-messages.test.ts",
+      "sha256": "7bf0b2d819bd2c5c4108819730f7bbd7189670701b8d8bebf014c85dfb72f1e5",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/lifecycle-messages.ts",
+      "sha256": "92a6a7f0da6d2993819df9ce89a4039118f0360962245ad1c1d0014c26a65377",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/lifecycle-sidecar.ts",
+      "sha256": "c30488f5087fe6208626f179e7e370fe48de801ded897c448f35664f5b1f4996",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/messages.ts",
+      "sha256": "3bc33378d2c2af452ab95f31d8ea760f3874b7358754dad88d3a702ef9a6bd89",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-manifest-v2.ts",
+      "sha256": "0fde766c65e47d4adea7059fc09419c7371ebdc7118176eb9283e9c4a33748f5",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-manifest.test.ts",
+      "sha256": "edc4f5b9a9d573f6408dd7df625415368277f3555f15e37b6dfecb62d441aee5",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-manifest.ts",
+      "sha256": "af042967d4b9849eeb2610cc1ccbea54705e3ea65523c45caddf573468943efa",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-messages-v2.ts",
+      "sha256": "2694a8a657c740bf6246709d3ddce7f1bbd16a160d353ec1b7f94d2fc971f708",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-messages.test.ts",
+      "sha256": "f6d0a4af77104d86a8ae1fe7173ebd54e3b524596070c258be1689693852e05d",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-messages.ts",
+      "sha256": "e188dfbabda7e7f949bbdf11a048bb1f3cb9f3295be028f3d1aeb1e84f5de2f2",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-sidecar-v2.ts",
+      "sha256": "2da0e19dd494003f9f9f076af6263e913b36281b162dd542469ac08ee7b0b913",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-sidecar.ts",
+      "sha256": "d3c7268a24b568d2813299317fe0735cda44168b4b52d3f72542998add0421c8",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-v2.test.ts",
+      "sha256": "72976e8e283bbf480ae06066d951c0bc5deadc95eea1793ed6b34826433005d6",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-values-v2.ts",
+      "sha256": "438debbf563051592659709d0bd4b748ee216103087a7bfce1e968f16e86bd7c",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-values.test.ts",
+      "sha256": "f387f2790727098b232406eaaececdd34bf2dede35f5fff2dfbdee29b77853db",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/project-environment-values.ts",
+      "sha256": "39ce58998b31db078d88d3ca6f8adb403b850b3be74822d03aeda2ab6c55b28a",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/protocol.test.ts",
+      "sha256": "3a7475d480d516d4542a650b3f0771fa98ef303416dc22da0f4784f23230ee33",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/semantic-messages.test.ts",
+      "sha256": "58c8b829550acc3925d724e84a9ebdba99f144c0d944c97beedb31358a4db3cf",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/semantic-messages.ts",
+      "sha256": "a4a966665052795bae7636a93bd29eb58c84d2d7372c57a75eb063273ca426b3",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/semantic-sidecar.ts",
+      "sha256": "e1d8835ee8c8aa83f681117d41d75e52546c8a9a6d57d51d2bd7f4ae0b0c1b3f",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/sidecar.test.ts",
+      "sha256": "4f3aaf7328b88a745a60d1b02bbe85d138533a223b3ac99201a192ae9922d9f2",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/src/sidecar.ts",
+      "sha256": "04c4c31e4512d0f2fde6261b539a1f8de1827f6cc230659e2028236e05490257",
+      "executable": false
+    },
+    {
+      "path": "packages/godot-protocol/tsconfig.json",
+      "sha256": "ce8b422590cf66ae97d397f32593d6bc1813e2bd85f93b8be868826c11a5b587",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/package.json",
+      "sha256": "91aad6f43d36255a9cb189b01d2731848f24afcc22bce667141aad82b0beb42f",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/canonical-json.ts",
+      "sha256": "f3d8018987f998eb4d0c1cdb573bf6202850c05f1221644e0456195ffc696b8f",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/errors.ts",
+      "sha256": "518ad81701d1a336ef32da02e5e5c711ac76cb550844536f74c7464c63f95700",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/index.ts",
+      "sha256": "9f6d6bea83c5992981eea08df3a8d5e675b11c5ac2d426f99e227d98789e8364",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/project-environment-pinned-capture-store.test.ts",
+      "sha256": "653856ee539794d1738298485c818e239a191ba985b915b7803f5c68719db41c",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/project-environment-runtime-observation-store.test.ts",
+      "sha256": "f66f60997bf06b46a360e5f3ad3d7a5b65d93896b676f359e2f98f06a282350c",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/project-environment-store-internals.ts",
+      "sha256": "b79c3b67257f842784be6763bcf33c50191a5b9f8d12273c61e6840384533741",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/project-environment-stores.test.ts",
+      "sha256": "9f8517a65000cc3cdfe5a46bd578ea0e55911d4e860ba969af2988b445423a16",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/project-environment-task-store.ts",
+      "sha256": "5209eafccd3df0c69c8ad44c3011984667e11211195e36096af4ac5ef2ceb238",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/v01-json-artifact-repository.test.ts",
+      "sha256": "0610daaf65ed351f74568eacfcd3a7e24f5c351c05db0dceda4d7a1180bb6d0b",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/v01-json-artifact-repository.ts",
+      "sha256": "9aecd40754037c59d738e2e283c379ebb59de3530edebb1d035582d69ec3b29a",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/v03-json-artifact-repository.test.ts",
+      "sha256": "17c6e02270adecc15884c3cd3d615c3a14be42cbfc2d72310bcd70127fa9cf71",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/v03-json-artifact-repository.ts",
+      "sha256": "b90fd556c98276b5c7dfdfb33423941136dbaaed096b9d3d278af7166190c938",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/v04-json-artifact-repository.test.ts",
+      "sha256": "1a56871f7f7b884bc6b588c27c097cde320db4abb01056b9ac23e7e3cac91828",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/v04-json-artifact-repository.ts",
+      "sha256": "882b13ecbfc4f0c5d014265cdab901ebd149607d2a78b71c477af86429748922",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/vnext-runtime-store.test.ts",
+      "sha256": "18c18853b88fb10e19b8e73c7fc62c59f8077a77a01cc7d6a029a3c52faef08a",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/src/vnext-runtime-store.ts",
+      "sha256": "89a3c24cadddd07c9c524457996b3e61b087dd1451102e00db9aadb807dd980c",
+      "executable": false
+    },
+    {
+      "path": "packages/json-artifacts/tsconfig.json",
+      "sha256": "b1df01c7b3ffbfde2f65f433286f600e3ff181d47db39bce8337daea3c30a2c7",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/package.json",
+      "sha256": "843dbc866adc2a9b7e44efdef674e00e440c0bfae65722070ad99d377e6d6a8a",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/src/constants.ts",
+      "sha256": "697aceb295c4bafe17807f768250b784e6ffe7463032d00258f950969287e67c",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/src/index.ts",
+      "sha256": "b39422f13f18afaefa953920ba99e240c329c4277e48957bf0da278bd8070cb1",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/src/mock-game-environment.test.ts",
+      "sha256": "6b512b24c456978337883abef01c9576661e65511f88c79aabc2c05da037c01a",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/src/mock-game-environment.ts",
+      "sha256": "43ace973bd10f2285e26fbcd13d191ad910fa1adf0cbbb305e7ba3d23e3652a7",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/src/scenario.ts",
+      "sha256": "7291820d267189eeee4985e99ad8b88d0266c7fdf867b3dd2bd3c1496c79d27e",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/src/v01-vertical-slice.test.ts",
+      "sha256": "08eb464beb7695d9e771ebf126af6c2920f394fe420612133febb8b74dc2d973",
+      "executable": false
+    },
+    {
+      "path": "packages/mock-game/tsconfig.json",
+      "sha256": "232b0196eab063916d823c72bcd2e4fc2161e53c0febdf4d775a3340c84c3f68",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/package.json",
+      "sha256": "c5e74ff829648e18e20d7304d53f6f8ba54343a48e9fdb399d831edc2788afcd",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/errors.ts",
+      "sha256": "335009e443c9233fc5814917165a1dfcb0e4da99912b340246b01ce53c162203",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/harness.ts",
+      "sha256": "50823f12bb2d2df59aa48f034a115a83e696c2cd46fc045fa2b5e6840718289a",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/index.ts",
+      "sha256": "7d6563731b93484d8b30971fcf6618404b879be884b55ba9a4b667436596dd12",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/inspection-game-tools.ts",
+      "sha256": "a20553c045104ac1249edaf52b3203307267538a89db91bb8f3fa777c0f76e2e",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/contracts.ts",
+      "sha256": "9b9a03c3908a6647b697edb8d3314e3c09677a9ce05af964fdfc8feb960787ce",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/faux-model.ts",
+      "sha256": "b607e1be86e7904a5664f963b74517a7209cf396316aa0657159947a3184ed80",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/pi-runner.ts",
+      "sha256": "632a2c4d4c4a11718d1ba7e702344bdd9db8708c47e3b23bc46dad9f6dc452fb",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/pi-tools.ts",
+      "sha256": "b041fdffd8b592a13580835c6111b034d7ef74ee6d74b72af15f3e9ffbd0c2ba",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/provider-failure.ts",
+      "sha256": "91cc7b6e6a1ddb8337d21a68e87c8434423501ee9004c21ac37018f19e79e3e5",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/system-prompt.ts",
+      "sha256": "642e9e48388332485cfd25fee3b4739b3f14f57230288e0609d2401cbfdd1787",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/tool-flow.ts",
+      "sha256": "5d68bbd3337c73e3939c519314c814fa78ec0e7969ac546b5a31da59f4edf0c8",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/v04-prompt.ts",
+      "sha256": "caa42c2decf1a724db387090618880595253c24abfe3e1a35d58163a8da6ff04",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/internal/v04-runner.ts",
+      "sha256": "0b4b84d5c8c604a485f83508ec542ecd5d7e9ed4d1f6c4469b0c28ea36547aa3",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/project-environment-game-tools.ts",
+      "sha256": "e8b52eb665b75d95c1648f74640ab992d82541aeb712f1f59b5ace3cc42fbf1c",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/project-environment-interactive.ts",
+      "sha256": "fd846333f57815616134a8aa002f2464e88d9cfe47ef0920b1b4602e5f2e469c",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/project-environment-tool-call-budget.ts",
+      "sha256": "3810143ecd7d559e099b5dafc0dae967cbd1f1cf2ccf80c362633390e86eee91",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/source-access.ts",
+      "sha256": "1eb2cd3db8f14810d3d6294d4939fb9b0dd08b666c1e0045c0ad3858f99f55fd",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/types.ts",
+      "sha256": "0c7911f545f39da44475a58c558bccb4f704c8c46d4a59fb3ae316223497f420",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/v04-types.ts",
+      "sha256": "56034617df9c94139d61dba18524dedddaf2bce73afb1ee37819a013e2541617",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/vnext-coding-tools.ts",
+      "sha256": "de69ade05e23386776c8f28f27f8f5013c3fd426b89d65883605e245302e9d64",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/vnext-game-tools.ts",
+      "sha256": "bb01dd0a1b3b219a147a5b20a7b3ce6bf86ad24bf6d98735d24ed540ea591cc4",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/vnext-godot-run-tool.ts",
+      "sha256": "9a23bc1b9da3bf0d232e23efa6fa7d6fff8d682934110cfff28581306c6eed5b",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/vnext-host-http.ts",
+      "sha256": "0410b1818a41ca3664afba494fb880e7435b408c94accea1e6399932bcb8bbdc",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/src/vnext-session.ts",
+      "sha256": "9953390c42ac0290d0853751a64b053ea75ad371bb5c19ce2d5c2078d31aa4ef",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/inspection-game-tools.test.ts",
+      "sha256": "4635d7c57f90e11538ca5abe7e1ba6dc7ae89bc1a901718412af493881256092",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/pi-runner.test.ts",
+      "sha256": "80d7b1e010bbb3b19630fbd03fe61125faee1fa899c8046455758adaeb765a78",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/pi-tools.test.ts",
+      "sha256": "4bca6361fef99881a5026c296eb10d48a9728635d066affdce193e87eeb32d7d",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/project-environment-game-tools.test.ts",
+      "sha256": "d35a02a76efa3218dd1ecd415e9030ab7bd92236f8c2ee785e49f89cbce645f8",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/provider-failure.test.ts",
+      "sha256": "4d2bbcb6485ed563b2f6ab5aab8ab78e69e725e0726e9b3702f805707839c68b",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/source-access.test.ts",
+      "sha256": "69596a0d6089f27e14fcbc83346e2776e156f9de7042f872688bb28f4696a33e",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/tool-flow.test.ts",
+      "sha256": "3464ab837b38798f3f08fcde2c4ec207b3ddfdc62be310a864928f3d85bb596d",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/tsconfig.json",
+      "sha256": "c1124bab760b91bdcc8183469ca12bac33df02c06e0dec0450e4f85b8216232a",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/v01-fixture.ts",
+      "sha256": "ba70f8d69ce1940352d81d96e926fd9890ccaf15d1f52125b8037a15bbe7117d",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/v04-runner.test.ts",
+      "sha256": "c1f2b846db577c97fca39fe5c8d939173991f2bd99abe8ac4f97b366a7356e63",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/vnext-coding-tools.test.ts",
+      "sha256": "90f16ec3099283b93f52a6c0c91efc270302ee1fa497dcd3260d4020c7e56c20",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/vnext-game-tools.test.ts",
+      "sha256": "10fd6aabe7e5ff051b3ccff6ad892fc45a18e14c01438371fd756cf664da731f",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/vnext-godot-run-tool.test.ts",
+      "sha256": "1f3d71eaccfd9ae58c8d057de527e0d4a3f3e137d4ccc7de018ade226c411ed6",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/vnext-host-http.test.ts",
+      "sha256": "d0793143df6ea781d441b4b835a492133667f7534724df9555805917d77389b6",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/vnext-lifecycle-game-tools.test.ts",
+      "sha256": "2025ba5b656ce9a56557c948cbdec5e4fdf8416d4b69d372d78c30eb97648634",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tests/vnext-session.test.ts",
+      "sha256": "85d36e65b9f2c25c6b837f70b8d6d4c4094d082d099891c5b5b147aaf430dfec",
+      "executable": false
+    },
+    {
+      "path": "packages/pi-harness/tsconfig.json",
+      "sha256": "4935eba75fbe6e30fd1b2b3b00d2b78467cf038f923cbeaba487c2ced0b7e1e1",
+      "executable": false
+    }
+  ]
+}

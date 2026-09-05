@@ -138,7 +138,7 @@ discover project and freeze source/policy
 → allocate a new <state-root>/srt-tasks-v1/<digest> namespace
 → materialize its physical candidate workspace
 → create one visible Pi AgentSession for this command
-→ provide ordinary coding tools and game_launch / game_query / game_stop
+→ provide ordinary coding tools and game_launch / game_query / game_watch / game_stop
 → run the user's goal or interactive turns; launch Godot when the Agent requests it
 → show assistant result, diff and actual process/runtime results
 → stop runtime processes and delete operation-private Godot stages
@@ -286,13 +286,14 @@ Alignment 使用 stable identity、incarnation、clock、trace anchor 和 adapte
 
 ## 15. 当前 Agent 工具面
 
-Preview 只增加三个 Godot Inspection V1 工具；输入与结果严格版本化，Pi metadata 从同一 canonical schema 派生。
+Preview 只增加四个 Godot Inspection V1 工具；输入与结果严格版本化，Pi metadata 从同一 canonical schema 派生。
 
 | 工具          | 当前操作                                                                                                   |
 | ------------- | ---------------------------------------------------------------------------------------------------------- |
 | `game_launch` | import 并启动当前 candidate 的默认主场景，返回实际 source hash、engine version、Execution 和根对象         |
 | `game_query`  | 读取当前 `children`、`properties` 或明确命名的 `values`；目标为主场景相对路径或该 Execution 的 `objectRef` |
-| `game_stop`   | 停止指定 Execution，保存实际 process/log/source integrity 结果；重复停止返回已保存结果                     |
+| `game_watch`  | 在 observer 内开启有限 physics tick 窗口；`start` 注册，`read` 按序号与字节预算分页，`stop` 只停止采样     |
+| `game_stop`   | 停止指定 Execution，保存实际 process/log/source integrity 结果和已取得的 watch；重复停止返回已保存结果     |
 
 children/properties 使用 offset/limit（默认 100、上限 200）；values 一次接受 1–32 个属性名。Object/Resource 返回
 引用并保留身份，可继续读取其属性；不会自动展开而丢失共享资源关系。弱引用失效后不可指向替代对象，也不延长资源
@@ -300,7 +301,29 @@ children/properties 使用 offset/limit（默认 100、上限 200）；values �
 
 查询不是原子快照，property getter 是不可信项目代码，可能改变内存状态。普通标量、有界容器、Vector2/Vector3、
 Color 与显式 int64 值受严格校验；不支持的类型、缺失属性、失效引用、截断和执行错误均明确返回。当前没有表达式、
-方法调用、probe、历史窗口、pause/step/input 或 replay 工具。
+方法调用、probe、pause/step/input 或 replay 工具。有限窗口只保留提前注册后的实际观测，不支持追溯未采集状态。
+
+`game_watch` 的 `start` 接受 `executionId`、1–4 个 `targets`（每项含 `target: {path}` 或 `{objectRef}`、
+1–8 个不重复的明确 `names`）和 `sampleCount`（1–256）；`clock` 仅支持 `physics_tick`。注册不等待采样完成，
+立即返回 `watchId`。每个 Execution 一生只允许一个窗口，停止后不能重开；可启动新的 Execution。
+
+observer 连接 `SceneTree.physics_frame` 信号，记录的 `phase` 为
+`physics_frame_signal_before_node_physics_process`：这是节点 `_physics_process` 之前的信号回调，**不是 physics 帧末**。
+同一信号其他回调的连接顺序仍可能影响值。每条记录包括递增 `sequence`、实际 `processFrame`/`physicsTick`、
+注册时对象身份和逐属性 value/error。目标路径只在注册时解析；之后使用弱引用，失效时每个属性报告 `invalid_object`，
+不会绑定同名替代对象。getter 的副作用、读取顺序及序列化耗时都可能扰动游戏，不保证原子快照或无扰动观测。
+
+窗口采用追加缓存、不覆盖旧记录：最多 256 条、累计编码 256 KiB、单条编码 32 KiB、单条构造预算 64 KiB。
+构造预算在遍历和编码前以保守开销计量，可能早于编码预算耗尽；属性读取继续使用既有类型、深度和节点限制。
+达到数量或预算即停止并返回 `stopReason`；未完成构造的记录不追加。`read` 使用 `afterSequence`（默认 0）和
+`byteBudget`（256–65536，默认 65536）；`bytesUsed` 是返回记录各自的紧凑 JSON UTF-8 字节数之和，不含响应外壳。
+`nextSequence` 指向最后返回记录；首条放不下时空页返回 `requiredByteBudget`，游标保持不变。
+`stop` 幂等且保留缓存，游戏继续运行；查询和读取不驱动采样。
+
+正常 `game_stop` 或自然退出通过 observer 最终回传取回缓存，并在已有 Execution JSON 中保存可选 `watch`。
+异常、超时、取消或损坏连接只保留 Host 实际收到的记录，`deliveryComplete: false`，不补齐缺失序号或尾部；
+退出后仍可用同一 `executionId`/`watchId` 分页读取这些记录。`deliveryComplete` 描述交付完整性；
+采样数量是否完成另看 `status`/`stopReason`/`recordedCount`，两者都不代表项目通过 acceptance。
 
 Agent 仍自主选择 coding/game tools，没有固定调用顺序或最终 submit/Proposal。一个 Preview 只允许一个存活
 Execution；停止后可以从最新 candidate 创建另一次执行。固定 GN-1/Mob 继续使用各自四工具契约；历史 16 工具
@@ -342,7 +365,7 @@ provenance 或 adapter semantics。真正的权限边界是 OS sandbox。
 
 - GDScript 不能全局拦截任意 Signal、property 或未注册 RNG；
 - physics internal、thread、Timer/Tween/coroutine 等状态默认不可恢复，除非 adapter 明确声明并实际覆盖；
-- Preview observation 只覆盖当前查询的可读对象/属性；固定 Adapter 的 observation 受自身声明范围限制，读取与序列化可能改变时序；
+- Preview observation 只覆盖当前查询或提前注册窗口的可读对象/属性；固定 Adapter 的 observation 受自身声明范围限制，读取与序列化可能改变时序；
 - stdout/stderr、process exit 和 structured channel 是不同传感器；
 - process frame、physics tick、simulation time、render completion 和 Host monotonic time 不可混用；
 - unsupported control 必须拒绝或返回量化后的 realized value；
@@ -387,7 +410,7 @@ rollout 是设计记录，不是 current HEAD 必须逐项实现的不可变契�
 | Slice / path                | 当前状态                                  | 当前含义                                                                    |
 | --------------------------- | ----------------------------------------- | --------------------------------------------------------------------------- |
 | SRT cutover                 | current implementation                    | 精确 SRT `0.0.74`；coding RW；Godot Host stage RO + 前后 source hash        |
-| Project Environment Preview | 实验性通用检查入口                        | 无需 Adapter 的三工具路径、默认主场景、Execution 内对象与资源查询；见 §20.5 |
+| Project Environment Preview | 实验性通用检查入口                        | 无需 Adapter 的四工具路径、默认主场景、Execution 内对象与资源查询；见 §20.5 |
 | GN-1                        | 实验性固定项目路径                        | External Project Runtime Observation + Narrow Ablation                      |
 | Mob V2                      | 已完成 case-study runner                  | 第二项目复用公共 V2 loader/runtime；不证明比较优势                          |
 | PE-A/PE-B/PE-C              | 历史 slice；保留被当前路径使用的底层      | 初始化/publication/reuse/conformance producer 与 campaign/Gate 已退役       |
@@ -531,7 +554,7 @@ coding-only 同样成功，standalone evaluator 将 `heroPromoted` 记为 `false
 和候选 patch 继续保留，准备完成后直接执行用户目标或进入交互 TTY。旧初始化回合、managed Adapter authoring skill、
 manifest finalization、conformance、publication/recovery、revision binding 与 reuse 退出 Preview 维护路径。
 
-Agent 使用 §15 的三个工具检查正常启动的默认主场景。每次 launch 固定当时的 candidate，以公共 observer autoload
+Agent 使用 §15 的四个工具检查正常启动的默认主场景。每次 launch 固定当时的 candidate，以公共 observer autoload
 取得当前节点、属性和资源 identity；Host 在不与 mutable candidate 重叠的 stage 内运行 Godot。Agent 可先读取
 CollisionShape2D 的 `shape` 引用，再读取 Shape 的 `size`，从而无需项目 Adapter 取得 GN-1 所需的尺寸与共享 identity。
 产品代码不包含 Platform 路径、固定项目字段或 GN-1 结论；原 GN-1/Mob runner 与历史结果不迁移。
@@ -560,13 +583,13 @@ V1/V2 runtime、sidecar、validated ring、TaskStore、artifact internals 和安
 
 ### 21.1 路径状态
 
-| 路径                        | 产品状态              | 实现与证据状态                                                                                       | 主要缺口                                                |
-| --------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| v0.4                        | 当前公开 release      | 四个 legacy Fixture、真实 Pi Session、固定诊断 workflow 和 Proposal/Verdict artifacts                | 不具备当前 SRT vNext 边界                               |
-| Project Environment Preview | 当前实验性检查路径    | source closure、普通 Pi Loop、三个 inspection tools、独立 source stage、候选 patch 与执行记录        | 当前状态查询；无历史、probe、输入控制或任意项目兼容保证 |
-| **GN-1**                    | **固定案例 runner**   | **固定项目 adapter、matched tool surface、private candidate diff 与 Host-staged postflight**         | 单项目/单 pair；local-only，未冻结；不证明通用优势      |
-| **Mob V2**                  | **case-study runner** | **第二项目、state-only Adapter V2、fresh pair 与 sandboxed evaluator 已完成；两组均 3/3**            | 未晋级 Hero；不证明比较优势、自动 onboarding 或通用支持 |
-| 旧 Task CLI 与 **M3/M4/E2** | **已从 HEAD 删除**    | **只在历史 tag/归档中存在；current code 不再提供其命令、coordinator、broker 或 runtime composition** | 不属于当前兼容 surface                                  |
+| 路径                        | 产品状态              | 实现与证据状态                                                                                       | 主要缺口                                                       |
+| --------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| v0.4                        | 当前公开 release      | 四个 legacy Fixture、真实 Pi Session、固定诊断 workflow 和 Proposal/Verdict artifacts                | 不具备当前 SRT vNext 边界                                      |
+| Project Environment Preview | 当前实验性检查路径    | source closure、普通 Pi Loop、四个 inspection tools、独立 source stage、候选 patch 与执行记录        | 当前查询与有限 physics tick 窗口；无输入控制或任意项目兼容保证 |
+| **GN-1**                    | **固定案例 runner**   | **固定项目 adapter、matched tool surface、private candidate diff 与 Host-staged postflight**         | 单项目/单 pair；local-only，未冻结；不证明通用优势             |
+| **Mob V2**                  | **case-study runner** | **第二项目、state-only Adapter V2、fresh pair 与 sandboxed evaluator 已完成；两组均 3/3**            | 未晋级 Hero；不证明比较优势、自动 onboarding 或通用支持        |
+| 旧 Task CLI 与 **M3/M4/E2** | **已从 HEAD 删除**    | **只在历史 tag/归档中存在；current code 不再提供其命令、coordinator、broker 或 runtime composition** | 不属于当前兼容 surface                                         |
 
 M4/E2、PE-A、PE-B 与 PE-C 的旧 characterization 保存在 [E2 archive](evidence/vnext-e2-public-exposed-r1/README.md)、
 [PE-A archive](evidence/vnext-project-environment-pe-a-local-r1/README.md)、
@@ -601,8 +624,8 @@ PE/M4/E2 campaign 不再是当前 checkout 的 Gate；实现状态只能引用�
 
 当前主要缺口：
 
-- Preview 的通用对象检查是当前状态读取，没有 retained history、probe、pause/step/input 或 replay。查询期间游戏
-  继续运行，分页不是稳定快照，getter 可能有副作用；它不能取回尚未采集或对象失效前的状态。
+- Preview 提供当前状态读取和单 Execution 有限 physics tick 窗口，没有历史数据库、probe、pause/step/input 或 replay。
+  查询期间游戏继续运行；query 分页不是稳定快照，watch 记录追加后保留。getter 可能有副作用，不能取回尚未采集的状态。
 - 不同项目只共享 Godot 原生对象/属性接口，项目路径和有意义的字段仍由 Agent 调查选择。GN-1 型 Shape 查询可以
   无 Adapter 完成，不等于任意项目零配置理解，也不把两个固定案例的模型结果转换为新 Preview 的 live 证明。
 - GN-1 只绑定一个冻结外部项目、项目特定 adapter 和一种 Platform geometry/resource observation；实验结果与

@@ -88,11 +88,16 @@ candidate patch 与 evaluator stdout，并汇总耗时、成本、本地 raw rec
 | Surface                     | 现在可用                                                                                          | 重要边界                                                            |
 | --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | v0.4 legacy                 | 四个校准 Fixture、真实 Pi Session、固定 diagnosis workflow                                        | 不是 vNext 自由 Loop，也不是任意项目 runner                         |
-| Project Environment Preview | 显式 `project preview`；source closure、sandbox、adapter publication/binding/reuse 的实验实现     | 历史 characterization 较窄；尚未成为默认入口或通用项目支持          |
+| Project Environment Preview | 显式 `project preview`；无需 Adapter 的对象查询和有限 physics tick 采样、独立 stage 与执行记录    | 历史 characterization 较窄；尚未成为默认入口或通用项目支持          |
 | GN-1                        | 精确第三方项目、项目特定 adapter、两个 matched arms、公开 candidate patch 和 Host postflight 摘要 | 单项目、单 revision、单 prompt、单 pair；raw live output 仍只在本地 |
 | Godot Demo Mob V2           | 第二个外部项目、state-only Adapter V2、完成的 fresh pair、公开 patch 与独立 evaluator             | 两组均 3/3；未晋级 Hero，也不证明比较优势或自动 onboarding          |
 | Host sandbox                | Linux x86_64 上精确固定 SRT `0.0.74`；coding workspace 可写，Godot 使用 Host staging              | 默认禁网；不提供旧 broker 的 cgroup、容量或 Host-config 能力        |
 | 历史 M3/M4/E2               | current HEAD 中的实现和命令已删除，只保留冻结档案                                                 | 不作为新产品切片模板，也不从档案恢复 producer 或一次性 Gate         |
+
+Preview 保留 `game_query`，新增 `game_watch start/read/stop`：每次 Execution 一个提前注册的有界窗口，
+在 observer 的 `physics_frame` 信号回调（节点 physics process 之前）采样，保留短暂值、对象身份及逐属性错误。
+支持按序号和字节预算读取；异常退出只保留实际取回的数据并标记不完整。具体接口、预算和时序见
+[架构文档 §15](docs/architecture.md#15-当前-agent-工具面)。
 
 ### 还没有
 

@@ -89,6 +89,18 @@ export function createInspectionGameToolDefinitions(
                 "Inspection response did not match its query",
               );
             }
+            if (
+              metadata.name === "game_watch" &&
+              "action" in normalizedInput &&
+              "action" in response.output &&
+              (response.output.action !== normalizedInput.action ||
+                ("watchId" in normalizedInput &&
+                  response.output.watchId !== normalizedInput.watchId))
+            ) {
+              throw new TypeError(
+                "Inspection response did not match its watch request",
+              );
+            }
           }
           return {
             content: [

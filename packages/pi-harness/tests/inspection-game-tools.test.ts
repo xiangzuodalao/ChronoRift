@@ -41,13 +41,14 @@ const queryResponse = {
 };
 
 describe("inspection Pi bridge", () => {
-  it("preserves ordinary agent choice with three sequential tools and no forced workflow", () => {
+  it("preserves ordinary agent choice with four sequential tools and no forced workflow", () => {
     const tools = createInspectionGameToolDefinitions({
       invoke: () => Promise.resolve(launchResponse),
     });
     expect(tools.map(({ name }) => name)).toEqual([
       "game_launch",
       "game_query",
+      "game_watch",
       "game_stop",
     ]);
     for (const tool of tools) {
@@ -169,4 +170,74 @@ describe("inspection Pi bridge", () => {
     ).rejects.toBeInstanceOf(ProjectEnvironmentToolCallBudgetExhaustedErrorV1);
     expect(invoke).toHaveBeenCalledOnce();
   });
+});
+
+const watchInput = {
+  schemaVersion: 1,
+  executionId: "run:one",
+  action: "read",
+  watchId: "run:one:watch:1",
+};
+const watchResponse = {
+  schemaVersion: 1,
+  outcome: "success",
+  output: {
+    ...watchInput,
+    phase: "physics_frame_signal_before_node_physics_process",
+    status: "sampling",
+    stopReason: null,
+    sampleCount: 2,
+    recordedCount: 0,
+    boundTargets: [{ target: launchOutput.root, names: ["value"] }],
+    records: [],
+    nextSequence: 0,
+    bytesUsed: 0,
+    requiredByteBudget: null,
+    deliveryComplete: true,
+  },
+};
+
+it("normalizes watch pagination and forwards the existing cancellation signal", async () => {
+  const invoke = vi.fn(() => Promise.resolve(watchResponse));
+  const tool = createInspectionGameToolDefinitions({ invoke }).find(
+    ({ name }) => name === "game_watch",
+  )!;
+  const signal = new AbortController().signal;
+  expect(
+    (
+      await tool.execute(
+        "call:watch",
+        watchInput,
+        signal,
+        undefined,
+        {} as never,
+      )
+    ).details,
+  ).toEqual(watchResponse);
+  expect(invoke).toHaveBeenCalledWith(
+    {
+      schemaVersion: 1,
+      toolCallId: "call:watch",
+      toolName: "game_watch",
+      input: { ...watchInput, afterSequence: 0, byteBudget: 65_536 },
+    },
+    signal,
+  );
+});
+
+it.each([
+  { executionId: "run:other" },
+  { watchId: "run:other:watch:1" },
+  { action: "start" },
+])("rejects mismatched watch responses %j", async (fields) => {
+  const tool = createInspectionGameToolDefinitions({
+    invoke: () =>
+      Promise.resolve({
+        ...watchResponse,
+        output: { ...watchResponse.output, ...fields },
+      }),
+  }).find(({ name }) => name === "game_watch")!;
+  await expect(
+    tool.execute("call:watch", watchInput, undefined, undefined, {} as never),
+  ).rejects.toThrow();
 });

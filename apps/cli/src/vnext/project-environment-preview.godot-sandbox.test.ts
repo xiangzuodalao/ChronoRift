@@ -166,7 +166,7 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
           options.tools
             .filter((tool) => tool.name.startsWith("game_"))
             .map((tool) => tool.name),
-        ).toEqual(["game_launch", "game_query", "game_stop"]);
+        ).toEqual(["game_launch", "game_query", "game_watch", "game_stop"]);
         expect(
           options.tools.some((tool) => tool.name.includes("adapter")),
         ).toBe(false);
@@ -310,7 +310,7 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
         expect(options.sessionFile).toBeUndefined();
         expect(
           options.tools.filter((tool) => tool.name.startsWith("game_")),
-        ).toHaveLength(3);
+        ).toHaveLength(4);
         const path = join(
           options.sessionDirectory,
           options.expectedSessionId + ".jsonl",

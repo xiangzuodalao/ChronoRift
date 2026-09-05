@@ -7,9 +7,9 @@ import {
 } from "../src/index.js";
 
 describe("inspection tool metadata", () => {
-  it("advertises only launch, current inspection, and stop", () => {
+  it("advertises launch, current inspection, bounded watch, and stop", () => {
     expect(INSPECTION_GAME_TOOL_DEFINITIONS_V1.map(({ name }) => name)).toEqual(
-      ["game_launch", "game_query", "game_stop"],
+      ["game_launch", "game_query", "game_watch", "game_stop"],
     );
   });
 
@@ -63,4 +63,47 @@ describe("inspection tool metadata", () => {
       validateInspectionGameToolInputV1("game_query", input),
     );
   });
+});
+
+it.each([
+  {
+    schemaVersion: 1,
+    executionId: "run:one",
+    action: "start",
+    targets: [{ target: { path: "." }, names: ["value"] }],
+    sampleCount: 2,
+  },
+  {
+    schemaVersion: 1,
+    executionId: "run:one",
+    action: "start",
+    targets: [{ target: { path: "." }, names: ["value", "value"] }],
+    sampleCount: 2,
+  },
+  {
+    schemaVersion: 1,
+    executionId: "run:one",
+    action: "read",
+    watchId: "watch:one",
+  },
+  {
+    schemaVersion: 1,
+    executionId: "run:one",
+    action: "read",
+    watchId: "watch:one",
+    byteBudget: 255,
+  },
+  {
+    schemaVersion: 1,
+    executionId: "run:one",
+    action: "stop",
+    watchId: "watch:one",
+  },
+])("watch Pi schema matches canonical input validation %j", (input) => {
+  const metadata = INSPECTION_GAME_TOOL_DEFINITIONS_V1.find(
+    ({ name }) => name === "game_watch",
+  )!;
+  expect(Check(metadata.parameters, input)).toBe(
+    validateInspectionGameToolInputV1("game_watch", input),
+  );
 });

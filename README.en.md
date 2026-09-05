@@ -51,7 +51,7 @@ of implemented features.
 | Surface                     | Current implementation                                                                                                                  | Boundary                                                                               |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                             | Not the vNext free Loop and not an arbitrary-project runner                            |
-| Project Environment Preview | Explicit `project preview`; experimental source closure, sandbox, adapter publication/binding, and reuse                                | Narrow historical characterization; not the default command or general project support |
+| Project Environment Preview | Explicit `project preview`; adapter-free object queries, finite physics-tick sampling, isolated stages, and execution records           | Narrow historical characterization; not the default command or general project support |
 | GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary | One project, prompt, revision, and pair; raw live outputs remain local-only            |
 | Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                    | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim       |
 | Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                       | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer      |
@@ -102,6 +102,11 @@ advantage claim. The detailed page retains both original candidate patches and e
 cost, failed tool responses retained in local raw records, and runtime limitations.
 
 [Review the Godot Demo Mob Orientation case study →](docs/case-studies/godot-demo-mob-orientation.md)
+
+Preview retains `game_query` and adds `game_watch start/read/stop`: one bounded observation window per Execution,
+sampled inside the observer at the `physics_frame` signal before node physics callbacks. Records retain transient values,
+object identity, and per-property errors. Reads page by sequence and byte budget; abnormal exits retain only received data
+and mark delivery incomplete. See [the interface and limits](docs/architecture.md#15-当前-agent-工具面).
 
 ## Review paths
 

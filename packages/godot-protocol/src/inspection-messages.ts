@@ -4,6 +4,9 @@ import {
   InspectionProcessResultV1Schema,
   InspectionQueryInputV1Schema,
   InspectionQueryResultV1Schema,
+  InspectionWatchInputV1Schema,
+  InspectionWatchOutputV1Schema,
+  InspectionWatchArchiveV1Schema,
 } from "@chronorift/domain";
 import { z } from "zod";
 
@@ -52,6 +55,32 @@ export const GodotInspectionMessageV1Schema = z.discriminatedUnion("kind", [
       kind: z.literal("query_result"),
       requestId: Id,
       payload: InspectionQueryResultV1Schema,
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      kind: z.literal("watch"),
+      requestId: Id,
+      payload: InspectionWatchInputV1Schema,
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      kind: z.literal("watch_result"),
+      requestId: Id,
+      payload: InspectionWatchOutputV1Schema,
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      kind: z.literal("watch_final"),
+      payload: InspectionWatchArchiveV1Schema.refine(
+        (archive) => archive.deliveryComplete,
+        "Final watch delivery must be complete",
+      ),
     })
     .strict(),
   z

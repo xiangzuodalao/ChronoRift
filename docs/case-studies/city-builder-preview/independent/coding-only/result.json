@@ -1,0 +1,3307 @@
+{
+  "schemaVersion": 1,
+  "kind": "city-builder-preview-independent-check",
+  "startedAt": "2026-09-05T15:45:17.240Z",
+  "checkedAt": "2026-09-05T15:45:24.547Z",
+  "modelInvoked": false,
+  "sourceCommit": "4535092b740b378b700efd9df9e27a631815b84a",
+  "sourceTree": "528433a6580c8f48c9a1fcd7ddcae251a6f75c00",
+  "baselineSourceSha256": "5395a3aa8e39d8f888eece93af83b383cd3af57263fc1ef5c92425d14c1b9005",
+  "candidateSourceSha256": "72b007d3b764894cb92b814d8a53bb326068589af8e8afb8a9aad30438d623b9",
+  "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+  "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+  "patchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+  "godotExecutableSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+  "inputSourceUnchanged": true,
+  "assessment": {
+    "outcome": "passed",
+    "reason": null,
+    "scenarios": [
+      {
+        "name": "initialization",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "idle_120",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_0",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_0_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_1",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_1_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_2",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_2_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_3",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_3_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_4",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_4_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_5",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_5_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_6",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_6_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_7",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_7_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_8",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_8_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_9",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_9_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_10",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_10_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_11",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_11_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_12",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_12_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_13",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_13_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_14",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_next_14_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_0",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_0_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_1",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_1_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_2",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_2_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_3",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_3_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_4",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_4_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_5",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_5_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_6",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_6_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_7",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_7_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_8",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_8_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_9",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_9_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_10",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_10_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_11",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_11_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_12",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_12_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_13",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_13_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_14",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "structure_previous_14_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "simultaneous_opposites",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "simultaneous_opposites_idle",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "rotate",
+        "passed": true,
+        "problems": []
+      },
+      {
+        "name": "rotate_idle",
+        "passed": true,
+        "problems": []
+      }
+    ],
+    "observations": {
+      "audio_autoload": "/root/Audio",
+      "configured_models": [
+        "res://models/road-straight.glb",
+        "res://models/road-straight-lightposts.glb",
+        "res://models/road-corner.glb",
+        "res://models/road-split.glb",
+        "res://models/road-intersection.glb",
+        "res://models/pavement.glb",
+        "res://models/pavement-fountain.glb",
+        "res://models/building-small-a.glb",
+        "res://models/building-small-b.glb",
+        "res://models/building-small-c.glb",
+        "res://models/building-small-d.glb",
+        "res://models/building-garage.glb",
+        "res://models/grass.glb",
+        "res://models/grass-trees.glb",
+        "res://models/grass-trees-tall.glb"
+      ],
+      "events": [
+        {
+          "instance_id": "37161535122",
+          "kind": "added",
+          "model": "res://models/road-straight.glb",
+          "physics_tick": 1,
+          "process_frame": 0
+        },
+        {
+          "instance_id": "37161535122",
+          "kind": "removed",
+          "model": "res://models/road-straight.glb",
+          "physics_tick": 50,
+          "process_frame": 120
+        },
+        {
+          "instance_id": "43402659485",
+          "kind": "added",
+          "model": "res://models/road-straight-lightposts.glb",
+          "physics_tick": 50,
+          "process_frame": 120
+        },
+        {
+          "instance_id": "43402659485",
+          "kind": "removed",
+          "model": "res://models/road-straight-lightposts.glb",
+          "physics_tick": 52,
+          "process_frame": 124
+        },
+        {
+          "instance_id": "43872421532",
+          "kind": "added",
+          "model": "res://models/road-corner.glb",
+          "physics_tick": 52,
+          "process_frame": 124
+        },
+        {
+          "instance_id": "43872421532",
+          "kind": "removed",
+          "model": "res://models/road-corner.glb",
+          "physics_tick": 54,
+          "process_frame": 128
+        },
+        {
+          "instance_id": "44191188629",
+          "kind": "added",
+          "model": "res://models/road-split.glb",
+          "physics_tick": 54,
+          "process_frame": 128
+        },
+        {
+          "instance_id": "44191188629",
+          "kind": "removed",
+          "model": "res://models/road-split.glb",
+          "physics_tick": 55,
+          "process_frame": 132
+        },
+        {
+          "instance_id": "44509955749",
+          "kind": "added",
+          "model": "res://models/road-intersection.glb",
+          "physics_tick": 55,
+          "process_frame": 132
+        },
+        {
+          "instance_id": "44509955749",
+          "kind": "removed",
+          "model": "res://models/road-intersection.glb",
+          "physics_tick": 57,
+          "process_frame": 136
+        },
+        {
+          "instance_id": "44828722838",
+          "kind": "added",
+          "model": "res://models/pavement.glb",
+          "physics_tick": 57,
+          "process_frame": 136
+        },
+        {
+          "instance_id": "44828722838",
+          "kind": "removed",
+          "model": "res://models/pavement.glb",
+          "physics_tick": 59,
+          "process_frame": 140
+        },
+        {
+          "instance_id": "45147489956",
+          "kind": "added",
+          "model": "res://models/pavement-fountain.glb",
+          "physics_tick": 59,
+          "process_frame": 140
+        },
+        {
+          "instance_id": "45147489956",
+          "kind": "removed",
+          "model": "res://models/pavement-fountain.glb",
+          "physics_tick": 60,
+          "process_frame": 144
+        },
+        {
+          "instance_id": "45466257057",
+          "kind": "added",
+          "model": "res://models/building-small-a.glb",
+          "physics_tick": 60,
+          "process_frame": 144
+        },
+        {
+          "instance_id": "45466257057",
+          "kind": "removed",
+          "model": "res://models/building-small-a.glb",
+          "physics_tick": 62,
+          "process_frame": 148
+        },
+        {
+          "instance_id": "45785024166",
+          "kind": "added",
+          "model": "res://models/building-small-b.glb",
+          "physics_tick": 62,
+          "process_frame": 148
+        },
+        {
+          "instance_id": "45785024166",
+          "kind": "removed",
+          "model": "res://models/building-small-b.glb",
+          "physics_tick": 64,
+          "process_frame": 152
+        },
+        {
+          "instance_id": "46103791264",
+          "kind": "added",
+          "model": "res://models/building-small-c.glb",
+          "physics_tick": 64,
+          "process_frame": 152
+        },
+        {
+          "instance_id": "46103791264",
+          "kind": "removed",
+          "model": "res://models/building-small-c.glb",
+          "physics_tick": 65,
+          "process_frame": 156
+        },
+        {
+          "instance_id": "46422558366",
+          "kind": "added",
+          "model": "res://models/building-small-d.glb",
+          "physics_tick": 65,
+          "process_frame": 156
+        },
+        {
+          "instance_id": "46422558366",
+          "kind": "removed",
+          "model": "res://models/building-small-d.glb",
+          "physics_tick": 67,
+          "process_frame": 160
+        },
+        {
+          "instance_id": "46741325482",
+          "kind": "added",
+          "model": "res://models/building-garage.glb",
+          "physics_tick": 67,
+          "process_frame": 160
+        },
+        {
+          "instance_id": "46741325482",
+          "kind": "removed",
+          "model": "res://models/building-garage.glb",
+          "physics_tick": 69,
+          "process_frame": 164
+        },
+        {
+          "instance_id": "47060092576",
+          "kind": "added",
+          "model": "res://models/grass.glb",
+          "physics_tick": 69,
+          "process_frame": 164
+        },
+        {
+          "instance_id": "47060092576",
+          "kind": "removed",
+          "model": "res://models/grass.glb",
+          "physics_tick": 70,
+          "process_frame": 168
+        },
+        {
+          "instance_id": "47378859686",
+          "kind": "added",
+          "model": "res://models/grass-trees.glb",
+          "physics_tick": 70,
+          "process_frame": 168
+        },
+        {
+          "instance_id": "47378859686",
+          "kind": "removed",
+          "model": "res://models/grass-trees.glb",
+          "physics_tick": 72,
+          "process_frame": 172
+        },
+        {
+          "instance_id": "47697626787",
+          "kind": "added",
+          "model": "res://models/grass-trees-tall.glb",
+          "physics_tick": 72,
+          "process_frame": 172
+        },
+        {
+          "instance_id": "47697626787",
+          "kind": "removed",
+          "model": "res://models/grass-trees-tall.glb",
+          "physics_tick": 74,
+          "process_frame": 176
+        },
+        {
+          "instance_id": "48016393895",
+          "kind": "added",
+          "model": "res://models/road-straight.glb",
+          "physics_tick": 74,
+          "process_frame": 176
+        },
+        {
+          "instance_id": "48016393895",
+          "kind": "removed",
+          "model": "res://models/road-straight.glb",
+          "physics_tick": 75,
+          "process_frame": 180
+        },
+        {
+          "instance_id": "48335160992",
+          "kind": "added",
+          "model": "res://models/grass-trees-tall.glb",
+          "physics_tick": 75,
+          "process_frame": 180
+        },
+        {
+          "instance_id": "48335160992",
+          "kind": "removed",
+          "model": "res://models/grass-trees-tall.glb",
+          "physics_tick": 77,
+          "process_frame": 184
+        },
+        {
+          "instance_id": "48653928094",
+          "kind": "added",
+          "model": "res://models/grass-trees.glb",
+          "physics_tick": 77,
+          "process_frame": 184
+        },
+        {
+          "instance_id": "48653928094",
+          "kind": "removed",
+          "model": "res://models/grass-trees.glb",
+          "physics_tick": 78,
+          "process_frame": 188
+        },
+        {
+          "instance_id": "48972695197",
+          "kind": "added",
+          "model": "res://models/grass.glb",
+          "physics_tick": 78,
+          "process_frame": 188
+        },
+        {
+          "instance_id": "48972695197",
+          "kind": "removed",
+          "model": "res://models/grass.glb",
+          "physics_tick": 80,
+          "process_frame": 192
+        },
+        {
+          "instance_id": "49291462304",
+          "kind": "added",
+          "model": "res://models/building-garage.glb",
+          "physics_tick": 80,
+          "process_frame": 192
+        },
+        {
+          "instance_id": "49291462304",
+          "kind": "removed",
+          "model": "res://models/building-garage.glb",
+          "physics_tick": 82,
+          "process_frame": 196
+        },
+        {
+          "instance_id": "49610229415",
+          "kind": "added",
+          "model": "res://models/building-small-d.glb",
+          "physics_tick": 82,
+          "process_frame": 196
+        },
+        {
+          "instance_id": "49610229415",
+          "kind": "removed",
+          "model": "res://models/building-small-d.glb",
+          "physics_tick": 83,
+          "process_frame": 200
+        },
+        {
+          "instance_id": "49928996502",
+          "kind": "added",
+          "model": "res://models/building-small-c.glb",
+          "physics_tick": 83,
+          "process_frame": 200
+        },
+        {
+          "instance_id": "49928996502",
+          "kind": "removed",
+          "model": "res://models/building-small-c.glb",
+          "physics_tick": 85,
+          "process_frame": 204
+        },
+        {
+          "instance_id": "50247763621",
+          "kind": "added",
+          "model": "res://models/building-small-b.glb",
+          "physics_tick": 85,
+          "process_frame": 204
+        },
+        {
+          "instance_id": "50247763621",
+          "kind": "removed",
+          "model": "res://models/building-small-b.glb",
+          "physics_tick": 87,
+          "process_frame": 208
+        },
+        {
+          "instance_id": "50566530729",
+          "kind": "added",
+          "model": "res://models/building-small-a.glb",
+          "physics_tick": 87,
+          "process_frame": 208
+        },
+        {
+          "instance_id": "50566530729",
+          "kind": "removed",
+          "model": "res://models/building-small-a.glb",
+          "physics_tick": 88,
+          "process_frame": 212
+        },
+        {
+          "instance_id": "50885297811",
+          "kind": "added",
+          "model": "res://models/pavement-fountain.glb",
+          "physics_tick": 88,
+          "process_frame": 212
+        },
+        {
+          "instance_id": "50885297811",
+          "kind": "removed",
+          "model": "res://models/pavement-fountain.glb",
+          "physics_tick": 90,
+          "process_frame": 216
+        },
+        {
+          "instance_id": "51204064940",
+          "kind": "added",
+          "model": "res://models/pavement.glb",
+          "physics_tick": 90,
+          "process_frame": 216
+        },
+        {
+          "instance_id": "51204064940",
+          "kind": "removed",
+          "model": "res://models/pavement.glb",
+          "physics_tick": 92,
+          "process_frame": 220
+        },
+        {
+          "instance_id": "51522832037",
+          "kind": "added",
+          "model": "res://models/road-intersection.glb",
+          "physics_tick": 92,
+          "process_frame": 220
+        },
+        {
+          "instance_id": "51522832037",
+          "kind": "removed",
+          "model": "res://models/road-intersection.glb",
+          "physics_tick": 93,
+          "process_frame": 224
+        },
+        {
+          "instance_id": "51841599139",
+          "kind": "added",
+          "model": "res://models/road-split.glb",
+          "physics_tick": 93,
+          "process_frame": 224
+        },
+        {
+          "instance_id": "51841599139",
+          "kind": "removed",
+          "model": "res://models/road-split.glb",
+          "physics_tick": 95,
+          "process_frame": 228
+        },
+        {
+          "instance_id": "52160366226",
+          "kind": "added",
+          "model": "res://models/road-corner.glb",
+          "physics_tick": 95,
+          "process_frame": 228
+        },
+        {
+          "instance_id": "52160366226",
+          "kind": "removed",
+          "model": "res://models/road-corner.glb",
+          "physics_tick": 97,
+          "process_frame": 232
+        },
+        {
+          "instance_id": "52479133349",
+          "kind": "added",
+          "model": "res://models/road-straight-lightposts.glb",
+          "physics_tick": 97,
+          "process_frame": 232
+        },
+        {
+          "instance_id": "52479133349",
+          "kind": "removed",
+          "model": "res://models/road-straight-lightposts.glb",
+          "physics_tick": 98,
+          "process_frame": 236
+        },
+        {
+          "instance_id": "52797900460",
+          "kind": "added",
+          "model": "res://models/road-straight.glb",
+          "physics_tick": 98,
+          "process_frame": 236
+        }
+      ],
+      "events_truncated": false,
+      "main_scene": "res://scenes/main.tscn",
+      "scenarios": [
+        {
+          "after": {
+            "additions": 1,
+            "children": [
+              {
+                "instance_id": "37161535122",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 0,
+            "physics_tick": 1,
+            "process_frame": 0,
+            "removals": 0,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "kind": "initialization",
+          "name": "initialization"
+        },
+        {
+          "after": {
+            "additions": 1,
+            "children": [
+              {
+                "instance_id": "37161535122",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 120,
+            "physics_tick": 50,
+            "process_frame": 119,
+            "removals": 0,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 1,
+            "children": [
+              {
+                "instance_id": "37161535122",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 0,
+            "physics_tick": 1,
+            "process_frame": 0,
+            "removals": 0,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 120,
+          "kind": "stable",
+          "name": "idle_120"
+        },
+        {
+          "after": {
+            "additions": 2,
+            "children": [
+              {
+                "instance_id": "43402659485",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 121,
+            "physics_tick": 50,
+            "process_frame": 120,
+            "removals": 1,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 1,
+            "children": [
+              {
+                "instance_id": "37161535122",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 120,
+            "physics_tick": 50,
+            "process_frame": 119,
+            "removals": 0,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 1,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_0"
+        },
+        {
+          "after": {
+            "additions": 2,
+            "children": [
+              {
+                "instance_id": "43402659485",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 124,
+            "physics_tick": 52,
+            "process_frame": 123,
+            "removals": 1,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 2,
+            "children": [
+              {
+                "instance_id": "43402659485",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 121,
+            "physics_tick": 50,
+            "process_frame": 120,
+            "removals": 1,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 1,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_0_idle"
+        },
+        {
+          "after": {
+            "additions": 3,
+            "children": [
+              {
+                "instance_id": "43872421532",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 125,
+            "physics_tick": 52,
+            "process_frame": 124,
+            "removals": 2,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 2,
+            "children": [
+              {
+                "instance_id": "43402659485",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 124,
+            "physics_tick": 52,
+            "process_frame": 123,
+            "removals": 1,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 2,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_1"
+        },
+        {
+          "after": {
+            "additions": 3,
+            "children": [
+              {
+                "instance_id": "43872421532",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 128,
+            "physics_tick": 53,
+            "process_frame": 127,
+            "removals": 2,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 3,
+            "children": [
+              {
+                "instance_id": "43872421532",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 125,
+            "physics_tick": 52,
+            "process_frame": 124,
+            "removals": 2,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 2,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_1_idle"
+        },
+        {
+          "after": {
+            "additions": 4,
+            "children": [
+              {
+                "instance_id": "44191188629",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 129,
+            "physics_tick": 54,
+            "process_frame": 128,
+            "removals": 3,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 3,
+            "children": [
+              {
+                "instance_id": "43872421532",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 128,
+            "physics_tick": 53,
+            "process_frame": 127,
+            "removals": 2,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 3,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_2"
+        },
+        {
+          "after": {
+            "additions": 4,
+            "children": [
+              {
+                "instance_id": "44191188629",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 132,
+            "physics_tick": 55,
+            "process_frame": 131,
+            "removals": 3,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 4,
+            "children": [
+              {
+                "instance_id": "44191188629",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 129,
+            "physics_tick": 54,
+            "process_frame": 128,
+            "removals": 3,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 3,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_2_idle"
+        },
+        {
+          "after": {
+            "additions": 5,
+            "children": [
+              {
+                "instance_id": "44509955749",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 133,
+            "physics_tick": 55,
+            "process_frame": 132,
+            "removals": 4,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 4,
+            "children": [
+              {
+                "instance_id": "44191188629",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 132,
+            "physics_tick": 55,
+            "process_frame": 131,
+            "removals": 3,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 4,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_3"
+        },
+        {
+          "after": {
+            "additions": 5,
+            "children": [
+              {
+                "instance_id": "44509955749",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 136,
+            "physics_tick": 57,
+            "process_frame": 135,
+            "removals": 4,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 5,
+            "children": [
+              {
+                "instance_id": "44509955749",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 133,
+            "physics_tick": 55,
+            "process_frame": 132,
+            "removals": 4,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 4,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_3_idle"
+        },
+        {
+          "after": {
+            "additions": 6,
+            "children": [
+              {
+                "instance_id": "44828722838",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 137,
+            "physics_tick": 57,
+            "process_frame": 136,
+            "removals": 5,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 5,
+            "children": [
+              {
+                "instance_id": "44509955749",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 136,
+            "physics_tick": 57,
+            "process_frame": 135,
+            "removals": 4,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 5,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_4"
+        },
+        {
+          "after": {
+            "additions": 6,
+            "children": [
+              {
+                "instance_id": "44828722838",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 140,
+            "physics_tick": 58,
+            "process_frame": 139,
+            "removals": 5,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 6,
+            "children": [
+              {
+                "instance_id": "44828722838",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 137,
+            "physics_tick": 57,
+            "process_frame": 136,
+            "removals": 5,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 5,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_4_idle"
+        },
+        {
+          "after": {
+            "additions": 7,
+            "children": [
+              {
+                "instance_id": "45147489956",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 141,
+            "physics_tick": 59,
+            "process_frame": 140,
+            "removals": 6,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 6,
+            "children": [
+              {
+                "instance_id": "44828722838",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 140,
+            "physics_tick": 58,
+            "process_frame": 139,
+            "removals": 5,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 6,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_5"
+        },
+        {
+          "after": {
+            "additions": 7,
+            "children": [
+              {
+                "instance_id": "45147489956",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 144,
+            "physics_tick": 60,
+            "process_frame": 143,
+            "removals": 6,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 7,
+            "children": [
+              {
+                "instance_id": "45147489956",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 141,
+            "physics_tick": 59,
+            "process_frame": 140,
+            "removals": 6,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 6,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_5_idle"
+        },
+        {
+          "after": {
+            "additions": 8,
+            "children": [
+              {
+                "instance_id": "45466257057",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 145,
+            "physics_tick": 60,
+            "process_frame": 144,
+            "removals": 7,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 7,
+            "children": [
+              {
+                "instance_id": "45147489956",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 144,
+            "physics_tick": 60,
+            "process_frame": 143,
+            "removals": 6,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 7,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_6"
+        },
+        {
+          "after": {
+            "additions": 8,
+            "children": [
+              {
+                "instance_id": "45466257057",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 148,
+            "physics_tick": 61,
+            "process_frame": 147,
+            "removals": 7,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 8,
+            "children": [
+              {
+                "instance_id": "45466257057",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 145,
+            "physics_tick": 60,
+            "process_frame": 144,
+            "removals": 7,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 7,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_6_idle"
+        },
+        {
+          "after": {
+            "additions": 9,
+            "children": [
+              {
+                "instance_id": "45785024166",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 149,
+            "physics_tick": 62,
+            "process_frame": 148,
+            "removals": 8,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 8,
+            "children": [
+              {
+                "instance_id": "45466257057",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 148,
+            "physics_tick": 61,
+            "process_frame": 147,
+            "removals": 7,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 8,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_7"
+        },
+        {
+          "after": {
+            "additions": 9,
+            "children": [
+              {
+                "instance_id": "45785024166",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 152,
+            "physics_tick": 63,
+            "process_frame": 151,
+            "removals": 8,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 9,
+            "children": [
+              {
+                "instance_id": "45785024166",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 149,
+            "physics_tick": 62,
+            "process_frame": 148,
+            "removals": 8,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 8,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_7_idle"
+        },
+        {
+          "after": {
+            "additions": 10,
+            "children": [
+              {
+                "instance_id": "46103791264",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 153,
+            "physics_tick": 64,
+            "process_frame": 152,
+            "removals": 9,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 9,
+            "children": [
+              {
+                "instance_id": "45785024166",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 152,
+            "physics_tick": 63,
+            "process_frame": 151,
+            "removals": 8,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 9,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_8"
+        },
+        {
+          "after": {
+            "additions": 10,
+            "children": [
+              {
+                "instance_id": "46103791264",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 156,
+            "physics_tick": 65,
+            "process_frame": 155,
+            "removals": 9,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 10,
+            "children": [
+              {
+                "instance_id": "46103791264",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 153,
+            "physics_tick": 64,
+            "process_frame": 152,
+            "removals": 9,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 9,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_8_idle"
+        },
+        {
+          "after": {
+            "additions": 11,
+            "children": [
+              {
+                "instance_id": "46422558366",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 157,
+            "physics_tick": 65,
+            "process_frame": 156,
+            "removals": 10,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 10,
+            "children": [
+              {
+                "instance_id": "46103791264",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 156,
+            "physics_tick": 65,
+            "process_frame": 155,
+            "removals": 9,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 10,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_9"
+        },
+        {
+          "after": {
+            "additions": 11,
+            "children": [
+              {
+                "instance_id": "46422558366",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 160,
+            "physics_tick": 66,
+            "process_frame": 159,
+            "removals": 10,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 11,
+            "children": [
+              {
+                "instance_id": "46422558366",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 157,
+            "physics_tick": 65,
+            "process_frame": 156,
+            "removals": 10,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 10,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_9_idle"
+        },
+        {
+          "after": {
+            "additions": 12,
+            "children": [
+              {
+                "instance_id": "46741325482",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 161,
+            "physics_tick": 67,
+            "process_frame": 160,
+            "removals": 11,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 11,
+            "children": [
+              {
+                "instance_id": "46422558366",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 160,
+            "physics_tick": 66,
+            "process_frame": 159,
+            "removals": 10,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 11,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_10"
+        },
+        {
+          "after": {
+            "additions": 12,
+            "children": [
+              {
+                "instance_id": "46741325482",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 164,
+            "physics_tick": 68,
+            "process_frame": 163,
+            "removals": 11,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 12,
+            "children": [
+              {
+                "instance_id": "46741325482",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 161,
+            "physics_tick": 67,
+            "process_frame": 160,
+            "removals": 11,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 11,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_10_idle"
+        },
+        {
+          "after": {
+            "additions": 13,
+            "children": [
+              {
+                "instance_id": "47060092576",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 165,
+            "physics_tick": 69,
+            "process_frame": 164,
+            "removals": 12,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 12,
+            "children": [
+              {
+                "instance_id": "46741325482",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 164,
+            "physics_tick": 68,
+            "process_frame": 163,
+            "removals": 11,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 12,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_11"
+        },
+        {
+          "after": {
+            "additions": 13,
+            "children": [
+              {
+                "instance_id": "47060092576",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 168,
+            "physics_tick": 70,
+            "process_frame": 167,
+            "removals": 12,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 13,
+            "children": [
+              {
+                "instance_id": "47060092576",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 165,
+            "physics_tick": 69,
+            "process_frame": 164,
+            "removals": 12,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 12,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_11_idle"
+        },
+        {
+          "after": {
+            "additions": 14,
+            "children": [
+              {
+                "instance_id": "47378859686",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 169,
+            "physics_tick": 70,
+            "process_frame": 168,
+            "removals": 13,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 13,
+            "children": [
+              {
+                "instance_id": "47060092576",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 168,
+            "physics_tick": 70,
+            "process_frame": 167,
+            "removals": 12,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 13,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_12"
+        },
+        {
+          "after": {
+            "additions": 14,
+            "children": [
+              {
+                "instance_id": "47378859686",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 172,
+            "physics_tick": 71,
+            "process_frame": 171,
+            "removals": 13,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 14,
+            "children": [
+              {
+                "instance_id": "47378859686",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 169,
+            "physics_tick": 70,
+            "process_frame": 168,
+            "removals": 13,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 13,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_12_idle"
+        },
+        {
+          "after": {
+            "additions": 15,
+            "children": [
+              {
+                "instance_id": "47697626787",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 173,
+            "physics_tick": 72,
+            "process_frame": 172,
+            "removals": 14,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 14,
+            "children": [
+              {
+                "instance_id": "47378859686",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 172,
+            "physics_tick": 71,
+            "process_frame": 171,
+            "removals": 13,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 14,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_13"
+        },
+        {
+          "after": {
+            "additions": 15,
+            "children": [
+              {
+                "instance_id": "47697626787",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 176,
+            "physics_tick": 73,
+            "process_frame": 175,
+            "removals": 14,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 15,
+            "children": [
+              {
+                "instance_id": "47697626787",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 173,
+            "physics_tick": 72,
+            "process_frame": 172,
+            "removals": 14,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 14,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_13_idle"
+        },
+        {
+          "after": {
+            "additions": 16,
+            "children": [
+              {
+                "instance_id": "48016393895",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 177,
+            "physics_tick": 74,
+            "process_frame": 176,
+            "removals": 15,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 15,
+            "children": [
+              {
+                "instance_id": "47697626787",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 176,
+            "physics_tick": 73,
+            "process_frame": 175,
+            "removals": 14,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_next_14"
+        },
+        {
+          "after": {
+            "additions": 16,
+            "children": [
+              {
+                "instance_id": "48016393895",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 180,
+            "physics_tick": 75,
+            "process_frame": 179,
+            "removals": 15,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 16,
+            "children": [
+              {
+                "instance_id": "48016393895",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 177,
+            "physics_tick": 74,
+            "process_frame": 176,
+            "removals": 15,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_next_14_idle"
+        },
+        {
+          "after": {
+            "additions": 17,
+            "children": [
+              {
+                "instance_id": "48335160992",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 181,
+            "physics_tick": 75,
+            "process_frame": 180,
+            "removals": 16,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 16,
+            "children": [
+              {
+                "instance_id": "48016393895",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 180,
+            "physics_tick": 75,
+            "process_frame": 179,
+            "removals": 15,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 14,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_0"
+        },
+        {
+          "after": {
+            "additions": 17,
+            "children": [
+              {
+                "instance_id": "48335160992",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 184,
+            "physics_tick": 76,
+            "process_frame": 183,
+            "removals": 16,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 17,
+            "children": [
+              {
+                "instance_id": "48335160992",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 181,
+            "physics_tick": 75,
+            "process_frame": 180,
+            "removals": 16,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 14,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_0_idle"
+        },
+        {
+          "after": {
+            "additions": 18,
+            "children": [
+              {
+                "instance_id": "48653928094",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 185,
+            "physics_tick": 77,
+            "process_frame": 184,
+            "removals": 17,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 17,
+            "children": [
+              {
+                "instance_id": "48335160992",
+                "model": "res://models/grass-trees-tall.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 14,
+            "observed_process_completions": 184,
+            "physics_tick": 76,
+            "process_frame": 183,
+            "removals": 16,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 13,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_1"
+        },
+        {
+          "after": {
+            "additions": 18,
+            "children": [
+              {
+                "instance_id": "48653928094",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 188,
+            "physics_tick": 78,
+            "process_frame": 187,
+            "removals": 17,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 18,
+            "children": [
+              {
+                "instance_id": "48653928094",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 185,
+            "physics_tick": 77,
+            "process_frame": 184,
+            "removals": 17,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 13,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_1_idle"
+        },
+        {
+          "after": {
+            "additions": 19,
+            "children": [
+              {
+                "instance_id": "48972695197",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 189,
+            "physics_tick": 78,
+            "process_frame": 188,
+            "removals": 18,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 18,
+            "children": [
+              {
+                "instance_id": "48653928094",
+                "model": "res://models/grass-trees.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 13,
+            "observed_process_completions": 188,
+            "physics_tick": 78,
+            "process_frame": 187,
+            "removals": 17,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 12,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_2"
+        },
+        {
+          "after": {
+            "additions": 19,
+            "children": [
+              {
+                "instance_id": "48972695197",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 192,
+            "physics_tick": 80,
+            "process_frame": 191,
+            "removals": 18,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 19,
+            "children": [
+              {
+                "instance_id": "48972695197",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 189,
+            "physics_tick": 78,
+            "process_frame": 188,
+            "removals": 18,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 12,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_2_idle"
+        },
+        {
+          "after": {
+            "additions": 20,
+            "children": [
+              {
+                "instance_id": "49291462304",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 193,
+            "physics_tick": 80,
+            "process_frame": 192,
+            "removals": 19,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 19,
+            "children": [
+              {
+                "instance_id": "48972695197",
+                "model": "res://models/grass.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 12,
+            "observed_process_completions": 192,
+            "physics_tick": 80,
+            "process_frame": 191,
+            "removals": 18,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 11,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_3"
+        },
+        {
+          "after": {
+            "additions": 20,
+            "children": [
+              {
+                "instance_id": "49291462304",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 196,
+            "physics_tick": 81,
+            "process_frame": 195,
+            "removals": 19,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 20,
+            "children": [
+              {
+                "instance_id": "49291462304",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 193,
+            "physics_tick": 80,
+            "process_frame": 192,
+            "removals": 19,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 11,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_3_idle"
+        },
+        {
+          "after": {
+            "additions": 21,
+            "children": [
+              {
+                "instance_id": "49610229415",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 197,
+            "physics_tick": 82,
+            "process_frame": 196,
+            "removals": 20,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 20,
+            "children": [
+              {
+                "instance_id": "49291462304",
+                "model": "res://models/building-garage.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 11,
+            "observed_process_completions": 196,
+            "physics_tick": 81,
+            "process_frame": 195,
+            "removals": 19,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 10,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_4"
+        },
+        {
+          "after": {
+            "additions": 21,
+            "children": [
+              {
+                "instance_id": "49610229415",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 200,
+            "physics_tick": 83,
+            "process_frame": 199,
+            "removals": 20,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 21,
+            "children": [
+              {
+                "instance_id": "49610229415",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 197,
+            "physics_tick": 82,
+            "process_frame": 196,
+            "removals": 20,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 10,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_4_idle"
+        },
+        {
+          "after": {
+            "additions": 22,
+            "children": [
+              {
+                "instance_id": "49928996502",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 201,
+            "physics_tick": 83,
+            "process_frame": 200,
+            "removals": 21,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 21,
+            "children": [
+              {
+                "instance_id": "49610229415",
+                "model": "res://models/building-small-d.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 10,
+            "observed_process_completions": 200,
+            "physics_tick": 83,
+            "process_frame": 199,
+            "removals": 20,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 9,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_5"
+        },
+        {
+          "after": {
+            "additions": 22,
+            "children": [
+              {
+                "instance_id": "49928996502",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 204,
+            "physics_tick": 85,
+            "process_frame": 203,
+            "removals": 21,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 22,
+            "children": [
+              {
+                "instance_id": "49928996502",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 201,
+            "physics_tick": 83,
+            "process_frame": 200,
+            "removals": 21,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 9,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_5_idle"
+        },
+        {
+          "after": {
+            "additions": 23,
+            "children": [
+              {
+                "instance_id": "50247763621",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 205,
+            "physics_tick": 85,
+            "process_frame": 204,
+            "removals": 22,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 22,
+            "children": [
+              {
+                "instance_id": "49928996502",
+                "model": "res://models/building-small-c.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 9,
+            "observed_process_completions": 204,
+            "physics_tick": 85,
+            "process_frame": 203,
+            "removals": 21,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 8,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_6"
+        },
+        {
+          "after": {
+            "additions": 23,
+            "children": [
+              {
+                "instance_id": "50247763621",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 208,
+            "physics_tick": 86,
+            "process_frame": 207,
+            "removals": 22,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 23,
+            "children": [
+              {
+                "instance_id": "50247763621",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 205,
+            "physics_tick": 85,
+            "process_frame": 204,
+            "removals": 22,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 8,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_6_idle"
+        },
+        {
+          "after": {
+            "additions": 24,
+            "children": [
+              {
+                "instance_id": "50566530729",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 209,
+            "physics_tick": 87,
+            "process_frame": 208,
+            "removals": 23,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 23,
+            "children": [
+              {
+                "instance_id": "50247763621",
+                "model": "res://models/building-small-b.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 8,
+            "observed_process_completions": 208,
+            "physics_tick": 86,
+            "process_frame": 207,
+            "removals": 22,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 7,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_7"
+        },
+        {
+          "after": {
+            "additions": 24,
+            "children": [
+              {
+                "instance_id": "50566530729",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 212,
+            "physics_tick": 88,
+            "process_frame": 211,
+            "removals": 23,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 24,
+            "children": [
+              {
+                "instance_id": "50566530729",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 209,
+            "physics_tick": 87,
+            "process_frame": 208,
+            "removals": 23,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 7,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_7_idle"
+        },
+        {
+          "after": {
+            "additions": 25,
+            "children": [
+              {
+                "instance_id": "50885297811",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 213,
+            "physics_tick": 88,
+            "process_frame": 212,
+            "removals": 24,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 24,
+            "children": [
+              {
+                "instance_id": "50566530729",
+                "model": "res://models/building-small-a.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 7,
+            "observed_process_completions": 212,
+            "physics_tick": 88,
+            "process_frame": 211,
+            "removals": 23,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 6,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_8"
+        },
+        {
+          "after": {
+            "additions": 25,
+            "children": [
+              {
+                "instance_id": "50885297811",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 216,
+            "physics_tick": 90,
+            "process_frame": 215,
+            "removals": 24,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 25,
+            "children": [
+              {
+                "instance_id": "50885297811",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 213,
+            "physics_tick": 88,
+            "process_frame": 212,
+            "removals": 24,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 6,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_8_idle"
+        },
+        {
+          "after": {
+            "additions": 26,
+            "children": [
+              {
+                "instance_id": "51204064940",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 217,
+            "physics_tick": 90,
+            "process_frame": 216,
+            "removals": 25,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 25,
+            "children": [
+              {
+                "instance_id": "50885297811",
+                "model": "res://models/pavement-fountain.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 6,
+            "observed_process_completions": 216,
+            "physics_tick": 90,
+            "process_frame": 215,
+            "removals": 24,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 5,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_9"
+        },
+        {
+          "after": {
+            "additions": 26,
+            "children": [
+              {
+                "instance_id": "51204064940",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 220,
+            "physics_tick": 91,
+            "process_frame": 219,
+            "removals": 25,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 26,
+            "children": [
+              {
+                "instance_id": "51204064940",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 217,
+            "physics_tick": 90,
+            "process_frame": 216,
+            "removals": 25,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 5,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_9_idle"
+        },
+        {
+          "after": {
+            "additions": 27,
+            "children": [
+              {
+                "instance_id": "51522832037",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 221,
+            "physics_tick": 92,
+            "process_frame": 220,
+            "removals": 26,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 26,
+            "children": [
+              {
+                "instance_id": "51204064940",
+                "model": "res://models/pavement.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 5,
+            "observed_process_completions": 220,
+            "physics_tick": 91,
+            "process_frame": 219,
+            "removals": 25,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 4,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_10"
+        },
+        {
+          "after": {
+            "additions": 27,
+            "children": [
+              {
+                "instance_id": "51522832037",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 224,
+            "physics_tick": 93,
+            "process_frame": 223,
+            "removals": 26,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 27,
+            "children": [
+              {
+                "instance_id": "51522832037",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 221,
+            "physics_tick": 92,
+            "process_frame": 220,
+            "removals": 26,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 4,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_10_idle"
+        },
+        {
+          "after": {
+            "additions": 28,
+            "children": [
+              {
+                "instance_id": "51841599139",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 225,
+            "physics_tick": 93,
+            "process_frame": 224,
+            "removals": 27,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 27,
+            "children": [
+              {
+                "instance_id": "51522832037",
+                "model": "res://models/road-intersection.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 4,
+            "observed_process_completions": 224,
+            "physics_tick": 93,
+            "process_frame": 223,
+            "removals": 26,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 3,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_11"
+        },
+        {
+          "after": {
+            "additions": 28,
+            "children": [
+              {
+                "instance_id": "51841599139",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 228,
+            "physics_tick": 95,
+            "process_frame": 227,
+            "removals": 27,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 28,
+            "children": [
+              {
+                "instance_id": "51841599139",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 225,
+            "physics_tick": 93,
+            "process_frame": 224,
+            "removals": 27,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 3,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_11_idle"
+        },
+        {
+          "after": {
+            "additions": 29,
+            "children": [
+              {
+                "instance_id": "52160366226",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 229,
+            "physics_tick": 95,
+            "process_frame": 228,
+            "removals": 28,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 28,
+            "children": [
+              {
+                "instance_id": "51841599139",
+                "model": "res://models/road-split.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 3,
+            "observed_process_completions": 228,
+            "physics_tick": 95,
+            "process_frame": 227,
+            "removals": 27,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 2,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_12"
+        },
+        {
+          "after": {
+            "additions": 29,
+            "children": [
+              {
+                "instance_id": "52160366226",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 232,
+            "physics_tick": 96,
+            "process_frame": 231,
+            "removals": 28,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 29,
+            "children": [
+              {
+                "instance_id": "52160366226",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 229,
+            "physics_tick": 95,
+            "process_frame": 228,
+            "removals": 28,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 2,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_12_idle"
+        },
+        {
+          "after": {
+            "additions": 30,
+            "children": [
+              {
+                "instance_id": "52479133349",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 233,
+            "physics_tick": 97,
+            "process_frame": 232,
+            "removals": 29,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 29,
+            "children": [
+              {
+                "instance_id": "52160366226",
+                "model": "res://models/road-corner.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 2,
+            "observed_process_completions": 232,
+            "physics_tick": 96,
+            "process_frame": 231,
+            "removals": 28,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 1,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_13"
+        },
+        {
+          "after": {
+            "additions": 30,
+            "children": [
+              {
+                "instance_id": "52479133349",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 236,
+            "physics_tick": 98,
+            "process_frame": 235,
+            "removals": 29,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 30,
+            "children": [
+              {
+                "instance_id": "52479133349",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 233,
+            "physics_tick": 97,
+            "process_frame": 232,
+            "removals": 29,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 1,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_13_idle"
+        },
+        {
+          "after": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 237,
+            "physics_tick": 98,
+            "process_frame": 236,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 30,
+            "children": [
+              {
+                "instance_id": "52479133349",
+                "model": "res://models/road-straight-lightposts.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 1,
+            "observed_process_completions": 236,
+            "physics_tick": 98,
+            "process_frame": 235,
+            "removals": 29,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 1,
+          "kind": "switch",
+          "name": "structure_previous_14"
+        },
+        {
+          "after": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 240,
+            "physics_tick": 100,
+            "process_frame": 239,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 237,
+            "physics_tick": 98,
+            "process_frame": 236,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 3,
+          "kind": "stable",
+          "name": "structure_previous_14_idle"
+        },
+        {
+          "after": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 241,
+            "physics_tick": 100,
+            "process_frame": 240,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 240,
+            "physics_tick": 100,
+            "process_frame": 239,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 1,
+          "kind": "stable",
+          "name": "simultaneous_opposites"
+        },
+        {
+          "after": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 244,
+            "physics_tick": 101,
+            "process_frame": 243,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "before": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 241,
+            "physics_tick": 100,
+            "process_frame": 240,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 3,
+          "kind": "stable",
+          "name": "simultaneous_opposites_idle"
+        },
+        {
+          "after": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 245,
+            "physics_tick": 102,
+            "process_frame": 244,
+            "removals": 30,
+            "selector_basis": [
+              -4.37113882867379e-8, 0, -1, 0, 1, 0, 1, 0, -4.37113882867379e-8
+            ]
+          },
+          "before": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 244,
+            "physics_tick": 101,
+            "process_frame": 243,
+            "removals": 30,
+            "selector_basis": [1, 0, 0, 0, 1, 0, 0, 0, 1]
+          },
+          "expected_index": 0,
+          "frames": 1,
+          "kind": "rotate",
+          "name": "rotate"
+        },
+        {
+          "after": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 365,
+            "physics_tick": 151,
+            "process_frame": 364,
+            "removals": 30,
+            "selector_basis": [
+              -4.37113882867379e-8, 0, -1, 0, 1, 0, 1, 0, -4.37113882867379e-8
+            ]
+          },
+          "before": {
+            "additions": 31,
+            "children": [
+              {
+                "instance_id": "52797900460",
+                "model": "res://models/road-straight.glb",
+                "position": [0, 0.25, 0]
+              }
+            ],
+            "index": 0,
+            "observed_process_completions": 245,
+            "physics_tick": 102,
+            "process_frame": 244,
+            "removals": 30,
+            "selector_basis": [
+              -4.37113882867379e-8, 0, -1, 0, 1, 0, 1, 0, -4.37113882867379e-8
+            ]
+          },
+          "expected_index": 0,
+          "frames": 120,
+          "kind": "stable",
+          "name": "rotate_idle"
+        }
+      ],
+      "schema_version": 1,
+      "scope": "preview lifecycle, model source, offset, selection actions, and rotation; no pixel or full-gameplay validation"
+    }
+  },
+  "cancelled": false,
+  "cleanupErrors": [],
+  "exitCode": 0
+}

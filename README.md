@@ -47,6 +47,17 @@ Agent 自行选择如何调查、修改和验证，无需为项目编写 Adapter
 
 ## 案例
 
+### 当前 Preview：City Builder 外部项目调查
+
+在未参与接口设计的 `KenneyNL/Starter-Kit-City-Builder` 中，真实 Agent 自主修复空闲预览重复重建，
+并使用现有游戏工具查询候选的实例身份。ChronoRift 产品代码、工具和协议没有增加项目适配。
+
+coding-only 与 ChronoRift 首轮产出相同 patch，独立检查均 **66/66**：空闲 120 次 process 更新中的预览重建
+从 120 次降为 0，初始化、双向切换与回绕保留。这个单次对照展示了工具复用，没有显示修复结果优势。
+公开材料包含完整工具摘录、真实失败、无需模型凭据的候选复查命令和面试讲稿。
+
+[查看 City Builder 案例、补丁与复查 →](docs/case-studies/city-builder-preview.md)
+
 ### 当前 Preview：GN-1 无 Adapter 调查
 
 真实 Pi 从“玩家仍在平台可见宽度外就触发下落”的症状出发，自主找节点、查询 Shape 引用与尺寸，

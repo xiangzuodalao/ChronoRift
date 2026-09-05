@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "controls": [
+    {
+      "variant": "baseline",
+      "purpose": "Checker development control; not an Agent candidate",
+      "outcome": "assertions_failed",
+      "passed": 31,
+      "total": 66,
+      "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+      "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+      "patchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "checkedAt": "2026-09-05T15:39:41.920Z"
+    },
+    {
+      "variant": "correct",
+      "purpose": "Checker development control; not an Agent candidate",
+      "outcome": "passed",
+      "passed": 66,
+      "total": 66,
+      "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+      "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+      "patchSha256": "42e46fa10844e2b9cbc7b464a04c03d045b7dc50376cca8d2989b389ac110957",
+      "checkedAt": "2026-09-05T15:39:42.011Z"
+    },
+    {
+      "variant": "missing-initialization",
+      "purpose": "Checker development control; not an Agent candidate",
+      "outcome": "assertions_failed",
+      "passed": 64,
+      "total": 66,
+      "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+      "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+      "patchSha256": "664760a40915dbb0a06cb783bccb4d8a3e39ee602a72b3698b419638d3ecffe7",
+      "checkedAt": "2026-09-05T15:39:41.946Z"
+    },
+    {
+      "variant": "missing-switch",
+      "purpose": "Checker development control; not an Agent candidate",
+      "outcome": "assertions_failed",
+      "passed": 10,
+      "total": 66,
+      "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+      "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+      "patchSha256": "85b469a6d5c50ec87936a0d18a46fa3c34d015ffb58121180ad8d77d21fa9882",
+      "checkedAt": "2026-09-05T15:39:41.994Z"
+    }
+  ],
+  "developmentNote": "Earlier local development records retain requires_review failures involving initialization frame accounting and ambience shutdown resource cleanup. The checker was corrected before either model Session; both candidate checks use the frozen checker bytes. Control patches and full development logs remain local and were never available to the Agents."
+}

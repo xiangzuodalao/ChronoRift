@@ -50,6 +50,19 @@ The published `v0.4.0` release is a separate legacy path, not the Preview produc
 
 ## Case studies
 
+### Current Preview: City Builder on an external project
+
+On `KenneyNL/Starter-Kit-City-Builder`, which did not inform the tool interfaces, a real Agent independently fixed
+idle preview rebuilding and queried the candidate's runtime object identity. ChronoRift's product code, tools, and
+protocol required no project adaptation.
+
+The coding-only and ChronoRift Sessions produced identical patches; both passed **66/66** independent checks.
+Preview rebuilds during 120 idle process updates fell from 120 to zero while initialization, selection, and wrapping
+remained correct. This single pair demonstrates tool reuse and shows no repair-outcome advantage. Materials include
+all tool-call excerpts and failures, a credential-free candidate check, and interview notes.
+
+[Review the City Builder case, patches, and runnable checks →](docs/case-studies/city-builder-preview.md)
+
 ### Current Preview: GN-1 without an Adapter
 
 Starting from a symptom—a falling platform activates while the player is outside its visible width—a real Pi Session

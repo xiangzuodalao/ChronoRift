@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-05",
+  "node": "22.23.1",
+  "pnpm": "11.20.0",
+  "checks": [
+    {
+      "command": "corepack pnpm check",
+      "outcome": "blocked_by_existing_formatting",
+      "lint": "passed",
+      "preExistingUntrackedFormattingFailures": [
+        "docs/assets/chronorift-system-architecture.archify.json",
+        "docs/assets/chronorift-system-architecture.html",
+        "docs/assets/chronorift-system-architecture.visual-check.html"
+      ],
+      "typecheckAndTests": "Not reached by this command; executed separately below.",
+      "localLogSha256": "cfa5c96ceb83fa63780a21ac6db1e079b981c2e123972ce9e8541245a90b6397"
+    },
+    {
+      "command": "corepack pnpm typecheck",
+      "outcome": "passed",
+      "localLogSha256": "5cfb036289d819b2a87e947d65f4532031dd37753f3cf2def0f77d398eea1737"
+    },
+    {
+      "command": "corepack pnpm test",
+      "outcome": "passed",
+      "testFiles": 115,
+      "tests": 911,
+      "localLogSha256": "5875105816643dfb879f7b0487f498799e9b6f8b58d9b045145f282556746f48"
+    },
+    {
+      "command": "corepack pnpm test:godot",
+      "outcome": "passed",
+      "testFiles": 13,
+      "tests": 20,
+      "localLogSha256": "f9ba4cc419df9471fe5ef3b215b868d4e1f303008df3d9527b1a2bcccaa98193"
+    },
+    {
+      "command": ".github/scripts/run-srt-sandbox-conformance.sh",
+      "outcome": "passed",
+      "testFiles": 4,
+      "tests": 7,
+      "localLogSha256": "b86f2501bfc18b26ff2600680ccea93125656e4fc4ee3c433ffca8558fbcea07"
+    },
+    {
+      "command": "node --import tsx --test docs/case-studies/city-builder-preview/run.test.mjs docs/case-studies/city-builder-preview/check.test.mjs",
+      "outcome": "passed",
+      "tests": 8,
+      "localLogSha256": "221425544b04f6c13de13e20851af72f51a7f0c02aff9163a245122a516b2c96"
+    },
+    {
+      "command": "prettier --check (changed documentation and City Builder case directory)",
+      "outcome": "passed",
+      "localLogSha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+    },
+    {
+      "command": "eslint docs/case-studies/city-builder-preview",
+      "outcome": "passed",
+      "localLogSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "git diff --check; local Markdown links; JSON parsing; private-path scan; projection and frozen-source comparisons",
+      "outcome": "passed",
+      "details": "Independent result projections equal local original JSON; all 57 published tool requests/results match source Sessions after declared redaction; source and checker hashes match."
+    },
+    {
+      "command": "git diff --cached --check",
+      "outcome": "patch_context_whitespace_only",
+      "details": "At commit preparation, Git reported whitespace in the two literal candidate.patch files (diff context prefixes and the final blank line). Their staged SHA-256 values match provenance; original patch bytes are preserved. The staged whitespace check passes with only those two evidence files excluded."
+    }
+  ],
+  "independentChecks": "See independent/{baseline,coding-only,chronorift}/result.json for the actual Godot acceptance records.",
+  "notes": [
+    "The three unrelated untracked architecture artifacts existed before this task and were preserved.",
+    "No product code or dependency changed. Live model calls were confined to the two explicitly requested case Sessions.",
+    "Raw validation logs are local; this file summarizes actual command outcomes."
+  ]
+}

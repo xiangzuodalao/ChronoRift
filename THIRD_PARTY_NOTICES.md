@@ -1,5 +1,21 @@
 # Third-Party Notices
 
+## City Builder Preview case
+
+The candidate patches and source excerpts under
+`docs/case-studies/city-builder-preview/` derive from
+[`KenneyNL/Starter-Kit-City-Builder`](https://github.com/KenneyNL/Starter-Kit-City-Builder),
+commit `4535092b740b378b700efd9df9e27a631815b84a`, tree
+`528433a6580c8f48c9a1fcd7ddcae251a6f75c00`.
+
+The pinned source license states Copyright (c) 2025 Kenney and is reproduced in
+[`upstream-MIT-LICENSE.txt`](docs/case-studies/city-builder-preview/upstream-MIT-LICENSE.txt).
+The upstream README identifies the included art and audio assets as CC0. The
+case does not redistribute those assets. The upstream MIT terms apply to the
+patches and source excerpts; ChronoRift-authored documentation and independent
+checking code retain this repository's license. These materials do not imply
+upstream acceptance or endorsement.
+
 ## GN-1 platform-alias candidate patches and Preview source excerpts
 
 The following files contain candidate modifications to source from

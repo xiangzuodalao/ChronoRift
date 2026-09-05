@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   symlink,
   writeFile,
@@ -78,6 +79,10 @@ describe("stageGodotValidation", () => {
           bytes: Buffer.from("[plugin]\n"),
         },
         {
+          relativePath: "addons/chronorift_inspection/observer.gd",
+          bytes: Buffer.from("extends Node\n"),
+        },
+        {
           relativePath: ".chronorift/project-adapter/manifest.json",
           bytes: Buffer.from("{}\n"),
         },
@@ -99,6 +104,15 @@ describe("stageGodotValidation", () => {
         "utf8",
       ),
     ).resolves.toBe("[plugin]\n");
+    await expect(
+      readFile(
+        join(
+          stage.projectStagePath,
+          "addons/chronorift_inspection/observer.gd",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("extends Node\n");
     await expect(
       readFile(
         join(
@@ -203,6 +217,7 @@ describe("stageGodotValidation", () => {
       argv: (stage) => ["/opt/godot", "--path", stage.projectStagePath],
       timeoutMs: 1_000,
     });
+    expect(run.sourceSha256).toMatch(/^[a-f0-9]{64}$/u);
     if (sandboxRequest === undefined)
       throw new Error("missing sandbox request");
     const request = sandboxRequest;
@@ -240,6 +255,83 @@ describe("stageGodotValidation", () => {
     ).rejects.toThrow(/symbolic link/u);
     await expect(lstat(stageRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("stages pinned source bytes when the mutable candidate becomes a symlink after admission", async () => {
+    const snapshot = await readFile(join(candidateWorkspace, "scenes/main.gd"));
+    const secret = join(root, "host-secret.gd");
+    await writeFile(secret, "host-only bytes");
+    await rm(join(candidateWorkspace, "scenes/main.gd"));
+    await symlink(secret, join(candidateWorkspace, "scenes/main.gd"));
+    const stage = await stageGodotValidation({
+      candidateWorkspace,
+      stageRoot: join(root, "run"),
+      sourceFiles: [
+        { relativePath: "scenes/main.gd", bytes: snapshot, executable: false },
+      ],
+    });
+    expect(
+      await readFile(join(stage.projectStagePath, "scenes/main.gd"), "utf8"),
+    ).toBe("extends Node\n");
+    expect(await readdir(stage.projectStagePath)).not.toContain(
+      "project.godot",
+    );
+    expect((await stage.verifySourceUnchanged()).sourceUnchanged).toBe(true);
+    await stage.cleanup();
+  });
+
+  it.each([
+    "../host-secret.gd",
+    "/absolute.gd",
+    "sub/../escape.gd",
+    ".godot/cache",
+    "a\\b.gd",
+    "a//b.gd",
+  ])(
+    "rejects unsafe pinned-source path %s before creating a stage",
+    async (relativePath) => {
+      const stageRoot = join(root, "run");
+      await expect(
+        stageGodotValidation({
+          candidateWorkspace,
+          stageRoot,
+          sourceFiles: [
+            { relativePath, bytes: Buffer.from("x"), executable: false },
+          ],
+        }),
+      ).rejects.toThrow(/snapshot path/u);
+      await expect(lstat(stageRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
+  it.each(["override.cfg", "addons/chronorift_inspection/observer.gd"])(
+    "does not overwrite candidate-owned inspection source at %s",
+    async (reservedPath) => {
+      await mkdir(dirname(join(candidateWorkspace, reservedPath)), {
+        recursive: true,
+      });
+      await writeFile(
+        join(candidateWorkspace, reservedPath),
+        "candidate bytes",
+      );
+      const stageRoot = join(root, "run");
+      await expect(
+        stageGodotValidation({
+          candidateWorkspace,
+          stageRoot,
+          overlayFiles: [
+            {
+              relativePath: "addons/chronorift_inspection/observer.gd",
+              bytes: Buffer.from("managed bytes"),
+            },
+          ],
+        }),
+      ).rejects.toThrow(/occupies Host-managed inspection path/u);
+      await expect(
+        readFile(join(candidateWorkspace, reservedPath), "utf8"),
+      ).resolves.toBe("candidate bytes");
+      await expect(lstat(stageRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
 
   it("rejects special source files", async () => {
     const socketPath = join(candidateWorkspace, "editor.sock");

@@ -8,7 +8,7 @@
 **Move coding agents from source-level guesses to executable Godot runtime evidence.**
 
 Pi owns the Agent Loop. ChronoRift uses an exactly pinned Anthropic Sandbox Runtime (SRT) to confine file, command,
-and Godot operations and gives the Agent Build-bound runtime state, actual diffs, and tool results. The Agent chooses
+and Godot operations and gives the Agent runtime state tied to actual source and execution, diffs, and tool results. The Agent chooses
 its investigation and edit strategy; project CI, an independent Eval, or human review still owns final acceptance.
 
 > **Outcome advantage — GN-1:** with source, prompt, model, thinking, timeout, and shared tools held constant, the
@@ -20,8 +20,9 @@ its investigation and edit strategy; project CI, an independent Eval, or human r
 > evaluator 3/3. Coding-only also passed 3/3, so this case supports product-path reuse rather than a general efficacy
 > claim.
 
-**Status on 2026-08-27:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
-A default `chronorift [goal]`, arbitrary-project support, and automatic “fixed” verdicts do not exist yet.
+**Status on 2026-09-05:** `v0.4.0` is the current legacy release. Experimental `project preview` now inspects Godot
+objects without a ProjectAdapter. A default `chronorift [goal]`, arbitrary-project compatibility, and automatic
+“fixed” verdicts do not exist yet.
 
 ![ChronoRift concept art showing an isolated Godot runtime, baseline and candidate executions, and runtime records](docs/assets/chronorift-hero.jpg)
 
@@ -48,18 +49,28 @@ of implemented features.
 
 ## What exists today
 
-| Surface                     | Current implementation                                                                                                                  | Boundary                                                                               |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                             | Not the vNext free Loop and not an arbitrary-project runner                            |
-| Project Environment Preview | Explicit `project preview`; experimental source closure, sandbox, adapter publication/binding, and reuse                                | Narrow historical characterization; not the default command or general project support |
-| GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary | One project, prompt, revision, and pair; raw live outputs remain local-only            |
-| Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                    | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim       |
-| Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                       | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer      |
-| M3/M4/E2                    | Implementations and commands are removed from current HEAD; frozen historical archives remain                                           | Not templates for new slices and not restored to reproduce old producers or Gates      |
+| Surface                     | Current implementation                                                                                                                  | Boundary                                                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                             | Not the vNext free Loop and not an arbitrary-project runner                                                               |
+| Project Environment Preview | Explicit `project preview`; private candidate, SRT, default-scene launch, and node/property/resource-identity inspection                | No Adapter required; current state only, without history, probes, or input controls; project admission limits still apply |
+| GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary | One project, prompt, revision, and pair; raw live outputs remain local-only                                               |
+| Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                    | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim                                          |
+| Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                       | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer                                         |
+| M3/M4/E2                    | Implementations and commands are removed from current HEAD; frozen historical archives remain                                           | Not templates for new slices and not restored to reproduce old producers or Gates                                         |
 
-Not yet available: a default `chronorift [goal]`, arbitrary Godot projects, general adapter authoring/migration,
-cross-platform Hosts, automatic acceptance, or generally available checkpoint/fork/replay on the current product
-path. The retired M3 implementation exists only in historical tags and archives.
+Preview passes the user's goal directly to the ordinary Pi Loop, with coding tools plus `game_launch`, `game_query`,
+and `game_stop`. The Agent can inspect children, property descriptions, and named values in the same live execution.
+Object/Resource references preserve identity, including shared Shape resources. Candidate edits take effect on the
+next launch; the existing execution keeps its staged source.
+
+Adapter authoring, conformance, publication, and revision reuse have been removed from Preview. It does not read,
+migrate, or delete old `.chronorift/` environment state. GN-1 and Mob retain their fixed adapters and contracts.
+Investigation through retained time windows is a future direction to validate; current queries do not capture or
+reconstruct past state.
+
+Not yet available: a default `chronorift [goal]`, arbitrary-project compatibility, Preview probes/history/pause/step/input,
+cross-platform Hosts, automatic acceptance, or generally available checkpoint/fork/replay. The retired M3
+implementation exists only in historical tags and archives.
 
 ## Runtime evidence changed the candidate: GN-1
 
@@ -134,6 +145,11 @@ corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
 corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
 ```
 
+Omitting GOAL requires an interactive TTY. Noninteractive calls and `--json` require a goal. Preview runs only the
+candidate's default main scene and rejects `--launch-target`. Its `--json` result uses `schemaVersion: 2` and includes
+the candidate patch, Session, and execution-record paths. `completed` describes Loop completion and delivery; it
+requires neither a game-tool call nor a successful fix verdict.
+
 They do not modify or apply changes to the source checkout. The Agent can write a private physical candidate
 workspace. Godot validation instead runs against a Host-copied stage whose project source is read-only; only
 `.godot/`, home, temp, and artifacts are writable, and source SHA-256 is checked before and after execution. The
@@ -147,7 +163,8 @@ commands do not automatically commit, merge, push, or declare a fix.
 - Pi credentials stay on the Host model path and must not enter the repository, artifacts, sandboxed command
   environment, or Godot process.
 - External, wire, tool, and persisted DTOs are explicitly versioned and strictly validated at runtime.
-- Runtime records expose coverage, loss, overwrite, fidelity, and clock limitations rather than hiding them.
+- Runtime records preserve actual process results, truncation, source integrity, and query sampling clocks. Fixed
+  case records also retain their existing coverage, loss, and fidelity fields.
 - Content hashes bind bytes and detect corruption; they are not signatures, attestation, or proof of correctness.
 - The v0.4 Host process does not provide the vNext OS sandbox guarantee.
 
@@ -157,7 +174,7 @@ commands do not automatically commit, merge, push, or declare a fix.
 - [GN-1 case study](docs/case-studies/gn1-platform-alias.md): a checkable but non-generalizable runtime-observation pair.
 - [Godot Demo Mob orientation](docs/case-studies/godot-demo-mob-orientation.md): a completed second-project V2 slice that did not promote to Hero.
 - [Target architecture](docs/architecture.md): vNext contract, rollout, and current implementation map (§20/§21).
-- [Project Environment V1 RFC](docs/project-environment-v1.md): data model, publication state machine, and wire contract.
+- [Project Environment V1 RFC](docs/project-environment-v1.md): historical Adapter/publication design, superseded for Preview.
 - [Development and conformance](docs/development.md): local, Godot, Host sandbox, and live-provider prerequisites.
 - [`docs/evidence/`](docs/evidence/) and [`docs/benchmarks/`](docs/benchmarks/): immutable historical archives whose
   conclusions do not automatically apply to current HEAD.

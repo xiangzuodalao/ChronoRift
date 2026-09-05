@@ -6,6 +6,7 @@ import {
   stageGodotValidation,
   type GodotValidationOverlayFile,
   type GodotValidationStage,
+  type GodotValidationSourceFile,
 } from "./godot-validation-stage.js";
 import type {
   SrtCommandResult,
@@ -22,6 +23,8 @@ export interface SrtGodotProcessResult {
 
 export interface SrtGodotRunHandle {
   readonly process: SrtDuplexHandle;
+  /** Actual immutable source plus managed overlays used by this process. */
+  readonly sourceSha256: string;
   readonly completion: Promise<SrtGodotProcessResult>;
   terminate(): Promise<void>;
 }
@@ -34,6 +37,7 @@ export interface SrtGodotRunnerOptions {
 
 export interface OpenSrtGodotOptions {
   readonly overlayFiles?: readonly GodotValidationOverlayFile[] | undefined;
+  readonly sourceFiles?: readonly GodotValidationSourceFile[] | undefined;
   readonly argv: (stage: GodotValidationStage) => readonly string[];
   readonly timeoutMs: number;
   readonly signal?: AbortSignal | undefined;
@@ -57,6 +61,9 @@ export class SrtGodotRunner {
       ...(input.overlayFiles === undefined
         ? {}
         : { overlayFiles: input.overlayFiles }),
+      ...(input.sourceFiles === undefined
+        ? {}
+        : { sourceFiles: input.sourceFiles }),
     });
 
     let process: SrtDuplexHandle;
@@ -98,6 +105,7 @@ export class SrtGodotRunner {
 
     return {
       process,
+      sourceSha256: stage.sourceSha256,
       completion,
       terminate: async () => {
         await process.stop();

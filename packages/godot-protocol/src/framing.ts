@@ -1,3 +1,5 @@
+import { TextDecoder } from "node:util";
+
 export const MAX_WIRE_FRAME_BYTES = 1024 * 1024;
 
 export class GodotWireFrameError extends Error {
@@ -19,6 +21,14 @@ export const encodeWireFrame = (json: string): Buffer => {
 
 export class WireFrameDecoder {
   private buffer = Buffer.alloc(0);
+  private readonly utf8: TextDecoder | undefined;
+
+  public constructor(options: { readonly fatalUtf8?: boolean } = {}) {
+    this.utf8 =
+      options.fatalUtf8 === true
+        ? new TextDecoder("utf-8", { fatal: true })
+        : undefined;
+  }
 
   public push(chunk: Uint8Array): readonly string[] {
     if (chunk.byteLength === 0) return [];
@@ -32,7 +42,12 @@ export class WireFrameDecoder {
         );
       }
       if (this.buffer.byteLength < length + 4) break;
-      frames.push(this.buffer.subarray(4, 4 + length).toString("utf8"));
+      const body = this.buffer.subarray(4, 4 + length);
+      frames.push(
+        this.utf8 === undefined
+          ? body.toString("utf8")
+          : this.utf8.decode(body),
+      );
       this.buffer = this.buffer.subarray(4 + length);
     }
     return frames;

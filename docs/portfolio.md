@@ -10,7 +10,7 @@
 可比较的起点？工具是否越过了用户授权的项目和 Host 边界？
 
 ChronoRift 的目标不是替 Agent 编写固定诊断脚本，而是提供一个 **Agent 可以自由使用、Host 可以严格约束、reviewer
-可以事后核查** 的运行环境。当前实现包含 legacy v0.4、实验性 Project Environment Preview 和固定项目案例。旧
+可以事后核查** 的运行环境。当前实现包含 legacy v0.4、无需 Adapter 的实验性对象检查 Preview 和固定项目案例。旧
 Task CLI 与 M3/M4/E2 实现已从 current HEAD 删除，只能从历史 tag/归档复现；[目标架构](architecture.md) 中的完整
 runtime primitive 集合并非当前功能清单。
 
@@ -54,7 +54,8 @@ Agent 看到的 game tools 来自显式 `ToolDefinition` metadata 和精确 inpu
 ### 4. 记录 observation，不制造结论
 
 当前 SRT process result 保留 exit/timeout/cancellation、stdout/stderr 截断和 duration；Godot runner 另外返回 stage
-source 的启动前与完成后 SHA-256 以及 `sourceUnchanged`。ProjectAdapter observation 记录运行时实际报告的 state，不能
+source 的启动前与完成后 SHA-256 以及 `sourceUnchanged`。Preview 的对象查询与固定案例的 Adapter observation
+分别记录运行时实际报告的内容，不能
 宣布因果关系或修复正确。
 
 同一原则延伸到 candidate：实际 diff、process output 和 runtime observation 高于 Agent prose。Hash 用于绑定 bytes 和
@@ -81,10 +82,10 @@ source 的启动前与完成后 SHA-256 以及 `sourceUnchanged`。ProjectAdapte
    并把 session status、实际工具面、assistant text、events 和 stats 返回给调用方。可以直接看到“保留正常 Pi Loop”和
    “完成不证明修复”的边界。
 
-2. [`packages/pi-harness/src/project-environment-game-tools.ts`](../packages/pi-harness/src/project-environment-game-tools.ts)
+2. [`packages/pi-harness/src/inspection-game-tools.ts`](../packages/pi-harness/src/inspection-game-tools.ts)
 
-   SDK-neutral game-tool contract 到 Pi `ToolDefinition` 的桥。它按 capability 选择工具、严格检查 input/output、维持
-   `toolCallId` 绑定、执行 budget admission，并把 unsupported/budget/runtime failure 保留为结构化结果。
+   将 canonical inspection schema 派生的 metadata 绑定为三个 Pi tools：launch、query、stop。它严格检查
+   input/output 与 Execution 归属、执行 budget admission，并保留显式错误；不引入项目 Adapter 或固定调查流程。
 
 3. [`apps/cli/src/vnext/srt-sandbox-controller.ts`](../apps/cli/src/vnext/srt-sandbox-controller.ts)
 
@@ -93,10 +94,10 @@ source 的启动前与完成后 SHA-256 以及 `sourceUnchanged`。ProjectAdapte
    [`godot-validation-stage.ts`](../apps/cli/src/vnext/godot-validation-stage.ts) 负责安全复制、managed overlay 和运行前后
    source hash，而不是重新实现 namespace/cgroup sandbox。
 
-4. [`packages/godot-adapter/src/project-adapter-package.ts`](../packages/godot-adapter/src/project-adapter-package.ts)
+4. [`apps/cli/src/vnext/godot-inspection-runtime.ts`](../apps/cli/src/vnext/godot-inspection-runtime.ts)
 
-   把 Agent 生成的 ProjectAdapter 当作不可信 package 检查：限制文件/目录/总字节数，拒绝逃逸路径和 native binary，
-   校验 manifest/schema/GDScript，并在验证后保留 defensive copies，避免运行时重新打开已变化的 candidate。
+   新 Preview 的运行时边界：从当前 candidate 创建独立 stage、启动正常主场景、查询公共 observer 暴露的对象与属性，
+   并在停止、超时或失败时保存实际记录。Object/Resource 引用保留执行内身份，产品没有硬编码项目节点或 Bug 字段。
 
 5. [`apps/cli/src/vnext/platform-alias-demo.ts`](../apps/cli/src/vnext/platform-alias-demo.ts)
 
@@ -131,12 +132,12 @@ area 和共享 identity。
 - **CLI 入口仍分裂。** v0.4 legacy、`project preview` 和 GN-1 各有显式入口，目标中的 `chronorift [goal]` 尚不存在。
 - **部分案例编排仍偏大。** 旧 sandbox broker、Task CLI 与 M3/M4/E2 coordinators 已删除；Preview、GN-1 和 Mob V2
   composition 仍聚集较多 lifecycle 分支，应只在真实 ownership seam 出现时继续拆分。
-- **ProjectAdapter 尚不通用。** Preview 的 author/publish/reuse 仍是实验能力；GN-1 使用 checked-in 项目特定 V1
-  adapter，不能外推到任意 Godot 项目。
+- **通用检查不等于理解任意项目。** Preview 已移除 author/publish/reuse，通过 Godot 原生对象与属性检查工作；有意义的
+  路径、字段仍需 Agent 调查。GN-1/Mob 保留 checked-in 项目 Adapter，其案例结果不能外推到新 Preview 或任意项目。
 - **平台范围窄。** 当前受支持 Host 是 Linux，runtime 是官方 Godot 4.7.1 GDScript；C#、native extension、macOS、
   Windows、visual/audio/GPU 都未覆盖。
-- **runtime fidelity 有边界。** 当前观察依赖项目 Adapter；没有完整 engine snapshot、bit-exact replay 或第三方
-  telemetry attestation。缺失观察不能被静默解释为相等。
+- **时间调查尚未实现。** Preview 只能读取存活执行的当前状态；没有 probe、采集窗口或历史回看，查询不是原子快照且
+  getter 可能有副作用。也没有完整 engine snapshot、bit-exact replay 或第三方 telemetry attestation。
 - **协作与交付不在当前范围。** 通用 source migration、多人并发编辑、自动 apply/merge 和长期 retention 都不是这个
   单人作品项目的已承诺路线。
 
@@ -159,6 +160,6 @@ provider；只有 `*.live.test.ts` 和显式 live 命令可以联系 provider，
 
 - [README](../README.md)：当前公开入口、命令和限制。
 - [目标架构](architecture.md)：产品契约、信任边界、rollout 和 package ownership。
-- [Project Environment V1 RFC](project-environment-v1.md)：完整状态机和 DTO/wire contract。
+- [Project Environment V1 RFC](project-environment-v1.md)：已被新 Preview 替代的历史接入、状态机和 DTO/wire 设计。
 - [开发与验证指南](development.md)：可执行的 Host provisioning 与 conformance 前置条件。
 - [GN-1 案例](case-studies/gn1-platform-alias.md)：固定 pair 的公开材料和局限。

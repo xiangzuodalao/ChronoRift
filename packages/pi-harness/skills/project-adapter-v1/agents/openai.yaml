@@ -1,4 +1,0 @@
-interface:
-  display_name: "Project Adapter V1"
-  short_description: "Author and validate a project-specific runtime adapter"
-  default_prompt: "Use $project-adapter-v1 to inspect this project and author its ChronoRift adapter."

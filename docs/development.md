@@ -37,8 +37,8 @@ also require:
 corepack pnpm test:godot
 ```
 
-`test:godot` covers the legacy suites plus current lifecycle/semantic Addons, Project Environment snapshot/runtime,
-and Godot integration. It does not exercise the Linux namespace or SRT filesystem boundary.
+`test:godot` covers the legacy suites, retained lifecycle/semantic Addons and fixed-case runtimes, and the generic
+inspection observer/wire integration. It does not exercise the Linux namespace or SRT filesystem boundary.
 
 ## Host-bound sandbox gates
 
@@ -83,14 +83,21 @@ corepack pnpm project preview -- [GOAL] \
   [--godot-bin PATH] \
   [--project-root RELATIVE_PATH] \
   [--include-untracked RELATIVE_FILE]... \
-  [--launch-target TARGET_ID]
+  [--timeout-ms MILLISECONDS] \
+  [--agent-dir PATH] \
+  [--json]
 ```
 
-The three PE-C flags are fail-closed: `--project-root` is relative to the enclosing Git root,
-`--include-untracked` names one exact selected-project-relative file and must be repeated on every Preview/reuse,
-and `--launch-target` selects a declared target (the default is used when omitted). They remain experimental Preview
-interfaces; the historical narrow characterization did not promote the default command or establish arbitrary-project
-support.
+`--project-root` is relative to the enclosing Git root. `--include-untracked` names one exact selected-project-relative
+file and must be repeated on every fresh Preview invocation. Tracked source uses its current working-tree bytes,
+including staged/unstaged changes; ignored files and unselected untracked files stay outside the source closure.
+The existing source-admission limits still apply. Preview always launches the candidate's configured default main
+scene and rejects the removed `--launch-target` flag.
+
+With a goal, source preparation leads directly to the ordinary Pi Loop. Without a goal, stdin and stdout must be
+interactive TTYs and `--json` must be absent; otherwise Preview returns `goal_required`. Each invocation gets a new
+private candidate and Session. No Adapter generation, conformance, publication, revision binding, or environment
+reuse runs, and old `.chronorift/` environment state is neither loaded nor migrated or removed.
 
 `--state-root` selects private ChronoRift state. If omitted, resolution is `CHRONORIFT_STATE_ROOT`, then
 `$XDG_STATE_HOME/chronorift`, then `~/.local/state/chronorift`. `--godot-bin` selects the executable; if omitted,
@@ -105,6 +112,31 @@ corepack pnpm project preview -- "Investigate the intermittent jump input" \
   --provider openai-codex \
   --model gpt-5.6-luna
 ```
+
+The Agent receives its ordinary coding tools and exactly three inspection tools, with versioned V1 inputs:
+
+| Tool          | Implemented behavior                                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `game_launch` | Import and run the current candidate's default main scene; return execution/source identity, engine version, and scene root. At most one execution is live. |
+| `game_query`  | Read current `children`, `properties`, or named `values` from a scene-relative path or execution-local `objectRef`. Omitted target means the main scene.    |
+| `game_stop`   | Stop the specified execution and return the saved execution record; repeated stop returns that same result.                                                 |
+
+Children and property descriptions use `offset`/`limit` pagination (default 100, maximum 200); values accepts 1–32
+exact property names. Object and Resource values return references that can be queried again without discarding
+identity. For example, query a collision node's `shape`, then query the returned reference's `size`; this needs no
+project Adapter. Queries report actual process-frame/physics-tick counters and separate Host receipt time. They are
+not atomic snapshots: the game continues running, pages can change, and project getters may have side effects.
+
+The managed observer occupies `addons/chronorift_inspection/` and its reserved autoload name. Project source cannot
+replace those overlays. Each launch stages the then-current candidate; editing the candidate does not alter an
+existing execution. Weak object references expire when the runtime object disappears and do not retain resources or
+bind a replacement object. Unsupported values, missing properties, truncation, and process failures stay explicit.
+
+`--json` returns Preview `schemaVersion: 2`, including Session state, candidate patch, and execution-record paths.
+Records retain actual import/run outcomes, bounded stdout/stderr, timeout/cancellation, and staged-source integrity.
+`completed` means the Pi Loop delivered reviewable output, not that it used a game tool or proved a fix. There are no
+Preview probes, history windows, pause/step/input controls, replay, query database, or evidence publication. Temporal
+investigation remains a future product slice; GN-1 and Mob continue to use their original fixed-case contracts.
 
 PE-A and PE-B real-model evidence producers have been retired. Their frozen historical bytes and original trust limits
 remain in the [PE-A archive](evidence/vnext-project-environment-pe-a-local-r1/README.md) and

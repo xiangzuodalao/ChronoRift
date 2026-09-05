@@ -35,8 +35,8 @@ vi.mock("./workspace-materializer.js", async (importOriginal) => ({
 }));
 
 import {
-  runProjectEnvironmentPreviewV1,
-  type ProjectEnvironmentPreviewDependenciesV1,
+  runProjectEnvironmentPreviewV2,
+  type ProjectEnvironmentPreviewDependenciesV2,
 } from "./project-environment-preview.js";
 
 const execFileAsync = promisify(execFile);
@@ -96,10 +96,10 @@ const requestFor = (projectPath: string) => ({
   provider: "test-provider",
   model: "test-model",
   thinkingLevel: "high" as const,
-  goal: null,
+  goal: "inspect the project",
 });
 
-const unusedPi: ProjectEnvironmentPreviewDependenciesV1 = {
+const unusedPi: ProjectEnvironmentPreviewDependenciesV2 = {
   runPiTurn: vi.fn(() => {
     throw new Error("Pi must not run before materialization succeeds");
   }),
@@ -119,6 +119,20 @@ afterEach(async () => {
 });
 
 describe("Project Environment Preview Task rollback", () => {
+  it.each([null, "", "   "])(
+    "rejects a missing noninteractive goal before touching state",
+    async (goal) => {
+      await expect(
+        runProjectEnvironmentPreviewV2(
+          { ...requestFor("/unused"), goal },
+          unusedPi,
+        ),
+      ).rejects.toMatchObject({ code: "goal_required" });
+      expect(mocks.resolveRuntimeConfig).not.toHaveBeenCalled();
+      expect(mocks.materialize).not.toHaveBeenCalled();
+      expect(unusedPi.runPiTurn).not.toHaveBeenCalled();
+    },
+  );
   it("removes its fresh Task namespace when materialization reports source_drift", async () => {
     const { projectRoot, runtimeRoot } = await setup();
     const drift = Object.assign(
@@ -128,7 +142,7 @@ describe("Project Environment Preview Task rollback", () => {
     mocks.materialize.mockRejectedValueOnce(drift);
 
     await expect(
-      runProjectEnvironmentPreviewV1(requestFor(projectRoot), unusedPi),
+      runProjectEnvironmentPreviewV2(requestFor(projectRoot), unusedPi),
     ).rejects.toBe(drift);
 
     expect(await readdir(join(runtimeRoot, "srt-tasks-v1"))).toEqual([]);
@@ -150,7 +164,7 @@ describe("Project Environment Preview Task rollback", () => {
       },
     );
 
-    const caught = await runProjectEnvironmentPreviewV1(
+    const caught = await runProjectEnvironmentPreviewV2(
       requestFor(projectRoot),
       unusedPi,
     ).catch((error: unknown) => error);

@@ -8,7 +8,7 @@
 **让 coding agent 从源码猜测走向可执行的 Godot 运行时证据。**
 
 Pi 负责 Agent Loop；ChronoRift 使用固定版本的 Anthropic Sandbox Runtime（SRT）约束文件、命令和 Godot 操作，并向
-Agent 返回 Build-bound runtime state、实际 diff 和 tool result。Agent 自由选择调查和修改策略，最终 acceptance 仍属于
+Agent 返回绑定实际源码和 Execution 的 runtime state、实际 diff 和 tool result。Agent 自由选择调查和修改策略，最终 acceptance 仍属于
 项目 CI、独立 Eval 或人工 review。
 
 > **结果优势 — GN-1：** 在相同源码、prompt、model、thinking、timeout 和共享工具下，coding-only candidate 的
@@ -19,8 +19,8 @@ Agent 返回 Build-bound runtime state、实际 diff 和 tool result。Agent 自
 > 14 个、修改后 5 个 Mob state，候选通过独立 evaluator 3/3。Coding-only 也通过 3/3，因此本案例证明产品路径复用，
 > 不证明总体修复优势。
 
-**截至 2026-08-27：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
-`chronorift [goal]`、任意 Godot 项目支持和自动“修复成功”判定尚未实现。
+**截至 2026-09-05：** `v0.4.0` 是当前 legacy release；实验性 `project preview` 已改为无需 ProjectAdapter 的
+Godot 对象检查。默认 `chronorift [goal]`、任意 Godot 项目兼容性和自动“修复成功”判定尚未实现。
 
 ![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
 
@@ -85,19 +85,27 @@ candidate patch 与 evaluator stdout，并汇总耗时、成本、本地 raw rec
 
 ## 当前能做什么
 
-| Surface                     | 现在可用                                                                                          | 重要边界                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| v0.4 legacy                 | 四个校准 Fixture、真实 Pi Session、固定 diagnosis workflow                                        | 不是 vNext 自由 Loop，也不是任意项目 runner                         |
-| Project Environment Preview | 显式 `project preview`；source closure、sandbox、adapter publication/binding/reuse 的实验实现     | 历史 characterization 较窄；尚未成为默认入口或通用项目支持          |
-| GN-1                        | 精确第三方项目、项目特定 adapter、两个 matched arms、公开 candidate patch 和 Host postflight 摘要 | 单项目、单 revision、单 prompt、单 pair；raw live output 仍只在本地 |
-| Godot Demo Mob V2           | 第二个外部项目、state-only Adapter V2、完成的 fresh pair、公开 patch 与独立 evaluator             | 两组均 3/3；未晋级 Hero，也不证明比较优势或自动 onboarding          |
-| Host sandbox                | Linux x86_64 上精确固定 SRT `0.0.74`；coding workspace 可写，Godot 使用 Host staging              | 默认禁网；不提供旧 broker 的 cgroup、容量或 Host-config 能力        |
-| 历史 M3/M4/E2               | current HEAD 中的实现和命令已删除，只保留冻结档案                                                 | 不作为新产品切片模板，也不从档案恢复 producer 或一次性 Gate         |
+| Surface                     | 现在可用                                                                                          | 重要边界                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| v0.4 legacy                 | 四个校准 Fixture、真实 Pi Session、固定 diagnosis workflow                                        | 不是 vNext 自由 Loop，也不是任意项目 runner                          |
+| Project Environment Preview | 显式 `project preview`；私有 candidate、SRT、默认场景启动、节点/属性/资源 identity 查询           | 无需 Adapter；仅当前状态，无历史、probe 或输入控制；仍有项目准入边界 |
+| GN-1                        | 精确第三方项目、项目特定 adapter、两个 matched arms、公开 candidate patch 和 Host postflight 摘要 | 单项目、单 revision、单 prompt、单 pair；raw live output 仍只在本地  |
+| Godot Demo Mob V2           | 第二个外部项目、state-only Adapter V2、完成的 fresh pair、公开 patch 与独立 evaluator             | 两组均 3/3；未晋级 Hero，也不证明比较优势或自动 onboarding           |
+| Host sandbox                | Linux x86_64 上精确固定 SRT `0.0.74`；coding workspace 可写，Godot 使用 Host staging              | 默认禁网；不提供旧 broker 的 cgroup、容量或 Host-config 能力         |
+| 历史 M3/M4/E2               | current HEAD 中的实现和命令已删除，只保留冻结档案                                                 | 不作为新产品切片模板，也不从档案恢复 producer 或一次性 Gate          |
+
+Preview 直接把用户目标交给正常 Pi Loop，提供普通 coding tools 和 `game_launch`、`game_query`、`game_stop`。
+Agent 可在同一个存活 Execution 中读取子节点、属性列表和指定属性值；Object/Resource 引用保留 identity，适合检查
+Shape 是否共享。修改 candidate 后需重新启动，已有运行使用原来的 staged source。
+
+这条路径已移除 Adapter 生成、conformance、publication 和 revision reuse；不读取、迁移或删除旧 `.chronorift/`
+环境状态。GN-1 和 Mob 的固定案例仍保留各自 Adapter 与原有契约。带时间窗口的历史调查是后续待验证方向，当前
+查询不会录制或重建过去状态。
 
 ### 还没有
 
 - 默认 `chronorift [goal]` 与任意 Godot 项目的即开即用支持。
-- 通用 ProjectAdapter authoring/migration、跨平台 Host、C#、GDExtension、native plugin、display、audio 或 GPU。
+- Preview 的 probe、历史采集、暂停/推进/输入控制，以及跨平台 Host、C#、GDExtension、native plugin、display、audio 或 GPU。
 - 通用 source migration、multi-writer lease/CAS、conflict-safe apply 或长期 retention；current HEAD 也没有 generic
   Task resume/discard API。
 - 在主产品路径中普遍可用的 checkpoint/fork/replay/compare；旧 M3 实现已从 current HEAD 删除。
@@ -147,6 +155,10 @@ corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
 corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
 ```
 
+Preview 省略 GOAL 时要求交互 TTY；非交互调用和 `--json` 必须提供目标。只运行 candidate 的默认主场景，
+不再接受 `--launch-target`。`--json` 输出 `schemaVersion: 2`，包含候选 patch、Session 和执行记录位置；
+`completed` 表示 Loop 完成交付，不要求调用游戏工具，也不表示修复已经验证。
+
 这些 live 命令不会 clone、修改或 apply 回用户 checkout。Agent 在私有的物理 candidate workspace 中获得读写权限；
 Godot 验证则使用 Host 复制的独立 stage，项目源码只读，只有 `.godot/`、home、tmp 和 artifacts 可写，并在启动前后比较
 source SHA-256。它们不会自动 commit、merge、push 或宣布修复成功。
@@ -184,7 +196,7 @@ Host conformance 通过 `.github/scripts/run-srt-sandbox-conformance.sh` 运行�
 - [GN-1 Platform Alias 案例](docs/case-studies/gn1-platform-alias.md)：一个可检查但不可外推的 runtime-observation pair。
 - [Godot Demo Mob orientation](docs/case-studies/godot-demo-mob-orientation.md)：已完成、未晋级 Hero 的第二项目 V2 vertical slice。
 - [目标架构](docs/architecture.md)：vNext 产品契约、rollout 和当前实现映射（重点看 §20/§21）。
-- [Project Environment V1 RFC](docs/project-environment-v1.md)：数据模型、初始化/publication 状态机和 wire contract。
+- [Project Environment V1 RFC](docs/project-environment-v1.md)：历史 Adapter/初始化/publication 设计；不再描述新 Preview。
 - [开发与验证指南](docs/development.md)：本地、Godot、Host sandbox 和 live provider 前置条件。
 - [Godot Protocol v2](docs/godot-protocol-v2.md)：已实现的 legacy Host ↔ Addon wire。
 - [`docs/evidence/`](docs/evidence/) 与 [`docs/benchmarks/`](docs/benchmarks/)：不可改写的历史归档；其结论不自动适用于当前 HEAD。

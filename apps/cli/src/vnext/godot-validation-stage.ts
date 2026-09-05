@@ -61,7 +61,19 @@ export interface StageGodotValidationOptions {
   readonly overlayFiles?: readonly GodotValidationOverlayFile[] | undefined;
   /** If supplied, stage exactly this snapshot without rereading mutable source. */
   readonly sourceFiles?: readonly GodotValidationSourceFile[] | undefined;
+  /** Validated outputs of a completed disposable import, never candidate cache. */
+  readonly importCacheFiles?: readonly GodotValidationOverlayFile[] | undefined;
 }
+
+export const isGodotImportCachePath = (path: string): boolean =>
+  !path.includes("\\") &&
+  !path.includes("\0") &&
+  !path
+    .split("/")
+    .some((part) => part === "" || part === "." || part === "..") &&
+  (path.startsWith(".godot/imported/") ||
+    path === ".godot/global_script_class_cache.cfg" ||
+    path === ".godot/uid_cache.bin");
 
 const compareNames = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -303,6 +315,15 @@ export const stageGodotValidation = async (
   for (const overlay of overlayFiles) assertOverlayPath(overlay.relativePath);
   if (options.sourceFiles !== undefined)
     validateSnapshotPaths(options.sourceFiles);
+  const cacheFiles = options.importCacheFiles ?? [];
+  if (
+    cacheFiles.some((file) => !isGodotImportCachePath(file.relativePath)) ||
+    new Set(cacheFiles.map((file) => file.relativePath)).size !==
+      cacheFiles.length
+  )
+    throw new TypeError(
+      "import cache must contain unique supported .godot paths",
+    );
 
   let stageCreated = false;
   try {
@@ -341,6 +362,11 @@ export const stageGodotValidation = async (
         mkdir(path, { mode: 0o700 }),
       ),
     );
+    for (const file of cacheFiles) {
+      const target = join(projectStagePath, file.relativePath);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, file.bytes, { flag: "wx", mode: 0o600 });
+    }
     const sourceSha256 = await hashSourceTree(projectStagePath);
 
     return {

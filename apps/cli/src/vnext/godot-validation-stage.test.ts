@@ -168,6 +168,67 @@ describe("stageGodotValidation", () => {
     expect(result.observedSourceSha256).not.toBe(stage.sourceSha256);
   });
 
+  it("includes imported metadata in the run source hash but keeps admitted runtime cache writable", async () => {
+    const stage = await stageGodotValidation({
+      candidateWorkspace,
+      stageRoot: join(root, "prepared-run"),
+      sourceFiles: [
+        {
+          relativePath: "main.gd",
+          bytes: Buffer.from("extends Node\n"),
+          executable: false,
+        },
+        {
+          relativePath: "main.gd.uid",
+          bytes: Buffer.from("uid://b123\n"),
+          executable: false,
+        },
+      ],
+      importCacheFiles: [
+        {
+          relativePath: ".godot/imported/icon.ctex",
+          bytes: Buffer.from("imported bytes"),
+        },
+      ],
+    });
+    expect(
+      await readFile(join(stage.godotCachePath, "imported/icon.ctex"), "utf8"),
+    ).toBe("imported bytes");
+    await writeFile(
+      join(stage.godotCachePath, "imported/icon.ctex"),
+      "runtime cache changed",
+    );
+    expect((await stage.verifySourceUnchanged()).sourceUnchanged).toBe(true);
+    await writeFile(
+      join(stage.projectStagePath, "main.gd.uid"),
+      "uid://b456\n",
+    );
+    expect((await stage.verifySourceUnchanged()).sourceUnchanged).toBe(false);
+    await stage.cleanup();
+  });
+
+  it.each([
+    "../escape",
+    "/absolute",
+    ".godot/imported/../escape",
+    ".godot/imported//file",
+    ".godot/editor/layout.cfg",
+    "main.gd",
+  ])(
+    "rejects unsupported import-cache target %s before creating a stage",
+    async (relativePath) => {
+      const stageRoot = join(root, "prepared-run");
+      await expect(
+        stageGodotValidation({
+          candidateWorkspace,
+          stageRoot,
+          importCacheFiles: [{ relativePath, bytes: Buffer.from("untrusted") }],
+        }),
+      ).rejects.toThrow("import cache");
+      await expect(lstat(stageRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
   it("keeps the candidate outside the run and cleans the stage on terminate", async () => {
     const processResult: SrtCommandResult = {
       status: "cancelled",

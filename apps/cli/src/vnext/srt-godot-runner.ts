@@ -13,6 +13,10 @@ import type {
   SrtDuplexHandle,
   SrtSandboxController,
 } from "./srt-sandbox-controller.js";
+import {
+  prepareGodotImport,
+  type PrepareGodotImportOptions,
+} from "./godot-import-preparation.js";
 
 export interface SrtGodotProcessResult {
   readonly process: SrtCommandResult;
@@ -30,7 +34,8 @@ export interface SrtGodotRunHandle {
 }
 
 export interface SrtGodotRunnerOptions {
-  readonly controller: Pick<SrtSandboxController, "openGodot">;
+  readonly controller: Pick<SrtSandboxController, "openGodot"> &
+    Partial<Pick<SrtSandboxController, "openGodotImport">>;
   readonly candidateWorkspace: string;
   readonly validationRoot: string;
 }
@@ -38,6 +43,7 @@ export interface SrtGodotRunnerOptions {
 export interface OpenSrtGodotOptions {
   readonly overlayFiles?: readonly GodotValidationOverlayFile[] | undefined;
   readonly sourceFiles?: readonly GodotValidationSourceFile[] | undefined;
+  readonly importCacheFiles?: readonly GodotValidationOverlayFile[] | undefined;
   readonly argv: (stage: GodotValidationStage) => readonly string[];
   readonly timeoutMs: number;
   readonly signal?: AbortSignal | undefined;
@@ -52,6 +58,18 @@ export interface OpenSrtGodotOptions {
 export class SrtGodotRunner {
   public constructor(private readonly options: SrtGodotRunnerOptions) {}
 
+  public async prepareImport(input: PrepareGodotImportOptions) {
+    const openImport = this.options.controller.openGodotImport;
+    if (openImport === undefined)
+      throw new Error(
+        "Godot import preparation is not supported by this controller",
+      );
+    return prepareGodotImport(
+      { ...this.options, openImport: openImport.bind(this.options.controller) },
+      input,
+    );
+  }
+
   public async open(input: OpenSrtGodotOptions): Promise<SrtGodotRunHandle> {
     const candidateWorkspace = await realpath(this.options.candidateWorkspace);
     await mkdir(this.options.validationRoot, { recursive: true, mode: 0o700 });
@@ -64,6 +82,9 @@ export class SrtGodotRunner {
       ...(input.sourceFiles === undefined
         ? {}
         : { sourceFiles: input.sourceFiles }),
+      ...(input.importCacheFiles === undefined
+        ? {}
+        : { importCacheFiles: input.importCacheFiles }),
     });
 
     let process: SrtDuplexHandle;

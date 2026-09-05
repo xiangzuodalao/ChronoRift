@@ -330,6 +330,20 @@ export class SrtSandboxController {
   }
 
   public async openGodot(request: SrtGodotRequest): Promise<SrtDuplexHandle> {
+    return this.#openGodot(request, false);
+  }
+
+  /** Host-only disposable import copy; never the coding candidate or run stage. */
+  public async openGodotImport(
+    request: SrtGodotRequest,
+  ): Promise<SrtDuplexHandle> {
+    return this.#openGodot(request, true);
+  }
+
+  async #openGodot(
+    request: SrtGodotRequest,
+    writableImport: boolean,
+  ): Promise<SrtDuplexHandle> {
     this.#beginStart();
     try {
       this.#validateCommonRequest(request);
@@ -350,9 +364,13 @@ export class SrtSandboxController {
         );
       }
 
-      const projectReadPaths = (await readdir(request.projectStagePath))
-        .filter((entry) => entry !== ".godot")
-        .map((entry) => join(request.projectStagePath, entry));
+      // SRT 0.0.74 applies a parent read-only bind after child writable mounts.
+      // Keep the existing per-entry run binds so .godot remains writable.
+      const projectReadPaths = writableImport
+        ? [request.projectStagePath]
+        : (await readdir(request.projectStagePath))
+            .filter((entry) => entry !== ".godot")
+            .map((entry) => join(request.projectStagePath, entry));
 
       const writableRuntimePaths = [
         request.homePath,
@@ -397,7 +415,9 @@ export class SrtSandboxController {
             ...(request.readOnlyPaths ?? []),
           ]),
           allowWrite: unique([
-            join(request.projectStagePath, ".godot"),
+            writableImport
+              ? request.projectStagePath
+              : join(request.projectStagePath, ".godot"),
             request.homePath,
             request.tempPath,
             request.artifactsPath,

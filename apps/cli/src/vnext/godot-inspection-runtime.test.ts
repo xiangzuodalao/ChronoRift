@@ -55,6 +55,8 @@ describe("GodotInspectionRuntime", () => {
   let root: string;
   let candidate: string;
   let runtime: GodotInspectionRuntime;
+  let importMode: "normal" | "error" | "pending";
+  let importStarted: boolean;
   let behavior:
     | "normal"
     | "no_query"
@@ -68,6 +70,8 @@ describe("GodotInspectionRuntime", () => {
     root = await mkdtemp(join(tmpdir(), "chronorift-inspection-runtime-"));
     candidate = join(root, "candidate");
     executions.length = 0;
+    importMode = "normal";
+    importStarted = false;
     behavior = "normal";
     await mkdir(candidate);
     await writeFile(
@@ -82,6 +86,51 @@ describe("GodotInspectionRuntime", () => {
       candidateWorkspace: candidate,
       validationRoot: join(root, "stages"),
       controller: {
+        openGodotImport: async (request) => {
+          importStarted = true;
+          const result: SrtCommandResult = {
+            status: "exited",
+            exitCode: 0,
+            signal: null,
+            stdout: "import output",
+            stderr: "",
+            durationMs: 1,
+            timedOut: false,
+            cancelled: false,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          };
+          const completed =
+            importMode === "pending"
+              ? new Promise<SrtCommandResult>((resolve) => {
+                  const finish = () =>
+                    resolve({
+                      ...result,
+                      status: "cancelled",
+                      exitCode: null,
+                      signal: "SIGKILL",
+                      cancelled: true,
+                    });
+                  if (request.signal?.aborted) finish();
+                  else
+                    request.signal?.addEventListener("abort", finish, {
+                      once: true,
+                    });
+                })
+              : Promise.resolve(
+                  importMode === "error"
+                    ? { ...result, stderr: "ERROR: import failed" }
+                    : result,
+                );
+          return {
+            pid: 122,
+            stdin: new PassThrough(),
+            stdout: new PassThrough(),
+            stderr: new PassThrough(),
+            wait: () => completed,
+            stop: () => completed,
+          };
+        },
         openGodot: async (request) => {
           const executionId = request.argv
             .join(" ")
@@ -430,6 +479,43 @@ describe("GodotInspectionRuntime", () => {
     expect(runtime.records()[0]?.error?.code).toBe("cancelled");
   });
 
+  it("retains exit-zero import errors without starting the game", async () => {
+    importMode = "error";
+    await expect(
+      invoke("game_launch", { schemaVersion: 1 }),
+    ).resolves.toMatchObject({ outcome: "error" });
+    expect(executions).toHaveLength(0);
+    expect(runtime.records()[0]).toMatchObject({
+      import: {
+        exitCode: 0,
+        stdout: "import output",
+        stderr: "ERROR: import failed",
+      },
+      run: null,
+      sourceSha256: null,
+      sourceUnchanged: null,
+      error: { code: "launch_failed" },
+    });
+  });
+
+  it("close cancels an in-flight import and retains its output without opening a run stage", async () => {
+    importMode = "pending";
+    const pending = invoke("game_launch", { schemaVersion: 1 });
+    await expect.poll(() => importStarted).toBe(true);
+    await runtime.close();
+    await expect(pending).resolves.toMatchObject({
+      outcome: "error",
+      error: { code: "cancelled" },
+    });
+    expect(executions).toHaveLength(0);
+    expect(runtime.records()[0]).toMatchObject({
+      status: "cancelled",
+      import: { stdout: "import output", signal: "SIGKILL" },
+      run: null,
+      error: { code: "cancelled" },
+    });
+  });
+
   it("closes a pending launch without waiting for its readiness deadline", async () => {
     behavior = "no_ready";
     const pending = invoke("game_launch", { schemaVersion: 1 });
@@ -439,7 +525,7 @@ describe("GodotInspectionRuntime", () => {
     expect(runtime.records()).toHaveLength(1);
     expect(runtime.records()[0]).toMatchObject({
       sourceUnchanged: true,
-      error: { code: "launch_failed" },
+      error: { code: "cancelled" },
     });
     await expect(
       invoke("game_launch", { schemaVersion: 1 }),

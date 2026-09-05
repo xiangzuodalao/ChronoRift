@@ -326,7 +326,15 @@ export const ProjectEnvironmentPreviewResultV2Schema = z
     workspaceDirectory: pathText,
     provider: z.string().min(1).max(256),
     model: z.string().min(1).max(256),
-    thinkingLevel: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]),
+    thinkingLevel: z.enum([
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]),
     limitations: z.array(z.string().max(4096)).max(32),
   })
   .strict();

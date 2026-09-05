@@ -79,6 +79,32 @@ it("enforces the small coding and Godot SRT policies on Linux", async () => {
       readFile(join(workspacePath, "coding.txt"), "utf8"),
     ).resolves.toBe("coding-ok");
 
+    const imported = await controller.openGodotImport({
+      argv: [
+        "/bin/bash",
+        "-c",
+        'set -eu; if /usr/bin/cat -- "$1/coding.txt" >/dev/null 2>&1; then exit 41; fi; /usr/bin/printf import-ok >"$2/project.godot.uid"; if exec 9<>"/dev/tcp/127.0.0.1/$3" 2>/dev/null; then exit 43; fi',
+        "chronorift-import",
+        workspacePath,
+        projectStagePath,
+        String(address.port),
+      ],
+      cwd: projectStagePath,
+      projectStagePath,
+      mutableWorkspacePath: workspacePath,
+      homePath,
+      tempPath,
+      artifactsPath,
+    });
+    const importedResult = await imported.wait();
+    expect(importedResult, JSON.stringify(importedResult)).toMatchObject({
+      status: "exited",
+      exitCode: 0,
+    });
+    expect(
+      await readFile(join(projectStagePath, "project.godot.uid"), "utf8"),
+    ).toBe("import-ok");
+
     const godot = await controller.openGodot({
       argv: [
         "/bin/bash",

@@ -24,10 +24,19 @@ import { SrtSandboxController } from "./srt-sandbox-controller.js";
 
 const mainScript = (independent: boolean): string => `extends Node
 var source_write_blocked := false
+var texture_width := preload("res://assets/icon.svg").get_width()
+var import_metadata_write_blocked := false
+var cache_write_allowed := false
 var temporary: Node
 func _ready() -> void:
     print("bounded-output-check:" + "x".repeat(40000))
     source_write_blocked = FileAccess.open("res://platform.gd", FileAccess.WRITE) == null
+    import_metadata_write_blocked = FileAccess.open("res://assets/icon.svg.import", FileAccess.WRITE) == null
+    var cache_file := FileAccess.open("res://.godot/runtime-write-check", FileAccess.WRITE)
+    cache_write_allowed = cache_file != null
+    if cache_file != null:
+        cache_file.store_string("runtime cache remains writable")
+        cache_file.close()
     var shared := RectangleShape2D.new()
     for width in [80.0, 160.0]:
         var body := preload("res://platform.gd").new()
@@ -61,6 +70,11 @@ it("inspects live GN-1-shaped resource aliases without an Adapter and restarts f
     '[gd_scene load_steps=2 format=3]\n[ext_resource type="Script" path="res://main.gd" id="1"]\n[node name="Main" type="Node"]\nscript = ExtResource("1")\n',
   );
   await writeFile(join(candidate, "main.gd"), mainScript(false));
+  await mkdir(join(candidate, "assets"));
+  await writeFile(
+    join(candidate, "assets/icon.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="red"/></svg>',
+  );
   await writeFile(
     join(candidate, "platform.gd"),
     "extends StaticBody2D\n@export var width: float = 0\n",
@@ -133,6 +147,18 @@ it("inspects live GN-1-shaped resource aliases without an Adapter and restarts f
     const first = InspectionLaunchOutputV1Schema.parse(
       await invoke("game_launch", { schemaVersion: 1 }),
     );
+    expect(
+      (await values(first.executionId, { path: "." }, ["texture_width"]))[0],
+    ).toMatchObject({ status: "success", value: 8 });
+    expect(
+      await values(first.executionId, { path: "." }, [
+        "import_metadata_write_blocked",
+        "cache_write_allowed",
+      ]),
+    ).toMatchObject([
+      { status: "success", value: true },
+      { status: "success", value: true },
+    ]);
     expect(
       (
         await values(first.executionId, { path: "." }, ["source_write_blocked"])
@@ -246,6 +272,8 @@ it("inspects live GN-1-shaped resource aliases without an Adapter and restarts f
       }),
     );
     expect(secondStop.record.sourceUnchanged).toBe(true);
+    expect(secondStop.record.import?.stderr).toBe("");
+    expect(secondStop.record.run?.stderr).toBe("");
   } finally {
     await runtime.close();
     await controller.close();

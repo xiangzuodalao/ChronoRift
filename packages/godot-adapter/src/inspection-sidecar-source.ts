@@ -7,12 +7,19 @@ export interface GodotInspectionSidecarOptions {
   readonly importTimeoutMs?: number;
   readonly executionTimeoutMs?: number;
   readonly startupTimeoutMs?: number;
+  /** Host has already imported and admitted this immutable run snapshot. */
+  readonly skipImport?: boolean;
 }
 
 /** The source runs inside the existing SRT boundary against a Host-owned stage. */
 export const createGodotInspectionSidecarSource = (
   options: GodotInspectionSidecarOptions,
 ): string => {
+  if (
+    options.skipImport !== undefined &&
+    typeof options.skipImport !== "boolean"
+  )
+    throw new TypeError("skipImport must be a boolean");
   for (const path of [options.godotExecutable, options.projectRoot]) {
     if (!isAbsolute(path) || normalize(path) !== path || path.includes("\0"))
       throw new TypeError(
@@ -195,7 +202,8 @@ process.stdin.on("end", () => stop());
 process.stdin.on("error", (error) => fail(error));
 process.on("SIGTERM", () => stop());
 process.on("SIGINT", () => stop());
-runProcess("import", ["--headless", "--path", options.projectRoot, "--editor", "--import"], options.importTimeoutMs, (result) => {
+if (options.skipImport === true) startGame();
+else runProcess("import", ["--headless", "--path", options.projectRoot, "--editor", "--import"], options.importTimeoutMs, (result) => {
   if (result.exitCode !== 0 || result.signal !== null) { fail(new Error("Godot project import failed")); return; }
   startGame();
 });

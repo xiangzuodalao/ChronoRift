@@ -126,7 +126,8 @@ func _metadata(value: Object) -> Dictionary:
 	return result
 
 func _valid_path(path: String) -> bool:
-	if path.is_empty() or path.length() > 2048 or path.begins_with("/") or path.contains(":") or path.contains("\\") or path.contains(char(0)):
+	# Constructing char(0) itself emits a Unicode parsing error in Godot.
+	if path.is_empty() or path.length() > 2048 or path.begins_with("/") or path.contains(":") or path.contains("\\") or path.to_utf8_buffer().has(0):
 		return false
 	for segment in path.split("/"):
 		if segment == ".." or segment.is_empty():
@@ -172,7 +173,7 @@ func _query(input: Variant, request_id: String) -> void:
 			property_names[str(property.name)] = true
 		var values: Array = []
 		for property_name in input.names:
-			if not property_name is String or property_name.is_empty() or property_name.length() > 256 or property_name.contains(char(0)):
+			if not property_name is String or property_name.is_empty() or property_name.length() > 256 or property_name.to_utf8_buffer().has(0):
 				_error(request_id, "invalid_request", "Property names must be bounded literal names")
 				return
 			if not is_instance_valid(object):

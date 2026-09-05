@@ -1,207 +1,78 @@
 # ChronoRift
 
-[English](README.en.md) · [工程设计导览](docs/portfolio.md) · [GN-1 案例](docs/case-studies/gn1-platform-alias.md) · [Godot Demo V2 切片](docs/case-studies/godot-demo-mob-orientation.md)
+[English](README.en.md)
 
 [![CI](https://github.com/xiangzuodalao/ChronoRift/actions/workflows/ci.yml/badge.svg)](https://github.com/xiangzuodalao/ChronoRift/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**让 coding agent 从源码猜测走向可执行的 Godot 运行时证据。**
+**让 coding agent 看见 Godot 的运行时状态。**
 
-Pi 负责 Agent Loop；ChronoRift 使用固定版本的 Anthropic Sandbox Runtime（SRT）约束文件、命令和 Godot 操作，并向
-Agent 返回绑定实际源码和 Execution 的 runtime state、实际 diff 和 tool result。Agent 自由选择调查和修改策略，最终 acceptance 仍属于
-项目 CI、独立 Eval 或人工 review。
+碰撞范围为什么比画面更宽？不同实例是否共享了同一个资源？ChronoRift 为 coding agent 提供运行游戏、检查对象和
+验证候选修改的工具，让源码分析可以与实际运行状态相互核对。
 
-> **结果优势 — GN-1：** 在相同源码、prompt、model、thinking、timeout 和共享工具下，coding-only candidate 的
-> geometry oracle 为 `false`；ChronoRift Agent 查询真实 platform geometry 和 Shape identity 后产生不同候选，oracle
-> 为 `true`。
->
-> **跨项目验证 — Godot Demo V2：** 在第二个真实上游项目中，ChronoRift Agent 调用 13 次 V2 game tools，查询修改前
-> 14 个、修改后 5 个 Mob state，候选通过独立 evaluator 3/3。Coding-only 也通过 3/3，因此本案例证明产品路径复用，
-> 不证明总体修复优势。
+这是一个聚焦 **Agent Harness 与游戏运行时调查** 的工程作品，基于 TypeScript、Pi SDK、Godot 与
+Anthropic Sandbox Runtime（SRT）。
 
-**截至 2026-09-05：** `v0.4.0` 是当前 legacy release；实验性 `project preview` 已改为无需 ProjectAdapter 的
-Godot 对象检查。默认 `chronorift [goal]`、任意 Godot 项目兼容性和自动“修复成功”判定尚未实现。
+![ChronoRift：隔离的游戏运行环境与运行状态检查](docs/assets/chronorift-hero.jpg)
 
-![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
+_产品概念插图，非界面截图或实验记录。_
 
-_概念插图，用于表达产品母题；不是产品界面、运行截图或实验凭据。[查看 2560×1280 master](docs/assets/chronorift-hero-master.jpg)。_
+## 当前能力
 
-## 两分钟看懂
+实验性 `project preview` 将用户目标直接交给 Pi，保留普通 coding tools，并增加三个游戏工具。
+Agent 自行选择如何调查、修改和验证，无需为项目编写 Adapter。
 
-![ChronoRift high-level 架构](docs/assets/chronorift-architecture.png)
+| 工具          | 作用                                           |
+| ------------- | ---------------------------------------------- |
+| `game_launch` | 从当前候选创建独立运行副本，启动默认主场景     |
+| `game_query`  | 检查子节点、属性，以及保留身份的对象与资源引用 |
+| `game_stop`   | 停止执行，保存实际运行记录                     |
 
-ChronoRift 不重做 Coding Agent：Pi SDK 负责模型、session 和工具调度；ChronoRift 提供 Loop 外的 workspace、
-sandbox、Godot execution 和 runtime evidence。
+例如，Agent 可以读取 `CollisionShape2D.shape`，再查询该资源的 `size`，检查碰撞尺寸与资源是否共享。
+修改候选后重新启动，已有运行不会被后续文件编辑改变。
 
-- **A · 调试回路：** Agent 修改可写 candidate、执行 Godot，并根据 runtime observation 继续迭代；observation 是
-  调试信号，不是 verdict。
-- **B · 独立验证：** Godot validation 使用独立的只读 stage；当前固定案例的 evaluator 只在 Agent 结束后运行，
-  不参与修复。Patch round-trip 与 evaluator 是两项独立检查。
-- **Acceptance 在 Loop 外：** `completed` 不等于 `fixed`；最终结果由项目 CI、外部 Eval 或人工 review 决定。
+当前支持 Linux x86_64、Godot 4.7.1 GDScript 项目，仍有项目准入限制。
+**查询只读取当前状态**；时间窗口、历史回看、probe 和输入控制尚未实现。
+已发布的 `v0.4.0` 是独立的 legacy 路径，不代表 Preview 的产品形态。
 
-**核心价值：** 一致执行、工作区隔离、运行时证据和可独立审阅的验证。
+## 核心设计
 
-完整目标契约见 [架构文档](docs/architecture.md)；它描述 vNext 方向，不等于当前功能清单。
+- **Pi 负责决策，Harness 负责执行。** 保留 Pi 的 Session、模型调用与工具调度，不把调查写成固定脚本。
+- **编辑与运行隔离。** Agent 在私有候选工作区改代码；原生导入使用一次性副本，校验后再建立只读游戏运行副本。
+  coding 与 Godot 操作经过 SRT、默认禁网，模型凭据留在 Host。
+- **交付可审阅的结果。** 保留实际 patch、Session 与运行记录，包括失败、超时和输出截断。
+  `completed` 不等于修复通过；最终验收由项目测试或人工审阅决定。
 
-## Runtime evidence 改变候选：GN-1
+[查看设计取舍与代码入口 →](docs/portfolio.md)
 
-GN-1 中，coding-only 产生了一个看似合理的宽度调整，但 candidate runtime 仍保留共享 Shape identity，case-level
-oracle 为 `false`。ChronoRift Agent 查询了 realized geometry 和 resource identity，候选改为隔离共享 Shape resource，
-oracle 为 `true`。
+## 案例
 
-两个 fresh arm 固定 `endlessm/moddable-platformer` 的同一 commit/tree，并共享中性 prompt、model、thinking、timeout
-和普通工具；`chronorift` arm 只增加四个 game tools 及其既有简洁 metadata。
+### GN-1：共享的碰撞资源
 
-| Arm           | Agent 可见的额外 runtime surface                              | Candidate 的 Host geometry observation                              | Case-level oracle |
-| ------------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------- |
-| `coding-only` | 无                                                            | 四个 area width 均为 682 px，resource identity 仍共享               | `false`           |
-| `chronorift`  | `game_capabilities`、`game_launch`、`game_stop`、`game_query` | area width 与 128/256/384/768 px 的 solid width 对齐，identity 分离 | `true`            |
+在 `endlessm/moddable-platformer` 中，四个平台的触发区共享 Shape，使较窄平台的触发区超出可见宽度。
+一组固定条件的对照中，coding-only 候选仍保留共享资源；ChronoRift Agent 查询运行时几何与资源身份后，
+产出的候选隔离了 Shape，并通过该案例的几何与身份检查。
 
-这是一份从已有本地运行中事后选择的 **N=1 定性案例**，不是预注册实验，也不能估计成功率、因果关系、通用优势
-或候选 acceptance。公开案例保留精确配置、候选 patch 和严格 evaluator 的缩减输出，不发布完整 transcript、绝对路径
-或原始 Task/Session 标识；evaluator JSON 是现有脚本的原样摘要输出，不是为作品页重写的投影。
+这是事后选取的 **N=1 定性案例**，不代表通用修复率或总体优势。
 
-[阅读 GN-1 Platform Alias 案例 →](docs/case-studies/gn1-platform-alias.md)
+[查看候选 patch、检查结果与案例边界 →](docs/case-studies/gn1-platform-alias.md)
 
-## 第二项目复用：Godot Demo V2
+### Godot Demo：第二个项目中的运行时检查
 
-在固定的 `godot-demo-projects/3d/squash_the_creeps` revision 上，公共 V2 loader、managed runtime、sandbox、lineage
-和 game tools 完成了第二项目的端到端运行。
+在 `squash_the_creeps` 中，Agent 使用公共 V2 runtime 路径检查 Mob 朝向与速度，并在修改前后查询状态。
+ChronoRift 与 coding-only 候选都通过了独立检查（各 **3/3**）：展示了第二项目的路径复用，没有显示比较优势。
 
-| 产品事实                   | 正式结果                                                     |
-| -------------------------- | ------------------------------------------------------------ |
-| Agent-visible runtime 使用 | 13 次 V2 game-tool call；initial 14 条、candidate 5 条 state |
-| ChronoRift candidate       | 独立 Godot evaluator 3/3                                     |
-| 第二项目 runtime 路径      | source、Build、Execution、patch、cleanup 均有绑定记录        |
-| 比较性 Hero gate           | 未晋级；coding-only 也产生同义修复并通过 3/3                 |
+[查看调查过程与两组结果 →](docs/case-studies/godot-demo-mob-orientation.md)
 
-Treatment 的完整增量包含四个 game-tool definitions 及其 metadata，以及两行中性的 discoverability appendix；这不是
-tool-only comparison，结果不能归因于单独的 game tools。
+这两个公开案例使用早期的项目专用 Adapter，不是当前无 Adapter Preview 的泛化验证。
+公开材料包含候选 patch 与检查摘要，完整原始会话未公开。
 
-本轮的价值是证明 ChronoRift 的 runtime 产品边界不只存在于 GN-1；它不承担比较优势结论。详细页完整保留两个原始
-candidate patch 与 evaluator stdout，并汇总耗时、成本、本地 raw records 中的失败 tool response 和运行限制。
+## 深入了解
 
-[阅读 Godot Demo Mob Orientation 案例 →](docs/case-studies/godot-demo-mob-orientation.md)
-
-## 当前能做什么
-
-| Surface                     | 现在可用                                                                                          | 重要边界                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| v0.4 legacy                 | 四个校准 Fixture、真实 Pi Session、固定 diagnosis workflow                                        | 不是 vNext 自由 Loop，也不是任意项目 runner                          |
-| Project Environment Preview | 显式 `project preview`；私有 candidate、SRT、默认场景启动、节点/属性/资源 identity 查询           | 无需 Adapter；仅当前状态，无历史、probe 或输入控制；仍有项目准入边界 |
-| GN-1                        | 精确第三方项目、项目特定 adapter、两个 matched arms、公开 candidate patch 和 Host postflight 摘要 | 单项目、单 revision、单 prompt、单 pair；raw live output 仍只在本地  |
-| Godot Demo Mob V2           | 第二个外部项目、state-only Adapter V2、完成的 fresh pair、公开 patch 与独立 evaluator             | 两组均 3/3；未晋级 Hero，也不证明比较优势或自动 onboarding           |
-| Host sandbox                | Linux x86_64 上精确固定 SRT `0.0.74`；coding workspace 可写，Godot 使用 Host staging              | 默认禁网；不提供旧 broker 的 cgroup、容量或 Host-config 能力         |
-| 历史 M3/M4/E2               | current HEAD 中的实现和命令已删除，只保留冻结档案                                                 | 不作为新产品切片模板，也不从档案恢复 producer 或一次性 Gate          |
-
-Preview 直接把用户目标交给正常 Pi Loop，提供普通 coding tools 和 `game_launch`、`game_query`、`game_stop`。
-Agent 可在同一个存活 Execution 中读取子节点、属性列表和指定属性值；Object/Resource 引用保留 identity，适合检查
-Shape 是否共享。修改 candidate 后需重新启动，已有运行使用原来的 staged source。
-
-这条路径已移除 Adapter 生成、conformance、publication 和 revision reuse；不读取、迁移或删除旧 `.chronorift/`
-环境状态。GN-1 和 Mob 的固定案例仍保留各自 Adapter 与原有契约。带时间窗口的历史调查是后续待验证方向，当前
-查询不会录制或重建过去状态。
-
-### 还没有
-
-- 默认 `chronorift [goal]` 与任意 Godot 项目的即开即用支持。
-- Preview 的 probe、历史采集、暂停/推进/输入控制，以及跨平台 Host、C#、GDExtension、native plugin、display、audio 或 GPU。
-- 通用 source migration、multi-writer lease/CAS、conflict-safe apply 或长期 retention；current HEAD 也没有 generic
-  Task resume/discard API。
-- 在主产品路径中普遍可用的 checkpoint/fork/replay/compare；旧 M3 实现已从 current HEAD 删除。
-- 自动 capture trigger、完整 engine snapshot、bit-exact replay、外部 telemetry attestation 或自动 acceptance。
-
-## 三条审阅路径
-
-### 1. 不安装：先判断工程思路
-
-1. 阅读 [GN-1 案例](docs/case-studies/gn1-platform-alias.md)与 [Godot Demo V2 案例](docs/case-studies/godot-demo-mob-orientation.md)，核对配置、patch、运行记录与结论边界。
-2. 阅读 [工程设计导览](docs/portfolio.md)，了解 Loop/Harness 分工、sandbox 和 DTO 边界。
-3. 查看 [CI](https://github.com/xiangzuodalao/ChronoRift/actions/workflows/ci.yml) 的 offline、Godot 与 Host sandbox jobs。
-
-### 2. 离线本地：验证默认 Gate
-
-要求 Node.js `>=22.19`；`.nvmrc` 固定 `22.23.1`，pnpm 固定 `11.20.0`。
-
-```bash
-nvm use
-corepack pnpm install
-corepack pnpm check
-```
-
-`check` 运行 lint、Prettier check、strict TypeScript typecheck 和离线 deterministic tests，不需要 provider 凭据或网络。
-
-如需体验当前 legacy 路径：
-
-```bash
-corepack pnpm godot:install
-corepack pnpm godot:doctor
-corepack pnpm fixtures
-corepack pnpm demo:v04 -- --fixture frame-input-window
-```
-
-仓库 installer 固定官方 Godot `4.7.1`，当前只支持 Linux x86_64。这个 demo 是 v0.4 固定 Fixture workflow，不代表
-vNext 产品形态。
-
-### 3. 完整 Host：检查实验路径
-
-Project Environment Preview、GN-1 和 Godot Demo slice 需要 Linux x86_64、精确 SRT `0.0.74`、Bubblewrap/`socat`/ripgrep
-以及官方 Godot 4.7.1；两个 case runner 还需要精确外部 checkout 和真实 provider。前置条件和完整命令统一维护在
-[开发与验证指南](docs/development.md)。
-
-```text
-corepack pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL
-corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
-corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
-```
-
-Preview 省略 GOAL 时要求交互 TTY；非交互调用和 `--json` 必须提供目标。只运行 candidate 的默认主场景，
-不再接受 `--launch-target`。`--json` 输出 `schemaVersion: 2`，包含候选 patch、Session 和执行记录位置；
-`completed` 表示 Loop 完成交付，不要求调用游戏工具，也不表示修复已经验证。
-
-这些 live 命令不会 clone、修改或 apply 回用户 checkout。Agent 在私有的物理 candidate workspace 中获得读写权限；
-Godot 验证则使用 Host 复制的独立 stage，项目源码只读，只有 `.godot/`、home、tmp 和 artifacts 可写，并在启动前后比较
-source SHA-256。它们不会自动 commit、merge、push 或宣布修复成功。
-
-## 安全与证据边界
-
-- 用户 checkout、runtime/source text、Agent 输出、patch、Godot plugin 和 ProjectAdapter 都按不可信内容处理。
-- vNext coding 与 Godot process 经过 SRT；网络使用 strict empty allowlist，默认拒绝。coding 可以写 candidate workspace，
-  Godot process 看不到可写 candidate，并只能写 stage 中明确的 runtime 目录。
-- Pi 凭据只允许 Host 模型路径使用，不能进入 repository、artifact、sandboxed command environment 或 Godot process。
-- 外部、wire、tool 和 persisted DTO 要求显式版本与 strict runtime validation；内部 SRT process result 不额外包装
-  自研 receipt framework。
-- process result 保留 exit/timeout/cancellation、输出截断和 Godot stage source hash mismatch；不能把缺失观察写成成功。
-- content hash 用于绑定 bytes 和发现损坏，不是签名、第三方证明或正确性证明。
-- v0.4 的 Host process 不具备 vNext SRT 的 OS 隔离保证，二者不能混写。
-
-## 常用命令
-
-| 命令                                                       | 作用                                                         |
-| ---------------------------------------------------------- | ------------------------------------------------------------ |
-| `corepack pnpm check`                                      | 默认离线 Gate                                                |
-| `corepack pnpm test:godot`                                 | Godot Addon、protocol 和 Project Environment 集成测试        |
-| `corepack pnpm test:sandbox`                               | SRT coding 与真实 Godot/Preview Host conformance             |
-| `corepack pnpm project preview -- ...`                     | 实验性 Project Environment 入口                              |
-| `corepack pnpm demo:platform-alias-ablation -- --arm ...`  | GN-1 的一个 fresh arm；两个 JSON 再交给 standalone evaluator |
-| `corepack pnpm demo:mob-orientation-ablation -- --arm ...` | Mob orientation 的一个 fresh arm；已公开 pair 不会自动重跑   |
-| `corepack pnpm demo:v04` / `diagnose:v04`                  | 当前 legacy 离线 / 真实 provider 路径                        |
-
-Host conformance 通过 `.github/scripts/run-srt-sandbox-conformance.sh` 运行；非 Linux x86_64、SRT 不是精确
-`0.0.74`、缺少 Bubblewrap/`socat`/ripgrep/Godot 或 user namespace 不可用都属于 precondition failure。
-
-## 文档地图
-
-- [工程设计导览](docs/portfolio.md)：关键设计决策、五个代码入口和已知技术债。
-- [GN-1 Platform Alias 案例](docs/case-studies/gn1-platform-alias.md)：一个可检查但不可外推的 runtime-observation pair。
-- [Godot Demo Mob orientation](docs/case-studies/godot-demo-mob-orientation.md)：已完成、未晋级 Hero 的第二项目 V2 vertical slice。
-- [目标架构](docs/architecture.md)：vNext 产品契约、rollout 和当前实现映射（重点看 §20/§21）。
-- [Project Environment V1 RFC](docs/project-environment-v1.md)：历史 Adapter/初始化/publication 设计；不再描述新 Preview。
-- [开发与验证指南](docs/development.md)：本地、Godot、Host sandbox 和 live provider 前置条件。
-- [Godot Protocol v2](docs/godot-protocol-v2.md)：已实现的 legacy Host ↔ Addon wire。
-- [`docs/evidence/`](docs/evidence/) 与 [`docs/benchmarks/`](docs/benchmarks/)：不可改写的历史归档；其结论不自动适用于当前 HEAD。
+- [架构与实现状态](docs/architecture.md)：运行时边界、模块职责和当前限制。
+- [开发与验证指南](docs/development.md)：环境准备、Preview 入口及离线、Godot、沙箱测试。
 
 ## License
 
-ChronoRift 自有代码采用 [Apache License 2.0](LICENSE)。两个 case 的候选 patch 均派生自 MIT 许可的上游项目，归属和许可
-单独记录在 [Third-Party Notices](THIRD_PARTY_NOTICES.md) 与案例目录中。
+项目代码采用 [Apache License 2.0](LICENSE)。案例 patch 派生自 MIT 许可的上游项目，
+归属与许可见 [Third-Party Notices](THIRD_PARTY_NOTICES.md)。

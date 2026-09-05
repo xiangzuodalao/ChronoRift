@@ -78,7 +78,8 @@ replay、index 与 compare 仍是 planned。为什么发生、哪个
 6. 外部、wire、tool 和 persisted DTO MUST 严格版本化并在读取时验证；内部 process result 不必为了形式统一新增 schema。
 7. vNext coding/Godot process MUST 使用 exact SRT `0.0.74`，默认禁网；初始化或 wrap 失败不得回退到 unsandboxed process。
 8. coding workspace MUST 可写；Godot MUST 使用 disjoint Host stage，项目源码只读，只有 `.godot`/home/tmp/artifacts
-   可写，并在运行前后比较 source hash。
+   可写，并在运行前后比较 source hash。Preview 的原生导入准备是明确例外：使用另一个一次性可写副本，导入结束后
+   校验普通源码未变及产物归属，再建立新的只读运行 stage；导入副本不得直接成为游戏运行目录。
 9. Agent 结果 MUST 使用普通 Pi assistant 输出；不得要求唯一 submit tool、固定 Proposal 或 receipt 引用仪式。
 10. 历史 raw artifact MUST 保持不可变；计划、实现和外部 Eval 事实 MUST 在文档中明确区分。
 
@@ -325,6 +326,14 @@ wire contract 保留原契约，见历史 RFC；
 有界 framed channel 控制 sidecar；overflow、truncation、process error 和 cleanup failure 都进入记录。Host checkout
 不在 sandbox 内执行；source snapshot、import cache、operation scratch 和 read-only managed overlay 分离。
 
+Preview 的 native import 在独立 SRT process 和一次性可写 source copy 中执行，candidate 始终隐藏、网络始终拒绝。
+进程结束后 Host 拒绝普通源码/overlay 的新增、删除、内容或 executable 位变化；只允许对应原始文件的 `.import`、
+GDScript/shader 的 `.uid`，以及 `.godot/imported/`、global script class cache 和 UID cache 进入新运行副本。
+输出树拒绝软/硬链接、特殊文件、路径逃逸及超限；当前上限为 16,384 项/64 层、单文件 64 MiB/总 256 MiB。
+这些是路径、文件类型、归属和大小检查，不是对 Godot-native 产物内容的可信性背书；引擎仍在 SRT 中解析这些不可信字节。
+编辑器布局/日志不进入新副本。导入非零退出、超时、取消、stderr 中的 Godot ERROR 或 stderr 截断会阻止启动；
+实际 import 输出在无 game process 时也保存。只读 run sidecar 不再二次 import，固定案例与 legacy 路径保持原样。
+
 ProjectAdapter、probe、项目 GDScript、`@tool` 和 EditorPlugin 是同一不可信 Godot principal。只读 overlay、content
 hash 和一次性 handshake token 约束 identity 与意外 peer，但不隔离同进程恶意代码，也不证明 telemetry、Addon
 provenance 或 adapter semantics。真正的权限边界是 OS sandbox。
@@ -534,6 +543,10 @@ Agent 调用 game tool，也不表示项目通过验收。旧 `.chronorift/` 环
 存储收缩为 transcript、候选 diff 和每次执行的运行记录/有界日志。退出、超时、取消、查询失败、输出截断与源码
 完整性各自如实保存。新路径没有历史记录采集、probe、暂停、推进、输入、checkpoint/replay 或证据发布系统。
 带时间窗口的调查仍需通过后续真实需求验证，本切片只建立通用当前状态观察；没有预定的下一 slice。
+
+原生导入现已与只读运行分离（§17）：每次 launch 先完成一次性 import 和产物准入，再启动 run-only sidecar。
+运行记录的 source hash 对应实际运行副本，包含生成的 `.import`/`.uid`，不包含可写 `.godot`；不能将该 hash 的变化
+单独解释为 candidate 源码变化。没有新增 DTO、publication/cache-reuse framework 或 package。
 
 实现复用既有 package、源码准入、SRT 与 framing 底层，新增窄 inspection DTO、wire/observer、Host runner 和 Pi bridge。
 仅旧 Preview 使用的接入、发布、复用、conformance、runtime composition 及其专用测试已经删除；固定案例仍使用的

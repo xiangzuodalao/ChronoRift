@@ -12,6 +12,7 @@ import {
   InspectionStopInputV1Schema,
   InspectionToolResponseV1Schema,
   type InspectionErrorV1,
+  type InspectionProcessResultV1,
   type InspectionQueryInputV1,
   type InspectionRunRecordV1,
   type InspectionToolResponseV1,
@@ -28,6 +29,7 @@ import type {
 } from "@chronorift/pi-harness";
 
 import { prepareGodotInspectionCandidate } from "./godot-inspection-source.js";
+import { GodotImportPreparationError } from "./godot-import-preparation.js";
 import type {
   SrtGodotProcessResult,
   SrtGodotRunHandle,
@@ -36,7 +38,7 @@ import type {
 import type { SrtCommandResult } from "./srt-sandbox-controller.js";
 
 export interface GodotInspectionRuntimeOptions {
-  readonly runner: Pick<SrtGodotRunner, "open">;
+  readonly runner: Pick<SrtGodotRunner, "open" | "prepareImport">;
   readonly candidateWorkspace: string;
   readonly artifactsDirectory: string;
   readonly nodePath: string;
@@ -52,6 +54,8 @@ export interface GodotInspectionRuntimeOptions {
 interface Execution {
   readonly executionId: string;
   readonly startedAt: string;
+  readonly launchAbort: AbortController;
+  importProcess: SrtCommandResult | null;
   mainScene: string | null;
   engineVersion: string | null;
   handle: SrtGodotRunHandle | null;
@@ -88,6 +92,23 @@ const failure = (
   code: InspectionErrorV1["code"],
   message: string,
 ): InspectionFailure => new InspectionFailure({ code, message });
+
+const importObservation = (
+  process: SrtCommandResult,
+): InspectionProcessResultV1 => {
+  const stdout = Buffer.from(process.stdout);
+  const stderr = Buffer.from(process.stderr);
+  const limit = 32 * 1024;
+  return {
+    exitCode: process.exitCode,
+    signal: process.signal,
+    timedOut: process.timedOut,
+    stdout: stdout.subarray(0, limit).toString("utf8"),
+    stderr: stderr.subarray(0, limit).toString("utf8"),
+    stdoutTruncated: process.stdoutTruncated || stdout.length > limit,
+    stderrTruncated: process.stderrTruncated || stderr.length > limit,
+  };
+};
 
 /** One task-local live game with immutable source and ordinary object inspection. */
 export class GodotInspectionRuntime implements InspectionGameToolPort {
@@ -191,6 +212,9 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
     if (this.#closing !== null) return this.#closing;
     this.#closed = true;
     this.#closing = (async () => {
+      // Only interrupt preparation here. A live sidecar must drain its stop
+      // response before SRT is torn down, otherwise its process facts are lost.
+      if (this.#active?.handle == null) this.#active?.launchAbort.abort();
       // Interrupt pending protocol waits before waiting for the serialized call.
       if (this.#active?.handle != null) await this.stop(this.#active);
       await this.#operation;
@@ -224,6 +248,8 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
     const execution: Execution = {
       executionId: `inspection.${randomUUID()}`,
       startedAt: this.now(),
+      launchAbort: new AbortController(),
+      importProcess: null,
       mainScene: null,
       engineVersion: null,
       handle: null,
@@ -236,6 +262,10 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
     };
     this.#active = execution;
     this.#executions.set(execution.executionId, execution);
+    const launchSignal =
+      signal === undefined
+        ? execution.launchAbort.signal
+        : AbortSignal.any([signal, execution.launchAbort.signal]);
     try {
       const source = await prepareGodotInspectionCandidate(
         this.options.candidateWorkspace,
@@ -243,9 +273,18 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
       execution.mainScene = source.mainScene;
       if (this.#closed || signal?.aborted)
         throw failure("cancelled", "Game launch was cancelled");
-      const handle = await this.options.runner.open({
+      const prepared = await this.options.runner.prepareImport({
         sourceFiles: source.sourceFiles,
         overlayFiles: GODOT_INSPECTION_OVERLAY_FILES_V1,
+        godotPath: this.options.godotPath,
+        timeoutMs: this.#bounds.importTimeoutMs,
+        signal: launchSignal,
+      });
+      execution.importProcess = prepared.process;
+      launchSignal.throwIfAborted();
+      const handle = await this.options.runner.open({
+        sourceFiles: prepared.sourceFiles,
+        importCacheFiles: prepared.importCacheFiles,
         argv: (stage) => [
           this.options.nodePath,
           "--input-type=commonjs",
@@ -254,13 +293,12 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
             godotExecutable: this.options.godotPath,
             projectRoot: stage.projectStagePath,
             executionId: execution.executionId,
-            importTimeoutMs: this.#bounds.importTimeoutMs,
+            skipImport: true,
             startupTimeoutMs: this.#bounds.startupTimeoutMs,
             executionTimeoutMs: this.#bounds.executionTimeoutMs,
           }),
         ],
         timeoutMs:
-          this.#bounds.importTimeoutMs +
           this.#bounds.startupTimeoutMs +
           this.#bounds.executionTimeoutMs +
           this.#bounds.stopTimeoutMs,
@@ -268,6 +306,7 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
           dirname(this.options.nodePath),
           dirname(this.options.godotPath),
         ],
+        signal: launchSignal,
       });
       execution.handle = handle;
       // Observe writable failures even when no request is being sent.
@@ -311,9 +350,7 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         throw failure("cancelled", "Game launch was cancelled");
       const ready = await this.withCancellation(
         execution,
-        client.ready(
-          this.#bounds.importTimeoutMs + this.#bounds.startupTimeoutMs,
-        ),
+        client.ready(this.#bounds.startupTimeoutMs),
         signal,
       );
       if (ready.executionId !== execution.executionId)
@@ -337,6 +374,13 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         root: ready.root,
       });
     } catch (error) {
+      if (error instanceof GodotImportPreparationError)
+        execution.importProcess = error.process;
+      if (this.#closed || launchSignal.aborted)
+        execution.error ??= errorDetail(
+          failure("cancelled", "Game launch was cancelled"),
+          "cancelled",
+        );
       execution.error ??= errorDetail(error, "launch_failed");
       await this.stop(execution);
       throw new InspectionFailure(execution.error);
@@ -472,7 +516,8 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         code: "source_changed",
         message: "Staged project source changed during execution",
       };
-    const process = result?.process ?? observedProcess;
+    const process =
+      result?.process ?? observedProcess ?? execution.importProcess;
     const stderr = process?.stderr ?? "";
     const record = InspectionRunRecordV1Schema.parse({
       schemaVersion: 1,
@@ -488,7 +533,10 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
       status: process?.status ?? "failed",
       exitCode: process?.exitCode ?? null,
       signal: process?.signal ?? null,
-      import: execution.terminated?.import ?? null,
+      import:
+        execution.importProcess === null
+          ? (execution.terminated?.import ?? null)
+          : importObservation(execution.importProcess),
       run: execution.terminated?.run ?? null,
       stderr: stderr.slice(0, 64 * 1_024),
       stderrTruncated:

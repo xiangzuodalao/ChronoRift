@@ -48,6 +48,7 @@ describe("runtime inspection inputs", () => {
     { ...query, names: ["shape"] },
     { ...query, select: "values", names: ["shape"], offset: 0 },
     { ...query, select: "values", names: [] },
+    { ...query, select: "values", names: ["shape\u0000size"] },
     {
       ...query,
       select: "values",
@@ -79,6 +80,7 @@ describe("runtime inspection inputs", () => {
   it("accepts scene-relative paths and execution references without mixing targets", () => {
     for (const target of [
       { path: "Platforms/Platform/CollisionShape2D" },
+      { path: "Platforms/节点�" },
       { objectRef: "run:one:object:3" },
     ]) {
       expect(
@@ -97,6 +99,16 @@ describe("runtime inspection inputs", () => {
         adapterRevisionId: "old",
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts literal Unicode property names without confusing U+FFFD with NUL", () => {
+    expect(
+      InspectionQueryInputV1Schema.safeParse({
+        ...query,
+        select: "values",
+        names: ["属性�"],
+      }).success,
+    ).toBe(true);
   });
 });
 

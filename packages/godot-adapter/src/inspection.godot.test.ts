@@ -77,9 +77,9 @@ var fill_scene: bool:
       add_child(item)
     return true
 func _get_property_list() -> Array[Dictionary]:
-  return [{"name": "literal:name", "type": TYPE_INT}]
+  return [{"name": "literal:name", "type": TYPE_INT}, {"name": "literal:�", "type": TYPE_INT}]
 func _get(property_name: StringName) -> Variant:
-  return 42 if property_name == "literal:name" else null
+  return 42 if property_name in ["literal:name", "literal:�"] else null
 var release_ephemeral: bool:
   get:
     ephemeral = null
@@ -107,6 +107,9 @@ func _ready() -> void:
     collision.shape = shape
     platform.add_child(collision)
     add_child(platform)
+  var unicode_child := Node.new()
+  unicode_child.name = "节点�"
+  $PlatformA/SolidShape.add_child(unicode_child)
   print("inspection fixture ready")
 `,
     );
@@ -172,6 +175,15 @@ func _ready() -> void:
     expect(
       await query({ select: "children", offset: 1, limit: 1 }),
     ).toMatchObject({ items: [{ name: "PlatformB" }] });
+    expect(
+      await query({
+        select: "children",
+        target: { path: "PlatformA/SolidShape/节点�" },
+      }),
+    ).toMatchObject({ total: 0, target: { name: "节点�" } });
+    expect(
+      await query({ select: "values", names: ["literal:�"] }),
+    ).toMatchObject({ values: [{ status: "success", value: 42 }] });
     expect(
       await query({
         select: "values",
@@ -289,6 +301,8 @@ func _ready() -> void:
     expect(terminal.import).toMatchObject({ exitCode: 0, timedOut: false });
     expect(terminal.run?.stdout).toContain("inspection fixture ready");
     expect(terminal.run?.stderr).not.toContain("SCRIPT ERROR");
+    expect(terminal.run?.stderr).not.toContain("Unicode parsing error");
+    expect(terminal.run?.stderr).not.toContain("Unexpected NUL character");
   } finally {
     child?.kill("SIGKILL");
     await client?.close();

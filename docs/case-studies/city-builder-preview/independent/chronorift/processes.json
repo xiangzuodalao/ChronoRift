@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "projection": "Actual process metadata and stderr; stdout omitted. Full observation payload is retained in result.json. Original process records stay local.",
+  "processes": {
+    "import": {
+      "status": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 3714.7646489999997,
+      "timedOut": false,
+      "cancelled": false,
+      "stdoutTruncated": false,
+      "stderrTruncated": false,
+      "stderr": "",
+      "originalRecordSha256": "13810b5b4a36d55f7058337c382142163355b6ce9be0898316cfc315dcfeb2d1",
+      "stdoutSha256": "306d4838ae88e9aef24fce62ec96d0fabbc2d977a711da8201b5756828eae2e4",
+      "stdoutOmittedFromProjection": true
+    },
+    "runtime": {
+      "status": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2908.5435309999993,
+      "timedOut": false,
+      "cancelled": false,
+      "stdoutTruncated": false,
+      "stderrTruncated": false,
+      "stderr": "",
+      "originalRecordSha256": "a21a3068d6ff8903e6a52a62eacf347857816a7abc3f8d066ec9712ec5ca2282",
+      "stdoutSha256": "d9717e483d5fa2c320b2a58364c18910be41ae364586d56a81056fa87ef7f676",
+      "stdoutOmittedFromProjection": true
+    }
+  }
+}

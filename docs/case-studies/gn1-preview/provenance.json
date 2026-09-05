@@ -1,0 +1,346 @@
+{
+  "schemaVersion": 1,
+  "case": "GN-1 Adapter-free Preview functional demonstration and regression case",
+  "status": "Published projection of one existing local run; not a fresh model run, matched ablation, unknown-project generalization result, or external attestation.",
+  "originalRun": {
+    "startedAt": "2026-09-05T12:51:13.563Z",
+    "finishedAt": "2026-09-05T12:55:52.590Z",
+    "durationMs": 279025.717092,
+    "cliProcess": {
+      "schemaVersion": 1,
+      "exitCode": 0,
+      "signal": null,
+      "startedAt": "2026-09-05T12:51:13.563Z",
+      "finishedAt": "2026-09-05T12:55:52.590Z",
+      "elapsedMs": 279025.717092,
+      "stdoutBytes": 1879,
+      "stderrBytes": 0
+    },
+    "command": "tsx apps/cli/src/main.ts project preview <prompt> --provider openai-codex --model gpt-5.6-luna --thinking max --timeout-ms 600000 --state-root <outside-repository-state> --godot-bin <godot-binary> --json",
+    "prompt": "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy.",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "versions": {
+      "srt": "0.0.74",
+      "piAi": "0.83.0",
+      "piCodingAgent": "0.83.0",
+      "godot": "4.7.1.stable.official.a13da4feb",
+      "node": "v26.5.0",
+      "platform": "linux",
+      "arch": "x64"
+    },
+    "limits": {
+      "timeoutMs": 600000,
+      "sharedToolCallBudget": 256,
+      "freshSessionAttempts": 1,
+      "agentRetriesPerFailedRequest": 2,
+      "monetaryLimit": null,
+      "tokenLimit": null
+    },
+    "normalPiResources": {
+      "contextFiles": [],
+      "systemPromptFile": null,
+      "promptTemplates": [],
+      "extensions": [],
+      "skills": [
+        {
+          "name": "find-skills",
+          "disableModelInvocation": false,
+          "sha256": "c00eeea0e13e74fe4a9d84ba0a8542205a1b736d65f13134fe1a6647eb14976f"
+        },
+        {
+          "name": "grill-me",
+          "disableModelInvocation": true,
+          "sha256": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54"
+        }
+      ],
+      "note": "Normal Pi resources retained. Fresh outside-repository state prevented inheriting ChronoRift ancestor context. No project-specific Adapter, probe, checker, known patch or task-specific tool sequence was supplied to the Agent. Full raw model requests and thinking are not published."
+    },
+    "loopResult": {
+      "status": "completed",
+      "failureCode": null,
+      "failureMessage": null,
+      "candidateSourceChanged": true,
+      "candidatePatch": {
+        "path": "candidate.patch",
+        "sha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+        "byteLength": 651,
+        "roundTripVerified": true
+      },
+      "acceptanceEvidence": false
+    },
+    "traceCounts": {
+      "originalRequests": 43,
+      "originalResults": 42,
+      "publishedRequests": 34,
+      "publishedResults": 33,
+      "gameRequests": 20,
+      "gameResults": 20,
+      "commandFailures": 4,
+      "assistantErrors": 1,
+      "resultlessRequests": 1
+    },
+    "anomalies": "Four command failures and one persisted WebSocket error. One tool request has no result; 43 requests are not 43 executions. No additional model run or manual follow-up was used to repair this history."
+  },
+  "sourceIdentity": {
+    "project": {
+      "repository": "https://github.com/endlessm/moddable-platformer",
+      "commit": "e78b339500dec8e480b33723c4156bf9b74cd25c",
+      "tree": "9941cb045b3cd73c4554ca1de337a341b383590b",
+      "previewSourceSha256": "e7c86bfb83a0b9ed2bc0beebcd7aa402f8def73ee7c0d2547e3e7c36eb9cdb3f",
+      "mainScene": "res://main.tscn",
+      "globalAutoloadRetained": true
+    },
+    "chronorift": {
+      "repository": "https://github.com/xiangzuodalao/ChronoRift",
+      "historicalHead": "5122828d1d16f467d4bddf20a6afc3b0b1893570",
+      "historicalWorktreeWasDirty": true,
+      "laterImplementationCommit": "9fc4427f9046601a59e51c3475f366eb50c027ed",
+      "mergedCommit": "68f8a55006fa91c80b03b977f312ff7a0a3db5ed",
+      "pullRequest": "https://github.com/xiangzuodalao/ChronoRift/pull/16",
+      "correspondence": {
+        "file": "source-files.json",
+        "matchedFiles": 345,
+        "scope": "All recorded apps/ and packages/ file bytes match the merged Git commit. Documentation/unrelated working-tree assets are excluded. This does not rewrite the historical invocation as a run of merged HEAD."
+      }
+    },
+    "hashNamespaces": "Git commit/tree identities, Preview candidate-source hashes, observer-staged runtime hashes, and independently checker-staged hashes describe different inputs and must not be equated."
+  },
+  "independentCheck": {
+    "checkedAt": "2026-09-05T12:56:31.555Z",
+    "afterCliFinishedAt": "2026-09-05T12:55:52.590Z",
+    "checkerSha256": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+    "method": "Host-staged checker with original main scene and Global autoload; existing SRT prepareImport followed by a separate read-only runtime stage; not supplied to the Agent.",
+    "result": "Baseline exit 1: three wrong Area sizes and six shared-Shape pairs. Candidate exit 0: zero target-check problems.",
+    "scope": "Initial geometry and resource identity after two process frames only; no player input simulation or causal gameplay proof. Missing/changed expected structure requires human review, not automatic rejection of a fix.",
+    "identityScope": "Native instance IDs are preserved verbatim but scoped to each independent process; do not compare them across processes or against Preview object references."
+  },
+  "redaction": {
+    "tokens": [
+      {
+        "token": "call.N",
+        "meaning": "N-th tool request across the complete original session; provider-generated call ID omitted."
+      },
+      {
+        "token": "inspection.before",
+        "meaning": "Execution launched at transcript lines 25–26 and stopped at 40–41. Original execution ID replaced everywhere; .object.N suffix retained."
+      },
+      {
+        "token": "inspection.after",
+        "meaning": "Execution launched at transcript lines 56–57 and stopped at 68–69. Original execution ID replaced everywhere; .object.N suffix retained."
+      },
+      {
+        "token": "<task-directory>",
+        "meaning": "Original private task directory prefix in game_stop recordPath; remaining runtime-records path and declared execution token retained."
+      },
+      {
+        "token": "<baseline-workspace>",
+        "meaning": "Original clean GN-1 checkout path, in independent/observations.json."
+      },
+      {
+        "token": "<candidate-workspace>",
+        "meaning": "Original private candidate checkout path, in independent/observations.json."
+      }
+    ],
+    "removed": "Thinking, provider-generated tool/message/signature/session/task IDs, private Host paths and unrelated coding outputs. No auth files, credentials, environment dump or raw model requests were copied.",
+    "preservation": "Source-relative and Godot res:// /root/Global paths, numeric values, process-frame/physics-tick/Host timestamps, statuses, failures and per-execution object-reference equality are retained."
+  },
+  "derivation": "Read-only original inputs were projected once: select explicit fields and calls, verify game text equals details, replace declared tokens consistently, keep patch/checker and independent raw outputs byte-identical, derive the readable index from the same selected entries. Hashes detect content changes, not signatures or independent attestation. Original private session is not publicly distributed, so public excerpts do not authenticate an unavailable complete session.",
+  "originalSourceArtifacts": [
+    {
+      "file": "pi-session.jsonl",
+      "sha256": "1d75b35e7ee51e46fdf9a87e1219b5ce12fcc761473657883dcce62d539b8469"
+    },
+    {
+      "file": "source-identity.json",
+      "sha256": "21cdc7df767ad92a3b1eedf1822f37103c5c9ceb3c08a2da0cfe1c7acdf04c8f"
+    },
+    {
+      "file": "invocation.json",
+      "sha256": "3b444554ed45333716de80b3aae1873b3bb6b601ca096cc2977365688316a114"
+    },
+    {
+      "file": "preflight.json",
+      "sha256": "d76b08c25c9e7da2d1bc106e94002fc59d5494503c98e9e8715abffa14e0f7d2"
+    },
+    {
+      "file": "preview.v2.json",
+      "sha256": "9622b955b2ebe68471b0cd9662a1ff953d96eb140733503176cea24c3023c3b6"
+    },
+    {
+      "file": "cli-process.json",
+      "sha256": "350eedd79094ef28e623c0ad42a15fb2556d72327832d1676d5d8e8f2069dbba"
+    },
+    {
+      "file": "independent/observations.json",
+      "sha256": "4630760eea1879309d9e855e3ccd5072f733ab12f90888fc0ce1a8c37c6637df"
+    },
+    {
+      "file": "chronorift-working-tree.patch",
+      "sha256": "70adf485488e1b3f9ad442edd24409576922d832dfa8f4744367ca145fdb49c5"
+    }
+  ],
+  "publicArtifacts": [
+    {
+      "path": "candidate.patch",
+      "sha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+      "byteLength": 651,
+      "source": {
+        "file": "candidate.patch",
+        "sha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120"
+      },
+      "transformation": "byte-identical copy"
+    },
+    {
+      "path": "independent-check.gd",
+      "sha256": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+      "byteLength": 3645,
+      "source": {
+        "file": "independent-check.gd (original acceptance run)",
+        "sha256": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2"
+      },
+      "transformation": "byte-identical copy"
+    },
+    {
+      "path": "independent/baseline/stdout.log",
+      "sha256": "322b8ec849e40d512f8cd4a4536ccb533e2b042c1e691a6b0bc7180588e7a2cf",
+      "byteLength": 1585,
+      "source": {
+        "file": "independent/baseline/stdout.log",
+        "sha256": "322b8ec849e40d512f8cd4a4536ccb533e2b042c1e691a6b0bc7180588e7a2cf"
+      },
+      "transformation": "byte-identical copy"
+    },
+    {
+      "path": "independent/baseline/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byteLength": 0,
+      "source": {
+        "file": "independent/baseline/stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "transformation": "byte-identical copy"
+    },
+    {
+      "path": "independent/baseline/import-result.json",
+      "sha256": "a44c13bc9e6e5862289825f3e3db5f6db2d5fd70212dac5dcaef7cc7e52e9227",
+      "byteLength": 6278,
+      "source": {
+        "file": "independent/baseline/import-result.txt",
+        "sha256": "a44c13bc9e6e5862289825f3e3db5f6db2d5fd70212dac5dcaef7cc7e52e9227"
+      },
+      "transformation": "byte-identical copy; filename changed only"
+    },
+    {
+      "path": "independent/baseline/process-result.json",
+      "sha256": "c3647aee95344d8f1db9349148abf5f9ae5ba390dfc332f076c69ce7b44f7227",
+      "byteLength": 2180,
+      "source": {
+        "file": "independent/baseline/process-result.txt",
+        "sha256": "c3647aee95344d8f1db9349148abf5f9ae5ba390dfc332f076c69ce7b44f7227"
+      },
+      "transformation": "byte-identical copy; filename changed only"
+    },
+    {
+      "path": "independent/candidate/stdout.log",
+      "sha256": "d984495f0eb6a02bf5fb7766a17775c13c16907836a9e266e7ed8e5406a55071",
+      "byteLength": 1219,
+      "source": {
+        "file": "independent/candidate/stdout.log",
+        "sha256": "d984495f0eb6a02bf5fb7766a17775c13c16907836a9e266e7ed8e5406a55071"
+      },
+      "transformation": "byte-identical copy"
+    },
+    {
+      "path": "independent/candidate/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byteLength": 0,
+      "source": {
+        "file": "independent/candidate/stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "transformation": "byte-identical copy"
+    },
+    {
+      "path": "independent/candidate/import-result.json",
+      "sha256": "1ede9c76fec65f07273c891848b78c99d38b20a9042b911609843dc11175a7c5",
+      "byteLength": 6285,
+      "source": {
+        "file": "independent/candidate/import-result.txt",
+        "sha256": "1ede9c76fec65f07273c891848b78c99d38b20a9042b911609843dc11175a7c5"
+      },
+      "transformation": "byte-identical copy; filename changed only"
+    },
+    {
+      "path": "independent/candidate/process-result.json",
+      "sha256": "22389d0d644a41d861ea544331a60c2b266d5762137344471bdf940622c22102",
+      "byteLength": 1804,
+      "source": {
+        "file": "independent/candidate/process-result.txt",
+        "sha256": "22389d0d644a41d861ea544331a60c2b266d5762137344471bdf940622c22102"
+      },
+      "transformation": "byte-identical copy; filename changed only"
+    },
+    {
+      "path": "independent/observations.json",
+      "sha256": "ff194e5f0127a2b046fea7b566f628e07a495d58a619d2d2668f8ad90adb7a71",
+      "byteLength": 1964,
+      "source": {
+        "file": "independent/observations.json",
+        "sha256": "4630760eea1879309d9e855e3ccd5072f733ab12f90888fc0ce1a8c37c6637df"
+      },
+      "transformation": "workspace path tokens only; JSON reformatted"
+    },
+    {
+      "path": "runtime-records/before.json",
+      "sha256": "1ee36bfe9827567a3e33886df70cc54125c5dd947d83bf3a976d0e46cf3746a7",
+      "byteLength": 7042,
+      "source": {
+        "file": "runtime-records/<before-execution-id>.json",
+        "sha256": "80e9c0ed7edc9682e4b1935cf09efeb236c0180e9fe806be7d107a1c6235240b"
+      },
+      "transformation": "execution ID token only; object-ref suffixes retained; JSON reformatted"
+    },
+    {
+      "path": "runtime-records/after.json",
+      "sha256": "1ff106611f9b2f5260e926e3de7f9ebd20363a82c9d501b3fbba5b3d5a0de48c",
+      "byteLength": 7041,
+      "source": {
+        "file": "runtime-records/<after-execution-id>.json",
+        "sha256": "111a02f621a1c248ebcb718a0319db3bd8650f3c5927c774acf0526ad7c62683"
+      },
+      "transformation": "execution ID token only; object-ref suffixes retained; JSON reformatted"
+    },
+    {
+      "path": "trace.json",
+      "sha256": "e97882edc3ac6845da5e6b3f8297ac06f645b45e04bd72085ed281d6a09d2a85",
+      "byteLength": 93443,
+      "source": {
+        "file": "pi-session.jsonl",
+        "sha256": "1d75b35e7ee51e46fdf9a87e1219b5ce12fcc761473657883dcce62d539b8469"
+      },
+      "transformation": "selected request/result fields, declared ID replacements, no thinking/provider metadata; see policy"
+    },
+    {
+      "path": "source-files.json",
+      "sha256": "a8beb8d689d80e7a3a9cb7f3fc2bc49256d2b6ad20c5e4858f0c30b0c09047a3",
+      "byteLength": 65730,
+      "source": {
+        "file": "source-identity.json",
+        "sha256": "21cdc7df767ad92a3b1eedf1822f37103c5c9ceb3c08a2da0cfe1c7acdf04c8f"
+      },
+      "transformation": "apps/ and packages/ file hashes selected; actual merged Git blobs checked against original hashes; unrelated worktree metadata omitted"
+    },
+    {
+      "path": "trace.md",
+      "sha256": "0a47398ace4ce7f936435754dd4ef4c7083bf82a55d2f4a15dcfb8a30c8c15c6",
+      "byteLength": 19010,
+      "source": {
+        "file": "pi-session.jsonl",
+        "sha256": "1d75b35e7ee51e46fdf9a87e1219b5ce12fcc761473657883dcce62d539b8469"
+      },
+      "transformation": "human-readable index and selected exact tool fields from trace.json, with explicitly editorial summaries and evidence limitations"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "case": "City Builder adapter-free Preview with coding-only comparison",
+  "classification": "One prospective fixed-configuration pair on a project not used to design the tools; selected known symptom, not a blinded benchmark or repair-rate estimate.",
+  "project": {
+    "repository": "https://github.com/KenneyNL/Starter-Kit-City-Builder",
+    "commit": "4535092b740b378b700efd9df9e27a631815b84a",
+    "tree": "528433a6580c8f48c9a1fcd7ddcae251a6f75c00",
+    "sourceSha256": "5395a3aa8e39d8f888eece93af83b383cd3af57263fc1ef5c92425d14c1b9005",
+    "declaredGodotVersion": "4.6",
+    "mainScene": "res://scenes/main.tscn"
+  },
+  "execution": {
+    "date": "2026-09-05",
+    "order": ["coding-only", "chronorift"],
+    "freshSessions": 2,
+    "manualFollowupMessages": 0,
+    "followupRepairSessions": 0,
+    "godot": "4.7.1.stable.official.a13da4feb",
+    "pi": "0.83.0",
+    "srt": "0.0.74",
+    "node": "v22.23.1",
+    "chronoriftCommit": "2bb303b68891861cb9cc04934a88939d2b33b691",
+    "chronoriftProductChanges": false,
+    "caseOnlyRunnerAndChecker": true,
+    "commonConfigurationAndResourcesCheckedEqual": true,
+    "candidatePatchesByteIdentical": true,
+    "candidatePatchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+    "candidatePatchBytes": 755,
+    "monetaryBudget": null,
+    "tokenBudget": null,
+    "agentRetryMaxRetries": 2,
+    "upstreamCheckoutUnchanged": true,
+    "chronoriftProductSourceUnchanged": true
+  },
+  "independentChecks": {
+    "baseline": {
+      "outcome": "assertions_failed",
+      "passed": 31,
+      "total": 66,
+      "idleObservedProcessCompletions": 120,
+      "idleAdded": 120,
+      "idleRemoved": 120,
+      "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+      "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+      "sourceUnchanged": true,
+      "originalResultSha256": "e21e2a5d89abba56b4ea02b22616c94dbf6975f57526e2fa747b57e7f9226448",
+      "checkedAt": "2026-09-05T15:39:41.920Z"
+    },
+    "coding-only": {
+      "outcome": "passed",
+      "passed": 66,
+      "total": 66,
+      "idleObservedProcessCompletions": 120,
+      "idleAdded": 0,
+      "idleRemoved": 0,
+      "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+      "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+      "sourceUnchanged": true,
+      "originalResultSha256": "6ab9970320a3363ababbe77b69636dc70147ee01b78d40834e8ef2fe2e5c2b61",
+      "checkedAt": "2026-09-05T15:45:24.547Z"
+    },
+    "chronorift": {
+      "outcome": "passed",
+      "passed": 66,
+      "total": 66,
+      "idleObservedProcessCompletions": 120,
+      "idleAdded": 0,
+      "idleRemoved": 0,
+      "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+      "checkerRunnerSha256": "8aee3fb7c0cc7f25bb01d51f032ba96793b9f998a47839c6f0a818d72a2da5e9",
+      "sourceUnchanged": true,
+      "originalResultSha256": "c37e6f916f46ec03ab2e6dba33f628a33814188c564fbb867acb06785dbf7b19",
+      "checkedAt": "2026-09-05T15:45:24.518Z"
+    }
+  },
+  "limits": [
+    "Operator inspected upstream source and prepared independent controls before model calls; neither Session received that analysis, checker or the other candidate.",
+    "Agent located the cause from source before any game launch. Runtime identity sampling was on the candidate only.",
+    "The repeated candidate query samples are not a complete event history or an exact rebuild count.",
+    "Independent Input action checks are case-local verification, not an input capability exposed by Preview.",
+    "Both agents produced the same accepted change; this pair shows no repair-outcome advantage.",
+    "Agent final prose claims game exit code 0; both actual Godot children have run.signal=SIGTERM and run.exitCode=null. The top-level record exitCode=0 belongs to the wrapper. Import and independent checker processes have their own exit status.",
+    "Process/frame/physics counters are preserved separately; no visual, CPU, FPS, complete gameplay or population-level conclusion."
+  ],
+  "publicProjection": "All tool requests/results, assistant plain text and errors retained in trace files; thinking and raw model requests omitted, private path prefixes replaced. Original Session and process bytes remain local."
+}

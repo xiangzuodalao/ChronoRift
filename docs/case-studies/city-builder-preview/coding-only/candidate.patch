@@ -1,0 +1,23 @@
+diff --git a/scripts/builder.gd b/scripts/builder.gd
+index d47a8c6ae85f1772ffa70abc0fc3171403ebb989..0961147125d8b7ef7f249084e85dd2564a9e537a 100644
+--- a/scripts/builder.gd
++++ b/scripts/builder.gd
+@@ -107,6 +107,8 @@ func action_rotate():
+ # Toggle between structures to build
+ 
+ func action_structure_toggle():
++	var previous_index := index
++
+ 	if Input.is_action_just_pressed("structure_next"):
+ 		index = wrap(index + 1, 0, structures.size())
+ 		Audio.play("sounds/toggle.ogg", -30)
+@@ -115,7 +117,8 @@ func action_structure_toggle():
+ 		index = wrap(index - 1, 0, structures.size())
+ 		Audio.play("sounds/toggle.ogg", -30)
+ 
+-	update_structure()
++	if index != previous_index:
++		update_structure()
+ 
+ # Update the structure visual in the 'cursor'
+ 

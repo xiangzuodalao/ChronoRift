@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "manifest": {
+    "schemaVersion": 1,
+    "arm": "coding-only",
+    "sourceCommit": "4535092b740b378b700efd9df9e27a631815b84a",
+    "sourceTree": "528433a6580c8f48c9a1fcd7ddcae251a6f75c00",
+    "chronoriftCommit": "2bb303b68891861cb9cc04934a88939d2b33b691",
+    "chronoriftSourceFiles": [
+      {
+        "path": "apps/cli/src/vnext/project-environment-preview.ts",
+        "gitBlob": "e5f60db0f9c9d55f8100a4b1c790492c6683621d",
+        "sha256": "7ec444147509a5848ca4d4918721890a77fe2c63e141bf9fd7443a742e00f8dc"
+      },
+      {
+        "path": "apps/cli/src/vnext/godot-inspection-source.ts",
+        "gitBlob": "ad634c902a1d6e50322e764c4f3b78d3de72dbc0",
+        "sha256": "a88cbe02a1e4ee85f3608ba60afcb81cd707d32e39f720c7701b1c47ffef79bc"
+      },
+      {
+        "path": "apps/cli/src/vnext/candidate-godot-build.ts",
+        "gitBlob": "7506d759ebfd12b9795ffec625052531baa22371",
+        "sha256": "6f4dfcfe45deede32923ab72ee41b67e5ecdf57b77d471629accb514a8859fb5"
+      },
+      {
+        "path": "packages/pi-harness/src/vnext-session.ts",
+        "gitBlob": "1f350ac93349fb9cea080f4d580c5a92b20b9bb2",
+        "sha256": "9953390c42ac0290d0853751a64b053ea75ad371bb5c19ce2d5c2078d31aa4ef"
+      }
+    ],
+    "runnerSha256": "a68c1815653c5f1185f99317420d9ebab86be3460d8078a3534d4f6c7e3b17f0",
+    "checkerSha256": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db",
+    "prompt": "建筑预览在空闲时似乎反复重建。请调查并作最小合理修复：选中建筑不变时避免重复重建，同时保留初始化显示、前后切换及首尾循环时的正确更新。自行选择调查、修改和验证方式，并说明实际验证结果与未覆盖部分。",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinking": "max",
+    "timeoutMs": 600000,
+    "toolCallLimit": 256,
+    "interactive": false,
+    "node": "v22.23.1",
+    "startedAt": "2026-09-05T15:40:30.853Z"
+  },
+  "configuration": {
+    "resources": {
+      "contexts": [],
+      "skills": [
+        {
+          "path": "<host-home>/.agents/skills/find-skills/SKILL.md",
+          "sha256": "c00eeea0e13e74fe4a9d84ba0a8542205a1b736d65f13134fe1a6647eb14976f",
+          "name": "find-skills",
+          "disableModelInvocation": false
+        },
+        {
+          "path": "<host-home>/.agents/skills/grill-me/SKILL.md",
+          "sha256": "6189dfceb7304a6e5558f75d87e68fa3bc7fcf7ba120e44f21f8a61fe01eba54",
+          "name": "grill-me",
+          "disableModelInvocation": true
+        }
+      ],
+      "prompts": [],
+      "systemPrompt": null
+    },
+    "activeTools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
+    "environmentProfile": "coding",
+    "additionalEnvironmentInstructions": null
+  },
+  "preview": {
+    "schemaVersion": 2,
+    "status": "completed",
+    "taskId": "fdb4f1a0-e1f4-420b-9732-afa78e10fb01",
+    "sessionId": "3a33d618-889b-4fe4-83fc-a3da5b5c5982",
+    "sessionFile": "<task-directory>/pi-sessions/2026-09-05T15-40-34-669Z_3a33d618-889b-4fe4-83fc-a3da5b5c5982.jsonl",
+    "projectRoot": "",
+    "sourceSha256": "5395a3aa8e39d8f888eece93af83b383cd3af57263fc1ef5c92425d14c1b9005",
+    "candidateSourceChanged": true,
+    "candidatePatch": {
+      "path": "<task-directory>/records/candidate.patch",
+      "sha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+      "byteLength": 755,
+      "roundTripVerified": true
+    },
+    "executions": [],
+    "goalDelivered": true,
+    "failureCode": null,
+    "failureMessage": null,
+    "taskDirectory": "<task-directory>",
+    "workspaceDirectory": "<candidate-workspace>",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "limitations": [
+      "Inspection reads current runtime values; no custom probes, history, pause, or replay.",
+      "Property getters are project code; observations are neither atomic snapshots nor fix verdicts."
+    ]
+  },
+  "pi": {
+    "schemaVersion": 1,
+    "status": "completed",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "requestedThinkingLevel": "max",
+    "realizedThinkingLevel": "max",
+    "activeTools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
+    "assistantText": "已修复 `scripts/builder.gd`：\n\n- 原因：`action_structure_toggle()` 在每帧无条件调用 `update_structure()`。\n- 修复：记录切换前的 `index`，仅当选中建筑实际变化时重建预览。\n- `_ready()` 中的初始化调用保留。\n- 前后切换及 `0 ↔ 最后一个` 循环仍会正确更新。\n\n验证结果：\n- `git diff --check --no-ext-diff` 通过。\n- 静态检查确认初始化调用保留且切换调用为条件调用。\n- 未能进行 Godot 运行时验证：环境中没有 Godot 可执行文件，因此未覆盖实际画面、输入操作和场景加载表现。",
+    "errorMessage": null,
+    "eventsObserved": 779,
+    "stats": {
+      "sessionFile": "<task-directory>/pi-sessions/2026-09-05T15-40-34-669Z_3a33d618-889b-4fe4-83fc-a3da5b5c5982.jsonl",
+      "sessionId": "3a33d618-889b-4fe4-83fc-a3da5b5c5982",
+      "userMessages": 1,
+      "assistantMessages": 11,
+      "toolCalls": 22,
+      "toolResults": 22,
+      "totalMessages": 34,
+      "tokens": {
+        "input": 42931,
+        "output": 3353,
+        "cacheRead": 103936,
+        "cacheWrite": 0,
+        "total": 150220
+      },
+      "cost": 0.014688520000000002,
+      "contextUsage": {
+        "tokens": 18948,
+        "contextWindow": 272000,
+        "percent": 6.966176470588235
+      }
+    }
+  },
+  "completion": {
+    "completedAt": "2026-09-05T15:42:13.652Z",
+    "durationMs": 102798,
+    "sourceCheckoutUnchanged": true
+  },
+  "traceCounts": {
+    "requests": 22,
+    "results": 22,
+    "gameRequests": 0,
+    "toolErrors": 0,
+    "missingResults": 0,
+    "assistantErrors": 0,
+    "commandFailures": 4
+  }
+}

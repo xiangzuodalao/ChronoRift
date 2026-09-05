@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-05T12:56:31.555Z",
+  "cliFinishedAt": "2026-09-05T12:55:52.590Z",
+  "checkerSha256": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+  "scope": "Initial geometry and resource identity after two process frames only; no player input simulation or causal gameplay proof. Missing/changed expected structure requires human review, not automatic rejection of a fix.",
+  "observations": [
+    {
+      "label": "baseline",
+      "workspace": "<baseline-workspace>",
+      "checkerSha256": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+      "complete": true,
+      "exitCode": 1,
+      "summary": {
+        "observed_platforms": 4,
+        "passed": false,
+        "problems": [
+          "Platform: area size differs",
+          "Platform2: area size differs",
+          "Platform3: area size differs",
+          "Platform / Platform2: area shape is shared",
+          "Platform / Platform3: area shape is shared",
+          "Platform / Platform4: area shape is shared",
+          "Platform2 / Platform3: area shape is shared",
+          "Platform2 / Platform4: area shape is shared",
+          "Platform3 / Platform4: area shape is shared"
+        ]
+      },
+      "summaryConsistent": true,
+      "requiresReview": false,
+      "sourceUnchanged": true,
+      "importStderrEmpty": true,
+      "runtimeStderrEmpty": true,
+      "remainingStages": []
+    },
+    {
+      "label": "candidate",
+      "workspace": "<candidate-workspace>",
+      "checkerSha256": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+      "complete": true,
+      "exitCode": 0,
+      "summary": {
+        "observed_platforms": 4,
+        "passed": true,
+        "problems": []
+      },
+      "summaryConsistent": true,
+      "requiresReview": false,
+      "sourceUnchanged": true,
+      "importStderrEmpty": true,
+      "runtimeStderrEmpty": true,
+      "remainingStages": []
+    }
+  ]
+}

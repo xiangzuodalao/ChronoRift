@@ -320,6 +320,38 @@ observer 连接 `SceneTree.physics_frame` 信号，记录的 `phase` 为
 `nextSequence` 指向最后返回记录；首条放不下时空页返回 `requiredByteBudget`，游标保持不变。
 `stop` 幂等且保留缓存，游戏继续运行；查询和读取不驱动采样。
 
+Pi bridge 对成功的 `game_watch read` 只改变 Agent 可见的 `content.text`：页头 JSON 保存除 `records`
+以外的全部 canonical 响应字段，包括 execution/watch 身份、phase、boundTargets 及 names、状态、数量、
+交付完整性和分页预算。随后每行是 `[sequence,processFrame,physicsTick,...targets]`，target 列与页头顺序一致。
+每个 target 列为 `[metadata,...cells]`，cell 按 names 排列：`[value]` 是成功，`[status,message]` 是属性错误。
+例如 `[12,34,56,[null,[3.25],["missing","Property no longer exists"]]]` 表示第 12 条记录的两个属性结果。
+外层 cell 长度区分成功值和错误，成功的数组或含 `status` 键的字典不会被误判。
+所有嵌套值和 `$type` 标签照常保留，包含 unsupported/truncated 标签；错误消息不截短。
+
+target 的 `metadata=null` 使用页头绑定对象信息；对象形式则替换其**全部可选 metadata**，保留名称、路径、
+脚本/资源路径、子节点数的变化或删除，`{}` 表示全部可选字段均缺失。固定 objectRef/className 仍从绑定对象恢复。
+该布局没有新增工具、wire schema 或协议版本；`details` 继续是严格校验后的完整 canonical 响应，Host 记录与归档不变。
+`bytesUsed` / `requiredByteBudget` 仍按原始记录编码计算，不是紧凑文本的字节数；分页、采样数量和所有预算不变。
+`missing`、`invalid_object`、`unsupported`、`truncated`、序号缺口、`deliveryComplete` 和 `stopReason` 均保留，
+不根据业务值筛选异常、合并重复样本或省略正常记录。`game_watch start/stop`、工具失败响应和不含 watch 的
+`game_stop` 仍使用原 JSON 文本。
+
+包含 watch 的成功 `game_stop` 响应也只优化 Agent 文本：首行是 `game_stop`，次行 JSON 保存除
+`output.record.watch.records` 以外的完整响应；随后使用相同的紧凑行，按图例还原至该字段。
+绑定目标和属性名来自 `output.record.watch.state.boundTargets`。退出状态、日志及其截断标记、source integrity、
+error、recordPath、watch state 和 `deliveryComplete` 均保留，包括 failed/cancelled/timed_out 的运行记录。
+stop 一次展示全部已取得记录，不分页、不按已读游标过滤；重复 stop 返回相同紧凑全文。
+实际展示行数可能少于 `recordedCount` 或有序号缺口，不能据此补齐未取得的数据；退出后仍可通过原 read 接口分页。
+
+确定性离线测试以独立 reader 还原完整响应并重新通过原 schema，固定 64 条记录页的 UTF-8 文本从 81,042 字节
+降为 6,758 字节。另将已保存真实 Agent 案例的首个 135 条 read 页离线重新渲染，从 146,556 字节降为 7,584 字节
+（减少 94.83%），canonical 页的 `bytesUsed=65236` 保持不变，未重新调用模型或改写原案例证据。
+空页或极小页可能因格式说明开销变大；这些数字只衡量同一页的文本，不代表整个会话 token、费用或修复效果。
+另一个固定 256 条完整 stop 档案的文本从 371,651 字节降为 24,471 字节，独立 reader 可还原整个 canonical
+stop 响应。完整档案可以超过 read 单页的 64 KiB 预算；该展示优化没有改变任一容量或分页限制。
+已安装 Pi 的 provider 序列化仅发送 content，details 仍随原始 Session 保存；Pi 的既有 compaction 仍可能截断长工具文本，
+没有改变其摘要行为，也不保证后续摘要包含全部采样行。
+
 正常 `game_stop` 或自然退出通过 observer 最终回传取回缓存，并在已有 Execution JSON 中保存可选 `watch`。
 异常、超时、取消或损坏连接只保留 Host 实际收到的记录，`deliveryComplete: false`，不补齐缺失序号或尾部；
 退出后仍可用同一 `executionId`/`watchId` 分页读取这些记录。`deliveryComplete` 描述交付完整性；

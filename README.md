@@ -96,7 +96,9 @@ candidate patch 与 evaluator stdout，并汇总耗时、成本、本地 raw rec
 
 Preview 保留 `game_query`，新增 `game_watch start/read/stop`：每次 Execution 一个提前注册的有界窗口，
 在 observer 的 `physics_frame` 信号回调（节点 physics process 之前）采样，保留短暂值、对象身份及逐属性错误。
-支持按序号和字节预算读取；异常退出只保留实际取回的数据并标记不完整。具体接口、预算和时序见
+支持按序号和字节预算读取；Pi 的 read 和含 watch 的 `game_stop` 文本用页头和紧凑行减少重复字段，
+stop 直接展示全部已取得记录，重复 stop 返回同样的紧凑全文；canonical details 与归档保留完整结构。
+异常退出只保留实际取回的数据并标记不完整。具体接口、预算和时序见
 [架构文档 §15](docs/architecture.md#15-当前-agent-工具面)。
 
 ### 还没有

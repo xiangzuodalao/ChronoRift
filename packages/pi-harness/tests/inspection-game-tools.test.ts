@@ -1,4 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  InspectionToolResponseV1Schema,
+  InspectionWatchReadOutputV1Schema,
+  inspectionWatchRecordBytesV1,
+} from "@chronorift/domain";
+import type { Model, ToolResultMessage } from "@earendil-works/pi-ai";
+import { convertResponsesMessages } from "@earendil-works/pi-ai/api/openai-responses-shared";
+import {
+  convertToLlm,
+  estimateTokens,
+  serializeConversation,
+} from "@earendil-works/pi-coding-agent";
 
 import {
   createInspectionGameToolDefinitions,
@@ -241,3 +253,298 @@ it.each([
     tool.execute("call:watch", watchInput, undefined, undefined, {} as never),
   ).rejects.toThrow();
 });
+
+it.each(["game_watch", "game_stop"] as const)(
+  "sends compact %s content through Pi's actual provider and compaction serializers while retaining canonical details",
+  async (toolName) => {
+    const records = [
+      {
+        sequence: 1,
+        sample: { processFrame: 10, physicsTick: 8 },
+        targets: [
+          {
+            target: launchOutput.root,
+            values: [
+              {
+                name: "value",
+                status: "missing",
+                message: "Temporarily absent",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        sequence: 2,
+        sample: { processFrame: 10, physicsTick: 9 },
+        targets: [
+          {
+            target: launchOutput.root,
+            values: [{ name: "value", status: "success", value: 105 }],
+          },
+        ],
+      },
+    ];
+    const page = InspectionWatchReadOutputV1Schema.parse({
+      ...watchResponse.output,
+      status: "stopped",
+      stopReason: "sample_count",
+      recordedCount: 2,
+      records,
+      nextSequence: 2,
+      bytesUsed: records.reduce(
+        (total, record) => total + inspectionWatchRecordBytesV1(record),
+        0,
+      ),
+    });
+    const stopOutput = {
+      schemaVersion: 1,
+      executionId: page.executionId,
+      recordPath: "/records/run.json",
+      record: {
+        schemaVersion: 1,
+        executionId: page.executionId,
+        sourceSha256: null,
+        observedSourceSha256: null,
+        sourceUnchanged: null,
+        mainScene: null,
+        engineVersion: null,
+        startedAt: "2026-09-06T00:00:00.000Z",
+        endedAt: "2026-09-06T00:00:01.000Z",
+        status: "exited",
+        exitCode: 0,
+        signal: null,
+        import: null,
+        run: null,
+        stderr: "",
+        stderrTruncated: false,
+        error: null,
+        watch: {
+          state: {
+            schemaVersion: page.schemaVersion,
+            executionId: page.executionId,
+            watchId: page.watchId,
+            phase: page.phase,
+            status: page.status,
+            stopReason: page.stopReason,
+            sampleCount: page.sampleCount,
+            recordedCount: page.recordedCount,
+            boundTargets: page.boundTargets,
+          },
+          records,
+          deliveryComplete: true,
+        },
+      },
+    };
+    const response = {
+      schemaVersion: 1,
+      outcome: "success",
+      output: toolName === "game_watch" ? page : stopOutput,
+    };
+    const original = structuredClone(response);
+    const tool = createInspectionGameToolDefinitions({
+      invoke: () => Promise.resolve(response),
+    }).find(({ name }) => name === toolName)!;
+    const input =
+      toolName === "game_watch"
+        ? watchInput
+        : { schemaVersion: 1, executionId: page.executionId };
+    const result = await tool.execute(
+      "call_watch_1",
+      input,
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(result.details).toEqual(original);
+    expect(response).toEqual(original);
+    expect(result.content).toHaveLength(1);
+    const block = result.content[0];
+    if (block?.type !== "text")
+      throw new Error("Expected compact text content");
+    expect(
+      block.text.startsWith(
+        toolName === "game_watch" ? "game_watch read\n" : "game_stop\n",
+      ),
+    ).toBe(true);
+    expect(block.text).not.toBe(JSON.stringify(response, null, 2));
+    const header: unknown = JSON.parse(block.text.split("\n")[1]!);
+    const { records: headerRecords, ...pageHeader } = page;
+    expect(headerRecords).toHaveLength(2);
+    const stopHeader = structuredClone(stopOutput);
+    Reflect.deleteProperty(stopHeader.record.watch, "records");
+    expect(header).toEqual({
+      schemaVersion: 1,
+      outcome: "success",
+      output: toolName === "game_watch" ? pageHeader : stopHeader,
+    });
+    if (toolName === "game_stop") {
+      const repeated = await tool.execute(
+        "call_stop_again",
+        input,
+        undefined,
+        undefined,
+        {} as never,
+      );
+      expect(repeated).toEqual(result);
+      const withoutWatch = structuredClone(stopOutput);
+      Reflect.deleteProperty(withoutWatch.record, "watch");
+      const plainResponse = {
+        schemaVersion: 1,
+        outcome: "success",
+        output: withoutWatch,
+      };
+      const plainTool = createInspectionGameToolDefinitions({
+        invoke: () => Promise.resolve(plainResponse),
+      }).find(({ name }) => name === "game_stop")!;
+      const plainResult = await plainTool.execute(
+        "call_stop_plain",
+        input,
+        undefined,
+        undefined,
+        {} as never,
+      );
+      expect(plainResult.details).toEqual(plainResponse);
+      expect(plainResult.content).toEqual([
+        { type: "text", text: JSON.stringify(plainResponse, null, 2) },
+      ]);
+    }
+
+    const message: ToolResultMessage<unknown> = {
+      role: "toolResult",
+      toolCallId: "call_watch_1",
+      toolName,
+      content: result.content,
+      details: result.details,
+      isError: false,
+      timestamp: 1,
+    };
+    const messages = convertToLlm([message]);
+    // The intermediate SDK context retains details; only provider serialization
+    // decides the visible payload. No ModelRuntime, credentials or stream calls.
+    expect(messages[0]).toBe(message);
+    const model: Model<"openai-codex-responses"> = {
+      id: "offline-contract",
+      name: "Offline serializer contract",
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      baseUrl: "https://example.invalid",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 272000,
+      maxTokens: 100,
+    };
+    const payload = convertResponsesMessages(
+      model,
+      { messages },
+      new Set(["openai-codex"]),
+      { includeSystemPrompt: false },
+    );
+    expect(payload).toEqual([
+      {
+        type: "function_call_output",
+        call_id: "call_watch_1",
+        output: block.text,
+      },
+    ]);
+    // Keep this fixture below Pi's independent 2,000-character summary limit.
+    if (toolName === "game_watch") {
+      expect(block.text.length).toBeLessThan(2000);
+      expect(serializeConversation(messages)).toBe(
+        `[Tool result]: ${block.text}`,
+      );
+    }
+    expect(
+      serializeConversation(
+        convertToLlm([
+          { ...message, details: { unused: "CANONICAL_DETAILS_ONLY" } },
+        ]),
+      ),
+    ).toBe(serializeConversation(messages));
+    expect(
+      estimateTokens({ ...message, details: { unused: "x".repeat(100000) } }),
+    ).toBe(estimateTokens(message));
+  },
+);
+
+it.each(["start", "stop"] as const)(
+  "keeps watch %s content in the original JSON form",
+  async (action) => {
+    const response = InspectionToolResponseV1Schema.parse({
+      schemaVersion: 1,
+      outcome: "success",
+      output: {
+        schemaVersion: 1,
+        executionId: watchInput.executionId,
+        watchId: watchInput.watchId,
+        action,
+        phase: watchResponse.output.phase,
+        status: action === "start" ? "sampling" : "stopped",
+        stopReason: action === "start" ? null : "stopped",
+        sampleCount: 2,
+        recordedCount: 0,
+        boundTargets: watchResponse.output.boundTargets,
+      },
+    });
+    const input =
+      action === "start"
+        ? {
+            schemaVersion: 1,
+            executionId: watchInput.executionId,
+            action,
+            targets: [{ target: { path: "." }, names: ["value"] }],
+            sampleCount: 2,
+          }
+        : {
+            schemaVersion: 1,
+            executionId: watchInput.executionId,
+            action,
+            watchId: watchInput.watchId,
+          };
+    const tool = createInspectionGameToolDefinitions({
+      invoke: () => Promise.resolve(response),
+    }).find(({ name }) => name === "game_watch")!;
+    const result = await tool.execute(
+      "call_watch",
+      input,
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(result.details).toEqual(response);
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify(response, null, 2) },
+    ]);
+  },
+);
+
+it.each(["game_watch", "game_stop"] as const)(
+  "keeps a %s failure in the original JSON form without inventing records",
+  async (toolName) => {
+    const response = {
+      schemaVersion: 1,
+      outcome: "error",
+      error: {
+        code: "execution_exited",
+        message: "No further observations were acquired",
+      },
+    };
+    const tool = createInspectionGameToolDefinitions({
+      invoke: () => Promise.resolve(response),
+    }).find(({ name }) => name === toolName)!;
+    const result = await tool.execute(
+      "call_watch",
+      toolName === "game_watch"
+        ? watchInput
+        : { schemaVersion: 1, executionId: watchInput.executionId },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(result.details).toEqual(response);
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify(response, null, 2) },
+    ]);
+  },
+);

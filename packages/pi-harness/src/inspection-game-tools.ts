@@ -15,6 +15,10 @@ import {
   ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
   type ProjectEnvironmentToolCallAdmissionV1,
 } from "./project-environment-tool-call-budget.js";
+import {
+  formatInspectionStopText,
+  formatInspectionWatchReadText,
+} from "./inspection-watch-text.js";
 
 export interface InspectionGameToolPortRequestV1 {
   readonly schemaVersion: 1;
@@ -104,7 +108,20 @@ export function createInspectionGameToolDefinitions(
           }
           return {
             content: [
-              { type: "text", text: JSON.stringify(response, null, 2) },
+              {
+                type: "text",
+                text:
+                  metadata.name === "game_watch" &&
+                  response.outcome === "success" &&
+                  "action" in response.output &&
+                  response.output.action === "read"
+                    ? formatInspectionWatchReadText(response.output)
+                    : metadata.name === "game_stop" &&
+                        response.outcome === "success" &&
+                        "record" in response.output
+                      ? formatInspectionStopText(response.output)
+                      : JSON.stringify(response, null, 2),
+              },
             ],
             details: response,
           };

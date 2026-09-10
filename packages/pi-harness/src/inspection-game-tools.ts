@@ -15,6 +15,10 @@ import {
   ProjectEnvironmentToolCallBudgetExhaustedErrorV1,
   type ProjectEnvironmentToolCallAdmissionV1,
 } from "./project-environment-tool-call-budget.js";
+import {
+  formatInspectionStopText,
+  formatInspectionWatchReadText,
+} from "./inspection-watch-text.js";
 
 export interface InspectionGameToolPortRequestV1 {
   readonly schemaVersion: 1;
@@ -89,10 +93,35 @@ export function createInspectionGameToolDefinitions(
                 "Inspection response did not match its query",
               );
             }
+            if (
+              metadata.name === "game_watch" &&
+              "action" in normalizedInput &&
+              "action" in response.output &&
+              (response.output.action !== normalizedInput.action ||
+                ("watchId" in normalizedInput &&
+                  response.output.watchId !== normalizedInput.watchId))
+            ) {
+              throw new TypeError(
+                "Inspection response did not match its watch request",
+              );
+            }
           }
           return {
             content: [
-              { type: "text", text: JSON.stringify(response, null, 2) },
+              {
+                type: "text",
+                text:
+                  metadata.name === "game_watch" &&
+                  response.outcome === "success" &&
+                  "action" in response.output &&
+                  response.output.action === "read"
+                    ? formatInspectionWatchReadText(response.output)
+                    : metadata.name === "game_stop" &&
+                        response.outcome === "success" &&
+                        "record" in response.output
+                      ? formatInspectionStopText(response.output)
+                      : JSON.stringify(response, null, 2),
+              },
             ],
             details: response,
           };

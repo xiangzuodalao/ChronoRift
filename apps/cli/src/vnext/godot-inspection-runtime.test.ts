@@ -14,7 +14,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   InspectionRunRecordV1Schema,
   InspectionToolResponseV1Schema,
+  InspectionWatchOutputV1Schema,
+  paginateInspectionWatchArchiveV1,
   type InspectionToolNameV1,
+  type InspectionWatchArchiveV1,
 } from "@chronorift/domain";
 import {
   GODOT_INSPECTION_PROTOCOL_V1,
@@ -48,6 +51,7 @@ interface FakeExecution {
     readonly sourceChanged?: boolean;
     readonly sourceInvalid?: boolean;
     readonly noTerminal?: boolean;
+    readonly noWatchFinal?: boolean;
   }): Promise<void>;
 }
 
@@ -64,6 +68,8 @@ describe("GodotInspectionRuntime", () => {
     | "missing_object"
     | "wrong_execution"
     | "no_ready";
+  let watchBehavior: "normal" | "pending" | "invalid";
+  let onWatchRequest: (() => void) | undefined;
   const executions: FakeExecution[] = [];
 
   beforeEach(async () => {
@@ -73,6 +79,8 @@ describe("GodotInspectionRuntime", () => {
     importMode = "normal";
     importStarted = false;
     behavior = "normal";
+    watchBehavior = "normal";
+    onWatchRequest = undefined;
     await mkdir(candidate);
     await writeFile(
       join(candidate, "project.godot"),
@@ -142,6 +150,7 @@ describe("GodotInspectionRuntime", () => {
           const stderr = new PassThrough();
           let sequence = 0;
           let finished = false;
+          let watch: InspectionWatchArchiveV1 | undefined;
           let resolve!: (result: SrtCommandResult) => void;
           const completion = new Promise<SrtCommandResult>((done) => {
             resolve = done;
@@ -173,6 +182,15 @@ describe("GodotInspectionRuntime", () => {
                 join(request.projectStagePath, "main.tscn"),
               );
             }
+            if (
+              watch !== undefined &&
+              !options.noTerminal &&
+              !options.noWatchFinal
+            )
+              emit({
+                kind: "watch_final",
+                payload: { ...watch, deliveryComplete: true },
+              });
             if (!options.noTerminal)
               emit({
                 kind: "terminated",
@@ -211,6 +229,93 @@ describe("GodotInspectionRuntime", () => {
             for (const json of decoder.push(chunk)) {
               const command = JSON.parse(json) as GodotInspectionMessageV1;
               if (command.kind === "stop") void finish();
+              if (command.kind === "watch") {
+                onWatchRequest?.();
+                if (watchBehavior === "pending") continue;
+                if (watchBehavior === "invalid") {
+                  stdout.write(Buffer.from([0, 0, 0, 1, 0xff]));
+                  continue;
+                }
+                const input = command.payload;
+                if (input.action === "start" && watch === undefined) {
+                  watch = {
+                    state: {
+                      schemaVersion: 1,
+                      executionId,
+                      watchId: `${executionId}.watch.1`,
+                      phase: "physics_frame_signal_before_node_physics_process",
+                      status: "stopped",
+                      stopReason: "sample_count",
+                      sampleCount: input.sampleCount,
+                      recordedCount: 1,
+                      boundTargets: input.targets.map((entry) => ({
+                        target,
+                        names: entry.names,
+                      })),
+                    },
+                    records: [
+                      {
+                        sequence: 1,
+                        sample: { processFrame: 10, physicsTick: 9 },
+                        targets: input.targets.map((entry) => ({
+                          target,
+                          values: entry.names.map((name) => ({
+                            name,
+                            status: "success" as const,
+                            value: 12,
+                          })),
+                        })),
+                      },
+                    ],
+                    deliveryComplete: false,
+                  };
+                  emit({
+                    kind: "watch_result",
+                    requestId: command.requestId,
+                    payload: {
+                      ...watch.state,
+                      status: "sampling",
+                      stopReason: null,
+                      recordedCount: 0,
+                      action: "start",
+                    },
+                  });
+                } else if (
+                  watch === undefined ||
+                  ("watchId" in input && input.watchId !== watch.state.watchId)
+                ) {
+                  emit({
+                    kind: "error",
+                    requestId: command.requestId,
+                    payload: {
+                      code: "object_not_found",
+                      message: "Unknown watch",
+                    },
+                  });
+                } else if (input.action === "start") {
+                  emit({
+                    kind: "error",
+                    requestId: command.requestId,
+                    payload: {
+                      code: "busy",
+                      message: "One window per Execution",
+                    },
+                  });
+                } else {
+                  emit({
+                    kind: "watch_result",
+                    requestId: command.requestId,
+                    payload:
+                      input.action === "read"
+                        ? paginateInspectionWatchArchiveV1(
+                            { ...watch, deliveryComplete: true },
+                            input,
+                          )
+                        : { ...watch.state, action: "stop" },
+                  });
+                }
+                continue;
+              }
               if (command.kind !== "query") continue;
               if (behavior === "no_query") continue;
               if (behavior === "bad_query") {
@@ -597,5 +702,161 @@ describe("GodotInspectionRuntime", () => {
       error: { code: "invalid_request" },
     });
     expect(executions).toHaveLength(0);
+  });
+
+  const startWatch = async (executionId: string) => {
+    const response = await invoke("game_watch", {
+      schemaVersion: 1,
+      executionId,
+      action: "start",
+      targets: [{ target: { path: "." }, names: ["width"] }],
+      sampleCount: 1,
+    });
+    if (response.outcome !== "success")
+      throw new Error(JSON.stringify(response));
+    return InspectionWatchOutputV1Schema.parse(response.output);
+  };
+  const readWatch = (
+    executionId: string,
+    watchId: string,
+    signal?: AbortSignal,
+  ) =>
+    invoke(
+      "game_watch",
+      { schemaVersion: 1, executionId, watchId, action: "read" },
+      signal,
+    );
+
+  it("retains the final watch, reads after exit, and rejects cross-execution watch IDs", async () => {
+    const first = await launch();
+    const watch = await startWatch(first.executionId);
+    const stopInput = {
+      schemaVersion: 1,
+      executionId: first.executionId,
+      watchId: watch.watchId,
+      action: "stop",
+    };
+    expect(await invoke("game_watch", stopInput)).toEqual(
+      await invoke("game_watch", stopInput),
+    );
+    expect(runtime.records()).toHaveLength(0);
+    await expect(startWatch(first.executionId)).rejects.toThrow("busy");
+    await invoke("game_stop", {
+      schemaVersion: 1,
+      executionId: first.executionId,
+    });
+    const record = runtime.records()[0]!;
+    expect(record.watch).toMatchObject({
+      deliveryComplete: true,
+      records: [{ sequence: 1 }],
+    });
+    expect(await readWatch(first.executionId, watch.watchId)).toMatchObject({
+      outcome: "success",
+      output: {
+        deliveryComplete: true,
+        records: [{ sequence: 1 }],
+        nextSequence: 1,
+      },
+    });
+    expect(await invoke("game_watch", stopInput)).toMatchObject({
+      outcome: "success",
+    });
+    expect(
+      JSON.parse(await readFile(runtime.recordPaths()[0]!, "utf8")),
+    ).toEqual(record);
+    const second = await launch();
+    await startWatch(second.executionId);
+    expect(await readWatch(second.executionId, watch.watchId)).toMatchObject({
+      outcome: "error",
+      error: { code: "object_not_found" },
+    });
+    expect(await readWatch("foreign", watch.watchId)).toMatchObject({
+      outcome: "error",
+      error: { code: "execution_not_found" },
+    });
+    expect(runtime.records()).toHaveLength(1);
+  });
+
+  it.each([false, true])(
+    "preserves only retrieved watch records on abrupt exit (page read=%s)",
+    async (readPage) => {
+      const run = await launch();
+      const watch = await startWatch(run.executionId);
+      if (readPage) await readWatch(run.executionId, watch.watchId);
+      await executions[0]!.finish({ code: 7, noWatchFinal: true });
+      await invoke("game_stop", {
+        schemaVersion: 1,
+        executionId: run.executionId,
+      });
+      expect(runtime.records()[0]?.watch).toMatchObject({
+        deliveryComplete: false,
+      });
+      expect(runtime.records()[0]?.watch?.records).toHaveLength(
+        readPage ? 1 : 0,
+      );
+      expect(await readWatch(run.executionId, watch.watchId)).toMatchObject({
+        outcome: "success",
+        output: { deliveryComplete: false },
+      });
+    },
+  );
+
+  it.each(["cancel", "timeout", "invalid", "close"] as const)(
+    "cleans up a pending/invalid watch on %s",
+    async (mode) => {
+      const run = await launch();
+      const watch = await startWatch(run.executionId);
+      await readWatch(run.executionId, watch.watchId);
+      watchBehavior = mode === "invalid" ? "invalid" : "pending";
+      const requested = new Promise<void>((resolve) => {
+        onWatchRequest = resolve;
+      });
+      const abort = new AbortController();
+      const pending = readWatch(run.executionId, watch.watchId, abort.signal);
+      await requested;
+      if (mode === "cancel") abort.abort();
+      if (mode === "close") await runtime.close();
+      expect(await pending).toMatchObject({ outcome: "error" });
+      await runtime.close();
+      const record = runtime.records()[0]!;
+      expect(record.watch?.records).toHaveLength(1);
+      expect(record.watch?.deliveryComplete).toBe(mode === "close");
+      if (mode !== "close")
+        expect(record.error?.code).toBe(
+          mode === "cancel"
+            ? "cancelled"
+            : mode === "timeout"
+              ? "query_timeout"
+              : "protocol_error",
+        );
+      expect(record.sourceUnchanged).toBe(true);
+      await expect(
+        readFile(join(executions[0]!.request.projectStagePath, "main.tscn")),
+      ).rejects.toThrow();
+    },
+  );
+
+  it("retains complete final delivery when a normal exit interrupts a watch read", async () => {
+    const run = await launch();
+    const watch = await startWatch(run.executionId);
+    watchBehavior = "pending";
+    const requested = new Promise<void>((resolve) => {
+      onWatchRequest = resolve;
+    });
+    const pending = readWatch(run.executionId, watch.watchId);
+    await requested;
+    await executions[0]!.finish();
+    expect(await pending).toMatchObject({
+      outcome: "error",
+      error: { code: "execution_exited" },
+    });
+    expect(runtime.records()[0]).toMatchObject({
+      error: null,
+      watch: { deliveryComplete: true, records: [{ sequence: 1 }] },
+    });
+    expect(await readWatch(run.executionId, watch.watchId)).toMatchObject({
+      outcome: "success",
+      output: { deliveryComplete: true, records: [{ sequence: 1 }] },
+    });
   });
 });

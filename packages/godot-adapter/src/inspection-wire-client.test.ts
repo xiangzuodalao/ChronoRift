@@ -265,3 +265,330 @@ describe("generic Godot inspection wire client", () => {
     },
   );
 });
+
+const watchStart = {
+  schemaVersion: 1,
+  executionId: "execution.test",
+  action: "start",
+  targets: [{ target: { path: "." }, names: ["value"] }],
+  sampleCount: 2,
+};
+const watchState = {
+  schemaVersion: 1,
+  executionId: "execution.test",
+  watchId: "execution.test.watch.1",
+  phase: "physics_frame_signal_before_node_physics_process",
+  status: "sampling",
+  stopReason: null,
+  sampleCount: 2,
+  recordedCount: 0,
+  boundTargets: [{ target: root, names: ["value"] }],
+};
+const watchRecord = (sequence: number) => ({
+  sequence,
+  sample: { processFrame: 8 + sequence, physicsTick: 4 + sequence },
+  targets: [
+    {
+      target: root,
+      values: [{ name: "value", status: "success", value: "值".repeat(100) }],
+    },
+  ],
+});
+const watchRead = {
+  schemaVersion: 1,
+  executionId: "execution.test",
+  watchId: watchState.watchId,
+  action: "read",
+};
+const watchStopped = {
+  ...watchState,
+  status: "stopped",
+  stopReason: "sample_count",
+  recordedCount: 2,
+};
+const watchPage = (records: ReturnType<typeof watchRecord>[]) => ({
+  ...watchStopped,
+  action: "read",
+  records,
+  nextSequence: records.at(-1)?.sequence ?? 0,
+  bytesUsed: records.reduce(
+    (total, record) => total + Buffer.byteLength(JSON.stringify(record)),
+    0,
+  ),
+  requiredByteBudget: null,
+  deliveryComplete: true,
+});
+const registerWatch = async (connection: ReturnType<typeof fixture>) => {
+  const pending = connection.client.watch(watchStart);
+  connection.send({
+    kind: "watch_result",
+    requestId: connection.writes.at(-1)?.requestId,
+    payload: { ...watchState, action: "start" },
+  });
+  expect(await pending).toMatchObject({ action: "start", recordedCount: 0 });
+};
+
+describe("bounded watch wire delivery", () => {
+  it("registers immediately, pages in order, and captures the complete final archive before termination", async () => {
+    const connection = fixture();
+    const { client, send, writes } = connection;
+    try {
+      await registerWatch(connection);
+      expect(writes[0]).toMatchObject({
+        kind: "watch",
+        payload: { clock: "physics_tick" },
+      });
+      expect(client.capturedWatch).toMatchObject({
+        records: [],
+        deliveryComplete: false,
+      });
+      const reading = client.watch(watchRead);
+      send({
+        kind: "watch_result",
+        requestId: writes.at(-1)?.requestId,
+        payload: watchPage([watchRecord(1)]),
+      });
+      expect((await reading).action).toBe("read");
+      send({
+        kind: "watch_final",
+        payload: {
+          state: watchStopped,
+          records: [watchRecord(1), watchRecord(2)],
+          deliveryComplete: true,
+        },
+      });
+      send({ kind: "terminated", payload: { import: null, run: null } });
+      await client.termination;
+      expect(client.capturedWatch).toEqual({
+        state: watchStopped,
+        records: [watchRecord(1), watchRecord(2)],
+        deliveryComplete: true,
+      });
+      const snapshot = client.capturedWatch!;
+      snapshot.records.length = 0;
+      expect(client.capturedWatch?.records).toHaveLength(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("retains only acquired pages on abnormal EOF and rejects pending reads on cleanup", async () => {
+    const connection = fixture();
+    const { client, send, writes, readable } = connection;
+    await registerWatch(connection);
+    const reading = client.watch({ ...watchRead, afterSequence: 1 });
+    send({
+      kind: "watch_result",
+      requestId: writes.at(-1)?.requestId,
+      payload: watchPage([watchRecord(2)]),
+    });
+    await reading;
+    const pending = client.watch(watchRead);
+    readable.end();
+    await expect(pending).rejects.toThrow("ended");
+    await expect(client.termination).rejects.toThrow("ended");
+    expect(client.capturedWatch).toMatchObject({
+      records: [watchRecord(2)],
+      deliveryComplete: false,
+    });
+    await client.close();
+    await client.close();
+  });
+
+  it("retains actual samples when explicit connection cancellation rejects a pending request", async () => {
+    const connection = fixture();
+    await registerWatch(connection);
+    const pending = connection.client.watch(watchRead);
+    await connection.client.close();
+    await expect(pending).rejects.toThrow("closed");
+    expect(connection.client.capturedWatch).toMatchObject({
+      records: [],
+      deliveryComplete: false,
+    });
+  });
+
+  it("recovers a late delivered page after request timeout without inventing missing records", async () => {
+    const connection = fixture();
+    const { client, send, writes } = connection;
+    try {
+      await registerWatch(connection);
+      const pending = client.watch(watchRead, 1);
+      const requestId = writes.at(-1)?.requestId;
+      await expect(pending).rejects.toThrow("timed out");
+      send({
+        kind: "watch_result",
+        requestId,
+        payload: watchPage([watchRecord(1)]),
+      });
+      expect(client.capturedWatch).toMatchObject({
+        records: [watchRecord(1)],
+        deliveryComplete: false,
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it.each([
+    { label: "execution", fields: { executionId: "execution.other" } },
+    { label: "watch", fields: { watchId: "execution.test.watch.2" } },
+    { label: "action", fields: { action: "stop" } },
+    { label: "incorrect byte count", fields: { bytesUsed: 1 } },
+    { label: "incorrect cursor", fields: { nextSequence: 2 } },
+    {
+      label: "duplicate sequence",
+      fields: { records: [watchRecord(1), watchRecord(1)] },
+    },
+  ])(
+    "fails closed on mismatched $label and retains the last validated archive",
+    async ({ fields }) => {
+      const connection = fixture();
+      const { client, send, writes } = connection;
+      try {
+        await registerWatch(connection);
+        const pending = client.watch(watchRead);
+        send({
+          kind: "watch_result",
+          requestId: writes.at(-1)?.requestId,
+          payload: { ...watchPage([watchRecord(1)]), ...fields },
+        });
+        await expect(pending).rejects.toThrow();
+        expect(client.capturedWatch).toMatchObject({
+          records: [],
+          deliveryComplete: false,
+        });
+      } finally {
+        await client.close();
+      }
+    },
+  );
+
+  it("rejects a page exceeding the requested UTF-8 budget even inside the global limit", async () => {
+    const connection = fixture();
+    try {
+      await registerWatch(connection);
+      const pending = connection.client.watch({
+        ...watchRead,
+        byteBudget: 256,
+      });
+      connection.send({
+        kind: "watch_result",
+        requestId: connection.writes.at(-1)?.requestId,
+        payload: watchPage([watchRecord(1)]),
+      });
+      await expect(pending).rejects.toThrow("budget");
+    } finally {
+      await connection.client.close();
+    }
+  });
+
+  it("rejects cross-execution final records and historical rewrites", async () => {
+    const connection = fixture();
+    try {
+      await registerWatch(connection);
+      const pending = connection.client.watch(watchRead);
+      connection.send({
+        kind: "watch_result",
+        requestId: connection.writes.at(-1)?.requestId,
+        payload: watchPage([watchRecord(1)]),
+      });
+      await pending;
+      connection.send({
+        kind: "watch_final",
+        payload: {
+          state: { ...watchStopped, executionId: "execution.other" },
+          records: [watchRecord(1), watchRecord(2)],
+          deliveryComplete: true,
+        },
+      });
+      await expect(connection.client.termination).rejects.toThrow("match");
+      expect(connection.client.capturedWatch?.records).toEqual([
+        watchRecord(1),
+      ]);
+    } finally {
+      await connection.client.close();
+    }
+    const other = fixture();
+    try {
+      await registerWatch(other);
+      const pending = other.client.watch(watchRead);
+      other.send({
+        kind: "watch_result",
+        requestId: other.writes.at(-1)?.requestId,
+        payload: watchPage([watchRecord(1)]),
+      });
+      await pending;
+      const altered = {
+        ...watchRecord(1),
+        sample: { processFrame: 100, physicsTick: 100 },
+      };
+      const next = other.client.watch(watchRead);
+      other.send({
+        kind: "watch_result",
+        requestId: other.writes.at(-1)?.requestId,
+        payload: watchPage([altered]),
+      });
+      await expect(next).rejects.toThrow("already delivered");
+      expect(other.client.capturedWatch?.records).toEqual([watchRecord(1)]);
+    } finally {
+      await other.client.close();
+    }
+  });
+
+  it("allows idempotent watch stop without terminating the execution", async () => {
+    const connection = fixture();
+    try {
+      await registerWatch(connection);
+      for (let count = 0; count < 2; count++) {
+        const pending = connection.client.watch({
+          ...watchRead,
+          action: "stop",
+        });
+        connection.send({
+          kind: "watch_result",
+          requestId: connection.writes.at(-1)?.requestId,
+          payload: {
+            ...watchState,
+            action: "stop",
+            status: "stopped",
+            stopReason: "stopped",
+          },
+        });
+        expect(await pending).toMatchObject({
+          action: "stop",
+          status: "stopped",
+        });
+      }
+      expect(
+        connection.writes.every((message) => message.kind === "watch"),
+      ).toBe(true);
+    } finally {
+      await connection.client.close();
+    }
+  });
+});
+
+it("fails the connection and pending watch waiters immediately when transport writing fails", async () => {
+  const readable = new PassThrough();
+  let writes = 0;
+  const client = new GodotInspectionWireClient({
+    readable,
+    write: () => {
+      writes += 1;
+      return Promise.reject(new Error("transport rejected write"));
+    },
+    close: async () => {
+      readable.end();
+    },
+  });
+  await expect(client.watch(watchStart)).rejects.toThrow(
+    "transport rejected write",
+  );
+  await expect(client.termination).rejects.toThrow("transport rejected write");
+  await expect(client.watch(watchStart)).rejects.toThrow(
+    "transport rejected write",
+  );
+  expect(writes).toBe(1);
+  expect(client.capturedWatch).toBeUndefined();
+  await client.close();
+});

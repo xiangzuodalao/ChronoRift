@@ -33,6 +33,16 @@ export const INSPECTION_GAME_TOOL_DEFINITIONS_V1: readonly InspectionGameToolMet
       }),
     },
     {
+      name: "game_watch",
+      label: "Sample game properties",
+      description:
+        "Start, read, or stop one bounded observation window per execution. Start binds 1–4 path/objectRef targets with 1–8 exact property names each and immediately returns a watchId; samples 1–256 physics ticks inside the observer, at physics_frame signal before node physics processing (not frame end). Paths remain bound to the original object. Read pages records after a sequence with a byte budget, retaining object identities, actual clocks and per-property errors; stop only stops sampling and is idempotent. Getters may have side effects. Buffers are bounded and stop with an explicit reason. No expressions or method calls.",
+      parameters: Type.Unsafe({
+        type: "object",
+        ...INSPECTION_INPUT_JSON_SCHEMAS_V1.game_watch,
+      }),
+    },
+    {
       name: "game_stop",
       label: "Stop game inspection",
       description:

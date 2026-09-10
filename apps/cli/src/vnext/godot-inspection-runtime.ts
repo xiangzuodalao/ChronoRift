@@ -11,11 +11,15 @@ import {
   InspectionStopOutputV1Schema,
   InspectionStopInputV1Schema,
   InspectionToolResponseV1Schema,
+  InspectionWatchInputV1Schema,
+  InspectionWatchOutputV1Schema,
+  paginateInspectionWatchArchiveV1,
   type InspectionErrorV1,
   type InspectionProcessResultV1,
   type InspectionQueryInputV1,
   type InspectionRunRecordV1,
   type InspectionToolResponseV1,
+  type InspectionWatchInputV1,
 } from "@chronorift/domain";
 import {
   GODOT_INSPECTION_OVERLAY_FILES_V1,
@@ -176,6 +180,11 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
           } else if (request.toolName === "game_query") {
             output = await this.query(
               InspectionQueryInputV1Schema.parse(request.input),
+              signal,
+            );
+          } else if (request.toolName === "game_watch") {
+            output = await this.watch(
+              InspectionWatchInputV1Schema.parse(request.input),
               signal,
             );
           } else {
@@ -431,6 +440,70 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
     }
   }
 
+  private async watch(
+    input: InspectionWatchInputV1,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const execution = this.lookup(input.executionId);
+    // Read the immutable saved evidence after exit, including partial pages
+    // actually received before a broken connection. Never fabricate a tail.
+    if (execution.record !== null || execution !== this.#active) {
+      if (input.action === "start")
+        throw failure("execution_exited", "Cannot register a watch after exit");
+      const archive = execution.record?.watch;
+      if (archive === undefined || archive.state.watchId !== input.watchId)
+        throw failure(
+          "object_not_found",
+          "Watch does not belong to this execution",
+        );
+      return input.action === "read"
+        ? paginateInspectionWatchArchiveV1(archive, input)
+        : InspectionWatchOutputV1Schema.parse({
+            ...archive.state,
+            action: "stop",
+          });
+    }
+    if (execution.client === null)
+      throw failure(
+        "runtime_unavailable",
+        "Inspection connection is unavailable",
+      );
+    try {
+      return await this.withCancellation(
+        execution,
+        execution.client.watch(input, this.#bounds.queryTimeoutMs),
+        signal,
+      );
+    } catch (error) {
+      if (
+        (execution.stopping !== null || execution.terminated !== null) &&
+        execution.error === null
+      ) {
+        await this.stop(execution);
+        throw failure(
+          "execution_exited",
+          "Execution stopped while the watch operation was pending",
+        );
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      for (const code of [
+        "object_not_found",
+        "execution_mismatch",
+        "invalid_request",
+        "budget_exhausted",
+        "busy",
+      ] as const) {
+        if (message.startsWith(`${code}:`)) throw failure(code, message);
+      }
+      execution.error ??= errorDetail(
+        error,
+        /timed out/iu.test(message) ? "query_timeout" : "protocol_error",
+      );
+      await this.stop(execution);
+      throw new InspectionFailure(execution.error);
+    }
+  }
+
   private async withCancellation<T>(
     execution: Execution,
     operation: Promise<T>,
@@ -519,6 +592,28 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
     const process =
       result?.process ?? observedProcess ?? execution.importProcess;
     const stderr = process?.stderr ?? "";
+    const capturedWatch = execution.client?.capturedWatch;
+    const watch =
+      capturedWatch === undefined
+        ? undefined
+        : {
+            ...capturedWatch,
+            state:
+              capturedWatch.state.status === "sampling"
+                ? {
+                    ...capturedWatch.state,
+                    status: "stopped",
+                    stopReason: "execution_exit",
+                  }
+                : capturedWatch.state,
+            deliveryComplete:
+              capturedWatch.deliveryComplete &&
+              execution.error === null &&
+              execution.terminated?.run?.exitCode === 0 &&
+              execution.terminated.run.signal === null &&
+              !execution.terminated.run.timedOut &&
+              process?.status === "exited",
+          };
     const record = InspectionRunRecordV1Schema.parse({
       schemaVersion: 1,
       executionId: execution.executionId,
@@ -542,6 +637,7 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
       stderrTruncated:
         (process?.stderrTruncated ?? false) || stderr.length > 64 * 1_024,
       error: execution.error,
+      ...(watch === undefined ? {} : { watch }),
     });
     try {
       await mkdir(this.options.artifactsDirectory, {

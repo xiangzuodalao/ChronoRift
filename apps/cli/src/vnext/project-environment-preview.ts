@@ -356,6 +356,7 @@ const inspectionInstructions = [
   "- game_launch imports and starts the current candidate's default main scene in a separate, read-only stage.",
   "- One execution can run at a time. Editing candidate files does not change a running execution; stop it before launching a new one.",
   "- game_query inspects current children, property descriptions, or explicitly named property values. Object references belong only to their execution.",
+  "- game_watch starts one finite physics_tick window per execution, reads retained records by sequence and byte budget, or stops only sampling. Its physics_frame signal phase is before node physics callbacks, not frame end. Register before the event; it cannot recover unobserved history.",
   "- Object and Resource references preserve identity; equal field values do not imply the same object.",
   "- Queries may invoke project property getters and do not provide atomic snapshots or past history.",
   "- Runtime observations and process completion do not decide whether a fix is correct.",

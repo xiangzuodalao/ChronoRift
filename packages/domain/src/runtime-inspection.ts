@@ -68,9 +68,84 @@ export const InspectionStopInputV1Schema = z
   .strict();
 export type InspectionStopInputV1 = z.infer<typeof InspectionStopInputV1Schema>;
 
+export const INSPECTION_WATCH_LIMITS_V1 = Object.freeze({
+  maxTargets: 4,
+  maxPropertiesPerTarget: 8,
+  maxRecords: 256,
+  maxBufferBytes: 262_144,
+  maxRecordBytes: 32_768,
+  maxConstructionBytes: 65_536,
+  maxPageBytes: 65_536,
+});
+export const INSPECTION_WATCH_PHASE_V1 =
+  "physics_frame_signal_before_node_physics_process";
+const watchNames = z
+  .array(name)
+  .min(1)
+  .max(INSPECTION_WATCH_LIMITS_V1.maxPropertiesPerTarget)
+  .refine(
+    (names) => new Set(names).size === names.length,
+    "Property names must be unique",
+  )
+  .meta({ uniqueItems: true });
+const watchInputBase = { schemaVersion: z.literal(1), executionId: token };
+export const InspectionWatchStartInputV1Schema = z
+  .object({
+    ...watchInputBase,
+    action: z.literal("start"),
+    targets: z
+      .array(
+        z
+          .object({ target: InspectionTargetV1Schema, names: watchNames })
+          .strict(),
+      )
+      .min(1)
+      .max(INSPECTION_WATCH_LIMITS_V1.maxTargets),
+    sampleCount: z
+      .number()
+      .int()
+      .min(1)
+      .max(INSPECTION_WATCH_LIMITS_V1.maxRecords),
+    clock: z.literal("physics_tick").default("physics_tick"),
+  })
+  .strict();
+export const InspectionWatchReadInputV1Schema = z
+  .object({
+    ...watchInputBase,
+    action: z.literal("read"),
+    watchId: token,
+    afterSequence: counter.default(0),
+    byteBudget: z
+      .number()
+      .int()
+      .min(256)
+      .max(INSPECTION_WATCH_LIMITS_V1.maxPageBytes)
+      .default(INSPECTION_WATCH_LIMITS_V1.maxPageBytes),
+  })
+  .strict();
+export const InspectionWatchStopInputV1Schema = z
+  .object({
+    ...watchInputBase,
+    action: z.literal("stop"),
+    watchId: token,
+  })
+  .strict();
+export const InspectionWatchInputV1Schema = z.discriminatedUnion("action", [
+  InspectionWatchStartInputV1Schema,
+  InspectionWatchReadInputV1Schema,
+  InspectionWatchStopInputV1Schema,
+]);
+export type InspectionWatchInputV1 = z.infer<
+  typeof InspectionWatchInputV1Schema
+>;
+export type InspectionWatchReadInputV1 = z.infer<
+  typeof InspectionWatchReadInputV1Schema
+>;
+
 export const INSPECTION_INPUT_SCHEMAS_V1 = {
   game_launch: InspectionLaunchInputV1Schema,
   game_query: InspectionQueryInputV1Schema,
+  game_watch: InspectionWatchInputV1Schema,
   game_stop: InspectionStopInputV1Schema,
 } as const;
 export type InspectionToolNameV1 = keyof typeof INSPECTION_INPUT_SCHEMAS_V1;
@@ -80,6 +155,7 @@ export type InspectionToolNameV1 = keyof typeof INSPECTION_INPUT_SCHEMAS_V1;
 export const INSPECTION_INPUT_JSON_SCHEMAS_V1 = {
   game_launch: z.toJSONSchema(InspectionLaunchInputV1Schema, { io: "input" }),
   game_query: z.toJSONSchema(InspectionQueryInputV1Schema, { io: "input" }),
+  game_watch: z.toJSONSchema(InspectionWatchInputV1Schema, { io: "input" }),
   game_stop: z.toJSONSchema(InspectionStopInputV1Schema, { io: "input" }),
 } as const;
 
@@ -228,6 +304,272 @@ export const InspectionPropertyValueV1Schema = z.union([
     .strict(),
 ]);
 
+const watchStateShape = {
+  schemaVersion: z.literal(1),
+  executionId: token,
+  watchId: token,
+  phase: z.literal(INSPECTION_WATCH_PHASE_V1),
+  status: z.enum(["sampling", "stopped"]),
+  stopReason: z
+    .enum([
+      "sample_count",
+      "stopped",
+      "record_budget",
+      "construction_budget",
+      "encoded_budget",
+      "execution_exit",
+    ])
+    .nullable(),
+  sampleCount: z
+    .number()
+    .int()
+    .min(1)
+    .max(INSPECTION_WATCH_LIMITS_V1.maxRecords),
+  recordedCount: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(INSPECTION_WATCH_LIMITS_V1.maxRecords),
+  boundTargets: z
+    .array(
+      z
+        .object({ target: InspectionObjectV1Schema, names: watchNames })
+        .strict(),
+    )
+    .min(1)
+    .max(INSPECTION_WATCH_LIMITS_V1.maxTargets),
+};
+const validateWatchState = (state: {
+  status: string;
+  stopReason: string | null;
+  recordedCount: number;
+  sampleCount: number;
+}): boolean =>
+  (state.status === "sampling") === (state.stopReason === null) &&
+  state.recordedCount <= state.sampleCount &&
+  (state.stopReason !== "sample_count" ||
+    state.recordedCount === state.sampleCount);
+export const InspectionWatchStateV1Schema = z
+  .object(watchStateShape)
+  .strict()
+  .refine(
+    validateWatchState,
+    "Watch state must reflect its sampling status and count",
+  );
+export type InspectionWatchStateV1 = z.infer<
+  typeof InspectionWatchStateV1Schema
+>;
+
+/** UTF-8 bytes in a compact JSON record, excluding page separators and envelopes. */
+export const inspectionWatchRecordBytesV1 = (record: unknown): number => {
+  try {
+    const json = JSON.stringify(record);
+    return json === undefined
+      ? Number.POSITIVE_INFINITY
+      : new TextEncoder().encode(json).byteLength;
+  } catch {
+    // Nested value refinements can report continuable issues (cycles or bigint).
+    // Let the enclosing byte-budget refinement reject them without throwing.
+    return Number.POSITIVE_INFINITY;
+  }
+};
+export const InspectionWatchRecordV1Schema = z
+  .object({
+    sequence: z
+      .number()
+      .int()
+      .min(1)
+      .max(INSPECTION_WATCH_LIMITS_V1.maxRecords),
+    sample: InspectionSampleV1Schema,
+    targets: z
+      .array(
+        z
+          .object({
+            target: InspectionObjectV1Schema,
+            values: z
+              .array(InspectionPropertyValueV1Schema)
+              .min(1)
+              .max(INSPECTION_WATCH_LIMITS_V1.maxPropertiesPerTarget),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(INSPECTION_WATCH_LIMITS_V1.maxTargets),
+  })
+  .strict()
+  .refine(
+    (record) =>
+      inspectionWatchRecordBytesV1(record) <=
+      INSPECTION_WATCH_LIMITS_V1.maxRecordBytes,
+    "Watch record exceeds its encoded byte budget",
+  );
+export type InspectionWatchRecordV1 = z.infer<
+  typeof InspectionWatchRecordV1Schema
+>;
+const watchRecords = z
+  .array(InspectionWatchRecordV1Schema)
+  .max(INSPECTION_WATCH_LIMITS_V1.maxRecords);
+export const validateInspectionWatchRecordsV1 = (
+  state: InspectionWatchStateV1,
+  records: readonly InspectionWatchRecordV1[],
+): boolean => {
+  let previous = 0;
+  let previousPhysics = -1;
+  let previousProcess = -1;
+  let bytes = 0;
+  for (const record of records) {
+    if (
+      record.sequence <= previous ||
+      record.sequence > state.recordedCount ||
+      record.sample.physicsTick <= previousPhysics ||
+      record.sample.processFrame < previousProcess ||
+      record.targets.length !== state.boundTargets.length
+    )
+      return false;
+    previous = record.sequence;
+    previousPhysics = record.sample.physicsTick;
+    previousProcess = record.sample.processFrame;
+    bytes += inspectionWatchRecordBytesV1(record);
+    if (bytes > INSPECTION_WATCH_LIMITS_V1.maxBufferBytes) return false;
+    for (const [index, target] of record.targets.entries()) {
+      const bound = state.boundTargets[index]!;
+      if (
+        target.target.objectRef !== bound.target.objectRef ||
+        target.target.className !== bound.target.className ||
+        target.values.length !== bound.names.length ||
+        target.values.some(
+          (value, property) => value.name !== bound.names[property],
+        )
+      )
+        return false;
+    }
+  }
+  return true;
+};
+const watchOutputShape = { ...watchStateShape };
+export const InspectionWatchStartOutputV1Schema = z
+  .object({ ...watchOutputShape, action: z.literal("start") })
+  .strict()
+  .refine(validateWatchState, "Invalid watch state");
+export const InspectionWatchStopOutputV1Schema = z
+  .object({ ...watchOutputShape, action: z.literal("stop") })
+  .strict()
+  .refine(validateWatchState, "Invalid watch state")
+  .refine((output) => output.status === "stopped", "Stop must stop sampling");
+export const InspectionWatchReadOutputV1Schema = z
+  .object({
+    ...watchOutputShape,
+    action: z.literal("read"),
+    deliveryComplete: z.boolean(),
+    records: watchRecords,
+    nextSequence: counter,
+    bytesUsed: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(INSPECTION_WATCH_LIMITS_V1.maxPageBytes),
+    requiredByteBudget: z
+      .number()
+      .int()
+      .min(1)
+      .max(INSPECTION_WATCH_LIMITS_V1.maxRecordBytes)
+      .nullable(),
+  })
+  .strict()
+  .refine(validateWatchState, "Invalid watch state")
+  .refine(
+    (output) => validateInspectionWatchRecordsV1(output, output.records),
+    "Invalid watch records",
+  )
+  .refine(
+    (output) =>
+      output.bytesUsed ===
+      output.records.reduce(
+        (total, record) => total + inspectionWatchRecordBytesV1(record),
+        0,
+      ),
+    "Watch page byte count must reflect encoded records",
+  )
+  .refine(
+    (output) =>
+      output.records.length === 0 ||
+      (output.nextSequence === output.records.at(-1)!.sequence &&
+        output.requiredByteBudget === null),
+    "Invalid watch page cursor",
+  );
+export const InspectionWatchOutputV1Schema = z.discriminatedUnion("action", [
+  InspectionWatchStartOutputV1Schema,
+  InspectionWatchReadOutputV1Schema,
+  InspectionWatchStopOutputV1Schema,
+]);
+export type InspectionWatchOutputV1 = z.infer<
+  typeof InspectionWatchOutputV1Schema
+>;
+export type InspectionWatchReadOutputV1 = z.infer<
+  typeof InspectionWatchReadOutputV1Schema
+>;
+export const InspectionWatchArchiveV1Schema = z
+  .object({
+    state: InspectionWatchStateV1Schema,
+    records: watchRecords,
+    deliveryComplete: z.boolean(),
+  })
+  .strict()
+  .refine(
+    (archive) =>
+      validateInspectionWatchRecordsV1(archive.state, archive.records),
+    "Invalid archived watch records",
+  )
+  .refine(
+    (archive) =>
+      !archive.deliveryComplete ||
+      (archive.state.status === "stopped" &&
+        archive.records.length === archive.state.recordedCount &&
+        archive.records.every(
+          (record, index) => record.sequence === index + 1,
+        )),
+    "Complete delivery requires all stopped watch records",
+  );
+export type InspectionWatchArchiveV1 = z.infer<
+  typeof InspectionWatchArchiveV1Schema
+>;
+
+/** Read already acquired records without fabricating records lost at process exit. */
+export function paginateInspectionWatchArchiveV1(
+  archive: InspectionWatchArchiveV1,
+  input: InspectionWatchReadInputV1,
+): InspectionWatchReadOutputV1 {
+  if (
+    archive.state.executionId !== input.executionId ||
+    archive.state.watchId !== input.watchId
+  )
+    throw new TypeError(
+      "Watch does not match the requested execution or watchId",
+    );
+  const records: InspectionWatchRecordV1[] = [];
+  let bytesUsed = 0;
+  let requiredByteBudget: number | null = null;
+  for (const record of archive.records) {
+    if (record.sequence <= input.afterSequence) continue;
+    const bytes = inspectionWatchRecordBytesV1(record);
+    if (bytesUsed + bytes > input.byteBudget) {
+      if (records.length === 0) requiredByteBudget = bytes;
+      break;
+    }
+    records.push(record);
+    bytesUsed += bytes;
+  }
+  return InspectionWatchReadOutputV1Schema.parse({
+    ...archive.state,
+    action: "read",
+    records,
+    deliveryComplete: archive.deliveryComplete,
+    nextSequence: records.at(-1)?.sequence ?? input.afterSequence,
+    bytesUsed,
+    requiredByteBudget,
+  });
+}
+
 const queryResultBase = {
   schemaVersion: z.literal(1),
   executionId: token,
@@ -351,6 +693,7 @@ export const InspectionRunRecordV1Schema = z
     stderr: z.string().max(128 * 1_024),
     stderrTruncated: z.boolean(),
     error: InspectionErrorV1Schema.nullable(),
+    watch: InspectionWatchArchiveV1Schema.optional(),
   })
   .strict()
   .refine(
@@ -363,6 +706,12 @@ export const InspectionRunRecordV1Schema = z
       path: ["sourceUnchanged"],
       message: "Source integrity must reflect the observed source hash",
     },
+  )
+  .refine(
+    (value) =>
+      value.watch === undefined ||
+      value.watch.state.executionId === value.executionId,
+    { path: ["watch"], message: "Archived watch must belong to its execution" },
   );
 export type InspectionRunRecordV1 = z.infer<typeof InspectionRunRecordV1Schema>;
 
@@ -385,6 +734,7 @@ export type InspectionStopOutputV1 = z.infer<
 export const INSPECTION_OUTPUT_SCHEMAS_V1 = {
   game_launch: InspectionLaunchOutputV1Schema,
   game_query: InspectionQueryOutputV1Schema,
+  game_watch: InspectionWatchOutputV1Schema,
   game_stop: InspectionStopOutputV1Schema,
 } as const;
 export const InspectionToolErrorV1Schema = z
@@ -402,6 +752,7 @@ export const InspectionToolResponseV1Schema = z.union([
       output: z.union([
         InspectionLaunchOutputV1Schema,
         InspectionQueryOutputV1Schema,
+        InspectionWatchOutputV1Schema,
         InspectionStopOutputV1Schema,
       ]),
     })

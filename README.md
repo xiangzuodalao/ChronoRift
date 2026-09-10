@@ -57,12 +57,6 @@ oracle 为 `true`。
 | `coding-only` | 无                                                            | 四个 area width 均为 682 px，resource identity 仍共享               | `false`           |
 | `chronorift`  | `game_capabilities`、`game_launch`、`game_stop`、`game_query` | area width 与 128/256/384/768 px 的 solid width 对齐，identity 分离 | `true`            |
 
-这是一份从已有本地运行中事后选择的 **N=1 定性案例**，不是预注册实验，也不能估计成功率、因果关系、通用优势
-或候选 acceptance。公开案例保留精确配置、候选 patch 和严格 evaluator 的缩减输出，不发布完整 transcript、绝对路径
-或原始 Task/Session 标识；evaluator JSON 是现有脚本的原样摘要输出，不是为作品页重写的投影。
-
-[阅读 GN-1 Platform Alias 案例 →](docs/case-studies/gn1-platform-alias.md)
-
 ## 第二项目复用：Godot Demo V2
 
 在固定的 `godot-demo-projects/3d/squash_the_creeps` revision 上，公共 V2 loader、managed runtime、sandbox、lineage
@@ -80,114 +74,6 @@ tool-only comparison，结果不能归因于单独的 game tools。
 
 本轮的价值是证明 ChronoRift 的 runtime 产品边界不只存在于 GN-1；它不承担比较优势结论。详细页完整保留两个原始
 candidate patch 与 evaluator stdout，并汇总耗时、成本、本地 raw records 中的失败 tool response 和运行限制。
-
-[阅读 Godot Demo Mob Orientation 案例 →](docs/case-studies/godot-demo-mob-orientation.md)
-
-## 当前能做什么
-
-| Surface                     | 现在可用                                                                                          | 重要边界                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| v0.4 legacy                 | 四个校准 Fixture、真实 Pi Session、固定 diagnosis workflow                                        | 不是 vNext 自由 Loop，也不是任意项目 runner                         |
-| Project Environment Preview | 显式 `project preview`；source closure、sandbox、adapter publication/binding/reuse 的实验实现     | 历史 characterization 较窄；尚未成为默认入口或通用项目支持          |
-| GN-1                        | 精确第三方项目、项目特定 adapter、两个 matched arms、公开 candidate patch 和 Host postflight 摘要 | 单项目、单 revision、单 prompt、单 pair；raw live output 仍只在本地 |
-| Godot Demo Mob V2           | 第二个外部项目、state-only Adapter V2、完成的 fresh pair、公开 patch 与独立 evaluator             | 两组均 3/3；未晋级 Hero，也不证明比较优势或自动 onboarding          |
-| Host sandbox                | Linux x86_64 上精确固定 SRT `0.0.74`；coding workspace 可写，Godot 使用 Host staging              | 默认禁网；不提供旧 broker 的 cgroup、容量或 Host-config 能力        |
-| 历史 M3/M4/E2               | current HEAD 中的实现和命令已删除，只保留冻结档案                                                 | 不作为新产品切片模板，也不从档案恢复 producer 或一次性 Gate         |
-
-### 还没有
-
-- 默认 `chronorift [goal]` 与任意 Godot 项目的即开即用支持。
-- 通用 ProjectAdapter authoring/migration、跨平台 Host、C#、GDExtension、native plugin、display、audio 或 GPU。
-- 通用 source migration、multi-writer lease/CAS、conflict-safe apply 或长期 retention；current HEAD 也没有 generic
-  Task resume/discard API。
-- 在主产品路径中普遍可用的 checkpoint/fork/replay/compare；旧 M3 实现已从 current HEAD 删除。
-- 自动 capture trigger、完整 engine snapshot、bit-exact replay、外部 telemetry attestation 或自动 acceptance。
-
-## 三条审阅路径
-
-### 1. 不安装：先判断工程思路
-
-1. 阅读 [GN-1 案例](docs/case-studies/gn1-platform-alias.md)与 [Godot Demo V2 案例](docs/case-studies/godot-demo-mob-orientation.md)，核对配置、patch、运行记录与结论边界。
-2. 阅读 [工程设计导览](docs/portfolio.md)，了解 Loop/Harness 分工、sandbox 和 DTO 边界。
-3. 查看 [CI](https://github.com/xiangzuodalao/ChronoRift/actions/workflows/ci.yml) 的 offline、Godot 与 Host sandbox jobs。
-
-### 2. 离线本地：验证默认 Gate
-
-要求 Node.js `>=22.19`；`.nvmrc` 固定 `22.23.1`，pnpm 固定 `11.20.0`。
-
-```bash
-nvm use
-corepack pnpm install
-corepack pnpm check
-```
-
-`check` 运行 lint、Prettier check、strict TypeScript typecheck 和离线 deterministic tests，不需要 provider 凭据或网络。
-
-如需体验当前 legacy 路径：
-
-```bash
-corepack pnpm godot:install
-corepack pnpm godot:doctor
-corepack pnpm fixtures
-corepack pnpm demo:v04 -- --fixture frame-input-window
-```
-
-仓库 installer 固定官方 Godot `4.7.1`，当前只支持 Linux x86_64。这个 demo 是 v0.4 固定 Fixture workflow，不代表
-vNext 产品形态。
-
-### 3. 完整 Host：检查实验路径
-
-Project Environment Preview、GN-1 和 Godot Demo slice 需要 Linux x86_64、精确 SRT `0.0.74`、Bubblewrap/`socat`/ripgrep
-以及官方 Godot 4.7.1；两个 case runner 还需要精确外部 checkout 和真实 provider。前置条件和完整命令统一维护在
-[开发与验证指南](docs/development.md)。
-
-```text
-corepack pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL
-corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
-corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
-```
-
-这些 live 命令不会 clone、修改或 apply 回用户 checkout。Agent 在私有的物理 candidate workspace 中获得读写权限；
-Godot 验证则使用 Host 复制的独立 stage，项目源码只读，只有 `.godot/`、home、tmp 和 artifacts 可写，并在启动前后比较
-source SHA-256。它们不会自动 commit、merge、push 或宣布修复成功。
-
-## 安全与证据边界
-
-- 用户 checkout、runtime/source text、Agent 输出、patch、Godot plugin 和 ProjectAdapter 都按不可信内容处理。
-- vNext coding 与 Godot process 经过 SRT；网络使用 strict empty allowlist，默认拒绝。coding 可以写 candidate workspace，
-  Godot process 看不到可写 candidate，并只能写 stage 中明确的 runtime 目录。
-- Pi 凭据只允许 Host 模型路径使用，不能进入 repository、artifact、sandboxed command environment 或 Godot process。
-- 外部、wire、tool 和 persisted DTO 要求显式版本与 strict runtime validation；内部 SRT process result 不额外包装
-  自研 receipt framework。
-- process result 保留 exit/timeout/cancellation、输出截断和 Godot stage source hash mismatch；不能把缺失观察写成成功。
-- content hash 用于绑定 bytes 和发现损坏，不是签名、第三方证明或正确性证明。
-- v0.4 的 Host process 不具备 vNext SRT 的 OS 隔离保证，二者不能混写。
-
-## 常用命令
-
-| 命令                                                       | 作用                                                         |
-| ---------------------------------------------------------- | ------------------------------------------------------------ |
-| `corepack pnpm check`                                      | 默认离线 Gate                                                |
-| `corepack pnpm test:godot`                                 | Godot Addon、protocol 和 Project Environment 集成测试        |
-| `corepack pnpm test:sandbox`                               | SRT coding 与真实 Godot/Preview Host conformance             |
-| `corepack pnpm project preview -- ...`                     | 实验性 Project Environment 入口                              |
-| `corepack pnpm demo:platform-alias-ablation -- --arm ...`  | GN-1 的一个 fresh arm；两个 JSON 再交给 standalone evaluator |
-| `corepack pnpm demo:mob-orientation-ablation -- --arm ...` | Mob orientation 的一个 fresh arm；已公开 pair 不会自动重跑   |
-| `corepack pnpm demo:v04` / `diagnose:v04`                  | 当前 legacy 离线 / 真实 provider 路径                        |
-
-Host conformance 通过 `.github/scripts/run-srt-sandbox-conformance.sh` 运行；非 Linux x86_64、SRT 不是精确
-`0.0.74`、缺少 Bubblewrap/`socat`/ripgrep/Godot 或 user namespace 不可用都属于 precondition failure。
-
-## 文档地图
-
-- [工程设计导览](docs/portfolio.md)：关键设计决策、五个代码入口和已知技术债。
-- [GN-1 Platform Alias 案例](docs/case-studies/gn1-platform-alias.md)：一个可检查但不可外推的 runtime-observation pair。
-- [Godot Demo Mob orientation](docs/case-studies/godot-demo-mob-orientation.md)：已完成、未晋级 Hero 的第二项目 V2 vertical slice。
-- [目标架构](docs/architecture.md)：vNext 产品契约、rollout 和当前实现映射（重点看 §20/§21）。
-- [Project Environment V1 RFC](docs/project-environment-v1.md)：数据模型、初始化/publication 状态机和 wire contract。
-- [开发与验证指南](docs/development.md)：本地、Godot、Host sandbox 和 live provider 前置条件。
-- [Godot Protocol v2](docs/godot-protocol-v2.md)：已实现的 legacy Host ↔ Addon wire。
-- [`docs/evidence/`](docs/evidence/) 与 [`docs/benchmarks/`](docs/benchmarks/)：不可改写的历史归档；其结论不自动适用于当前 HEAD。
 
 ## License
 

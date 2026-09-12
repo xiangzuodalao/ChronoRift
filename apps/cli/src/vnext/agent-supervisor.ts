@@ -192,7 +192,7 @@ export class AgentSupervisor implements RootCollaborationPort {
   private notificationOverflow = 0;
 
   public constructor(private readonly options: AgentSupervisorOptions) {
-    this.maxAgents = boundedInteger(options.maxAgents, 2, 4, "maxAgents");
+    this.maxAgents = boundedInteger(options.maxAgents, 3, 4, "maxAgents");
     this.timeoutMs = boundedInteger(
       options.turnTimeoutMs,
       600_000,

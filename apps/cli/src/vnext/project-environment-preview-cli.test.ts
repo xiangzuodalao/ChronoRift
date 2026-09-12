@@ -47,47 +47,52 @@ afterEach(() => {
 });
 
 describe("inspection Preview CLI", () => {
-  it("forwards explicit multi-agent configuration and returns the V3 result", async () => {
-    const output = {
-      ...result(),
-      schemaVersion: 3,
-      agents: {
-        recordPath: "/task/records/agents.v1.json",
-        count: 2,
-        maxAgents: 3,
-        sharedToolCalls: 6,
-        sharedToolCallLimit: 256,
-      },
-    };
-    runPreview.mockResolvedValue(output);
-    const write = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(() => true);
-    await main([
-      ...args,
-      "--multi-agent",
-      "--max-agents",
-      "3",
-      "--worker-provider",
-      "worker-provider",
-      "--worker-model",
-      "worker-model",
-      "--worker-thinking",
-      "max",
-    ]);
-    expect(
-      (
-        runPreview.mock
-          .calls[0]![0] as PreviewModule.ProjectEnvironmentPreviewRequestV2
-      ).multiAgent,
-    ).toEqual({
-      maxAgents: 3,
-      workerProvider: "worker-provider",
-      workerModel: "worker-model",
-      workerThinking: "max",
-    });
-    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(output);
-  });
+  it.each([
+    { limitFlags: [], maxAgents: 3 },
+    { limitFlags: ["--max-agents", "4"], maxAgents: 4 },
+  ])(
+    "forwards multi-agent configuration $limitFlags and returns the V3 result",
+    async ({ limitFlags, maxAgents }) => {
+      const output = {
+        ...result(),
+        schemaVersion: 3,
+        agents: {
+          recordPath: "/task/records/agents.v1.json",
+          count: 2,
+          maxAgents,
+          sharedToolCalls: 6,
+          sharedToolCallLimit: 256,
+        },
+      };
+      runPreview.mockResolvedValue(output);
+      const write = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
+      await main([
+        ...args,
+        "--multi-agent",
+        ...limitFlags,
+        "--worker-provider",
+        "worker-provider",
+        "--worker-model",
+        "worker-model",
+        "--worker-thinking",
+        "max",
+      ]);
+      expect(
+        (
+          runPreview.mock
+            .calls[0]![0] as PreviewModule.ProjectEnvironmentPreviewRequestV2
+        ).multiAgent,
+      ).toEqual({
+        maxAgents,
+        workerProvider: "worker-provider",
+        workerModel: "worker-model",
+        workerThinking: "max",
+      });
+      expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(output);
+    },
+  );
 
   it.each([
     ["--max-agents", "2"],

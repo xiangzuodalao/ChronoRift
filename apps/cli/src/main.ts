@@ -543,7 +543,7 @@ async function projectPreviewCommand(
   if (!multiAgent && workerFlags.some((name) => args.flags.has(name))) {
     throw new Error("Worker configuration requires --multi-agent");
   }
-  const maxAgents = positiveIntegerFlag(args, "max-agents", 2);
+  const maxAgents = positiveIntegerFlag(args, "max-agents", 3);
   if (maxAgents > 4) throw new Error("--max-agents must be between 1 and 4");
   if (args.flags.has("worker-provider") && !args.flags.has("worker-model")) {
     throw new Error("--worker-provider requires --worker-model");
@@ -837,7 +837,7 @@ function printHelp(): void {
     `  Runs one fresh Godot demo Mob-orientation arm through the fixed ProjectAdapter V2 slice. One arm is not a comparative result.\n\n`,
   );
   process.stdout.write(
-    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--thinking LEVEL --state-root PATH --godot-bin PATH] [--multi-agent --max-agents 2 --worker-model MODEL --worker-provider PROVIDER --worker-thinking LEVEL]\n`,
+    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--thinking LEVEL --state-root PATH --godot-bin PATH] [--multi-agent --max-agents 3 --worker-model MODEL --worker-provider PROVIDER --worker-thinking LEVEL]\n`,
   );
   process.stdout.write(
     `  Project Environment Preview freezes tracked working-tree bytes plus explicitly repeated untracked files for one selected Godot 4.7.1 GDScript project. It remains separate from the default entry point.\n\n`,

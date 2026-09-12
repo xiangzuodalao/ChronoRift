@@ -170,7 +170,8 @@ describe("AgentSupervisor", () => {
     try {
       const first = await f.supervisor.spawnAgent("inspect collision");
       const second = await f.supervisor.spawnAgent("inspect dimensions");
-      await expect(f.supervisor.spawnAgent("third")).rejects.toThrow(
+      const third = await f.supervisor.spawnAgent("inspect input handling");
+      await expect(f.supervisor.spawnAgent("fourth")).rejects.toThrow(
         "occupied",
       );
       const followup = f.supervisor.followupTask(
@@ -187,19 +188,20 @@ describe("AgentSupervisor", () => {
       ).toHaveLength(2);
       f.complete(0, followup.turnId, "second finding");
       f.complete(1, second.turnId);
-      await f.supervisor.waitAgent([followup, second]);
+      f.complete(2, third.turnId);
+      await f.supervisor.waitAgent([followup, second, third]);
       expect(f.resources[0]!.finishTurn).toHaveBeenCalledTimes(2);
       expect(
         await f.supervisor.readAgentResult(first.agentId, first.turnId),
       ).toMatchObject({ text: "first finding" });
-      await expect(f.supervisor.spawnAgent("third")).rejects.toThrow(
+      await expect(f.supervisor.spawnAgent("fourth")).rejects.toThrow(
         "occupied",
       );
       await f.supervisor.closeAgent(first.agentId);
-      const third = await f.supervisor.spawnAgent("new worker");
-      expect(third.agentId).toBe("agent-3");
+      const fourth = await f.supervisor.spawnAgent("new worker");
+      expect(fourth.agentId).toBe("agent-4");
       expect(
-        f.workers[2]!.options.configuration.tools.map((tool) => tool.name),
+        f.workers[3]!.options.configuration.tools.map((tool) => tool.name),
       ).toEqual(["read", "game_stop", "send_message"]);
     } finally {
       await f.supervisor.close();

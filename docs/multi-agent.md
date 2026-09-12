@@ -13,12 +13,13 @@ corepack pnpm project preview -- "调查问题，将可独立验证的部分委�
   --provider PROVIDER --model MODEL --multi-agent
 ```
 
-省略目标可进入 Pi TUI。Root 决定是否委派以及如何分工；开启模式不强制启动子代理，也不强制固定调查流程。
+省略目标可进入 Pi TUI。默认最多 3 个 worker，加上 1 个 Root 共 4 个代理。
+Root 决定是否委派以及如何分工；开启模式不强制启动子代理，也不强制固定调查流程。
 
 | 参数                         | 行为                                                |
 | ---------------------------- | --------------------------------------------------- |
 | `--multi-agent`              | 为 Root 添加协作工具；默认关闭                      |
-| `--max-agents N`             | 同时存活的子代理数量，默认 2，允许 1–4；不包含 Root |
+| `--max-agents N`             | 同时存活的子代理数量，默认 3，允许 1–4；不包含 Root |
 | `--worker-model MODEL`       | 所有新子代理使用的模型；缺省继承 Root               |
 | `--worker-provider PROVIDER` | 子代理 provider；指定时必须同时指定 worker model    |
 | `--worker-thinking LEVEL`    | 子代理 thinking；缺省继承 Root                      |

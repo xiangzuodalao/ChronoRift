@@ -141,8 +141,8 @@ workspace. Godot validation instead runs against a Host-copied stage whose proje
 commands do not automatically commit, merge, push, or declare a fix.
 
 Optional `--multi-agent` adds persistent Pi workers with independent candidates and Godot executions. The Host brokers
-sandboxed tools, messages, waiting, cancellation, and explicit candidate import into Root. The default limit is two
-workers. TUI commands `/agents` and `/agents stop` inspect or stop the team. See [Multi-Agent V1](docs/multi-agent.md)
+sandboxed tools, messages, waiting, cancellation, and explicit candidate import into Root. The default limit is three
+workers plus one Root, for four agents in total. TUI commands `/agents` and `/agents stop` inspect or stop the team. See [Multi-Agent V1](docs/multi-agent.md)
 for configuration, tool budgets, patch conflicts, and the experimental boundaries.
 
 ## Trust boundary

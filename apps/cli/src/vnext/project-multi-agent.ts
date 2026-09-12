@@ -27,7 +27,7 @@ import type { ProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 const name = z.string().trim().min(1).max(256);
 export const ProjectMultiAgentOptionsSchema = z
   .object({
-    maxAgents: z.number().int().min(1).max(4).default(2),
+    maxAgents: z.number().int().min(1).max(4).default(3),
     workerProvider: name.optional(),
     workerModel: name.optional(),
     workerThinking: z

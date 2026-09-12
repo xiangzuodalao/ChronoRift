@@ -8,6 +8,11 @@ export {
   type PiProviderRetryClass,
 } from "./errors.js";
 export * from "./inspection-game-tools.js";
+export * from "./pi-proxy-tools.js";
+export type {
+  RootCollaborationPort,
+  RootPiSessionControl,
+} from "./root-collaboration.js";
 export {
   assertPiModelCapabilities,
   listAvailablePiModels,
@@ -129,6 +134,9 @@ export {
   type VNextPiHostHttpTransportDependencies,
 } from "./vnext-host-http.js";
 export {
+  createManagedPiSession,
+  createManagedPiSessionWithSdk,
+  resolvePiHostAgentDirectory,
   runVNextPiTurn,
   runVNextPiTurnWithSdk,
   VNEXT_CODING_ENVIRONMENT_APPENDIX,
@@ -136,4 +144,8 @@ export {
   type RunVNextPiTurnOptions,
   type RunVNextPiSdkTurnOptions,
   type VNextPiTurnResult,
+  type CreateManagedPiSessionOptions,
+  type CreateManagedPiSdkSessionOptions,
+  type ManagedPiSession,
+  type PiSessionMessageOptions,
 } from "./vnext-session.js";

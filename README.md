@@ -43,6 +43,10 @@ sandbox、Godot execution 和 runtime evidence。
 
 完整目标契约见 [架构文档](docs/architecture.md)；它描述 vNext 方向，不等于当前功能清单。
 
+Project Preview 可选 `--multi-agent`：Root Pi Session 委派独立子会话，每个子代理拥有自己的 candidate 和 Godot
+执行。Host 隔离工具权限、收集结果；Root 显式导入候选后重新验证。默认最多 2 个子代理，支持持续会话、消息、等待和
+取消。使用方法及限制见 [Multi-Agent V1](docs/multi-agent.md)。
+
 ## Runtime evidence 改变候选：GN-1
 
 GN-1 中，coding-only 产生了一个看似合理的宽度调整，但 candidate runtime 仍保留共享 Shape identity，case-level

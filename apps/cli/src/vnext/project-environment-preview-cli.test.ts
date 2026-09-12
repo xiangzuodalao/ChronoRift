@@ -47,6 +47,73 @@ afterEach(() => {
 });
 
 describe("inspection Preview CLI", () => {
+  it("forwards explicit multi-agent configuration and returns the V3 result", async () => {
+    const output = {
+      ...result(),
+      schemaVersion: 3,
+      agents: {
+        recordPath: "/task/records/agents.v1.json",
+        count: 2,
+        maxAgents: 3,
+        sharedToolCalls: 6,
+        sharedToolCallLimit: 256,
+      },
+    };
+    runPreview.mockResolvedValue(output);
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    await main([
+      ...args,
+      "--multi-agent",
+      "--max-agents",
+      "3",
+      "--worker-provider",
+      "worker-provider",
+      "--worker-model",
+      "worker-model",
+      "--worker-thinking",
+      "max",
+    ]);
+    expect(
+      (
+        runPreview.mock
+          .calls[0]![0] as PreviewModule.ProjectEnvironmentPreviewRequestV2
+      ).multiAgent,
+    ).toEqual({
+      maxAgents: 3,
+      workerProvider: "worker-provider",
+      workerModel: "worker-model",
+      workerThinking: "max",
+    });
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(output);
+  });
+
+  it.each([
+    ["--max-agents", "2"],
+    ["--multi-agent", "--max-agents", "5"],
+    ["--multi-agent", "--worker-provider", "provider"],
+  ])(
+    "rejects invalid worker configuration before opening a project: %j",
+    async (...flags) => {
+      await expect(main([...args, ...flags])).rejects.toThrow();
+      expect(runPreview).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports multi-agent startup failures with the V3 version", async () => {
+    runPreview.mockRejectedValueOnce(new Error("worker startup failed"));
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    await main([...args, "--multi-agent"]);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toMatchObject({
+      schemaVersion: 3,
+      status: "failed",
+      goalDelivered: false,
+    });
+  });
+
   it("forwards the goal and source selection without project registration", async () => {
     runPreview.mockResolvedValue(result());
     const write = vi

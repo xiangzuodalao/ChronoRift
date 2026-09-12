@@ -52,7 +52,7 @@ interface Arguments {
   readonly positionals: readonly string[];
 }
 
-const booleanFlags = new Set(["json"]);
+const booleanFlags = new Set(["json", "multi-agent"]);
 const repeatableFlags = new Set(["include-untracked"]);
 
 function parseArguments(argv: readonly string[]): Arguments {
@@ -198,8 +198,9 @@ function positiveIntegerFlag(
 function thinkingLevelFlag(
   args: Arguments,
   fallback: PiThinkingLevel,
+  name = "thinking",
 ): PiThinkingLevel {
-  const value = flag(args, "thinking") ?? fallback;
+  const value = flag(args, name) ?? fallback;
   if (
     value !== "off" &&
     value !== "minimal" &&
@@ -209,7 +210,7 @@ function thinkingLevelFlag(
     value !== "xhigh" &&
     value !== "max"
   ) {
-    throw new Error(`Unsupported --thinking ${value}`);
+    throw new Error(`Unsupported --${name} ${value}`);
   }
   return value;
 }
@@ -526,7 +527,27 @@ async function projectPreviewCommand(
     "project-root",
     "include-untracked",
     "json",
+    "multi-agent",
+    "max-agents",
+    "worker-provider",
+    "worker-model",
+    "worker-thinking",
   ]);
+  const multiAgent = hasFlag(args, "multi-agent");
+  const workerFlags = [
+    "max-agents",
+    "worker-provider",
+    "worker-model",
+    "worker-thinking",
+  ];
+  if (!multiAgent && workerFlags.some((name) => args.flags.has(name))) {
+    throw new Error("Worker configuration requires --multi-agent");
+  }
+  const maxAgents = positiveIntegerFlag(args, "max-agents", 2);
+  if (maxAgents > 4) throw new Error("--max-agents must be between 1 and 4");
+  if (args.flags.has("worker-provider") && !args.flags.has("worker-model")) {
+    throw new Error("--worker-provider requires --worker-model");
+  }
   let result: Awaited<ReturnType<typeof runProjectEnvironmentPreviewV2>>;
   try {
     result = await runProjectEnvironmentPreviewV2({
@@ -535,6 +556,28 @@ async function projectPreviewCommand(
       model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
       thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
       goal: args.positionals[0] ?? null,
+      ...(multiAgent
+        ? {
+            multiAgent: {
+              maxAgents,
+              ...(flag(args, "worker-provider") === undefined
+                ? {}
+                : { workerProvider: flag(args, "worker-provider")! }),
+              ...(flag(args, "worker-model") === undefined
+                ? {}
+                : { workerModel: flag(args, "worker-model")! }),
+              ...(flag(args, "worker-thinking") === undefined
+                ? {}
+                : {
+                    workerThinking: thinkingLevelFlag(
+                      args,
+                      DEFAULT_PI_THINKING_LEVEL,
+                      "worker-thinking",
+                    ),
+                  }),
+            },
+          }
+        : {}),
       ...(flag(args, "project-root") === undefined
         ? {}
         : { projectRoot: flag(args, "project-root")! }),
@@ -579,7 +622,7 @@ async function projectPreviewCommand(
       failureMessage,
     });
     if (hasFlag(args, "json")) {
-      printJson(failure);
+      printJson(multiAgent ? { ...failure, schemaVersion: 3 } : failure);
     } else {
       process.stderr.write(
         `ChronoRift Project Environment Preview — failed\nfailure: ${failure.failureCode}: ${failure.failureMessage}\n`,
@@ -606,6 +649,9 @@ async function projectPreviewCommand(
       `candidate source: ${result.candidateSourceChanged ? "changed" : "unchanged"}`,
       `candidate patch: ${result.candidatePatch?.path ?? "unavailable"}`,
       `runtime executions: ${result.executions.length}`,
+      ...(result.schemaVersion === 3
+        ? [`agent records: ${result.agents?.recordPath ?? "unavailable"}`]
+        : []),
       `Pi: ${result.provider}/${result.model} (${result.thinkingLevel})`,
       `session: ${result.sessionFile ?? "not persisted"}`,
       `queued goal: ${result.goalDelivered ? "delivered" : "not delivered"}`,
@@ -791,7 +837,7 @@ function printHelp(): void {
     `  Runs one fresh Godot demo Mob-orientation arm through the fixed ProjectAdapter V2 slice. One arm is not a comparative result.\n\n`,
   );
   process.stdout.write(
-    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--thinking LEVEL --state-root PATH --godot-bin PATH]\n`,
+    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--thinking LEVEL --state-root PATH --godot-bin PATH] [--multi-agent --max-agents 2 --worker-model MODEL --worker-provider PROVIDER --worker-thinking LEVEL]\n`,
   );
   process.stdout.write(
     `  Project Environment Preview freezes tracked working-tree bytes plus explicitly repeated untracked files for one selected Godot 4.7.1 GDScript project. It remains separate from the default entry point.\n\n`,

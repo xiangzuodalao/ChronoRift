@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { Api, Model, Transport } from "@earendil-works/pi-ai";
 import {
@@ -7,6 +7,7 @@ import {
   getAgentDir,
   SessionManager,
   SettingsManager,
+  type AgentSession,
   type AgentSessionEvent,
   type CreateAgentSessionOptions,
   type CreateAgentSessionResult,
@@ -16,6 +17,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiThinkingLevel } from "./types.js";
+import {
+  abortPiSession,
+  type RootCollaborationPort,
+} from "./root-collaboration.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
 
 export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
@@ -56,6 +61,7 @@ export interface RunVNextPiTurnOptions {
   readonly environmentProfile?: "game" | "coding" | undefined;
   readonly additionalEnvironmentInstructions?: string | undefined;
   readonly onEvent?: ((event: AgentSessionEvent) => void) | undefined;
+  readonly collaboration?: RootCollaborationPort | undefined;
 }
 
 export type RunVNextPiSdkTurnOptions = Omit<
@@ -165,7 +171,7 @@ const assistantText = (messages: readonly unknown[]): string => {
     .join("");
 };
 
-const finalAssistantFailure = (
+export const finalAssistantFailure = (
   messages: readonly unknown[],
 ):
   | { readonly status: "provider_failed" | "aborted"; readonly message: string }
@@ -198,14 +204,81 @@ const finalAssistantFailure = (
   };
 };
 
-export async function runVNextPiTurn(
-  options: RunVNextPiTurnOptions,
+export type CreateManagedPiSessionOptions = Omit<
+  RunVNextPiTurnOptions,
+  "prompt" | "timeoutMs" | "signal" | "collaboration"
+>;
+
+export type CreateManagedPiSdkSessionOptions = Omit<
+  RunVNextPiSdkTurnOptions,
+  "prompt" | "timeoutMs" | "signal" | "collaboration"
+>;
+
+export interface PiSessionMessageOptions {
+  readonly triggerTurn?: boolean;
+  readonly deliverAs?: "steer" | "followUp" | "nextTurn";
+  readonly source?: Readonly<Record<string, unknown>>;
+}
+
+export interface ManagedPiSession {
+  readonly sessionId: string;
+  readonly sessionFile: string | undefined;
+  readonly isIdle: boolean;
+  readonly activeTools: readonly string[];
+  prompt(text: string): Promise<void>;
+  sendMessage(text: string, options?: PiSessionMessageOptions): Promise<void>;
+  abort(): Promise<void>;
+  waitForIdle(): Promise<void>;
+  subscribe(listener: (event: AgentSessionEvent) => void): () => void;
+  snapshot(
+    status?: VNextPiTurnResult["status"],
+    errorMessage?: string | null,
+  ): VNextPiTurnResult;
+  dispose(): void;
+}
+
+export const resolvePiHostAgentDirectory = (agentDir?: string): string =>
+  resolve(agentDir ?? getAgentDir());
+
+/** Snapshot an existing Pi Session without creating a model request. */
+export function snapshotPiSession(
+  session: AgentSession,
+  options: {
+    readonly provider: string;
+    readonly model: string;
+    readonly thinkingLevel: PiThinkingLevel;
+    readonly eventsObserved: number;
+  },
+  status?: VNextPiTurnResult["status"],
+  errorMessage?: string | null,
+): VNextPiTurnResult {
+  const sessionFile = session.sessionFile;
+  if (sessionFile === undefined)
+    throw new Error("Pi did not persist the vNext session");
+  const failure = finalAssistantFailure(session.messages);
+  return {
+    schemaVersion: 1,
+    status: status ?? failure?.status ?? "completed",
+    sessionId: session.sessionId,
+    sessionFile,
+    provider: options.provider,
+    model: options.model,
+    requestedThinkingLevel: options.thinkingLevel,
+    realizedThinkingLevel: session.thinkingLevel,
+    activeTools: Object.freeze([...session.getActiveToolNames()]),
+    assistantText: assistantText(session.messages),
+    errorMessage:
+      errorMessage === undefined ? (failure?.message ?? null) : errorMessage,
+    eventsObserved: options.eventsObserved,
+    stats: session.getSessionStats(),
+  };
+}
+
+export async function createManagedPiSession(
+  options: CreateManagedPiSessionOptions,
   overrides: Partial<VNextPiSessionDependencies> = {},
-): Promise<VNextPiTurnResult> {
-  if (options.prompt.trim().length === 0)
-    throw new Error("prompt must not be empty");
+): Promise<ManagedPiSession> {
   const toolNames = normalizedToolNames(options.tools);
-  const timeoutMs = boundedTimeout(options.timeoutMs);
   const providerRequestTimeoutMs = boundedProviderRequestTimeout(
     options.providerRequestTimeoutMs,
   );
@@ -216,7 +289,7 @@ export async function runVNextPiTurn(
     options.resourceWorkspaceDirectory,
   );
   const sessionDirectory = resolve(options.sessionDirectory);
-  const agentDir = resolve(options.agentDir ?? getAgentDir());
+  const agentDir = resolvePiHostAgentDirectory(options.agentDir);
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: true },
     ...(options.transport === undefined
@@ -313,81 +386,81 @@ export async function runVNextPiTurn(
   }
 
   let eventsObserved = 0;
-  let timedOut = false;
-  let signalAborted = options.signal?.aborted ?? false;
-  let abortPromise: Promise<void> | undefined;
-  const requestAbort = (): void => {
-    abortPromise ??= session.abort();
-  };
-  const onAbort = (): void => {
-    signalAborted = true;
-    requestAbort();
-  };
-  options.signal?.addEventListener("abort", onAbort, { once: true });
+  let disposed = false;
   const unsubscribe = session.subscribe((event) => {
     eventsObserved += 1;
     options.onEvent?.(event);
   });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    try {
-      if (!signalAborted) {
-        await Promise.race([
-          session.prompt(options.prompt, { expandPromptTemplates: true }),
-          new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(() => {
-              timedOut = true;
-              requestAbort();
-              reject(new Error(`Pi turn timed out after ${timeoutMs}ms`));
-            }, timeoutMs);
-          }),
-        ]);
-      }
-    } catch (error) {
-      if (!timedOut && !signalAborted) throw error;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-      options.signal?.removeEventListener("abort", onAbort);
-      if (abortPromise !== undefined) await abortPromise.catch(() => undefined);
+  const assertOpen = (): void => {
+    if (disposed) throw new Error("Pi session is disposed");
+  };
+  return {
+    get sessionId() {
+      return session.sessionId;
+    },
+    get sessionFile() {
+      return session.sessionFile;
+    },
+    get isIdle() {
+      return session.isIdle;
+    },
+    activeTools: Object.freeze([...activeTools]),
+    prompt: async (text) => {
+      assertOpen();
+      if (text.trim().length === 0) throw new Error("prompt must not be empty");
+      await session.prompt(text, { expandPromptTemplates: true });
+    },
+    sendMessage: async (text, messageOptions = {}) => {
+      assertOpen();
+      if (text.trim().length === 0)
+        throw new Error("message must not be empty");
+      await session.sendCustomMessage(
+        {
+          customType: "chronorift.collaboration",
+          content: text,
+          display: true,
+          details: {
+            source: messageOptions.source ?? { kind: "agent-message" },
+          },
+        },
+        {
+          triggerTurn: messageOptions.triggerTurn ?? false,
+          deliverAs: messageOptions.deliverAs ?? "followUp",
+        },
+      );
+    },
+    abort: () => abortPiSession(session),
+    waitForIdle: () => session.waitForIdle(),
+    subscribe: (listener) => {
+      assertOpen();
+      return session.subscribe(listener);
+    },
+    snapshot: (status, errorMessage) => {
+      assertOpen();
+      return snapshotPiSession(
+        session,
+        {
+          provider: options.model.provider,
+          model: options.model.id,
+          thinkingLevel: options.thinkingLevel,
+          eventsObserved,
+        },
+        status,
+        errorMessage,
+      );
+    },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
       unsubscribe();
-    }
-    const sessionFile = session.sessionFile;
-    if (sessionFile === undefined) {
-      throw new Error("Pi did not persist the vNext session");
-    }
-    const failure = finalAssistantFailure(session.messages);
-    const status = timedOut
-      ? "timed_out"
-      : signalAborted
-        ? "aborted"
-        : (failure?.status ?? "completed");
-    return {
-      schemaVersion: 1,
-      status,
-      sessionId: session.sessionId,
-      sessionFile,
-      provider: options.model.provider,
-      model: options.model.id,
-      requestedThinkingLevel: options.thinkingLevel,
-      realizedThinkingLevel: session.thinkingLevel,
-      activeTools: Object.freeze([...activeTools]),
-      assistantText: assistantText(session.messages),
-      errorMessage: timedOut
-        ? `Pi turn timed out after ${timeoutMs}ms`
-        : signalAborted
-          ? "Pi turn was aborted by the caller"
-          : (failure?.message ?? null),
-      eventsObserved,
-      stats: session.getSessionStats(),
-    };
-  } finally {
-    session.dispose();
-  }
+      session.dispose();
+    },
+  };
 }
 
-export async function runVNextPiTurnWithSdk(
-  options: RunVNextPiSdkTurnOptions,
-): Promise<VNextPiTurnResult> {
+export async function createManagedPiSessionWithSdk(
+  options: CreateManagedPiSdkSessionOptions,
+): Promise<ManagedPiSession> {
   if (
     options.provider.trim().length === 0 ||
     options.model.trim().length === 0
@@ -395,9 +468,14 @@ export async function runVNextPiTurnWithSdk(
     throw new Error("provider and model must not be empty");
   }
   configureVNextPiHostHttpTransport();
+  const agentDir = resolvePiHostAgentDirectory(options.agentDir);
   const modelRuntime = await (
     await import("@earendil-works/pi-coding-agent")
-  ).ModelRuntime.create({ allowModelNetwork: false });
+  ).ModelRuntime.create({
+    allowModelNetwork: false,
+    authPath: join(agentDir, "auth.json"),
+    modelsPath: join(agentDir, "models.json"),
+  });
   const model = modelRuntime.getModel(options.provider, options.model);
   if (model === undefined) {
     throw new Error(
@@ -410,43 +488,159 @@ export async function runVNextPiTurnWithSdk(
       `Pi model ${options.provider}/${options.model} has no usable Host authentication`,
     );
   }
-  return runVNextPiTurn({
-    resourceWorkspaceDirectory: options.resourceWorkspaceDirectory,
-    sessionDirectory: options.sessionDirectory,
-    ...(options.newSessionId === undefined
-      ? {}
-      : { newSessionId: options.newSessionId }),
-    ...(options.resumeSessionFile === undefined
-      ? {}
-      : { resumeSessionFile: options.resumeSessionFile }),
-    ...(options.agentDir === undefined ? {} : { agentDir: options.agentDir }),
-    modelRuntime,
-    model,
-    thinkingLevel: options.thinkingLevel,
-    prompt: options.prompt,
-    tools: options.tools,
-    ...(options.timeoutMs === undefined
-      ? {}
-      : { timeoutMs: options.timeoutMs }),
-    ...(options.providerRequestTimeoutMs === undefined
-      ? {}
-      : { providerRequestTimeoutMs: options.providerRequestTimeoutMs }),
-    ...(options.agentRetryMaxRetries === undefined
-      ? {}
-      : { agentRetryMaxRetries: options.agentRetryMaxRetries }),
-    ...(options.transport === undefined
-      ? {}
-      : { transport: options.transport }),
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-    ...(options.environmentProfile === undefined
-      ? {}
-      : { environmentProfile: options.environmentProfile }),
-    ...(options.additionalEnvironmentInstructions === undefined
-      ? {}
+  return createManagedPiSession({ ...options, agentDir, modelRuntime, model });
+}
+
+async function runManagedPiTurn(
+  options: Pick<
+    RunVNextPiTurnOptions,
+    "prompt" | "timeoutMs" | "signal" | "collaboration"
+  >,
+  create: () => Promise<ManagedPiSession>,
+): Promise<VNextPiTurnResult> {
+  if (options.prompt.trim().length === 0)
+    throw new Error("prompt must not be empty");
+  const timeoutMs = boundedTimeout(options.timeoutMs);
+  const session = await create();
+  const collaboration = options.collaboration;
+  const operation = new AbortController();
+  let timedOut = false;
+  let signalAborted = options.signal?.aborted ?? false;
+  let failedResult: VNextPiTurnResult | undefined;
+  let abortPromise: Promise<void> | undefined;
+  const cleanupErrors: string[] = [];
+  const requestAbort = (): void => {
+    operation.abort();
+    collaboration?.interrupt();
+    // A settled event is synchronous. Disable continuation now, but start cleanup
+    // after Pi has returned from its event subscribers.
+    abortPromise ??= Promise.resolve()
+      .then(() =>
+        Promise.allSettled([
+          session.abort(),
+          collaboration?.stopAgents() ?? Promise.resolve(),
+        ]),
+      )
+      .then((results) => {
+        for (const result of results) {
+          if (result.status === "rejected") {
+            cleanupErrors.push(String(result.reason).slice(0, 2048));
+          }
+        }
+      });
+  };
+  const checkSettledFailure = (): void => {
+    if (collaboration === undefined || operation.signal.aborted) return;
+    const result = session.snapshot();
+    if (result.status === "completed") return;
+    // Preserve the failed turn before cancellation can change Pi's last
+    // message, and prevent another worker result from starting a new turn.
+    failedResult = result;
+    requestAbort();
+  };
+  const onAbort = (): void => {
+    signalAborted = true;
+    requestAbort();
+  };
+  let unbind: void | (() => void) = undefined;
+  let unsubscribeSettled: (() => void) | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    if (collaboration !== undefined) {
+      unsubscribeSettled = session.subscribe((event) => {
+        // Individual error messages can still be retried by Pi. Only the
+        // settled event marks the end of its complete retry/compaction loop.
+        if (event.type === "agent_settled") checkSettledFailure();
+      });
+    }
+    unbind = collaboration?.bindRoot({
+      isIdle: () => session.isIdle,
+      deliver: async (message) => {
+        operation.signal.throwIfAborted();
+        await session.sendMessage(message, {
+          triggerTurn: true,
+          deliverAs: "followUp",
+          source: { kind: "agent-supervisor" },
+        });
+        // A message queued during streaming returns before its turn ends;
+        // the settled subscriber handles that path instead.
+        if (session.isIdle) checkSettledFailure();
+      },
+      abort: () => session.abort(),
+    });
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      if (signalAborted) requestAbort();
+      else {
+        await Promise.race([
+          (async () => {
+            await session.prompt(options.prompt);
+            checkSettledFailure();
+            operation.signal.throwIfAborted();
+            await collaboration?.drain(operation.signal);
+          })(),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => {
+              timedOut = true;
+              requestAbort();
+              reject(new Error(`Pi turn timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+            operation.signal.addEventListener(
+              "abort",
+              () => reject(new Error("Pi turn aborted")),
+              { once: true },
+            );
+          }),
+        ]);
+      }
+    } catch (error) {
+      if (!timedOut && !signalAborted && failedResult === undefined) {
+        collaboration?.interrupt();
+        await collaboration?.stopAgents();
+        throw error;
+      }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
+      if (abortPromise !== undefined) await abortPromise;
+    }
+    const terminationMessage = timedOut
+      ? `Pi turn timed out after ${timeoutMs}ms`
+      : signalAborted
+        ? "Pi turn was aborted by the caller"
+        : undefined;
+    const result =
+      failedResult ??
+      session.snapshot(
+        timedOut ? "timed_out" : signalAborted ? "aborted" : undefined,
+        terminationMessage,
+      );
+    return cleanupErrors.length === 0
+      ? result
       : {
-          additionalEnvironmentInstructions:
-            options.additionalEnvironmentInstructions,
-        }),
-    ...(options.onEvent === undefined ? {} : { onEvent: options.onEvent }),
-  });
+          ...result,
+          errorMessage: `${result.errorMessage ?? "Pi turn ended"}; cleanup failed: ${cleanupErrors.join("; ")}`,
+        };
+  } finally {
+    unsubscribeSettled?.();
+    unbind?.();
+    session.dispose();
+  }
+}
+
+export async function runVNextPiTurn(
+  options: RunVNextPiTurnOptions,
+  overrides: Partial<VNextPiSessionDependencies> = {},
+): Promise<VNextPiTurnResult> {
+  return runManagedPiTurn(options, () =>
+    createManagedPiSession(options, overrides),
+  );
+}
+
+export async function runVNextPiTurnWithSdk(
+  options: RunVNextPiSdkTurnOptions,
+): Promise<VNextPiTurnResult> {
+  return runManagedPiTurn(options, () =>
+    createManagedPiSessionWithSdk(options),
+  );
 }

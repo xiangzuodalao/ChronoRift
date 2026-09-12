@@ -80,6 +80,8 @@ interface SrtCommonRequest {
   readonly environment?: Readonly<Record<string, string>> | undefined;
   readonly timeoutMs?: number | undefined;
   readonly signal?: AbortSignal | undefined;
+  /** Host-owned namespace roots hidden except for this operation's explicit mounts. */
+  readonly isolationReadRoots?: readonly string[] | undefined;
 }
 
 export interface SrtCodingRequest extends SrtCommonRequest {
@@ -301,6 +303,7 @@ export class SrtSandboxController {
           denyRead: unique([
             ...DEFAULT_DENY_READ_PATHS,
             ...this.#protectedReadPaths,
+            ...(request.isolationReadRoots ?? []),
           ]),
           allowRead: unique([
             SRT_APPLY_SECCOMP_PATH,
@@ -404,6 +407,7 @@ export class SrtSandboxController {
           denyRead: unique([
             ...DEFAULT_DENY_READ_PATHS,
             ...this.#protectedReadPaths,
+            ...(request.isolationReadRoots ?? []),
             request.mutableWorkspacePath,
           ]),
           allowRead: unique([
@@ -478,6 +482,9 @@ export class SrtSandboxController {
     assertAbsolutePath(request.homePath, "homePath");
     assertAbsolutePath(request.tempPath, "tempPath");
     assertAbsolutePath(request.artifactsPath, "artifactsPath");
+    for (const path of request.isolationReadRoots ?? []) {
+      assertAbsolutePath(path, "isolationReadRoots entry");
+    }
     if (
       request.timeoutMs !== undefined &&
       (!Number.isInteger(request.timeoutMs) || request.timeoutMs <= 0)

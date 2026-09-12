@@ -24,8 +24,17 @@ import {
   createVNextCodingToolDefinitions,
   runProjectEnvironmentInteractivePiSessionV1,
   runVNextPiTurnWithSdk,
+  resolvePiHostAgentDirectory,
   type PiThinkingLevel,
+  type VNextPiTurnResult,
 } from "@chronorift/pi-harness";
+
+import {
+  createProjectMultiAgentEnvironment,
+  ProjectMultiAgentOptionsSchema,
+  type ProjectMultiAgentEnvironment,
+  type ProjectMultiAgentOptions,
+} from "./project-multi-agent.js";
 
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
 import { GodotInspectionRuntime } from "./godot-inspection-runtime.js";
@@ -286,6 +295,7 @@ export interface ProjectEnvironmentPreviewRequestV2 {
   readonly agentDir?: string | undefined;
   readonly timeoutMs?: number | undefined;
   readonly interactive?: boolean | undefined;
+  readonly multiAgent?: ProjectMultiAgentOptions | undefined;
 }
 
 const pathText = z.string().min(1).max(8192);
@@ -342,9 +352,28 @@ export type ProjectEnvironmentPreviewResultV2 = z.infer<
   typeof ProjectEnvironmentPreviewResultV2Schema
 >;
 
+export const ProjectEnvironmentPreviewResultV3Schema =
+  ProjectEnvironmentPreviewResultV2Schema.extend({
+    schemaVersion: z.literal(3),
+    agents: z
+      .object({
+        recordPath: pathText,
+        count: z.number().int().nonnegative(),
+        maxAgents: z.number().int().min(1).max(4),
+        sharedToolCalls: z.number().int().min(0).max(256),
+        sharedToolCallLimit: z.literal(256),
+      })
+      .strict()
+      .nullable(),
+  }).strict();
+export type ProjectEnvironmentPreviewResultV3 = z.infer<
+  typeof ProjectEnvironmentPreviewResultV3Schema
+>;
+
 export interface ProjectEnvironmentPreviewDependenciesV2 {
   readonly runPiTurn: typeof runVNextPiTurnWithSdk;
   readonly runInteractive?: typeof runProjectEnvironmentInteractivePiSessionV1;
+  readonly createMultiAgentEnvironment?: typeof createProjectMultiAgentEnvironment;
 }
 const defaultDependencies: ProjectEnvironmentPreviewDependenciesV2 = {
   runPiTurn: runVNextPiTurnWithSdk,
@@ -379,7 +408,13 @@ const failure = (error: unknown): { code: string; message: string } => {
 export async function runProjectEnvironmentPreviewV2(
   request: ProjectEnvironmentPreviewRequestV2,
   dependencies: ProjectEnvironmentPreviewDependenciesV2 = defaultDependencies,
-): Promise<ProjectEnvironmentPreviewResultV2> {
+): Promise<
+  ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV3
+> {
+  const multiAgent =
+    request.multiAgent === undefined
+      ? undefined
+      : ProjectMultiAgentOptionsSchema.parse(request.multiAgent);
   if (request.goal === null && request.interactive !== true)
     throw Object.assign(
       new Error("A goal is required outside an interactive TTY"),
@@ -424,7 +459,13 @@ export async function runProjectEnvironmentPreviewV2(
       mkdir(path, { recursive: true, mode: 0o700 }),
     ),
   );
-  const controller = new SrtSandboxController();
+  const controller = new SrtSandboxController(
+    multiAgent === undefined
+      ? {}
+      : {
+          protectedReadPaths: [resolvePiHostAgentDirectory(request.agentDir)],
+        },
+  );
   const runtime = new GodotInspectionRuntime({
     runner: new SrtGodotRunner({
       controller,
@@ -440,7 +481,7 @@ export async function runProjectEnvironmentPreviewV2(
     godotPath: runtimeConfig.godot.binding.executablePath,
   });
   const admission = createProjectEnvironmentToolCallAdmissionV1(256);
-  const tools = [
+  let tools = [
     ...createVNextCodingToolDefinitions(
       new SandboxPiCodingToolPort(controller, {
         workspacePath: layout.workspaceDirectory,
@@ -454,6 +495,8 @@ export async function runProjectEnvironmentPreviewV2(
       toolCallAdmission: admission,
     }),
   ];
+  let collaboration: ProjectMultiAgentEnvironment | undefined;
+  let rootPiResult: VNextPiTurnResult | undefined;
   let status: ProjectEnvironmentPreviewResultV2["status"] = "completed";
   let sessionFile: string | null = null;
   let goalDelivered = false;
@@ -473,8 +516,128 @@ export async function runProjectEnvironmentPreviewV2(
       failureMessage = detail.message;
     } else limitations.push(detail.message);
   };
+  // Pi's official TUI exits the process after session_shutdown. Finalize from
+  // that awaited Host hook as well as the normal headless path, exactly once.
+  let finalization:
+    | Promise<
+        ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV3
+      >
+    | undefined;
+  const finalize = (): Promise<
+    ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV3
+  > => {
+    finalization ??= (async () => {
+      try {
+        await collaboration?.close();
+      } catch (error) {
+        recordFailure(error);
+      }
+      try {
+        await runtime.close();
+      } catch (error) {
+        recordFailure(error);
+      }
+      try {
+        await controller.close();
+      } catch (error) {
+        recordFailure(error);
+      }
+      try {
+        const extracted = await extractTaskPatch({
+          taskId,
+          sourceKind: "project-environment-v1",
+          workspaceDirectory: layout.workspaceDirectory,
+          hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
+          hostBaselineCommit: materialized.hostBaselineCommit,
+          baselineSourceHash: source.selectedTreeSha256,
+          ignoredCachePaths: [".chronorift", ".godot"],
+          hostOperationTemporaryDirectory:
+            layout.hostOperationTemporaryDirectory,
+        });
+        const path = join(layout.taskRecordDirectory, "candidate.patch");
+        await writeFile(path, extracted.patchBytes, {
+          flag: "wx",
+          mode: 0o600,
+        });
+        candidatePatch = {
+          path,
+          sha256: createHash("sha256")
+            .update(extracted.patchBytes)
+            .digest("hex"),
+          byteLength: extracted.patchBytes.byteLength,
+          roundTripVerified: true,
+        };
+      } catch (error) {
+        recordFailure(error);
+      }
+      let agents: ProjectEnvironmentPreviewResultV3["agents"] = null;
+      if (collaboration !== undefined) {
+        try {
+          agents = await collaboration.writeSummary(rootPiResult);
+        } catch (error) {
+          recordFailure(error);
+        }
+      }
+      const rawResult = {
+        schemaVersion: multiAgent === undefined ? 2 : 3,
+        status,
+        taskId,
+        sessionId,
+        sessionFile,
+        projectRoot: source.projectPrefix,
+        sourceSha256: source.selectedTreeSha256,
+        candidateSourceChanged:
+          candidatePatch !== null && candidatePatch.byteLength > 0,
+        candidatePatch,
+        executions: collaboration?.rootRecordPaths() ?? runtime.recordPaths(),
+        goalDelivered,
+        failureCode,
+        failureMessage,
+        taskDirectory: layout.taskRootDirectory,
+        workspaceDirectory: layout.workspaceDirectory,
+        provider: request.provider,
+        model: request.model,
+        thinkingLevel: request.thinkingLevel,
+        limitations,
+        ...(multiAgent === undefined ? {} : { agents }),
+      };
+      const result =
+        multiAgent === undefined
+          ? ProjectEnvironmentPreviewResultV2Schema.parse(rawResult)
+          : ProjectEnvironmentPreviewResultV3Schema.parse(rawResult);
+      await writeFile(
+        join(
+          layout.taskRecordDirectory,
+          `preview.v${result.schemaVersion}.json`,
+        ),
+        JSON.stringify(result, null, 2) + "\n",
+        { flag: "wx", mode: 0o600 },
+      );
+      return result;
+    })();
+    return finalization;
+  };
   try {
     await prepareGodotInspectionCandidate(layout.workspaceDirectory);
+    if (multiAgent !== undefined) {
+      collaboration = await (
+        dependencies.createMultiAgentEnvironment ??
+        createProjectMultiAgentEnvironment
+      )({
+        taskId,
+        layout,
+        controller,
+        nodePath: runtimeConfig.nodePath,
+        godotPath: runtimeConfig.godot.binding.executablePath,
+        provider: request.provider,
+        model: request.model,
+        thinkingLevel: request.thinkingLevel,
+        agentDir: request.agentDir,
+        instructions: inspectionInstructions,
+        configuration: multiAgent,
+      });
+      tools = [...collaboration.tools];
+    }
     if (request.goal !== null) {
       const result = await dependencies.runPiTurn({
         resourceWorkspaceDirectory: layout.workspaceDirectory,
@@ -488,10 +651,14 @@ export async function runProjectEnvironmentPreviewV2(
         timeoutMs: request.timeoutMs ?? 1_800_000,
         environmentProfile: "coding",
         additionalEnvironmentInstructions: inspectionInstructions,
+        ...(collaboration === undefined
+          ? {}
+          : { collaboration: collaboration.supervisor }),
         ...(request.agentDir === undefined
           ? {}
           : { agentDir: request.agentDir }),
       });
+      rootPiResult = result;
       if (result.sessionId !== sessionId)
         throw new Error("Pi returned a different Session identity");
       sessionFile = result.sessionFile;
@@ -516,11 +683,32 @@ export async function runProjectEnvironmentPreviewV2(
         sessionDirectory: layout.piSessionDirectory,
         ...(sessionFile === null ? {} : { sessionFile }),
         expectedSessionId: sessionId,
+        onShutdown: async (result) => {
+          rootPiResult = result;
+          if (result.sessionId !== sessionId)
+            throw new Error("Pi returned a different Session identity");
+          sessionFile = result.sessionFile;
+          goalDelivered = true;
+          if (result.status !== "completed") {
+            status =
+              result.status === "aborted"
+                ? "cancelled"
+                : result.status === "timed_out"
+                  ? "timed_out"
+                  : "failed";
+            failureCode = result.status;
+            failureMessage = result.errorMessage;
+          }
+          await finalize();
+        },
         provider: request.provider,
         model: request.model,
         thinkingLevel: request.thinkingLevel,
         tools,
         additionalEnvironmentInstructions: inspectionInstructions,
+        ...(collaboration === undefined
+          ? {}
+          : { collaboration: collaboration.supervisor }),
         ...(request.agentDir === undefined
           ? {}
           : { agentDir: request.agentDir }),
@@ -530,65 +718,7 @@ export async function runProjectEnvironmentPreviewV2(
   } catch (error) {
     recordFailure(error);
   } finally {
-    try {
-      await runtime.close();
-    } catch (error) {
-      recordFailure(error);
-    }
-    try {
-      await controller.close();
-    } catch (error) {
-      recordFailure(error);
-    }
+    await finalize();
   }
-  try {
-    const extracted = await extractTaskPatch({
-      taskId,
-      sourceKind: "project-environment-v1",
-      workspaceDirectory: layout.workspaceDirectory,
-      hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
-      hostBaselineCommit: materialized.hostBaselineCommit,
-      baselineSourceHash: source.selectedTreeSha256,
-      ignoredCachePaths: [".chronorift", ".godot"],
-      hostOperationTemporaryDirectory: layout.hostOperationTemporaryDirectory,
-    });
-    const path = join(layout.taskRecordDirectory, "candidate.patch");
-    await writeFile(path, extracted.patchBytes, { flag: "wx", mode: 0o600 });
-    candidatePatch = {
-      path,
-      sha256: createHash("sha256").update(extracted.patchBytes).digest("hex"),
-      byteLength: extracted.patchBytes.byteLength,
-      roundTripVerified: true,
-    };
-  } catch (error) {
-    recordFailure(error);
-  }
-  const result = ProjectEnvironmentPreviewResultV2Schema.parse({
-    schemaVersion: 2,
-    status,
-    taskId,
-    sessionId,
-    sessionFile,
-    projectRoot: source.projectPrefix,
-    sourceSha256: source.selectedTreeSha256,
-    candidateSourceChanged:
-      candidatePatch !== null && candidatePatch.byteLength > 0,
-    candidatePatch,
-    executions: runtime.recordPaths(),
-    goalDelivered,
-    failureCode,
-    failureMessage,
-    taskDirectory: layout.taskRootDirectory,
-    workspaceDirectory: layout.workspaceDirectory,
-    provider: request.provider,
-    model: request.model,
-    thinkingLevel: request.thinkingLevel,
-    limitations,
-  });
-  await writeFile(
-    join(layout.taskRecordDirectory, "preview.v2.json"),
-    JSON.stringify(result, null, 2) + "\n",
-    { flag: "wx", mode: 0o600 },
-  );
-  return result;
+  return await finalize();
 }

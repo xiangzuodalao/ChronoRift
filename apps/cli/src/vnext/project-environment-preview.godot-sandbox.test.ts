@@ -22,6 +22,7 @@ import type {
 } from "@chronorift/pi-harness";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ProjectEnvironmentPreviewResultV3Schema,
   runProjectEnvironmentPreviewV2,
   type ProjectEnvironmentPreviewDependenciesV2,
 } from "./project-environment-preview.js";
@@ -296,39 +297,83 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
     ).toBe(true);
   });
 
-  it("starts native interactive Pi directly without an authoring turn", async () => {
-    const { request } = await setup();
-    const runPiTurn = vi.fn(finish);
-    const runInteractive: NonNullable<
-      ProjectEnvironmentPreviewDependenciesV2["runInteractive"]
-    > = vi.fn(
-      async (
-        options: Parameters<
-          NonNullable<ProjectEnvironmentPreviewDependenciesV2["runInteractive"]>
-        >[0],
-      ) => {
-        expect(options.sessionFile).toBeUndefined();
-        expect(
-          options.tools.filter((tool) => tool.name.startsWith("game_")),
-        ).toHaveLength(3);
-        const path = join(
-          options.sessionDirectory,
-          options.expectedSessionId + ".jsonl",
-        );
-        await writeFile(
-          path,
-          JSON.stringify({ type: "session", id: options.expectedSessionId }) +
-            "\n",
-        );
-        return path;
-      },
-    );
-    const result = await runProjectEnvironmentPreviewV2(
-      { ...request, goal: null, interactive: true },
-      { runPiTurn, runInteractive },
-    );
-    expect(result.status).toBe("completed");
-    expect(runPiTurn).not.toHaveBeenCalled();
-    expect(runInteractive).toHaveBeenCalledTimes(1);
-  });
+  it.each([false, true])(
+    "finalizes interactive Pi during its shutdown hook, multi-agent=%s",
+    async (multiAgent) => {
+      const { request } = await setup();
+      const runPiTurn = vi.fn(finish);
+      const runInteractive: NonNullable<
+        ProjectEnvironmentPreviewDependenciesV2["runInteractive"]
+      > = vi.fn(
+        async (
+          options: Parameters<
+            NonNullable<
+              ProjectEnvironmentPreviewDependenciesV2["runInteractive"]
+            >
+          >[0],
+        ) => {
+          expect(options.sessionFile).toBeUndefined();
+          expect(
+            options.tools.filter((tool) => tool.name.startsWith("game_")),
+          ).toHaveLength(3);
+          const path = join(
+            options.sessionDirectory,
+            options.expectedSessionId + ".jsonl",
+          );
+          await writeFile(
+            path,
+            JSON.stringify({ type: "session", id: options.expectedSessionId }) +
+              "\n",
+          );
+          const ended = await finish({
+            ...options,
+            newSessionId: options.expectedSessionId,
+            prompt: "offline TUI fixture",
+          });
+          expect(options.onShutdown).toBeTypeOf("function");
+          await options.onShutdown!(ended);
+          // Real Pi exits after this hook; artifacts must already exist before
+          // runInteractive returns (the fake return also checks idempotence).
+          const saved: unknown = JSON.parse(
+            await readFile(
+              join(
+                options.resourceWorkspaceDirectory,
+                "../records",
+                `preview.v${multiAgent ? 3 : 2}.json`,
+              ),
+              "utf8",
+            ),
+          );
+          expect(saved).toMatchObject({
+            status: "completed",
+            sessionFile: path,
+            schemaVersion: multiAgent ? 3 : 2,
+          });
+          if (multiAgent) {
+            const agents: unknown = JSON.parse(
+              await readFile(
+                ProjectEnvironmentPreviewResultV3Schema.parse(saved).agents!
+                  .recordPath,
+                "utf8",
+              ),
+            );
+            expect(agents).toMatchObject({ rootStats: ended.stats });
+          }
+          return path;
+        },
+      );
+      const result = await runProjectEnvironmentPreviewV2(
+        {
+          ...request,
+          goal: null,
+          interactive: true,
+          ...(multiAgent ? { multiAgent: {} } : {}),
+        },
+        { runPiTurn, runInteractive },
+      );
+      expect(result.status).toBe("completed");
+      expect(runPiTurn).not.toHaveBeenCalled();
+      expect(runInteractive).toHaveBeenCalledTimes(1);
+    },
+  );
 });

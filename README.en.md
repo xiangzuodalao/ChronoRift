@@ -130,6 +130,7 @@ The explicit experimental entry points are:
 
 ```text
 corepack pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL
+corepack pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL --multi-agent
 corepack pnpm demo:platform-alias-ablation -- --arm coding-only|chronorift ...
 corepack pnpm demo:mob-orientation-ablation -- --arm coding-only|chronorift-v2 ...
 ```
@@ -138,6 +139,11 @@ They do not modify or apply changes to the source checkout. The Agent can write 
 workspace. Godot validation instead runs against a Host-copied stage whose project source is read-only; only
 `.godot/`, home, temp, and artifacts are writable, and source SHA-256 is checked before and after execution. The
 commands do not automatically commit, merge, push, or declare a fix.
+
+Optional `--multi-agent` adds persistent Pi workers with independent candidates and Godot executions. The Host brokers
+sandboxed tools, messages, waiting, cancellation, and explicit candidate import into Root. The default limit is two
+workers. TUI commands `/agents` and `/agents stop` inspect or stop the team. See [Multi-Agent V1](docs/multi-agent.md)
+for configuration, tool budgets, patch conflicts, and the experimental boundaries.
 
 ## Trust boundary
 

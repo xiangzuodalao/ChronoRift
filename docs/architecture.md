@@ -63,7 +63,8 @@ replay、index 与 compare 仍是 planned。为什么发生、哪个
 - 不承诺任意 Godot 项目能零配置捕获私有状态或等价恢复完整引擎状态。
 - 不把 Git worktree 当成 OS sandbox，也不让 Agent 直接修改用户 checkout。
 - 不自动 commit、merge、push、发布或部署候选修改。
-- 首发不覆盖 C#、GDExtension、native plugin、audio、跨平台 GUI、多人或多 Agent。
+- 首发不覆盖 C#、GDExtension、native plugin、audio、跨平台 GUI 或多人游戏；可选单层多 Agent 的当前实现见
+  [Multi-Agent V1](multi-agent.md)。
 - 产品 Harness 不持有 hidden benchmark oracle，也不根据自己的输出给自己评分。
 
 ## 4. 稳定产品原则与可选 target
@@ -152,6 +153,12 @@ current HEAD 没有 generic Task lifecycle management API，包括 resume 或 di
 fail closed。GN-1/Mob 的固定 runtime 配置与交付边界另见 §20.2/§20.3。
 
 一次 `session.prompt()` 返回只结束当前 turn。普通完成不会自动 commit、merge、push、apply 或删除候选和记录。
+
+启用 `project preview --multi-agent` 时，现有 Session 为 Root。Host 的 `AgentSupervisor` 管理持久 Pi worker
+子进程，每个 worker 从 Root 当前 candidate 创建独立副本，使用 IPC proxy tools 访问 Host broker。Root 和 worker
+共享 SRT controller，执行资源、取消范围和 Godot stage 分开绑定；worker 不可继续委派。Root 通过工具显式应用冻结
+候选并重新验证。Headless 在整体超时内等待后台任务并交回 Root；正常 TUI 退出通过 Pi `session_shutdown` hook 完成
+资源清理和结果保存。多代理输出 Preview V3，普通模式继续 V2；详细边界见 [Multi-Agent V1](multi-agent.md)。
 
 ## 7. Physical workspace 与 SRT 边界
 

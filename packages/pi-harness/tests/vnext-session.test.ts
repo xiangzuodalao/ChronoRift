@@ -11,12 +11,14 @@ import {
   type ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createManagedPiSession,
   runVNextPiTurn,
   VNEXT_CODING_ENVIRONMENT_APPENDIX,
   VNEXT_ENVIRONMENT_APPENDIX,
+  type RootPiSessionControl,
 } from "../src/index.js";
 
 const roots: string[] = [];
@@ -51,7 +53,10 @@ const tools = ["read", "bash", "edit", "write", "grep", "find", "ls"].map(
       description: `${name} fixture`,
       parameters: Type.Object({}),
       execute: () =>
-        Promise.resolve({ content: [{ type: "text" as const, text: "ok" }] }),
+        Promise.resolve({
+          content: [{ type: "text" as const, text: "ok" }],
+          details: undefined,
+        }),
     }),
 );
 
@@ -87,7 +92,7 @@ const fakeSessionFactory =
       options.sessionManager.appendModelChange(model.provider, model.id);
       options.sessionManager.appendThinkingLevelChange("max");
     }
-    let listener: ((event: AgentSessionEvent) => void) | undefined;
+    const listeners = new Set<(event: AgentSessionEvent) => void>();
     let abortCalls = 0;
     let settlePrompt: (() => void) | undefined;
     const sessionFile = options.sessionManager?.getSessionFile();
@@ -114,9 +119,15 @@ const fakeSessionFactory =
       },
     ];
     const session = {
+      isIdle: true,
+      clearQueue: () => ({ steering: [], followUp: [] }),
+      abortCompaction: () => undefined,
+      abortBranchSummary: () => undefined,
+      waitForIdle: () => Promise.resolve(),
       prompt: () => {
         if (mode === "complete") {
-          listener?.({ type: "tool_execution_end", isError: true } as never);
+          for (const listener of listeners)
+            listener({ type: "tool_execution_end", isError: true } as never);
           return Promise.resolve();
         }
         if (mode === "reject") {
@@ -139,9 +150,9 @@ const fakeSessionFactory =
         return Promise.resolve();
       },
       subscribe: (next: (event: AgentSessionEvent) => void) => {
-        listener = next;
+        listeners.add(next);
         return () => {
-          listener = undefined;
+          listeners.delete(next);
           if (lifecycle !== undefined) lifecycle.unsubscribeCalls += 1;
         };
       },
@@ -167,6 +178,226 @@ const fakeSessionFactory =
   };
 
 describe("vNext Pi AgentSession host", () => {
+  it("retains an independent session across tasks and preserves message provenance", async () => {
+    const root = await createRoot();
+    const captures: CreateAgentSessionOptions[] = [];
+    const lifecycle = { disposeCalls: 0, unsubscribeCalls: 0 };
+    const messages = vi.fn(async () => undefined);
+    const session = await createManagedPiSession(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        tools,
+      },
+      {
+        createSession: async (options) => {
+          const created = await fakeSessionFactory(
+            captures,
+            "complete",
+            lifecycle,
+          )(options);
+          created.session.sendCustomMessage = messages;
+          return created;
+        },
+      },
+    );
+    await session.prompt("Investigate the initial failure.");
+    const initial = session.snapshot();
+    await session.sendMessage("A worker observed a failure.", {
+      triggerTurn: true,
+      source: { agentId: "worker-1", messageId: "message-1" },
+    });
+    await session.prompt("Check the alternate hypothesis.");
+    expect(session.snapshot().sessionId).toBe(initial.sessionId);
+    expect(captures).toHaveLength(1);
+    expect(lifecycle.disposeCalls).toBe(0);
+    expect(messages).toHaveBeenCalledWith(
+      {
+        customType: "chronorift.collaboration",
+        content: "A worker observed a failure.",
+        display: true,
+        details: { source: { agentId: "worker-1", messageId: "message-1" } },
+      },
+      { triggerTurn: true, deliverAs: "followUp" },
+    );
+    session.dispose();
+    session.dispose();
+    expect(lifecycle).toEqual({ disposeCalls: 1, unsubscribeCalls: 1 });
+    await expect(session.prompt("Another task")).rejects.toThrow("disposed");
+  });
+
+  it("drains child results before taking the final snapshot and disposing", async () => {
+    const root = await createRoot();
+    const captures: CreateAgentSessionOptions[] = [];
+    const lifecycle = { disposeCalls: 0, unsubscribeCalls: 0 };
+    let control: RootPiSessionControl | undefined;
+    let reviewed = false;
+    const delivered = vi.fn(async () => {
+      reviewed = true;
+    });
+    const unbind = vi.fn();
+    const result = await runVNextPiTurn(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        prompt: "Investigate with a worker.",
+        tools,
+        collaboration: {
+          bindRoot: (value) => {
+            control = value;
+            return unbind;
+          },
+          drain: async () => {
+            expect(lifecycle.disposeCalls).toBe(0);
+            await control!.deliver("Worker result: issue reproduced.");
+          },
+          interrupt: vi.fn(),
+          stopAgents: vi.fn(async () => undefined),
+          describeAgents: () => "worker-1 idle",
+        },
+      },
+      {
+        createSession: async (options) => {
+          const created = await fakeSessionFactory(
+            captures,
+            "complete",
+            lifecycle,
+          )(options);
+          created.session.sendCustomMessage = delivered;
+          Object.defineProperty(created.session, "messages", {
+            get: () => [
+              {
+                role: "assistant",
+                stopReason: "stop",
+                content: [
+                  {
+                    type: "text",
+                    text: reviewed
+                      ? "Worker evidence reviewed."
+                      : "Waiting for worker.",
+                  },
+                ],
+              },
+            ],
+          });
+          return created;
+        },
+      },
+    );
+    expect(result.status).toBe("completed");
+    expect(result.assistantText).toBe("Worker evidence reviewed.");
+    expect(delivered).toHaveBeenCalledOnce();
+    expect(delivered.mock.invocationCallOrder[0]).toBeLessThan(
+      unbind.mock.invocationCallOrder[0]!,
+    );
+    expect(lifecycle.disposeCalls).toBe(1);
+  });
+
+  it("cancels a root waiting for workers even when drain never settles", async () => {
+    const root = await createRoot();
+    const interrupt = vi.fn();
+    const stopAgents = vi.fn(async () => undefined);
+    let drainSignal: AbortSignal | undefined;
+    const result = await runVNextPiTurn(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        prompt: "Investigate with a worker.",
+        tools,
+        timeoutMs: 5,
+        collaboration: {
+          bindRoot: () => undefined,
+          drain: (signal) => {
+            drainSignal = signal;
+            return new Promise(() => undefined);
+          },
+          interrupt,
+          stopAgents,
+          describeAgents: () => "worker-1 running",
+        },
+      },
+      { createSession: fakeSessionFactory([]) },
+    );
+    expect(result.status).toBe("timed_out");
+    expect(drainSignal?.aborted).toBe(true);
+    expect(interrupt).toHaveBeenCalledOnce();
+    expect(stopAgents).toHaveBeenCalledOnce();
+  });
+
+  it("retains a failed continuation even when stopping the team changes the Session or fails", async () => {
+    const root = await createRoot();
+    let control: RootPiSessionControl | undefined;
+    const stopAgents = vi.fn(() =>
+      Promise.reject(new Error("worker cleanup failed")),
+    );
+    const result = await runVNextPiTurn(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        prompt: "Investigate with workers.",
+        tools,
+        collaboration: {
+          bindRoot: (value) => {
+            control = value;
+          },
+          drain: async () => {
+            await control!.deliver("Worker result");
+          },
+          interrupt: vi.fn(),
+          stopAgents,
+          describeAgents: () => "worker running",
+        },
+      },
+      {
+        createSession: async (options) => {
+          const created = await fakeSessionFactory([])(options);
+          let messages: readonly unknown[] = created.session.messages;
+          Object.defineProperty(created.session, "messages", {
+            get: () => messages,
+          });
+          created.session.sendCustomMessage = () => {
+            messages = [
+              {
+                role: "assistant",
+                stopReason: "error",
+                errorMessage: "Provider retries exhausted",
+                content: [],
+              },
+            ];
+            return Promise.resolve();
+          };
+          created.session.abort = () => {
+            messages = [
+              { role: "assistant", stopReason: "aborted", content: [] },
+            ];
+            return Promise.resolve();
+          };
+          return created;
+        },
+      },
+    );
+    expect(stopAgents).toHaveBeenCalledOnce();
+    expect(result.status).toBe("provider_failed");
+    expect(result.errorMessage).toContain("Provider retries exhausted");
+    expect(result.errorMessage).toContain("worker cleanup failed");
+  });
+
   it("describes game resources and observation limits without a tool workflow", () => {
     expect(VNEXT_ENVIRONMENT_APPENDIX).toMatch(/task-owned resource IDs/u);
     expect(VNEXT_ENVIRONMENT_APPENDIX).toMatch(/coverage/u);

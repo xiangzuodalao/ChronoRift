@@ -257,8 +257,39 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
     ]);
     expect(await readdir(join(result.taskDirectory, "records"))).toEqual([
       "candidate.patch",
+      "performance.v1.json",
       "preview.v2.json",
     ]);
+    const timing = JSON.parse(
+      await readFile(
+        join(result.taskDirectory, "records/performance.v1.json"),
+        "utf8",
+      ),
+    ) as {
+      records: {
+        name: string;
+        requestedAt: string;
+        finishedAt: string | null;
+        lockAcquiredAt: string | null;
+        workspaceLockWaitMs: number;
+      }[];
+    };
+    expect(
+      timing.records.filter((entry) => entry.name === "game_launch"),
+    ).toHaveLength(2);
+    expect(
+      timing.records.every(
+        (entry) =>
+          entry.finishedAt !== null &&
+          Date.parse(entry.finishedAt) >= Date.parse(entry.requestedAt),
+      ),
+    ).toBe(true);
+    expect(
+      timing.records.every(
+        (entry) =>
+          entry.lockAcquiredAt === null && entry.workspaceLockWaitMs === 0,
+      ),
+    ).toBe(true);
   });
 
   it("completes ordinary coding without requiring any game tool", async () => {

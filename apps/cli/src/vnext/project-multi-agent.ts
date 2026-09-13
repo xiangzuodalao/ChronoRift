@@ -275,9 +275,11 @@ export async function createProjectMultiAgentEnvironment(
               ...result,
               sessionStatsAtTurnEnd: piResult?.stats ?? null,
               usageOwnership: piResult?.usageOwnership ?? null,
+              modelRequests: piResult?.modelRequests ?? null,
             })),
             rootStats: rootResult?.stats ?? null,
             rootUsageOwnership: rootResult?.usageOwnership ?? null,
+            rootModelRequests: rootResult?.modelRequests ?? null,
             workerUsage,
             reportedUsage: {
               tokens: stats.reduce(

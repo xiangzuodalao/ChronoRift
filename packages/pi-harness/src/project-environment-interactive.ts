@@ -16,6 +16,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiThinkingLevel } from "./types.js";
+import {
+  observePiModelRequests,
+  type PiModelRequestTiming,
+} from "./model-request-telemetry.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
 import {
   finalAssistantFailure,
@@ -110,11 +114,18 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
   let detachRoot: void | (() => void) = undefined;
   let unsubscribeRoot: (() => void) | undefined;
   let rootControl: RootPiSessionControl | undefined;
+  let modelRequests: ReturnType<typeof observePiModelRequests> | undefined;
+  const previousModelRequests: PiModelRequestTiming[] = [];
   const releaseRoot = (): void => {
     const unsubscribe = unsubscribeRoot;
     const detach = detachRoot;
     unsubscribeRoot = undefined;
     detachRoot = undefined;
+    if (modelRequests !== undefined) {
+      previousModelRequests.push(...modelRequests.snapshot());
+      modelRequests.dispose();
+      modelRequests = undefined;
+    }
     try {
       unsubscribe?.();
     } finally {
@@ -144,6 +155,10 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
               model: activeSession.model?.id ?? options.model,
               thinkingLevel: options.thinkingLevel,
               eventsObserved,
+              modelRequests: [
+                ...previousModelRequests,
+                ...(modelRequests?.snapshot() ?? []),
+              ],
             },
             errors.length === 0 ? undefined : "aborted",
             errors.length === 0
@@ -270,6 +285,7 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     try {
       releaseRoot();
       activeSession = created.session;
+      modelRequests = observePiModelRequests(created.session);
       if (collaboration !== undefined) {
         rootControl = rootPiSessionControl(
           created.session,

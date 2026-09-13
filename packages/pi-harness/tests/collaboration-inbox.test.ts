@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,7 @@ import {
   fauxThinking,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai/compat";
 import {
   createAgentSession,
   defineTool,
@@ -69,6 +70,8 @@ async function fixture(forkContext?: PiSessionForkContext) {
   modelRuntime.registerNativeProvider(faux.provider);
   const model = modelRuntime.getModel("chronorift-inbox-test", "offline")!;
   let rawSession: AgentSession | undefined;
+  let originalStreamFunction:
+    AgentSession["agent"]["streamFunction"] | undefined;
   const session = await createManagedPiSession(
     {
       resourceWorkspaceDirectory: workspace,
@@ -95,15 +98,108 @@ async function fixture(forkContext?: PiSessionForkContext) {
       createSession: async (options) => {
         const created = await createAgentSession(options);
         rawSession = created.session;
+        originalStreamFunction = created.session.agent.streamFunction;
         return created;
       },
     },
   );
   sessions.push(session);
-  return { session, faux, rawSession: rawSession! };
+  return {
+    session,
+    faux,
+    rawSession: rawSession!,
+    originalStreamFunction: originalStreamFunction!,
+  };
 }
 
 describe("Pi collaboration mailbox at native loop boundaries", () => {
+  it("preserves the installed SDK's compaction authentication branch", async () => {
+    const { rawSession, originalStreamFunction } = await fixture();
+    // Pi has an identity-based auth branch for the legacy compat stream.
+    // Its current SDK instead supplies an anonymous modelRuntime wrapper.
+    expect(originalStreamFunction).not.toBe(streamSimple);
+    expect(rawSession.agent.streamFunction).not.toBe(streamSimple);
+    const observedStreamFunction = rawSession.agent.streamFunction;
+    const getAuth = vi
+      .spyOn(rawSession.modelRuntime, "getAuth")
+      .mockRejectedValue(new Error("Fixture auth failure"));
+    const isUsingOAuth = vi.spyOn(rawSession.modelRuntime, "isUsingOAuth");
+    try {
+      for (const streamFunction of [
+        originalStreamFunction,
+        observedStreamFunction,
+      ]) {
+        rawSession.agent.streamFunction = streamFunction;
+        // Both versions preserve Pi's custom-stream auth fallback before
+        // reaching the normal empty-session compaction check, with no request.
+        await expect(rawSession.compact()).rejects.toThrow(
+          "Nothing to compact",
+        );
+      }
+      expect(getAuth).toHaveBeenCalledTimes(2);
+      expect(isUsingOAuth).not.toHaveBeenCalled();
+    } finally {
+      rawSession.agent.streamFunction = observedStreamFunction;
+    }
+  });
+
+  it("persists separate request timings through native Pi retry and failed follow-up turns", async () => {
+    const { session, faux, rawSession } = await fixture();
+    const retrySettings = rawSession.settingsManager.getRetrySettings();
+    vi.spyOn(rawSession.settingsManager, "getRetrySettings").mockReturnValue({
+      ...retrySettings,
+      baseDelayMs: 1,
+    });
+    faux.setResponses([
+      fauxAssistantMessage("", {
+        stopReason: "error",
+        errorMessage: "500 server error",
+      }),
+      fauxAssistantMessage("Recovered."),
+      fauxAssistantMessage("", {
+        stopReason: "error",
+        errorMessage: "Invalid fixture request",
+      }),
+    ]);
+    await session.prompt("Investigate.");
+    expect(faux.state.callCount).toBe(2);
+    expect(
+      session.snapshot().modelRequests?.map((request) => request.outcome),
+    ).toEqual(["error", "completed"]);
+    await session.prompt("Check another task.");
+    const result = session.snapshot();
+    expect(result.status).toBe("provider_failed");
+    expect(result.modelRequests?.map((request) => request.outcome)).toEqual([
+      "error",
+      "completed",
+      "error",
+    ]);
+    const persisted = (await readFile(result.sessionFile, "utf8"))
+      .trim()
+      .split("\n")
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            customType?: string;
+            data?: { phase: string; requestId: string; outcome: string };
+          },
+      )
+      .filter((entry) => entry.customType === "chronorift.model-request.v1");
+    expect(persisted.map((entry) => entry.data?.phase)).toEqual([
+      "started",
+      "finished",
+      "started",
+      "finished",
+      "started",
+      "finished",
+    ]);
+    expect(
+      persisted
+        .filter((entry) => entry.data?.phase === "finished")
+        .map((entry) => entry.data?.requestId),
+    ).toEqual(result.modelRequests?.map((request) => request.requestId));
+  });
+
   it("batches mail after tools, acknowledges actual context consumption, and keeps one final answer", async () => {
     const { session, faux } = await fixture();
     const consumed: string[][] = [];
@@ -126,6 +222,12 @@ describe("Pi collaboration mailbox at native loop boundaries", () => {
     ]);
     await session.prompt("Investigate.");
     expect(faux.state.callCount).toBe(2);
+    expect(session.snapshot().modelRequests).toHaveLength(2);
+    expect(
+      session
+        .snapshot()
+        .modelRequests?.every((request) => request.outcome === "completed"),
+    ).toBe(true);
     expect(consumed).toEqual([["one", "two", "three"]]);
     expect(session.hasPendingMessages()).toBe(false);
     expect(session.snapshot().assistantText).toBe("Integrated result.");

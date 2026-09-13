@@ -45,9 +45,13 @@ sandbox、Godot execution 和 runtime evidence。
 
 Project Preview 可选 `--multi-agent`：Root 和 worker 使用独立 Pi Session，共享一个私有 candidate，各自拥有固定源码的
 Godot execution。所有代理都可继续委派、发消息和等待；默认全树最多 3 个活跃 worker，加上预留的 Root 共 4 个并发名额。
+采用 Adaptive Multi：只委派能替代 Root 工作的独立子任务，小任务允许零 worker；worker 完成后结束当前 turn，后续通过
+`followup_task` 继续。记录各代理模型请求和共享 workspace 锁等待时间，用于检查协作是否减少 Root 工作和耗时。
 普通消息不自动启动闲置模型轮，Root 完成后 Headless 会停止剩余 writer，再输出最终共享 patch。使用方法、用量归属和
 Codex 公开设计的适配边界见 [Multi-Agent V2](docs/multi-agent.md)；旧 Pilot 的性能结果不代表当前实现。
-最新的 [V2 四路复测](docs/case-studies/codex-v2-retest.md)满足固定配置协议，八次验收通过；两个小任务中 Multi 均更慢、已上报估算费用更高。
+此前的 [V2 四路复测](docs/case-studies/codex-v2-retest.md)满足固定配置协议，八次验收通过；两个小任务中 Multi 均更慢、已上报估算费用更高。
+后续 [Adaptive Multi 实验](docs/case-studies/adaptive-multi-v1.md)保留这些负结果，比较可选 worker 是否减少 Root 工作和关键路径，
+并记录一次针对性优化后的开发对照及独立 holdout。
 
 ## Runtime evidence 改变候选：GN-1
 

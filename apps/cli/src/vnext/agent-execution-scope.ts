@@ -7,6 +7,7 @@ import {
 } from "@chronorift/pi-harness";
 
 import { GodotInspectionRuntime } from "./godot-inspection-runtime.js";
+import { ExecutionTelemetry } from "./execution-telemetry.js";
 import { prepareGodotInspectionCandidate } from "./godot-inspection-source.js";
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
 import { SrtGodotRunner } from "./srt-godot-runner.js";
@@ -87,6 +88,7 @@ export interface AgentExecutionScopeOptions {
 
 /** Owns agent resources without owning Pi or resetting the shared SRT singleton. */
 export class AgentExecutionScope {
+  public readonly telemetry = new ExecutionTelemetry();
   readonly #scopeGate = new AgentWorkspaceGate();
   public readonly candidateGate: AgentWorkspaceGate;
   readonly #runtimes: GodotInspectionRuntime[] = [];
@@ -123,52 +125,56 @@ export class AgentExecutionScope {
       ...tool,
       execute: (id, input, signal, onUpdate, context) => {
         const epoch = this.#abort;
-        return this.#scopeGate.run(async () => {
-          if (
-            this.#closed ||
-            this.#stopping ||
-            epoch.signal.aborted ||
-            signal?.aborted
-          ) {
-            throw Object.assign(new Error("Agent execution was cancelled"), {
-              code: "cancelled",
-            });
-          }
-          if (!tool.name.startsWith("game_")) {
-            const operationSignal = AbortSignal.any([
-              epoch.signal,
-              ...(signal === undefined ? [] : [signal]),
-            ]);
-            return this.candidateGate.run(() => {
-              options.budget.admit(tool.name);
-              return tool.execute(
+        return this.telemetry.measure(tool.name, id, (lock) =>
+          this.#scopeGate.run(async () => {
+            if (
+              this.#closed ||
+              this.#stopping ||
+              epoch.signal.aborted ||
+              signal?.aborted
+            ) {
+              throw Object.assign(new Error("Agent execution was cancelled"), {
+                code: "cancelled",
+              });
+            }
+            if (!tool.name.startsWith("game_")) {
+              const operationSignal = AbortSignal.any([
+                epoch.signal,
+                ...(signal === undefined ? [] : [signal]),
+              ]);
+              lock.requested();
+              return this.candidateGate.run(() => {
+                lock.acquired();
+                options.budget.admit(tool.name);
+                return tool.execute(
+                  id,
+                  input,
+                  operationSignal,
+                  onUpdate,
+                  context,
+                );
+              }, operationSignal);
+            }
+            options.budget.admit(tool.name);
+            // A launch RPC finishes before its game does. Do not leave that live
+            // process attached to a completed Pi tool/turn's cancellation signal.
+            const operation = new AbortController();
+            const abort = () => operation.abort(signal?.reason);
+            signal?.addEventListener("abort", abort, { once: true });
+            if (signal?.aborted) abort();
+            try {
+              return await tool.execute(
                 id,
                 input,
-                operationSignal,
+                operation.signal,
                 onUpdate,
                 context,
               );
-            }, operationSignal);
-          }
-          options.budget.admit(tool.name);
-          // A launch RPC finishes before its game does. Do not leave that live
-          // process attached to a completed Pi tool/turn's cancellation signal.
-          const operation = new AbortController();
-          const abort = () => operation.abort(signal?.reason);
-          signal?.addEventListener("abort", abort, { once: true });
-          if (signal?.aborted) abort();
-          try {
-            return await tool.execute(
-              id,
-              input,
-              operation.signal,
-              onUpdate,
-              context,
-            );
-          } finally {
-            signal?.removeEventListener("abort", abort);
-          }
-        });
+            } finally {
+              signal?.removeEventListener("abort", abort);
+            }
+          }),
+        );
       },
     }));
   }
@@ -208,9 +214,18 @@ export class AgentExecutionScope {
       }),
       candidateWorkspace: options.workspaceDirectory,
       captureCandidate: (signal) =>
-        this.candidateGate.run(
-          () => prepareGodotInspectionCandidate(options.workspaceDirectory),
-          signal,
+        this.telemetry.measure(
+          "capture_candidate",
+          "capture-" + this.telemetry.records.length,
+          (lock) => {
+            lock.requested();
+            return this.candidateGate.run(() => {
+              lock.acquired();
+              return prepareGodotInspectionCandidate(
+                options.workspaceDirectory,
+              );
+            }, signal);
+          },
         ),
       artifactsDirectory: options.recordsDirectory,
       nodePath: options.nodePath,
@@ -257,6 +272,12 @@ export class AgentExecutionScope {
 
   public async close(): Promise<void> {
     this.#closed = true;
-    await this.cancel();
+    try {
+      await this.cancel();
+    } finally {
+      await this.telemetry.save(
+        join(this.options.recordsDirectory, "performance.v1.json"),
+      );
+    }
   }
 }

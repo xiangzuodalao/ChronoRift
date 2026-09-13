@@ -44,6 +44,8 @@ export interface AgentTurnRecord extends AgentTurnCompletion {
   readonly task: string;
   readonly startedAt: string | null;
   readonly finishedAt: string;
+  /** Host receipt of Pi settlement, before resource cleanup; null if unavailable. */
+  readonly settledAt?: string | null;
   readonly evidence?: unknown;
 }
 
@@ -125,6 +127,7 @@ interface PendingTurn {
   readonly done: Promise<AgentTurnRecord>;
   readonly resolve: (result: AgentTurnRecord) => void;
   startedAt: string | null;
+  settledAt?: string;
   timer?: ReturnType<typeof setTimeout>;
   interruptTimer?: ReturnType<typeof setTimeout>;
   finishing?: Promise<void>;
@@ -423,7 +426,7 @@ export class AgentSupervisor implements RootCollaborationPort {
         tools: [...base.tools, ...collaborationDescriptors(this.spawnPolicy)],
         additionalEnvironmentInstructions: [
           base.additionalEnvironmentInstructions,
-          `You are ${taskName}, a member of the team rooted at /root. Your parent is ${parentPath}. All agents share the same private candidate directory; edits are immediately visible. Coordinate overlapping edits and preserve other agents' changes. You may delegate bounded subtasks and communicate with any agent in this tree. There are ${this.maxAgents + 1} concurrency slots including Root; waiting keeps your slot. Your final answer goes to your parent. A completed turn is not acceptance of a fix.`,
+          `You are ${taskName}, a member of the team rooted at /root. Your parent is ${parentPath}. All agents share the same private candidate directory; edits are immediately visible. Coordinate overlapping edits and preserve other agents' changes. Stay within your assigned task and use supported findings already supplied by other agents. There are ${this.maxAgents + 1} concurrency slots including Root; waiting keeps your slot. When your task is finished, give a concise final answer with your conclusion, concrete evidence references, and uncovered items, then end the current turn. Your final answer is automatically sent to your parent; do not also send the same result as a separate message or loop on wait_agent to remain available. The parent can resume you with followup_task when further work is needed. A completed turn is not acceptance of a fix.`,
           spawnPolicyDescription(this.spawnPolicy),
         ]
           .filter(Boolean)
@@ -1437,6 +1440,7 @@ export class AgentSupervisor implements RootCollaborationPort {
       return;
     }
     if (message.type !== "completed" && message.type !== "failed") return;
+    turn.settledAt = new Date().toISOString();
     const result: AgentTurnCompletion =
       message.type === "failed"
         ? {
@@ -1632,6 +1636,7 @@ export class AgentSupervisor implements RootCollaborationPort {
         parentAgentId: entry.parentAgentId,
         task: turn.task,
         startedAt: turn.startedAt,
+        settledAt: turn.settledAt ?? null,
         finishedAt: new Date().toISOString(),
         ...(evidence === undefined ? {} : { evidence }),
       });
@@ -1850,6 +1855,7 @@ function descriptor(
   name: string,
   description: string,
   properties: Parameters<typeof Type.Object>[0],
+  promptGuidelines?: readonly string[],
 ): PiProxyToolDescriptor {
   return {
     name,
@@ -1857,6 +1863,7 @@ function descriptor(
     parameters: Type.Object(properties, {
       additionalProperties: false,
     }) as unknown as Record<string, unknown>,
+    ...(promptGuidelines === undefined ? {} : { promptGuidelines }),
   };
 }
 function spawnPolicyDescription(policy: AgentSpawnPolicy | null): string {
@@ -1888,7 +1895,7 @@ function collaborationDescriptors(
     descriptor(
       "spawn_agent",
       [
-        "Spawn an agent for a bounded independent task. All agents share the candidate and can delegate. task_name is relative to you; use canonical paths to address siblings. fork_turns defaults to all and inherits filtered conversation context; none starts from the task alone.",
+        "Optionally spawn an agent for a bounded independent task that replaces work you would otherwise do. Zero workers is valid. Do not duplicate an investigation assigned to another agent. All agents share the candidate. task_name is relative to you; use canonical paths to address siblings. fork_turns defaults to all and inherits filtered conversation context; none starts from the task alone.",
         spawnPolicyDescription(policy),
       ]
         .filter(Boolean)
@@ -1916,6 +1923,11 @@ function collaborationDescriptors(
             }
           : {}),
       },
+      [
+        "Use Adaptive Multi: worker capacity is a ceiling, not a target. For a small or tightly coupled task, use zero workers. Delegate only a concrete, independently completable subtask that replaces Root's later work and can proceed alongside useful work by Root; otherwise continue locally.",
+        "Before delegating, identify the distinct result needed, its scope, and the evidence to return. Do not assign the same investigation to multiple workers or continue that investigation yourself while a worker owns it.",
+        "Root should integrate supported worker findings, make the necessary changes, and validate the final candidate. Do not fully repeat a completed investigation with concrete evidence; recheck only an identified gap, conflict, or evidence made stale by changes. Worker observations do not replace final validation of the edited candidate. Once a minimal fix passes the relevant final-candidate checks, finish and report remaining limits. Revisit an equivalent fix or repeat the same validation only for an observed failure, a concrete uncovered acceptance requirement, conflicting evidence, or changed source. A worker suggesting an alternative alone is not a reason to reopen a validated fix. Successful runtime checks are not complete acceptance.",
+      ],
     ),
     descriptor(
       "list_agents",
@@ -1929,12 +1941,12 @@ function collaborationDescriptors(
     ),
     descriptor(
       "followup_task",
-      "Give a non-root agent a task. Busy agents consume it at the next safe boundary; idle agents start one turn.",
+      "Give a non-root agent a task, including resuming an agent that already finished its previous task. Busy agents consume it at the next safe boundary; idle agents start one turn. Workers do not need to remain in wait_agent for future tasks.",
       { target: Type.String(), message: messageSchema },
     ),
     descriptor(
       "wait_agent",
-      "Wait for any mailbox activity or new user input. Returns a summary; messages are delivered through the normal inbox. Timeout does not cancel workers; waiting keeps your execution slot.",
+      "Wait for a result needed to continue the current task when no independent work remains. Returns a summary of mailbox activity or new user input; messages are delivered through the normal inbox. Timeout does not cancel workers; waiting keeps your execution slot. Once your assigned task is complete, give your final answer and end the turn instead of waiting to remain online; use followup_task for later work.",
       {
         timeout_ms: Type.Optional(
           Type.Integer({ minimum: 1, maximum: 3_600_000 }),

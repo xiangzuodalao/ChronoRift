@@ -187,6 +187,28 @@ const setup = async (spawnPolicy?: AgentSpawnPolicy) => {
 };
 
 describe("Project multi-agent evidence and summaries", () => {
+  it("finishes with zero workers and reports only Root usage", async () => {
+    const { environment, workers } = await setup({
+      maxCreatedAgents: 3,
+      maxDepth: 1,
+    });
+    await environment.close();
+    const summary = await environment.writeSummary(
+      result("root-session", 20, 0.2),
+    );
+    expect(workers).toEqual([]);
+    expect(summary.count).toBe(0);
+    expect(
+      JSON.parse(await readFile(summary.recordPath, "utf8")),
+    ).toMatchObject({
+      agents: [],
+      messages: [],
+      turns: [],
+      workerUsage: [],
+      reportedUsage: { tokens: 20, cost: 0.2, incomplete: false },
+    });
+  });
+
   it("enforces and records Host-only spawn constraints at the project boundary", async () => {
     const spawnPolicy: AgentSpawnPolicy = {
       maxCreatedAgents: 1,

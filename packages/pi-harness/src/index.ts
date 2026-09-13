@@ -25,6 +25,7 @@ export type {
   RootCollaborationPort,
   RootPiSessionControl,
 } from "./root-collaboration.js";
+export type { PiModelRequestTiming } from "./model-request-telemetry.js";
 export {
   assertPiModelCapabilities,
   listAvailablePiModels,

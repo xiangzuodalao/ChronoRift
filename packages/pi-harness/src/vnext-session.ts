@@ -18,6 +18,10 @@ import {
 
 import type { PiThinkingLevel } from "./types.js";
 import {
+  observePiModelRequests,
+  type PiModelRequestTiming,
+} from "./model-request-telemetry.js";
+import {
   abortPiSession,
   type RootCollaborationPort,
 } from "./root-collaboration.js";
@@ -96,6 +100,8 @@ export interface VNextPiTurnResult {
   readonly errorMessage: string | null;
   readonly eventsObserved: number;
   readonly stats: SessionStats;
+  /** Requests observed by this managed instance, excluding inherited/history requests. */
+  readonly modelRequests?: readonly PiModelRequestTiming[];
   readonly usageOwnership?: {
     readonly scope: "session-owned";
     readonly sessionId: string;
@@ -276,6 +282,7 @@ export function snapshotPiSession(
     readonly model: string;
     readonly thinkingLevel: PiThinkingLevel;
     readonly eventsObserved: number;
+    readonly modelRequests?: readonly PiModelRequestTiming[];
   },
   status?: VNextPiTurnResult["status"],
   errorMessage?: string | null,
@@ -313,6 +320,9 @@ export function snapshotPiSession(
       errorMessage === undefined ? (failure?.message ?? null) : errorMessage,
     eventsObserved: options.eventsObserved,
     stats: session.getSessionStats(),
+    ...(options.modelRequests === undefined
+      ? {}
+      : { modelRequests: options.modelRequests }),
     usageOwnership: {
       scope: "session-owned",
       sessionId: session.sessionId,
@@ -454,6 +464,7 @@ export async function createManagedPiSession(
     eventsObserved += 1;
     options.onEvent?.(event);
   });
+  const modelRequests = observePiModelRequests(session);
   const assertOpen = (): void => {
     if (disposed) throw new Error("Pi session is disposed");
   };
@@ -519,6 +530,7 @@ export async function createManagedPiSession(
           model: options.model.id,
           thinkingLevel: options.thinkingLevel,
           eventsObserved,
+          modelRequests: modelRequests.snapshot(),
         },
         status,
         errorMessage,
@@ -528,6 +540,7 @@ export async function createManagedPiSession(
       if (disposed) return;
       disposed = true;
       unsubscribe();
+      modelRequests.dispose();
       inbox.dispose();
       session.dispose();
     },

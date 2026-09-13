@@ -157,9 +157,20 @@ it("serializes shared candidate operations and snapshots across scopes", async (
     calls.push("snapshot");
   });
   expect(calls).toEqual(["coding"]);
+  await vi.waitFor(() =>
+    expect(b.telemetry.records[0]?.lockRequestedAt).not.toBeNull(),
+  );
+  expect(b.telemetry.records[0]?.lockAcquiredAt).toBeNull();
   release();
   await Promise.all([first, second, snapshot]);
   expect(calls).toEqual(["coding", "coding", "snapshot"]);
+  expect(b.telemetry.records[0]).toMatchObject({
+    name: "read",
+    outcome: "returned",
+  });
+  expect(b.telemetry.records[0]!.lockAcquiredAt).toBeTypeOf("string");
+  expect(b.telemetry.records[0]!.finishedAt).toBeTypeOf("string");
+  expect(b.telemetry.records[0]!.workspaceLockWaitMs).toBeGreaterThan(0);
   await Promise.all([a.close(), b.close()]);
 });
 
@@ -185,6 +196,12 @@ it("cancels a shared-lock waiter without waiting for or stopping its sibling", a
   await waiting;
   expect(siblingSignal?.aborted).toBe(false);
   expect(budget.used).toBe(1);
+  expect(a.telemetry.records[0]).toMatchObject({
+    name: "read",
+    lockAcquiredAt: null,
+    outcome: "threw",
+  });
+  expect(a.telemetry.records[0]!.finishedAt).toBeTypeOf("string");
   release();
   await first;
   await candidateGate.idle();

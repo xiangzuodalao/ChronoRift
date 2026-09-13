@@ -467,6 +467,45 @@ describe("Host spawn policy", () => {
 });
 
 describe("MultiAgentV2 supervisor", () => {
+  it("delivers the adaptive policy to Root tools and each worker without spawning by default", async () => {
+    const f = fixture();
+    try {
+      const rootTools = createAgentSupervisorTools(f.supervisor);
+      const rootSpawn = rootTools.find((tool) => tool.name === "spawn_agent");
+      expect(rootSpawn?.promptGuidelines?.join("\n")).toMatch(
+        /zero workers.*independently completable/su,
+      );
+      expect(rootSpawn?.promptGuidelines?.join("\n")).toContain(
+        "Do not fully repeat a completed investigation with concrete evidence",
+      );
+      expect(rootSpawn?.promptGuidelines?.join("\n")).toContain(
+        "A worker suggesting an alternative alone is not a reason to reopen a validated fix",
+      );
+      expect(f.workers).toEqual([]);
+      expect(f.supervisor.listAllAgents()).toEqual([]);
+
+      await f.spawn("inspect");
+      const worker = f.workers[0]!.options.configuration;
+      const workerSpawn = worker.tools.find(
+        (tool) => tool.name === "spawn_agent",
+      );
+      expect(workerSpawn?.promptGuidelines).toEqual(
+        rootSpawn?.promptGuidelines,
+      );
+      expect(worker.additionalEnvironmentInstructions).toContain(
+        "conclusion, concrete evidence references, and uncovered items",
+      );
+      expect(worker.additionalEnvironmentInstructions).toContain(
+        "do not also send the same result as a separate message or loop on wait_agent",
+      );
+      expect(worker.additionalEnvironmentInstructions).toContain(
+        "resume you with followup_task",
+      );
+    } finally {
+      await f.supervisor.close();
+    }
+  });
+
   it("exposes exactly six collaboration tools to Root and workers", async () => {
     const f = fixture();
     try {

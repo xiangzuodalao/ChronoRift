@@ -3,7 +3,13 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
+import {
+  createAssistantMessageEventStream,
+  type Api,
+  type AssistantMessage,
+  type AssistantMessageEventStream,
+  type Model,
+} from "@earendil-works/pi-ai";
 import {
   SessionManager,
   type AgentSessionRuntime,
@@ -20,7 +26,7 @@ import type { VNextPiTurnResult } from "../src/vnext-session.js";
 
 const sdk = vi.hoisted(() => ({
   run: vi.fn<(runtime: AgentSessionRuntime) => Promise<void>>(),
-  stream: vi.fn(() => {
+  stream: vi.fn<() => AssistantMessageEventStream>(() => {
     throw new Error("Interactive runtime regression must not call a provider");
   }),
 }));
@@ -134,6 +140,40 @@ const createOptions = async (
 };
 
 describe("Project Environment TUI native runtime replacement", () => {
+  it("retains observed request timings across native runtime replacements", async () => {
+    const onShutdown = vi.fn<(result: VNextPiTurnResult) => Promise<void>>(
+      async () => undefined,
+    );
+    const completedStream = () => {
+      const stream = createAssistantMessageEventStream();
+      stream.push({ type: "done", reason: "stop", message: assistantMessage });
+      return stream;
+    };
+    sdk.stream
+      .mockImplementationOnce(completedStream)
+      .mockImplementationOnce(completedStream);
+    sdk.run.mockImplementation(async (runtime) => {
+      for (let turn = 0; turn < 2; turn += 1) {
+        const response = await runtime.session.agent.streamFunction(
+          runtime.session.model as Model<Api>,
+          { messages: [] },
+        );
+        await response.result();
+        await runtime.newSession();
+      }
+    });
+    await runProjectEnvironmentInteractivePiSessionV1(
+      await createOptions(onShutdown),
+    );
+    const requests = onShutdown.mock.calls[0]![0].modelRequests!;
+    expect(requests).toHaveLength(2);
+    expect(new Set(requests.map((request) => request.requestId)).size).toBe(2);
+    expect(requests.every((request) => request.outcome === "completed")).toBe(
+      true,
+    );
+    expect(sdk.stream).toHaveBeenCalledTimes(2);
+  });
+
   it("retains an unwritten Task Session through /new and reopens it after persistence", async () => {
     const onShutdown = vi.fn<(result: VNextPiTurnResult) => Promise<void>>(
       async () => undefined,

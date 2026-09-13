@@ -2,6 +2,12 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  createAssistantMessageEventStream,
+  fauxAssistantMessage,
+  type Api,
+  type Model,
+} from "@earendil-works/pi-ai";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -180,14 +186,34 @@ describe("Project Environment TUI Host shutdown", () => {
       expect(result.assistantText).toBe("Final interactive investigation");
       expect(result.stats.tokens.total).toBe(64);
       expect(result.eventsObserved).toBe(1);
+      expect(result.modelRequests).toEqual([
+        expect.objectContaining({
+          provider: "fixture",
+          model: "fixture-model",
+          outcome: "completed",
+          stopReason: "stop",
+        }),
+      ]);
       await Promise.resolve();
       order.push("host-finalized");
     });
+    const stream = createAssistantMessageEventStream();
+    sdk.session.agent.streamFunction = () => stream;
     sdk.run.mockImplementation(async () => {
       const extensions = sdk.created!.services.resourceLoader.getExtensions();
       expect(extensions.extensions).toHaveLength(1);
       expect(extensions.extensions[0]!.commands.size).toBe(0);
       sdk.listener!({ type: "agent_start" });
+      const response = await sdk.session.agent.streamFunction(
+        { provider: "fixture", id: "fixture-model" } as Model<Api>,
+        { messages: [] },
+      );
+      response.push({
+        type: "done",
+        reason: "stop",
+        message: fauxAssistantMessage("Final interactive investigation"),
+      });
+      await response.result();
       await emitShutdown("new");
       expect(onShutdown).not.toHaveBeenCalled();
       await emitShutdown("quit");

@@ -1,4 +1,4 @@
-// Four independent Preview Hosts. No model calls during prepare/check.
+// One attempt per arm in a frozen cohort. No model calls during prepare/check.
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { getDefaultResultOrder } from "node:dns";
@@ -37,6 +37,11 @@ import {
   getAgentDir,
 } from "../../packages/pi-harness/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
 
+import {
+  check as checkMob,
+  snapshotBaseline as snapshotMob,
+} from "./mob-check.mjs";
+
 const execFileAsync = promisify(execFile);
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const ENTRY = fileURLToPath(import.meta.url);
@@ -70,11 +75,30 @@ export function assertPilotWorkerRuntime(configuration) {
 export const GOALS = Object.freeze({
   gn1: "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy.",
   city: CITY_GOAL,
+  mob: "Some newly spawned mobs are unexpectedly tilted, which can lead to inconsistent collision and movement behavior. Investigate the project, make the smallest appropriate fix, and validate the candidate. Preserve the intended randomized horizontal spawn direction and speed.",
 });
 export const MULTI_APPENDIX =
-  "本次使用一个 Root 和三个 worker。Root 开始调查时先创建恰好三个 worker，并让三个初始任务并行开展；由你决定分工和后续协作。全组只使用这三个 worker，不创建替代或更下层的代理。所有代理共享同一个私有候选工作区，修改立即相互可见；协调同文件修改。Root 负责在交付前收齐需要的结果，并在最终共享候选上重新运行验证。";
-const IDS = ["gn1-single", "gn1-multi", "city-single", "city-multi"];
+  "本次使用 Adaptive Multi：Root 最多创建三个直接 worker，不强制创建，小任务可以使用零个 worker。只有存在可独立完成、且结果能够替代 Root 后续工作的明确子任务时才委派；不要将同一调查重复交给多个 worker。委派时明确边界、所需证据和交付内容。Worker 完成后用简洁最终答复交付结论、证据和未覆盖项，然后结束当前 turn，不为保持在线而循环 wait_agent；后续工作由 Root 使用 followup_task 启动。Root 利用已有证据整合、修改并在最终共享候选上验证，不完整重复 worker 已完成且有证据的调查。最小修复通过相关最终候选检查后应结束并说明剩余限制；只有出现实际失败、明确未覆盖的验收要求、证据冲突或源码变化时，才重开等价修复方案或重复同一验证。Worker 仅提出另一方案不足以重开已验证修复；运行检查通过不等于完整验收。所有代理共享一个私有候选工作区，修改立即可见，需协调同文件修改。";
+export const COHORTS = Object.freeze({
+  development: Object.freeze(["gn1", "city"]),
+  "development-optimized": Object.freeze(["gn1", "city"]),
+  holdout: Object.freeze(["mob"]),
+});
+export function idsForCases(cases) {
+  if (
+    !Array.isArray(cases) ||
+    cases.length === 0 ||
+    new Set(cases).size !== cases.length ||
+    cases.some((kind) => !Object.hasOwn(GOALS, kind))
+  )
+    throw new Error("Invalid cohort cases");
+  return cases.flatMap((kind) => [kind + "-single", kind + "-multi"]);
+}
 const REFERENCES = {
+  mob: join(
+    REPO,
+    "docs/case-studies/godot-demo-mob-orientation/minimal-target-fix.patch",
+  ),
   gn1: join(REPO, "docs/case-studies/gn1-preview/candidate.patch"),
   city: join(
     REPO,
@@ -82,6 +106,7 @@ const REFERENCES = {
   ),
 };
 const CHECKERS = {
+  mob: join(REPO, "scripts/godot-multi-agent-pilot/mob-independent-check.gd"),
   gn1: join(REPO, "docs/case-studies/gn1-preview/independent-check.gd"),
   city: join(
     REPO,
@@ -116,6 +141,10 @@ export function argumentsFor(args) {
         "--output",
         "--gn1",
         "--city",
+        "--mob",
+        "--cohort",
+        "--previous-comparison",
+        "--optimization-note",
         "--godot-bin",
         "--id",
         "--project",
@@ -130,6 +159,8 @@ export function argumentsFor(args) {
       throw new Error("Invalid or duplicate pilot argument");
     values[key.slice(2)] = value;
   }
+  if (values.cohort !== undefined && !Object.hasOwn(COHORTS, values.cohort))
+    throw new Error("Unknown cohort");
   if (!values.output) throw new Error("--output is required");
   values.output = resolve(values.output);
   return values;
@@ -144,9 +175,11 @@ function nodeArgs(...args) {
   ];
 }
 async function sourceIdentity(project, kind) {
-  const files = await (kind === "gn1"
-    ? snapshotGn1Baseline(project)
-    : snapshotCity(project));
+  const files = await {
+    gn1: snapshotGn1Baseline,
+    city: snapshotCity,
+    mob: snapshotMob,
+  }[kind](project);
   return {
     commit: await git(project, "rev-parse", "HEAD"),
     tree: await git(project, "rev-parse", "HEAD^{tree}"),
@@ -287,14 +320,14 @@ async function invokeCheck(kind, project, godotBin, patch, output) {
 }
 async function checker(options) {
   if (
-    !["gn1", "city"].includes(options.case) ||
+    !Object.hasOwn(GOALS, options.case) ||
     !options.project ||
     !options.patch ||
     !options["godot-bin"]
   )
     throw new Error("Incomplete checker arguments");
-  if (options.case === "city") {
-    const result = await checkCity({
+  if (options.case === "city" || options.case === "mob") {
+    const result = await (options.case === "city" ? checkCity : checkMob)({
       project: resolve(options.project),
       candidatePatch: resolve(options.patch),
       godotBin: resolve(options["godot-bin"]),
@@ -316,33 +349,153 @@ async function checker(options) {
     process.exitCode = result.exitCode;
   }
 }
+// Startup recovery for the existing nested Mob case; runtime and strategy stay frozen.
+export function holdoutOrchestrationAmendment(previous, currentProduct) {
+  if (
+    JSON.stringify(previous.config) !== JSON.stringify(CONFIG) ||
+    JSON.stringify(previous.spawnPolicy) !==
+      JSON.stringify(PILOT_SPAWN_POLICY) ||
+    previous.multiAppendix !== MULTI_APPENDIX ||
+    JSON.stringify(previous.goals) !==
+      JSON.stringify(
+        Object.fromEntries(previous.cases.map((kind) => [kind, GOALS[kind]])),
+      )
+  )
+    throw new Error(
+      "Holdout configuration or strategy changed after development",
+    );
+  if (previous.product.sha256 === currentProduct.sha256) return null;
+  const before = previous.product.files;
+  const after = currentProduct.files;
+  if (
+    JSON.stringify(before.map((file) => file.path)) !==
+    JSON.stringify(after.map((file) => file.path))
+  )
+    throw new Error("Holdout product file set changed after development");
+  const changed = after.filter(
+    (file, index) => JSON.stringify(file) !== JSON.stringify(before[index]),
+  );
+  const runnerPath = "scripts/godot-multi-agent-pilot/run.mjs";
+  if (
+    changed.length !== 1 ||
+    changed[0].path !== runnerPath ||
+    !changed[0].sha256 ||
+    !before.find((file) => file.path === runnerPath)?.sha256
+  )
+    throw new Error(
+      "Holdout may only repair its runner project-root selection; runtime files must match development",
+    );
+  return {
+    changedPaths: [runnerPath],
+    previousRunnerSha256: before.find((file) => file.path === runnerPath)
+      .sha256,
+    currentRunnerSha256: changed[0].sha256,
+    reason:
+      "Startup-only repair: pass the existing explicit projectRoot for the nested Mob case after zero-model prerequisite failure. All other product files, model, budgets, goals and collaboration strategy match development.",
+    projectRoot: "3d/squash_the_creeps",
+  };
+}
+
 async function prepare(options) {
   if (
     process.version !== "v22.23.1" ||
     getDefaultResultOrder() !== CONFIG.dnsOrder
   )
     throw new Error("Use Node 22.23.1 with --dns-result-order=ipv4first");
-  const gn1 = await realpath(options.gn1),
-    city = await realpath(options.city),
-    godotBin = await realpath(options["godot-bin"]);
+  const cohort = options.cohort ?? "development";
+  const cases = COHORTS[cohort];
+  const projects = Object.fromEntries(
+    await Promise.all(
+      cases.map(async (kind) => {
+        if (!options[kind])
+          throw new Error(`--${kind} is required for ${cohort}`);
+        return [kind, await realpath(options[kind])];
+      }),
+    ),
+  );
+  let previousComparison = null;
+  let orchestrationAmendment = null;
+  if (cohort !== "development") {
+    if (!options["previous-comparison"])
+      throw new Error("A completed development comparison is required");
+    const path = await realpath(options["previous-comparison"]);
+    const previous = await json(join(path, "manifest.json"));
+    await json(join(path, "live-completion.json"));
+    await json(join(path, "evaluation/results.json"));
+    if (cohort === "development-optimized" && previous.cohort !== "development")
+      throw new Error(
+        "Only one telemetry-targeted optimization round is allowed",
+      );
+    if (
+      cohort === "holdout" &&
+      !["development", "development-optimized"].includes(previous.cohort)
+    )
+      throw new Error("Holdout must follow development");
+    previousComparison = {
+      path,
+      productSha256: previous.product.sha256,
+      cohort: previous.cohort,
+    };
+    if (cohort === "holdout")
+      orchestrationAmendment = holdoutOrchestrationAmendment(
+        previous,
+        await productIdentity(),
+      );
+  }
+  let optimization = null;
+  if (cohort === "development-optimized") {
+    if (!options["optimization-note"])
+      throw new Error(
+        "Freeze a telemetry-backed optimization note before the optional round",
+      );
+    optimization = await json(resolve(options["optimization-note"]));
+    for (const key of ["bottleneck", "telemetryEvidence", "change"])
+      if (typeof optimization[key] !== "string" || !optimization[key].trim())
+        throw new Error(`Optimization note requires ${key}`);
+  }
+  const godotBin = await realpath(options["godot-bin"]);
   const parent = await realpath(dirname(options.output));
   const output = join(parent, options.output.split(sep).at(-1));
-  for (const root of [REPO, gn1, city])
+  for (const root of [REPO, ...Object.values(projects)])
     if (within(root, output) || within(output, root))
       throw new Error("Output must not overlap source checkouts");
   await mkdir(output, { mode: 0o700 });
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    cohort,
+    collaborationPolicy: "adaptive",
+    cases,
+    ids: idsForCases(cases),
+    protocol: {
+      attemptsPerArm: 1,
+      maximumOptimizationRounds: 1,
+      minimumWorkers: 0,
+      maximumWorkers: 3,
+      automaticReruns: false,
+      optimizationTrigger: {
+        metric: "hostWallClockMs",
+        adaptiveToSingleRatioAbove: 1.2,
+        selection: "largest telemetry-observed bottleneck",
+      },
+      holdoutAfterDevelopmentDecision: true,
+    },
+    previousComparison,
+    orchestrationAmendment,
+    optimization,
     preparedAt: new Date().toISOString(),
     config: CONFIG,
     spawnPolicy: PILOT_SPAWN_POLICY,
-    goals: GOALS,
+    goals: Object.fromEntries(cases.map((kind) => [kind, GOALS[kind]])),
     multiAppendix: MULTI_APPENDIX,
-    projects: { gn1, city },
-    source: {
-      gn1: await sourceIdentity(gn1, "gn1"),
-      city: await sourceIdentity(city, "city"),
-    },
+    projects,
+    source: Object.fromEntries(
+      await Promise.all(
+        cases.map(async (kind) => [
+          kind,
+          await sourceIdentity(projects[kind], kind),
+        ]),
+      ),
+    ),
     product: await productIdentity(),
     model: await modelIdentity(),
     node: process.version,
@@ -364,10 +517,11 @@ async function prepare(options) {
     ).version,
     godotBin,
     godotSha256: sha(await readFile(godotBin)),
-    checkers: {
-      gn1: sha(await readFile(CHECKERS.gn1)),
-      city: sha(await readFile(CHECKERS.city)),
-    },
+    checkers: Object.fromEntries(
+      await Promise.all(
+        cases.map(async (kind) => [kind, sha(await readFile(CHECKERS[kind]))]),
+      ),
+    ),
   };
   await save(join(output, "manifest.json"), manifest);
   const controls = join(output, "controls");
@@ -380,7 +534,7 @@ async function prepare(options) {
     for (const variant of ["baseline", "reference"]) {
       results.push(
         ...(await Promise.all(
-          ["gn1", "city"].map(async (kind) => ({
+          cases.map(async (kind) => ({
             kind,
             variant,
             repeat,
@@ -396,86 +550,92 @@ async function prepare(options) {
       );
     }
   }
-  // Deliberately broken reference variants, never visible to model Sessions.
-  const cityOriginal = await readFile(join(city, "scripts/builder.gd"), "utf8");
-  const cityFixed = cityOriginal
-    .replace(
-      "func action_structure_toggle():",
-      "func action_structure_toggle():\n\tvar previous_index := index\n",
-    )
-    .replace(
-      "\tupdate_structure()\n\n# Update the structure",
-      "\tif index != previous_index:\n\t\tupdate_structure()\n\n# Update the structure",
+  if (cohort !== "holdout") {
+    // Deliberately broken reference variants, never visible to model Sessions.
+    const { gn1, city } = projects;
+    const cityOriginal = await readFile(
+      join(city, "scripts/builder.gd"),
+      "utf8",
     );
-  const gn1Original = await readFile(
-    join(gn1, "components/platform/platform.gd"),
-    "utf8",
-  );
-  const variants = [
-    {
-      kind: "gn1",
-      name: "wrong-width",
-      path: "components/platform/platform.gd",
-      before: gn1Original,
-      after: gn1Original.replace(
-        "width * TILE_WIDTH, _area_collision_shape.shape.size[1]",
-        "TILE_WIDTH, _area_collision_shape.shape.size[1]",
-      ),
-    },
-    {
-      kind: "city",
-      name: "missing-initialization",
-      path: "scripts/builder.gd",
-      before: cityOriginal,
-      after: cityFixed.replace(
-        "\tupdate_structure()",
-        "\tpass # missing initialization",
-      ),
-    },
-    {
-      kind: "city",
-      name: "missing-switch",
-      path: "scripts/builder.gd",
-      before: cityOriginal,
-      after: cityFixed.replace(
-        "\tif index != previous_index:\n\t\tupdate_structure()",
-        "\tif index != previous_index:\n\t\tpass # missing switch update",
-      ),
-    },
-  ];
-  for (const variant of variants) {
-    if (variant.after === variant.before)
-      throw new Error("Negative control did not mutate source");
-    // difflib runs on Host-owned control strings; candidate code is only executed in SRT.
-    const patch = (
-      await execFileAsync(
-        "python3",
-        [
-          "-c",
-          "import sys,json,difflib;x=json.loads(sys.argv[1]);print(''.join(difflib.unified_diff(x['before'].splitlines(True),x['after'].splitlines(True),fromfile='a/'+x['path'],tofile='b/'+x['path'])),end='')",
-          JSON.stringify({
-            before: variant.before,
-            after: variant.after,
-            path: variant.path,
-          }),
-        ],
-        { maxBuffer: 1024 * 1024 },
+    const cityFixed = cityOriginal
+      .replace(
+        "func action_structure_toggle():",
+        "func action_structure_toggle():\n\tvar previous_index := index\n",
       )
-    ).stdout;
-    const path = join(controls, variant.name + ".patch");
-    await writeFile(path, patch, { flag: "wx", mode: 0o600 });
-    results.push({
-      kind: variant.kind,
-      variant: variant.name,
-      repeat: 1,
-      ...(await invokeCheck(
-        variant.kind,
-        manifest.projects[variant.kind],
-        godotBin,
-        path,
-        join(controls, variant.kind + "-" + variant.name),
-      )),
-    });
+      .replace(
+        "\tupdate_structure()\n\n# Update the structure",
+        "\tif index != previous_index:\n\t\tupdate_structure()\n\n# Update the structure",
+      );
+    const gn1Original = await readFile(
+      join(gn1, "components/platform/platform.gd"),
+      "utf8",
+    );
+    const variants = [
+      {
+        kind: "gn1",
+        name: "wrong-width",
+        path: "components/platform/platform.gd",
+        before: gn1Original,
+        after: gn1Original.replace(
+          "width * TILE_WIDTH, _area_collision_shape.shape.size[1]",
+          "TILE_WIDTH, _area_collision_shape.shape.size[1]",
+        ),
+      },
+      {
+        kind: "city",
+        name: "missing-initialization",
+        path: "scripts/builder.gd",
+        before: cityOriginal,
+        after: cityFixed.replace(
+          "\tupdate_structure()",
+          "\tpass # missing initialization",
+        ),
+      },
+      {
+        kind: "city",
+        name: "missing-switch",
+        path: "scripts/builder.gd",
+        before: cityOriginal,
+        after: cityFixed.replace(
+          "\tif index != previous_index:\n\t\tupdate_structure()",
+          "\tif index != previous_index:\n\t\tpass # missing switch update",
+        ),
+      },
+    ];
+    for (const variant of variants) {
+      if (variant.after === variant.before)
+        throw new Error("Negative control did not mutate source");
+      // difflib runs on Host-owned control strings; candidate code is only executed in SRT.
+      const patch = (
+        await execFileAsync(
+          "python3",
+          [
+            "-c",
+            "import sys,json,difflib;x=json.loads(sys.argv[1]);print(''.join(difflib.unified_diff(x['before'].splitlines(True),x['after'].splitlines(True),fromfile='a/'+x['path'],tofile='b/'+x['path'])),end='')",
+            JSON.stringify({
+              before: variant.before,
+              after: variant.after,
+              path: variant.path,
+            }),
+          ],
+          { maxBuffer: 1024 * 1024 },
+        )
+      ).stdout;
+      const path = join(controls, variant.name + ".patch");
+      await writeFile(path, patch, { flag: "wx", mode: 0o600 });
+      results.push({
+        kind: variant.kind,
+        variant: variant.name,
+        repeat: 1,
+        ...(await invokeCheck(
+          variant.kind,
+          manifest.projects[variant.kind],
+          godotBin,
+          path,
+          join(controls, variant.kind + "-" + variant.name),
+        )),
+      });
+    }
   }
   const passed = results.every(
     (r) =>
@@ -561,9 +721,10 @@ async function processSample(rootPids) {
   return records;
 }
 async function runArm(options) {
-  if (!IDS.includes(options.id) || !process.send)
-    throw new Error("arm requires trusted parent IPC and known ID");
+  if (!process.send) throw new Error("arm requires trusted parent IPC");
   const manifest = await json(join(options.output, "manifest.json"));
+  if (!idsForCases(manifest.cases).includes(options.id))
+    throw new Error("Unknown arm ID");
   const [kind, arm] = options.id.split("-");
   const output = join(options.output, options.id);
   await mkdir(output, { mode: 0o700 });
@@ -613,6 +774,7 @@ async function runArm(options) {
     preview = await runProjectEnvironmentPreviewV2(
       {
         projectPath: manifest.projects[kind],
+        ...(kind === "mob" ? { projectRoot: "3d/squash_the_creeps" } : {}),
         provider: CONFIG.provider,
         model: CONFIG.model,
         thinkingLevel: CONFIG.thinkingLevel,
@@ -620,12 +782,14 @@ async function runArm(options) {
         agentDir: manifest.model.agentDir,
         stateRoot: join(output, "state"),
         godotBin: manifest.godotBin,
-        goal: GOALS[kind] + (arm === "multi" ? "\n\n" + MULTI_APPENDIX : ""),
+        goal:
+          manifest.goals[kind] +
+          (arm === "multi" ? "\n\n" + manifest.multiAppendix : ""),
         interactive: false,
         ...(arm === "multi"
           ? {
               multiAgent: {
-                maxAgents: 3,
+                maxAgents: CONFIG.maxAgents,
                 workerProvider: CONFIG.provider,
                 workerModel: CONFIG.model,
                 workerThinking: CONFIG.thinkingLevel,
@@ -667,6 +831,13 @@ async function runArm(options) {
           await save(join(output, "root-configuration.json"), {
             resources,
             tools: piOptions.tools.map((t) => t.name),
+            toolDefinitions: piOptions.tools.map((t) => ({
+              name: t.name,
+              description: t.description,
+              parameters: t.parameters,
+              promptSnippet: t.promptSnippet,
+              promptGuidelines: t.promptGuidelines,
+            })),
             environmentProfile: piOptions.environmentProfile,
             additionalEnvironmentInstructions:
               piOptions.additionalEnvironmentInstructions,
@@ -714,11 +885,18 @@ async function runArm(options) {
   }
   if (failure || preview?.status !== "completed") process.exitCode = 1;
 }
-async function runFour(options) {
+async function runCohort(options) {
   const manifest = await json(join(options.output, "manifest.json"));
+  const ids = idsForCases(manifest.cases);
   if (!(await json(join(options.output, "controls.json"))).passed)
     throw new Error("Offline controls have not passed");
   if (
+    manifest.collaborationPolicy !== "adaptive" ||
+    manifest.multiAppendix !== MULTI_APPENDIX ||
+    JSON.stringify(manifest.goals) !==
+      JSON.stringify(
+        Object.fromEntries(manifest.cases.map((kind) => [kind, GOALS[kind]])),
+      ) ||
     JSON.stringify(CONFIG) !== JSON.stringify(manifest.config) ||
     JSON.stringify(PILOT_SPAWN_POLICY) !==
       JSON.stringify(manifest.spawnPolicy) ||
@@ -729,13 +907,13 @@ async function runFour(options) {
     );
   if (manifest.model.sha256 !== (await modelIdentity()).sha256)
     throw new Error("Model metadata changed");
-  for (const kind of ["gn1", "city"])
+  for (const kind of manifest.cases)
     if (sha(await readFile(CHECKERS[kind])) !== manifest.checkers[kind])
       throw new Error("Checker changed");
   // Claim once before starting any Host. This file makes accidental live reruns fail closed.
   await save(join(options.output, "live-start.json"), {
     startedAt: new Date().toISOString(),
-    ids: IDS,
+    ids,
     config: CONFIG,
   });
   const children = [];
@@ -747,7 +925,7 @@ async function runFour(options) {
   };
   process.once("SIGINT", terminate);
   process.once("SIGTERM", terminate);
-  for (const id of IDS) {
+  for (const id of ids) {
     const log = createWriteStream(join(options.output, id + "-host.log"), {
       flags: "wx",
       mode: 0o600,
@@ -840,7 +1018,7 @@ async function runFour(options) {
       releasedAt,
       rootPids: children.map((c) => c.pid),
     });
-    console.log("Started all four live Hosts: " + IDS.join(", "));
+    console.log("Started live Hosts: " + ids.join(", "));
     watchdog = setTimeout(() => {
       appendFileSync(
         join(options.output, "watchdog.jsonl"),
@@ -902,7 +1080,7 @@ async function evaluate(options) {
   await mkdir(output, { mode: 0o700 });
   const results = [];
   for (let repeat = 1; repeat <= 2; repeat++) {
-    for (const kind of ["gn1", "city"]) {
+    for (const kind of manifest.cases) {
       results.push(
         ...(await Promise.all(
           ["single", "multi"].map(async (arm) => {
@@ -950,7 +1128,7 @@ async function evaluate(options) {
 if (process.argv[1] && resolve(process.argv[1]) === ENTRY) {
   try {
     const options = argumentsFor(process.argv.slice(2));
-    await { prepare, run: runFour, arm: runArm, check: checker, evaluate }[
+    await { prepare, run: runCohort, arm: runArm, check: checker, evaluate }[
       options.mode
     ](options);
   } catch (error) {

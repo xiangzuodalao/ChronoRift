@@ -37,6 +37,7 @@ import {
 } from "./project-multi-agent.js";
 
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
+import { ExecutionTelemetry } from "./execution-telemetry.js";
 import { GodotInspectionRuntime } from "./godot-inspection-runtime.js";
 import { prepareGodotInspectionCandidate } from "./godot-inspection-source.js";
 import { extractTaskPatch } from "./patch-handoff.js";
@@ -492,6 +493,7 @@ export async function runProjectEnvironmentPreviewV2(
     godotPath: runtimeConfig.godot.binding.executablePath,
   });
   const admission = createProjectEnvironmentToolCallAdmissionV1(256);
+  const telemetry = new ExecutionTelemetry();
   let tools = [
     ...createVNextCodingToolDefinitions(
       new SandboxPiCodingToolPort(controller, {
@@ -505,7 +507,11 @@ export async function runProjectEnvironmentPreviewV2(
     ...createInspectionGameToolDefinitions(runtime, {
       toolCallAdmission: admission,
     }),
-  ];
+  ].map((tool) => ({
+    ...tool,
+    execute: (...args: Parameters<typeof tool.execute>) =>
+      telemetry.measure(tool.name, args[0], () => tool.execute(...args)),
+  }));
   let collaboration: ProjectMultiAgentEnvironment | undefined;
   let rootPiResult: VNextPiTurnResult | undefined;
   let status: ProjectEnvironmentPreviewResultV2["status"] = "completed";
@@ -590,6 +596,15 @@ export async function runProjectEnvironmentPreviewV2(
         recordFailure(error);
       }
       let agents: ProjectEnvironmentPreviewResultV3["agents"] = null;
+      if (collaboration === undefined) {
+        try {
+          await telemetry.save(
+            join(layout.taskRecordDirectory, "performance.v1.json"),
+          );
+        } catch (error) {
+          recordFailure(error);
+        }
+      }
       if (collaboration !== undefined) {
         try {
           agents = await collaboration.writeSummary(rootPiResult);

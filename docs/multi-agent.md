@@ -4,7 +4,15 @@ Project Preview 可通过 `--multi-agent` 启用协作。Root 和 worker 使用�
 各自运行固定源码的 Godot execution。所有代理都能继续委派、向同一任务树中的其他代理发消息。Pi 保留模型调用、
 Agent Loop、工具调度、重试和 compaction；Host 管理身份、邮箱、执行名额、沙箱和结果。
 
-这是实验性 Preview。开启协作不强制创建 worker、不规定调查步骤，也不自动判定修复成功。
+这是实验性 Preview。开启协作采用 Adaptive Multi：worker 上限不是创建目标，小任务允许 0 worker。
+Pi 自行决定调查步骤和分工，Host 不自动创建 worker，也不自动判定修复成功。
+
+只有存在可独立完成、能够替代 Root 后续工作，并能与 Root 的其他有效工作并行的具体子任务时才委派。
+委派应说明所需结果、范围和证据；不要把同一调查交给多个 worker，也不要由 Root 同时完整重复。
+Root 主要整合有证据的结论、修改候选和最终验证；仅对明确缺口、冲突或修改后失效的证据进行针对性复查。
+最小修复通过相关最终候选检查后应收尾；没有实际失败、明确验收缺口、证据冲突或后续源码变化时，不再改换等价修复或
+重复相同验证。Worker 提出另一种方案本身不构成重开调查的理由；最终答复仍需说明检查范围和未覆盖项。
+这些是进入 Pi 系统提示的协作策略，不是 Host 对任务复杂度或收益的确定性判断。
 
 ## 使用
 
@@ -34,8 +42,9 @@ effort 选择。当前 Pi SDK 没有供本适配层读取的目标模型默认�
 
 受控 pilot 通过 Host 私有 `spawnPolicy` 固定 worker 的 provider、model 和 thinking，同时从协作工具 schema 移除
 `model`、`reasoning_effort`，Host 也拒绝显式覆盖。该 pilot 最多创建 3 个历史 worker 身份，失败、关闭或卸载的身份仍计数；
-深度限制为 1，只允许 Root 创建直接子代理。这些限制不改变普通 V2 的默认协作行为，也不会自动创建 worker；是否恰好
-创建 3 个并实际并行，仍由验收核对。`fork_turns` 仍可选择，不能将模型配置锁定当作已覆盖上下文继承。
+深度限制为 1，只允许 Root 创建直接子代理。这些限制不改变普通 V2 的默认能力，也不会自动创建 worker。
+Adaptive 对照允许 0–3 个 worker；旧 Forced-M3 实验要求恰好 3 个，其负结果和原始输入单独保留。
+`fork_turns` 仍可选择，不能将模型配置锁定当作已覆盖上下文继承。
 
 Host 的 Node DNS 顺序通过受限启动参数传给 worker。例如以 `node --dns-result-order=ipv4first` 启动 Host，Root
 和 worker 都优先解析 IPv4。Worker 仍移除 `NODE_OPTIONS` 和动态 loader 环境变量，不继承任意 Host `execArgv`。
@@ -62,6 +71,7 @@ Root 与 worker 具有相同的六个协作工具：
 | `interrupt_agent(target)`                                                 | 中断另一个非 Root 代理的当前轮；保留 Session 与已完成修改，不递归中断其后代     |
 
 `wait_agent` 默认 30 秒，最短 10 秒，最长 1 小时。它不等待指定代理全部完成，也不释放调用者的执行名额。
+只在当前任务确实需要待到结果、且没有独立工作可做时使用；不要为了保持在线而循环等待。
 `interrupt_agent` 不能以 Root 或自身为目标。普通消息与完成通知没有用户授权效力。
 
 ## 上下文继承
@@ -86,6 +96,10 @@ Fork 过滤 thinking、工具调用、工具结果和普通跨代理消息，不
 完成通知。Busy `followup_task` 由 worker adapter 原子确认是否仍能合入当前轮；已越过关闭边界则返回下一轮 disposition，
 Host 分配新的 turn ID 和预算后启动，避免相位通知与消息到达的竞争。
 
+Worker 完成所分配任务后，应在 final 中简洁给出结论、具体证据引用和未覆盖项，然后结束当前 turn。
+Final 会自动送达父代理，不必再发送一份同样的普通消息，也不应在完成后循环 `wait_agent`。
+后续有具体工作时由 Root 用 `followup_task` 恢复；自然结束会释放执行名额，保留 Session 供后续使用。
+
 Pi 单条 error 消息或 `agent_end` 之后仍可能重试/压缩恢复。Host 以 `agent_settled` 为这一轮结束依据，不另建模型重试
 循环。普通邮箱内容不会把已结束的 Root 自动唤回。消费确认表示消息已进入 Session 上下文，不保证模型已理解或采纳。
 
@@ -99,6 +113,7 @@ Worker 驻留进程也受 N 限制。需要加载新代理时，Host 可按 LRU 
 
 每个 worker 轮默认最多 10 分钟、64 次执行工具调用；Root 与全树共享 256 次执行工具调用上限。协作控制和 `game_stop`
 不消耗执行预算。Token/cost 是记录值，不是硬 token、费用、CPU、内存或磁盘配额。
+Single Preview 的 256 次执行预算同样豁免 `game_stop`，耗尽执行预算后仍可请求清理。
 
 Headless 在 Root 完成后关闭新任务入口、中断剩余 worker，并等待资源清理，再冻结最终 candidate；不会等所有 worker
 自然完成后自动续跑 Root。未完成 worker 如实标记中断，其已写入共享 candidate 的修改不会自动回滚。
@@ -143,6 +158,22 @@ ChronoRift Host
 - `records/agents/<agentId>/`：worker Pi Session、各轮 `result-<turnId>.json` 与自身 runtime records。
 - `records/candidate.patch`：全体 writer 停止后提取的最终共享 patch，经过 round-trip 校验。
 
+最小性能记录不包含工具参数或模型正文。每个代理的 Pi model request 在 SDK stream function 边界记录
+`startedAt`、`finishedAt`、单调时钟耗时和结束状态，保存在 Session 的 `chronorift.model-request.v1` 条目及结果
+`modelRequests` 中。这是 Pi 请求边界，不是每次内部 HTTP 重试或纯模型计算时间；未结束的请求保留空结束时间。
+Worker turn 的 `settledAt` 是 Host 收到 Pi 结束结果的时间，`finishedAt` 还包含该轮资源清理。
+
+Coding 工具记录 `requestedAt`、`lockRequestedAt`、`lockAcquiredAt`、`finishedAt` 和单调时钟
+`workspaceLockWaitMs`；未拿到锁的失败或取消仍保留实际等待。Single 的文件位于 Task 的
+`records/performance.v1.json`，Multi Root 位于 `runtime-records/performance.v1.json`，worker 位于
+`records/agents/<agentId>/runtime/performance.v1.json`。这些记录用于量化锁等待，共享 candidate 锁继续保留。
+不同代理的等待或请求时间可能重叠，不能把累计耗时直接当作关键路径耗时。
+
+实验汇总器 `scripts/godot-multi-agent-pilot/summarize.mjs` 派生 worker spawn、首次父消息、settled，以及 Root
+首次 edit/write、最终运行验证和 final response 的时间。首次消息不保证已交付完整结果；最终运行验证要求最后一次
+edit/write 后的成功 `game_launch`，后续 query/stop 必须属于同一 execution 并成功，业务错误不能仅凭 SDK 工具完成
+当作成功。Shell 写入需要单独审阅。可传入新的输出目录保存修正汇总，已有文件不会覆盖；原始记录继续保留。
+
 Worker 轮结果不声称拥有独立 patch。最终共享 patch 可能包含 Root 未单独审阅的修改，仍需在精确候选上独立验收。
 无法完成清理或提取最终 patch 时，V4 的 `candidateSourceChanged` 为 `null`，CLI 明确显示 candidate 未冻结，不能当作
 “源码未变化”。Preview 自身不持有隐藏验收 oracle。
@@ -155,6 +186,9 @@ Pi 用量是累计值，汇总只计每个 Session 最后可用快照，卸载/�
 离线测试以真实 Pi 与 faux provider 验证批量邮件、迟到 final、busy followup、取消重送、重试/压缩与用量归属；Host
 测试覆盖任务树、名额、等待、驻留和 IPC。共享 candidate/Godot 验证覆盖修改可见性、固定 stage、独立执行与取消。
 这些测试不证明在线模型会合理分工，也不证明 V2 更快或更便宜。
+
+[Adaptive Multi 实验](case-studies/adaptive-multi-v1.md)保留两轮开发对照和一次 holdout：部分 Root 工作可被替代，
+但 holdout 仍出现重复调查、延迟交付和更高耗时/费用。共享锁等待很小，没有据此移除锁。
 
 旧 `agents.v1.json`、Preview V3 与 [Single/Multi Pilot](case-studies/single-multi-pilot.md) 属于当时的独立 candidate
 实现，保留历史原记录；其耗时、费用和结论不能归到当前 V2。

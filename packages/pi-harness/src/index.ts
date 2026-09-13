@@ -9,6 +9,18 @@ export {
 } from "./errors.js";
 export * from "./inspection-game-tools.js";
 export * from "./pi-proxy-tools.js";
+export {
+  createPiCollaborationInbox,
+  exportPiSessionForkContext,
+  importPiSessionForkContext,
+  normalizePiForkTurns,
+  parsePiSessionForkContext,
+  type PiCollaborationMessage,
+  type PiCollaborationDisposition,
+  type PiCollaborationPhase,
+  type PiCollaborationInbox,
+  type PiSessionForkContext,
+} from "./collaboration-inbox.js";
 export type {
   RootCollaborationPort,
   RootPiSessionControl,

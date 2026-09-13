@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { AgentExecutionScope } from "./agent-execution-scope.js";
-import type { AgentHostMessage } from "./agent-ipc.js";
+import type { AgentSpawnPolicy } from "./agent-supervisor.js";
+import { AGENT_IPC_VERSION, type AgentHostMessage } from "./agent-ipc.js";
 import type {
   AgentWorkerClient,
   AgentWorkerClientOptions,
 } from "./agent-worker-client.js";
-import { AgentWorkspaceManager } from "./agent-workspace.js";
 import {
   createProjectMultiAgentEnvironment,
   type ProjectMultiAgentEnvironment,
@@ -39,6 +39,12 @@ const result = (
   assistantText: "Fixture loop finished; this is not an acceptance result.",
   errorMessage: null,
   eventsObserved: 0,
+  usageOwnership: {
+    scope: "session-owned",
+    sessionId,
+    parentSessionId: null,
+    inheritedContextMessages: 0,
+  },
   stats: {
     sessionFile: undefined,
     sessionId,
@@ -88,7 +94,7 @@ class OfflineWorker implements AgentWorkerClient {
     this.#tokens = tokens;
     this.#cost = cost;
     this.options.onMessage({
-      version: 1,
+      version: AGENT_IPC_VERSION,
       type: "completed",
       turnId: this.#turnId,
       result: result(
@@ -111,7 +117,7 @@ afterEach(async () => {
   }
 });
 
-const setup = async () => {
+const setup = async (spawnPolicy?: AgentSpawnPolicy) => {
   const root = await mkdtemp(join(tmpdir(), "chronorift-multi-agent-offline-"));
   cleanups.push(() => rm(root, { recursive: true, force: true }));
   const source = join(root, "source");
@@ -169,6 +175,7 @@ const setup = async () => {
     instructions:
       "No model or tool execution is allowed in this offline fixture.",
     configuration: { maxAgents: 2 },
+    ...(spawnPolicy === undefined ? {} : { spawnPolicy }),
     workerFactory: async (options) => {
       const worker = new OfflineWorker(options);
       workers.push(worker);
@@ -180,12 +187,64 @@ const setup = async () => {
 };
 
 describe("Project multi-agent evidence and summaries", () => {
-  it("keeps recorded execution evidence readable when candidate snapshot capture fails", async () => {
-    // This injected record represents already persisted runtime evidence; it is
-    // deliberately independent from the later source/patch capture operation.
+  it("enforces and records Host-only spawn constraints at the project boundary", async () => {
+    const spawnPolicy: AgentSpawnPolicy = {
+      maxCreatedAgents: 1,
+      maxDepth: 1,
+      lockedRuntime: {
+        provider: "offline-fixture",
+        model: "offline-fixture",
+        thinkingLevel: "max",
+      },
+    };
+    const { environment, workers } = await setup(spawnPolicy);
+    await expect(
+      environment.supervisor.spawnAgent(
+        "Try changing the experiment configuration",
+        {
+          taskName: "rejected",
+          forkTurns: "none",
+          reasoningEffort: "high",
+        },
+      ),
+    ).rejects.toThrow();
+    expect(workers).toHaveLength(0);
+    expect(environment.supervisor.listAllAgents()).toHaveLength(0);
+    const first = await environment.supervisor.spawnAgent(
+      "Use the Host configuration",
+      {
+        taskName: "first",
+        forkTurns: "none",
+      },
+    );
+    expect(workers[0]!.options.configuration).toMatchObject(
+      spawnPolicy.lockedRuntime!,
+    );
+    workers[0]!.complete(10, 0.1);
+    await environment.supervisor.waitForTurns([first], "all", 10_000);
+    await expect(
+      environment.supervisor.spawnAgent("Try a replacement identity", {
+        taskName: "replacement",
+        forkTurns: "none",
+      }),
+    ).rejects.toThrow();
+    expect(workers).toHaveLength(1);
+    expect(environment.supervisor.listAllAgents()).toHaveLength(1);
+    const summary = await environment.writeSummary(
+      result("root-session", 20, 0.2),
+    );
+    expect(
+      JSON.parse(await readFile(summary.recordPath, "utf8")),
+    ).toMatchObject({
+      schemaVersion: 2,
+      spawnPolicy,
+    });
+  });
+
+  it("shares one candidate and freezes execution evidence without claiming a worker patch", async () => {
     const recordedExecution = InspectionRunRecordV1Schema.parse({
       schemaVersion: 1,
-      executionId: "inspection.recorded-before-capture-failure",
+      executionId: "inspection.recorded-before-shared-edit",
       sourceSha256: "a".repeat(64),
       observedSourceSha256: "a".repeat(64),
       sourceUnchanged: true,
@@ -201,7 +260,7 @@ describe("Project multi-agent evidence and summaries", () => {
         exitCode: 0,
         signal: null,
         timedOut: false,
-        stdout: "Previously captured fixture observation\n",
+        stdout: "captured observation",
         stderr: "",
         stdoutTruncated: false,
         stderrTruncated: false,
@@ -213,121 +272,91 @@ describe("Project multi-agent evidence and summaries", () => {
     vi.spyOn(AgentExecutionScope.prototype, "records").mockReturnValue([
       recordedExecution,
     ]);
-    const capture = vi
-      .spyOn(AgentWorkspaceManager.prototype, "finishTurn")
-      .mockRejectedValueOnce(new Error("Injected candidate source drift"));
     const { environment, layout, workers } = await setup();
     const target = await environment.supervisor.spawnAgent(
       "Finish after an execution was recorded",
+      { taskName: "first", forkTurns: "none" },
     );
+    const second = await environment.supervisor.spawnAgent(
+      "Continue sharing the candidate",
+      { taskName: "second", forkTurns: "none" },
+    );
+    expect(
+      workers.map(
+        (worker) => worker.options.configuration.resourceWorkspaceDirectory,
+      ),
+    ).toEqual([layout.workspaceDirectory, layout.workspaceDirectory]);
+    expect(workers[0]!.options.configuration.sessionDirectory).not.toBe(
+      workers[1]!.options.configuration.sessionDirectory,
+    );
+    expect(
+      environment.tools.some((tool) => tool.name === "apply_agent_patch"),
+    ).toBe(false);
     workers[0]!.complete(10, 0.1);
-    const finished = await environment.supervisor.waitAgent(
+    const finished = await environment.supervisor.waitForTurns(
       [target],
       "all",
       10_000,
     );
-    expect(finished).toMatchObject({
-      timedOut: false,
-      results: [
-        {
-          status: "failed",
-        },
-      ],
+    expect(finished.results[0]).toMatchObject({
+      status: "completed",
+      evidence: { executions: [recordedExecution.executionId] },
     });
-    expect(finished.results[0]?.errorMessage).toContain(
-      "Injected candidate source drift",
+    const path = join(
+      layout.taskRecordDirectory,
+      "agents",
+      target.agentId,
+      `result-${target.turnId}.json`,
     );
-    expect(capture).toHaveBeenCalledOnce();
-    const page = z
-      .object({ text: z.string(), truncated: z.boolean() })
-      .parse(
-        await environment.supervisor.readAgentResult(
-          target.agentId,
-          target.turnId,
-          "evidence",
-        ),
-      );
-    expect(page.truncated).toBe(false);
-    expect(JSON.parse(page.text)).toEqual([recordedExecution]);
-    const published = z
-      .object({
-        patch: z.null(),
-        captureError: z.string(),
-        executions: z.array(InspectionRunRecordV1Schema),
-      })
-      .parse(
-        JSON.parse(
-          await readFile(
-            join(
-              layout.taskRecordDirectory,
-              "agents",
-              target.agentId,
-              `result-${target.turnId}.json`,
-            ),
-            "utf8",
-          ),
-        ),
-      );
-    expect(published.captureError).toContain("Injected candidate source drift");
-    expect(published.executions).toEqual([recordedExecution]);
-    await expect(
-      environment.supervisor.applyAgentPatch(target.agentId, target.turnId),
-    ).rejects.toThrow("frozen candidate");
-    const summary = await environment.writeSummary();
-    const summaryText = await readFile(summary.recordPath, "utf8");
-    expect(JSON.parse(summaryText)).toMatchObject({
-      turns: [
-        {
-          ...target,
-          status: "failed",
-        },
-      ],
+    const firstRecord = await readFile(path, "utf8");
+    expect(JSON.parse(firstRecord)).toMatchObject({
+      schemaVersion: 2,
+      workspaceMode: "shared",
+      executions: [recordedExecution],
     });
-    expect(summaryText).toContain("Injected candidate source drift");
+    expect(JSON.parse(firstRecord)).not.toHaveProperty("patch");
+    await writeFile(
+      join(layout.workspaceDirectory, "main.tscn"),
+      "another agent has started a new edit",
+    );
+    workers[1]!.complete(20, 0.2);
+    await environment.supervisor.waitForTurns([second], "all", 10_000);
+    expect(await readFile(path, "utf8")).toBe(firstRecord);
   });
 
-  it("counts only each Session's latest cumulative usage and retains queued cancellations", async () => {
+  it("counts the latest owned cumulative usage once, including evicted workers", async () => {
     const { environment, workers } = await setup();
-    const first = await environment.supervisor.spawnAgent("First worker turn");
+    const first = await environment.supervisor.spawnAgent("First worker turn", {
+      taskName: "first",
+      forkTurns: "none",
+    });
     workers[0]!.complete(100, 1);
-    await environment.supervisor.waitAgent([first], "all", 10_000);
-    const firstFollowup = environment.supervisor.followupTask(
+    await environment.supervisor.waitForTurns([first], "all", 10_000);
+    const firstFollowup = await environment.supervisor.followupTask(
       first.agentId,
       "Second turn in the same Session",
     );
     workers[0]!.complete(250, 2.5);
-    await environment.supervisor.waitAgent([firstFollowup], "all", 10_000);
-
-    const second = await environment.supervisor.spawnAgent(
-      "Another independent Session",
-    );
-    workers[1]!.complete(70, 0.7);
-    await environment.supervisor.waitAgent([second], "all", 10_000);
-    const interrupted = environment.supervisor.followupTask(
-      second.agentId,
-      "Active turn to interrupt",
-    );
-    const queued = environment.supervisor.followupTask(
-      second.agentId,
-      "Queued turn must remain in the final record",
-    );
-    workers[1]!.interruptionUsage = { tokens: 80, cost: 0.8 };
-    await environment.supervisor.stopAgents();
-    const cancelled = await environment.supervisor.waitAgent(
-      [interrupted, queued],
-      "all",
-      10_000,
-    );
-    expect(cancelled).toMatchObject({
-      timedOut: false,
-      results: [{ status: "cancelled" }, { status: "cancelled" }],
+    await environment.supervisor.waitForTurns([firstFollowup], "all", 10_000);
+    const second = await environment.supervisor.spawnAgent("Another Session", {
+      taskName: "second",
+      forkTurns: "none",
     });
-
+    workers[1]!.complete(70, 0.7);
+    await environment.supervisor.waitForTurns([second], "all", 10_000);
+    const third = await environment.supervisor.spawnAgent(
+      "Evict an idle Session",
+      { taskName: "third", forkTurns: "none" },
+    );
+    workers[2]!.complete(30, 0.3);
+    await environment.supervisor.waitForTurns([third], "all", 10_000);
     const summary = await environment.writeSummary(
       result("root-session", 500, 5),
     );
     const parsed = z
       .object({
+        schemaVersion: z.literal(2),
+        workspaceMode: z.literal("shared"),
         reportedUsage: z.object({
           tokens: z.number(),
           cost: z.number(),
@@ -345,31 +374,97 @@ describe("Project multi-agent evidence and summaries", () => {
             agentId: z.string(),
             turnId: z.number(),
             status: z.string(),
-            startedAt: z.string().nullable(),
           }),
         ),
       })
       .parse(JSON.parse(await readFile(summary.recordPath, "utf8")));
-    expect(parsed.reportedUsage.tokens).toBe(500 + 250 + 80);
-    expect(parsed.reportedUsage.cost).toBeCloseTo(5 + 2.5 + 0.8);
-    expect(parsed.reportedUsage.incomplete).toBe(true);
-    expect(parsed.workerUsage).toEqual([
-      {
-        agentId: first.agentId,
-        throughTurnId: firstFollowup.turnId,
-        incomplete: false,
-      },
-      {
-        agentId: second.agentId,
-        throughTurnId: interrupted.turnId,
-        incomplete: true,
-      },
-    ]);
-    expect(parsed.turns).toHaveLength(5);
-    expect(parsed.turns).toContainEqual({
-      ...queued,
+    expect(parsed.reportedUsage).toMatchObject({
+      tokens: 850,
+      incomplete: false,
+    });
+    expect(parsed.reportedUsage.cost).toBeCloseTo(8.5);
+    expect(parsed.workerUsage).toHaveLength(3);
+    expect(parsed.workerUsage).toContainEqual({
+      agentId: first.agentId,
+      throughTurnId: firstFollowup.turnId,
+      incomplete: false,
+    });
+    expect(parsed.turns).toHaveLength(4);
+    const raw = JSON.parse(await readFile(summary.recordPath, "utf8")) as {
+      spawnPolicy: unknown;
+      messages: unknown[];
+      rootUsageOwnership: unknown;
+      workerUsage: { usageOwnership: unknown }[];
+    };
+    expect(raw.spawnPolicy).toBeNull();
+    expect(raw.messages).toEqual(environment.supervisor.messages);
+    expect(raw.messages.length).toBeGreaterThan(0);
+    expect(raw.rootUsageOwnership).toMatchObject({
+      scope: "session-owned",
+      sessionId: "root-session",
+    });
+    expect(
+      raw.workerUsage.every((worker) => worker.usageOwnership !== null),
+    ).toBe(true);
+  });
+
+  it("retains a cancelled worker's latest snapshot while flagging incomplete provider usage", async () => {
+    const { environment, workers } = await setup();
+    const first = await environment.supervisor.spawnAgent("First worker turn", {
+      taskName: "worker",
+      forkTurns: "none",
+    });
+    workers[0]!.complete(100, 1);
+    await environment.supervisor.waitForTurns([first], "all", 10_000);
+    const interrupted = await environment.supervisor.followupTask(
+      first.agentId,
+      "Continue investigating",
+    );
+    workers[0]!.interruptionUsage = { tokens: 150, cost: 1.5 };
+    await environment.supervisor.interruptAgent(first.agentId);
+    const finished = await environment.supervisor.waitForTurns(
+      [interrupted],
+      "all",
+      10_000,
+    );
+    expect(finished.results[0]).toMatchObject({
       status: "cancelled",
-      startedAt: null,
+      piResult: {
+        status: "aborted",
+        stats: { tokens: { total: 150 }, cost: 1.5 },
+      },
+    });
+    const summary = await environment.writeSummary(
+      result("root-session", 500, 5),
+    );
+    expect(
+      JSON.parse(await readFile(summary.recordPath, "utf8")),
+    ).toMatchObject({
+      reportedUsage: { tokens: 650, cost: 6.5, incomplete: true },
+      workerUsage: [
+        {
+          agentId: first.agentId,
+          throughTurnId: interrupted.turnId,
+          incomplete: true,
+          sessionStats: { tokens: { total: 150 }, cost: 1.5 },
+        },
+      ],
     });
   });
+
+  it.each(["aborted", "provider_failed", "timed_out"] as const)(
+    "flags a %s Root snapshot as incomplete without dropping its usage",
+    async (status) => {
+      const { environment } = await setup();
+      const summary = await environment.writeSummary(
+        result("root-session", 500, 5, status),
+      );
+      expect(
+        JSON.parse(await readFile(summary.recordPath, "utf8")),
+      ).toMatchObject({
+        reportedUsage: { tokens: 500, cost: 5, incomplete: true },
+        rootStats: { tokens: { total: 500 }, cost: 5 },
+      });
+    },
+  );
 });

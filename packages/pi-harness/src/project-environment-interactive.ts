@@ -28,6 +28,7 @@ import {
   abortPiSession,
   rootPiSessionControl,
   type RootCollaborationPort,
+  type RootPiSessionControl,
 } from "./root-collaboration.js";
 import {
   assertRootCollaborationExtensions,
@@ -108,6 +109,7 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
   let preparingPrompt = false;
   let detachRoot: void | (() => void) = undefined;
   let unsubscribeRoot: (() => void) | undefined;
+  let rootControl: RootPiSessionControl | undefined;
   const releaseRoot = (): void => {
     const unsubscribe = unsubscribeRoot;
     const detach = detachRoot;
@@ -117,22 +119,18 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
       unsubscribe?.();
     } finally {
       detach?.();
+      rootControl?.dispose?.();
+      rootControl = undefined;
     }
   };
-  let drainPromise: Promise<void> | undefined;
-  let closing = false;
-  const lifetime = new AbortController();
   let shutdownPromise: Promise<void> | undefined;
   const shutdown = (): Promise<void> => {
     if (shutdownPromise !== undefined) return shutdownPromise;
-    closing = true;
-    lifetime.abort();
     collaboration?.interrupt();
     shutdownPromise = (async () => {
       const cleanup = await Promise.allSettled([
         collaboration?.stopAgents(),
         activeSession === undefined ? undefined : abortPiSession(activeSession),
-        drainPromise,
       ]);
       const errors = cleanup.flatMap((result) =>
         result.status === "rejected" ? [result.reason as unknown] : [],
@@ -162,32 +160,6 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     })();
     return shutdownPromise;
   };
-  const scheduleDrain = (): void => {
-    if (closing || collaboration === undefined || drainPromise !== undefined)
-      return;
-    // Never re-enter Pi from its synchronous event subscriber. Pi owns all
-    // retries, compaction, and subsequent model/tool turns.
-    drainPromise = Promise.resolve()
-      .then(() => collaboration.drain(lifetime.signal))
-      .catch(async (error: unknown) => {
-        if (closing) return;
-        collaboration.interrupt();
-        await activeSession?.sendCustomMessage(
-          {
-            customType: "chronorift.collaboration-error",
-            content: `Agent coordination failed: ${String(error).slice(0, 4096)}`,
-            display: true,
-          },
-          { triggerTurn: false },
-        );
-      })
-      .finally(() => {
-        drainPromise = undefined;
-      });
-    // Errors displaying an already failed coordination operation must not
-    // create an unhandled rejection while the TUI is closing.
-    void drainPromise.catch(() => undefined);
-  };
   const resourceLoader = new DefaultResourceLoader({
     cwd: resourceWorkspaceDirectory,
     agentDir,
@@ -207,6 +179,7 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
               },
               (preparing) => {
                 preparingPrompt = preparing;
+                if (preparing) rootControl?.onUserInput();
               },
               shutdown,
             ),
@@ -297,9 +270,13 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     try {
       releaseRoot();
       activeSession = created.session;
-      detachRoot = collaboration?.bindRoot(
-        rootPiSessionControl(created.session, () => preparingPrompt),
-      );
+      if (collaboration !== undefined) {
+        rootControl = rootPiSessionControl(
+          created.session,
+          () => preparingPrompt,
+        );
+        detachRoot = collaboration.bindRoot(rootControl);
+      }
       unsubscribeRoot = created.session.subscribe((event) => {
         eventsObserved += 1;
         if (event.type !== "agent_settled" || collaboration === undefined)
@@ -308,7 +285,8 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
           collaboration.interrupt();
           return;
         }
-        scheduleDrain();
+        // Keep workers alive while the TUI Task remains open. Their ordinary
+        // mail is consumed by the next user turn, never an automatic Root turn.
       });
     } catch (error) {
       created.session.dispose();

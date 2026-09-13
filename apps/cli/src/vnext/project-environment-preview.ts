@@ -370,6 +370,17 @@ export type ProjectEnvironmentPreviewResultV3 = z.infer<
   typeof ProjectEnvironmentPreviewResultV3Schema
 >;
 
+/** Shared candidate collaboration; V3 remains available for historical records. */
+export const ProjectEnvironmentPreviewResultV4Schema =
+  ProjectEnvironmentPreviewResultV3Schema.extend({
+    schemaVersion: z.literal(4),
+    workspaceMode: z.literal("shared"),
+    candidateSourceChanged: z.boolean().nullable(),
+  }).strict();
+export type ProjectEnvironmentPreviewResultV4 = z.infer<
+  typeof ProjectEnvironmentPreviewResultV4Schema
+>;
+
 export interface ProjectEnvironmentPreviewDependenciesV2 {
   readonly runPiTurn: typeof runVNextPiTurnWithSdk;
   readonly runInteractive?: typeof runProjectEnvironmentInteractivePiSessionV1;
@@ -409,7 +420,7 @@ export async function runProjectEnvironmentPreviewV2(
   request: ProjectEnvironmentPreviewRequestV2,
   dependencies: ProjectEnvironmentPreviewDependenciesV2 = defaultDependencies,
 ): Promise<
-  ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV3
+  ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV4
 > {
   const multiAgent =
     request.multiAgent === undefined
@@ -520,29 +531,37 @@ export async function runProjectEnvironmentPreviewV2(
   // that awaited Host hook as well as the normal headless path, exactly once.
   let finalization:
     | Promise<
-        ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV3
+        ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV4
       >
     | undefined;
   const finalize = (): Promise<
-    ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV3
+    ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV4
   > => {
     finalization ??= (async () => {
+      let writersStopped = true;
       try {
         await collaboration?.close();
       } catch (error) {
+        writersStopped = false;
         recordFailure(error);
       }
       try {
         await runtime.close();
       } catch (error) {
+        writersStopped = false;
         recordFailure(error);
       }
       try {
         await controller.close();
       } catch (error) {
+        writersStopped = false;
         recordFailure(error);
       }
       try {
+        if (collaboration !== undefined && !writersStopped)
+          throw new Error(
+            "Shared candidate cannot be frozen: writer cleanup was not confirmed",
+          );
         const extracted = await extractTaskPatch({
           taskId,
           sourceKind: "project-environment-v1",
@@ -579,7 +598,7 @@ export async function runProjectEnvironmentPreviewV2(
         }
       }
       const rawResult = {
-        schemaVersion: multiAgent === undefined ? 2 : 3,
+        schemaVersion: multiAgent === undefined ? 2 : 4,
         status,
         taskId,
         sessionId,
@@ -587,7 +606,9 @@ export async function runProjectEnvironmentPreviewV2(
         projectRoot: source.projectPrefix,
         sourceSha256: source.selectedTreeSha256,
         candidateSourceChanged:
-          candidatePatch !== null && candidatePatch.byteLength > 0,
+          multiAgent !== undefined && candidatePatch === null
+            ? null
+            : candidatePatch !== null && candidatePatch.byteLength > 0,
         candidatePatch,
         executions: collaboration?.rootRecordPaths() ?? runtime.recordPaths(),
         goalDelivered,
@@ -599,12 +620,14 @@ export async function runProjectEnvironmentPreviewV2(
         model: request.model,
         thinkingLevel: request.thinkingLevel,
         limitations,
-        ...(multiAgent === undefined ? {} : { agents }),
+        ...(multiAgent === undefined
+          ? {}
+          : { agents, workspaceMode: "shared" }),
       };
       const result =
         multiAgent === undefined
           ? ProjectEnvironmentPreviewResultV2Schema.parse(rawResult)
-          : ProjectEnvironmentPreviewResultV3Schema.parse(rawResult);
+          : ProjectEnvironmentPreviewResultV4Schema.parse(rawResult);
       await writeFile(
         join(
           layout.taskRecordDirectory,

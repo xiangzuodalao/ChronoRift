@@ -1,10 +1,28 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import {
+  createPiCollaborationInbox,
+  exportPiSessionForkContext,
+  type PiCollaborationMessage,
+  type PiCollaborationDisposition,
+  type PiCollaborationPhase,
+  type PiSessionForkContext,
+} from "./collaboration-inbox.js";
 
 /** The Host owns agent lifetimes; Pi owns what to do with their results. */
 export interface RootPiSessionControl {
   isIdle(): boolean;
-  deliver(message: string): Promise<void>;
+  readonly collaborationPhase: PiCollaborationPhase;
+  deliver(message: PiCollaborationMessage): Promise<PiCollaborationDisposition>;
+  exportForkContext(forkTurns: string): PiSessionForkContext;
+  hasPendingMessages(): boolean;
+  subscribeActivity(listener: () => void): () => void;
+  subscribeConsumption(listener: (ids: readonly string[]) => void): () => void;
+  subscribeCollaborationPhase(
+    listener: (phase: PiCollaborationPhase) => void,
+  ): () => void;
+  onUserInput(): void;
   abort(): Promise<void>;
+  dispose?(): void;
 }
 
 export interface RootCollaborationPort {
@@ -28,20 +46,21 @@ export function rootPiSessionControl(
   session: AgentSession,
   isPreparingPrompt: () => boolean = () => false,
 ): RootPiSessionControl {
+  const inbox = createPiCollaborationInbox(session);
   return {
     isIdle: () => session.isIdle && !isPreparingPrompt(),
-    deliver: (message) =>
-      session.sendCustomMessage(
-        {
-          customType: "chronorift.collaboration",
-          content: message,
-          display: true,
-          details: { source: "agent-supervisor" },
-        },
-        isPreparingPrompt()
-          ? { triggerTurn: false, deliverAs: "nextTurn" }
-          : { triggerTurn: true, deliverAs: "followUp" },
-      ),
+    get collaborationPhase() {
+      return inbox.phase;
+    },
+    deliver: (message) => inbox.deliver(message),
+    exportForkContext: (forkTurns) =>
+      exportPiSessionForkContext(session, forkTurns),
+    hasPendingMessages: () => inbox.hasPendingMessages(),
+    subscribeActivity: (listener) => inbox.subscribeActivity(listener),
+    subscribeConsumption: (listener) => inbox.subscribeConsumption(listener),
+    subscribeCollaborationPhase: (listener) => inbox.subscribePhase(listener),
+    onUserInput: () => inbox.onUserInput(),
     abort: () => abortPiSession(session),
+    dispose: () => inbox.dispose(),
   };
 }

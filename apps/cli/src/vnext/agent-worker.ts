@@ -38,6 +38,7 @@ export function runAgentWorkerBridge(
   let session: ManagedPiSession | undefined;
   let currentTurn: number | undefined;
   let interrupted = false;
+  const subscriptions: (() => void)[] = [];
   const pending = new Map<
     string,
     {
@@ -61,6 +62,7 @@ export function runAgentWorkerBridge(
   const close = async (): Promise<void> => {
     if (closing) return;
     closing = true;
+    for (const unsubscribe of subscriptions.splice(0)) unsubscribe();
     cancelPending();
     await session?.abort().catch(() => undefined);
     session?.dispose();
@@ -68,7 +70,7 @@ export function runAgentWorkerBridge(
   };
   const fatal = async (error: unknown): Promise<void> => {
     await send({
-      version: 1,
+      version: 2,
       type: "fatal",
       error: String(error instanceof Error ? error.message : error).slice(
         0,
@@ -99,7 +101,7 @@ export function runAgentWorkerBridge(
             entry.dispose();
             entry.resolve(agentToolError("Worker tool was cancelled"));
             void send({
-              version: 1,
+              version: 2,
               type: "tool_cancel",
               turnId,
               requestId,
@@ -113,7 +115,7 @@ export function runAgentWorkerBridge(
             dispose: () => signal?.removeEventListener("abort", abort),
           });
           void send({
-            version: 1,
+            version: 2,
             type: "tool_request",
             turnId,
             requestId,
@@ -134,7 +136,19 @@ export function runAgentWorkerBridge(
       session.dispose();
       return;
     }
-    await send({ version: 1, type: "ready" });
+    subscriptions.push(
+      session.subscribeConsumption((ids) => {
+        if (!closing)
+          void send({ version: 2, type: "collaboration_consumed", ids }).catch(
+            fatal,
+          );
+      }),
+      session.subscribeCollaborationPhase((phase) => {
+        if (!closing)
+          void send({ version: 2, type: "phase", phase }).catch(fatal);
+      }),
+    );
+    await send({ version: 2, type: "ready" });
   };
   const prompt = async (
     message: Extract<AgentHostMessage, { type: "prompt" }>,
@@ -150,7 +164,7 @@ export function runAgentWorkerBridge(
       currentTurn = undefined;
       if (!closing)
         await send({
-          version: 1,
+          version: 2,
           type: "completed",
           turnId: message.turnId,
           result,
@@ -159,7 +173,7 @@ export function runAgentWorkerBridge(
       currentTurn = undefined;
       if (!closing)
         await send({
-          version: 1,
+          version: 2,
           type: "failed",
           turnId: message.turnId,
           error: String(error instanceof Error ? error.message : error).slice(
@@ -188,11 +202,24 @@ export function runAgentWorkerBridge(
       case "prompt":
         await prompt(message);
         break;
-      case "message":
-        await session.sendMessage(message.text, {
-          triggerTurn: false,
-          deliverAs: "steer",
-          source: { agentId: "root" },
+      case "collaboration": {
+        const disposition = await session.deliverCollaboration(
+          message.envelope,
+        );
+        await send({
+          version: 2,
+          type: "collaboration_accepted",
+          requestId: message.requestId,
+          acceptedInCurrentTurn: disposition === "current-turn",
+        });
+        break;
+      }
+      case "export_context":
+        await send({
+          version: 2,
+          type: "context_exported",
+          requestId: message.requestId,
+          context: session.exportForkContext(message.forkTurns),
         });
         break;
       case "interrupt":

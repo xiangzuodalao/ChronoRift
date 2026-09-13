@@ -1,11 +1,9 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { runVNextPiTurn, type VNextPiTurnResult } from "@chronorift/pi-harness";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-
 import { AgentSupervisor, type AgentResource } from "./agent-supervisor.js";
 import type { AgentWorkerClientOptions } from "./agent-worker-client.js";
 
@@ -14,11 +12,7 @@ type SessionFactory = NonNullable<
 >;
 type Session = Awaited<ReturnType<SessionFactory>>["session"];
 type SessionEvent = Parameters<Parameters<Session["subscribe"]>[0]>[0];
-type Scenario = "settled_failure" | "queued_message_failure" | "retry_success";
-
 const providerError = "Provider unavailable after SDK retries were exhausted";
-const pause = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
 const stats: VNextPiTurnResult["stats"] = {
   sessionFile: "/fixture.jsonl",
   sessionId: "fixture",
@@ -30,12 +24,9 @@ const stats: VNextPiTurnResult["stats"] = {
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   cost: 0,
 };
-
-const workerResult = (
-  status: "completed" | "aborted" = "completed",
-): VNextPiTurnResult => ({
+const workerResult = (): VNextPiTurnResult => ({
   schemaVersion: 1,
-  status,
+  status: "aborted",
   sessionId: "worker",
   sessionFile: "/worker.jsonl",
   provider: "fixture",
@@ -43,56 +34,44 @@ const workerResult = (
   requestedThinkingLevel: "off",
   realizedThinkingLevel: "off",
   activeTools: ["read"],
-  assistantText: status === "completed" ? "Worker finished" : "Worker stopped",
-  errorMessage: status === "completed" ? null : "Worker was interrupted",
+  assistantText: "Worker stopped",
+  errorMessage: "Worker was interrupted",
   eventsObserved: 1,
   stats,
 });
 
-/** Real coordination and Pi harness; the Session models SDK events without a provider. */
-async function runScenario(scenario: Scenario) {
+/** Real coordinator and Pi harness with a credential-free Session event fixture. */
+async function runScenario(scenario: "failure" | "retry_success" | "success") {
   const directory = await mkdtemp(join(tmpdir(), "chronorift-root-failure-"));
   const workspace = join(directory, "workspace");
   const sessions = join(directory, "sessions");
   const agentDir = join(directory, "agent");
   await Promise.all([mkdir(workspace), mkdir(sessions), mkdir(agentDir)]);
   const workers: AgentWorkerClientOptions[] = [];
-  const interruptedWorkers: number[] = [];
-  const listeners = new Set<(event: SessionEvent) => void>();
+  const interrupted: number[] = [];
+  const sessionListeners = new Set<(event: SessionEvent) => void>();
+  const agentListeners = new Set<(event: SessionEvent) => unknown>();
   let rootIdle = true;
   let rootContinuations = 0;
-  let queuedDeliveries = 0;
-  let cancelledBeforeContinuationReturned = false;
-  let lateWorkerCompletion: Promise<void> | undefined;
-  let messages: unknown[] = [];
-  let resolveQueuedDelivery = (): void => undefined;
-  const queuedDelivery = new Promise<void>((resolve) => {
-    resolveQueuedDelivery = resolve;
-  });
-  const emit = (event: SessionEvent): void => {
-    for (const listener of [...listeners]) listener(event);
+  let prematureCancellation = false;
+  const messages: unknown[] = [];
+  const emit = async (event: SessionEvent) => {
+    for (const listener of [...sessionListeners]) listener(event);
+    for (const listener of [...agentListeners]) await listener(event);
   };
-  const assistant = (failed: boolean): void => {
-    const message = {
-      role: "assistant",
-      stopReason: failed ? "error" : "stop",
-      ...(failed ? { errorMessage: providerError } : {}),
-      content: failed ? [] : [{ type: "text", text: "Root investigated" }],
-    };
-    messages = [message];
-    emit({ type: "message_end", message } as SessionEvent);
-  };
-  const settle = (): void => {
-    rootIdle = true;
-    emit({ type: "agent_settled" } as SessionEvent);
-  };
-  const completeWorker = (index: number): void => {
-    workers[index]!.onMessage({
-      version: 1,
-      type: "completed",
-      turnId: 1,
-      result: workerResult(),
-    });
+  const agent = {
+    subscribe: (listener: (event: SessionEvent) => unknown) => {
+      agentListeners.add(listener);
+      return () => {
+        agentListeners.delete(listener);
+      };
+    },
+    prepareNextTurnWithContext: undefined as
+      | ((
+          turn: { message: { content: { type: string; text?: string }[] } },
+          signal: AbortSignal,
+        ) => Promise<unknown>)
+      | undefined,
   };
   const supervisor = new AgentSupervisor({
     createResource: async (): Promise<AgentResource> => ({
@@ -105,15 +84,13 @@ async function runScenario(scenario: Scenario) {
         tools: [
           {
             name: "read",
-            description: "Read fixture",
+            description: "Read",
             parameters: { type: "object", properties: {} },
           },
         ],
       },
       invokeTool: async () => ({ content: [] }),
-      finishTurn: async () => ({ frozen: true }),
-      readResult: async () => ({}),
-      apply: async () => ({}),
+      finishTurn: async () => ({ executions: [] }),
       cancel: async () => undefined,
       close: async () => undefined,
     }),
@@ -122,24 +99,49 @@ async function runScenario(scenario: Scenario) {
       workers.push(options);
       return {
         send: async (message) => {
-          if (message.type !== "interrupt") return;
-          interruptedWorkers.push(index);
-          queueMicrotask(() =>
+          if (message.type === "interrupt") {
+            interrupted.push(index);
+            queueMicrotask(() =>
+              options.onMessage({
+                version: 2,
+                type: "completed",
+                turnId: message.turnId,
+                result: workerResult(),
+              }),
+            );
+          }
+          if (message.type === "collaboration")
             options.onMessage({
-              version: 1,
-              type: "completed",
-              turnId: message.turnId,
-              result: workerResult("aborted"),
-            }),
-          );
+              version: 2,
+              type: "collaboration_accepted",
+              requestId: message.requestId,
+              acceptedInCurrentTurn: false,
+            });
         },
         close: async () => undefined,
       };
     },
   });
+  const assistant = async (failed: boolean) => {
+    const message = {
+      role: "assistant",
+      stopReason: failed ? "error" : "stop",
+      ...(failed ? { errorMessage: providerError } : {}),
+      content: failed ? [] : [{ type: "text", text: "Root investigated" }],
+    };
+    messages.push(message);
+    await emit({ type: "message_end", message } as SessionEvent);
+    if (!failed)
+      await agent.prepareNextTurnWithContext?.(
+        { message },
+        new AbortController().signal,
+      );
+  };
   const createSession: SessionFactory = async (options) => ({
     extensionsResult: options.resourceLoader!.getExtensions(),
     session: {
+      agent,
+      sessionManager: { getEntries: () => [] },
       get isIdle() {
         return rootIdle;
       },
@@ -150,57 +152,47 @@ async function runScenario(scenario: Scenario) {
       waitForIdle: async () => undefined,
       prompt: async () => {
         rootIdle = false;
-        emit({ type: "agent_start" } as SessionEvent);
-        await supervisor.spawnAgent("Investigate A");
-        await supervisor.spawnAgent("Investigate B");
-        assistant(false);
-        settle();
-        // Complete A after the initial prompt returns and Root can begin waiting.
-        void pause(5).then(() => completeWorker(0));
+        await emit({ type: "agent_start" } as SessionEvent);
+        const first = await supervisor.spawnAgent("Investigate A", {
+          taskName: "a",
+          forkTurns: "none",
+        });
+        await supervisor.spawnAgent("Investigate B", {
+          taskName: "b",
+          forkTurns: "none",
+        });
+        await supervisor.sendMessage(
+          "/root",
+          "Worker A is investigating",
+          first.agentId,
+        );
+        await assistant(scenario !== "success");
+        if (scenario === "retry_success") {
+          await emit({
+            type: "agent_end",
+            messages: [],
+          } as unknown as SessionEvent);
+          prematureCancellation = interrupted.length !== 0;
+          await emit({ type: "agent_start" } as SessionEvent);
+          await assistant(false);
+        }
+        rootIdle = true;
+        await emit({ type: "agent_settled" } as SessionEvent);
       },
-      sendCustomMessage: async () => {
-        if (!rootIdle) {
-          // Pi queues follow-ups during streaming and resolves immediately.
-          queuedDeliveries += 1;
-          resolveQueuedDelivery();
-          return;
-        }
-        rootContinuations += 1;
-        rootIdle = false;
-        emit({ type: "agent_start" } as SessionEvent);
-        if (rootContinuations === 1) {
-          if (scenario === "queued_message_failure") {
-            workers[1]!.onMessage({
-              version: 1,
-              type: "tool_request",
-              turnId: 1,
-              requestId: "worker-progress",
-              name: "send_message",
-              arguments: { message: "B is still investigating" },
-            });
-            await queuedDelivery;
-          }
-          assistant(true);
-          if (scenario === "retry_success") {
-            // A message_end error can be followed by Pi's own successful retry.
-            await pause(5);
-            assistant(false);
-          }
-          settle();
-          // Pi emits settled before the enclosing sendCustomMessage resolves.
-          // Observe cancellation here so checking only its return value is insufficient.
-          await Promise.resolve();
-          cancelledBeforeContinuationReturned = interruptedWorkers.includes(1);
-          // Simulate a late completion even if B acknowledged cancellation first.
-          lateWorkerCompletion = pause(20).then(() => completeWorker(1));
-          return;
-        }
-        assistant(false);
-        settle();
+      sendCustomMessage: async (
+        message: unknown,
+        options: { triggerTurn?: boolean },
+      ) => {
+        if (options.triggerTurn === true) rootContinuations += 1;
+        const custom = { ...(message as object), role: "custom" };
+        messages.push(custom);
+        await emit({ type: "message_end", message: custom } as SessionEvent);
       },
       subscribe: (listener: (event: SessionEvent) => void) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
+        sessionListeners.add(listener);
+        return () => {
+          sessionListeners.delete(listener);
+        };
       },
       dispose: () => undefined,
       getActiveToolNames: () => ["read"],
@@ -222,17 +214,16 @@ async function runScenario(scenario: Scenario) {
         modelRuntime: {} as Parameters<
           typeof runVNextPiTurn
         >[0]["modelRuntime"],
-        model: {
-          provider: "fixture",
-          id: "fixture",
-        } as Parameters<typeof runVNextPiTurn>[0]["model"],
+        model: { provider: "fixture", id: "fixture" } as Parameters<
+          typeof runVNextPiTurn
+        >[0]["model"],
         thinkingLevel: "off",
-        prompt: "Investigate with two workers",
+        prompt: "Investigate with workers",
         tools: [
           {
             name: "read",
             label: "Read",
-            description: "Read fixture",
+            description: "Read",
             parameters: Type.Object({}),
             execute: async () => ({ content: [], details: undefined }),
           },
@@ -242,15 +233,13 @@ async function runScenario(scenario: Scenario) {
       },
       { createSession },
     );
-    await lateWorkerCompletion;
     return {
       result,
+      interrupted,
       rootContinuations,
-      queuedDeliveries,
-      cancelledBeforeContinuationReturned,
-      interruptedWorkers: [...interruptedWorkers],
+      prematureCancellation,
       workerResults: supervisor.results,
-      remainingSubscribers: listeners.size,
+      remainingSubscribers: sessionListeners.size + agentListeners.size,
     };
   } finally {
     await supervisor.close();
@@ -258,40 +247,33 @@ async function runScenario(scenario: Scenario) {
   }
 }
 
-describe("Root provider failure during agent collaboration", () => {
-  it("cancels B after A wakes a failing Root and ignores B's late completion", async () => {
-    const observed = await runScenario("settled_failure");
+describe("Root settlement during V2 collaboration", () => {
+  it("stops workers after a settled provider failure, without followup-triggered Root prompts", async () => {
+    const observed = await runScenario("failure");
     expect(observed.result.status).toBe("provider_failed");
     expect(observed.result.errorMessage).toBe(providerError);
-    expect(observed.interruptedWorkers).toEqual([1]);
-    expect(observed.rootContinuations).toBe(1);
+    expect(observed.interrupted.sort()).toEqual([0, 1]);
+    expect(observed.rootContinuations).toBe(0);
     expect(
-      observed.workerResults.find((result) => result.agentId === "agent-2")
-        ?.status,
-    ).toBe("cancelled");
+      observed.workerResults.every((result) => result.status === "cancelled"),
+    ).toBe(true);
     expect(observed.remainingSubscribers).toBe(0);
   });
-
-  it("stops when Root fails after accepting an already-resolved streaming follow-up", async () => {
-    const observed = await runScenario("queued_message_failure");
-    expect(observed.queuedDeliveries).toBe(1);
-    expect(observed.cancelledBeforeContinuationReturned).toBe(true);
-    expect(observed.result.status).toBe("provider_failed");
-    expect(observed.result.errorMessage).toBe(providerError);
-    expect(observed.interruptedWorkers).toEqual([1]);
-    expect(observed.rootContinuations).toBe(1);
-    expect(observed.remainingSubscribers).toBe(0);
-  });
-
-  it("lets Pi retry a message error before deciding the settled Root failed", async () => {
+  it("lets Pi finish its retry before cancelling the remaining headless workers", async () => {
     const observed = await runScenario("retry_success");
     expect(observed.result.status).toBe("completed");
     expect(observed.result.errorMessage).toBeNull();
-    expect(observed.interruptedWorkers).toEqual([]);
-    expect(observed.rootContinuations).toBe(2);
-    expect(
-      observed.workerResults.every((result) => result.status === "completed"),
-    ).toBe(true);
+    expect(observed.prematureCancellation).toBe(false);
+    expect(observed.interrupted.sort()).toEqual([0, 1]);
+    expect(observed.rootContinuations).toBe(0);
+    expect(observed.remainingSubscribers).toBe(0);
+  });
+  it("keeps late ordinary messages from extending a successful Root answer", async () => {
+    const observed = await runScenario("success");
+    expect(observed.result.status).toBe("completed");
+    expect(observed.interrupted.sort()).toEqual([0, 1]);
+    expect(observed.rootContinuations).toBe(0);
+    expect(observed.workerResults).toHaveLength(2);
     expect(observed.remainingSubscribers).toBe(0);
   });
 });

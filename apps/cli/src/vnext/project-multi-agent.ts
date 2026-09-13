@@ -13,14 +13,14 @@ import type { TaskId } from "@chronorift/domain";
 import {
   AgentExecutionBudget,
   AgentExecutionScope,
+  AgentWorkspaceGate,
 } from "./agent-execution-scope.js";
 import {
   AgentSupervisor,
   createAgentSupervisorTools,
   type AgentResource,
-  type AgentTurnCompletion,
+  type AgentSpawnPolicy,
 } from "./agent-supervisor.js";
-import { AgentWorkspaceManager } from "./agent-workspace.js";
 import type { SrtSandboxController } from "./srt-sandbox-controller.js";
 import type { ProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 
@@ -60,31 +60,12 @@ export interface ProjectMultiAgentEnvironmentOptions {
   readonly agentDir?: string | undefined;
   readonly instructions: string;
   readonly configuration: ProjectMultiAgentOptions;
+  /** Host-only experiment constraints; never populated from model tool input. */
+  readonly spawnPolicy?: AgentSpawnPolicy;
   readonly workerFactory?: ConstructorParameters<
     typeof AgentSupervisor
   >[0]["workerFactory"];
 }
-
-const jsonPage = (value: unknown, offset = 0, limit = 16_384) => {
-  if (
-    !Number.isSafeInteger(offset) ||
-    offset < 0 ||
-    !Number.isSafeInteger(limit) ||
-    limit < 1 ||
-    limit > 65_536
-  ) {
-    throw new TypeError("Invalid result page");
-  }
-  const bytes = Buffer.from(JSON.stringify(value, null, 2));
-  const end = Math.min(bytes.length, offset + limit);
-  return {
-    text: bytes.subarray(offset, end).toString("utf8"),
-    offset,
-    nextOffset: end,
-    totalBytes: bytes.length,
-    truncated: end < bytes.length,
-  };
-};
 
 export async function createProjectMultiAgentEnvironment(
   options: ProjectMultiAgentEnvironmentOptions,
@@ -93,15 +74,7 @@ export async function createProjectMultiAgentEnvironment(
     options.configuration,
   );
   const budget = new AgentExecutionBudget();
-  const manager = new AgentWorkspaceManager({
-    rootWorkspaceDirectory: options.layout.workspaceDirectory,
-    resourceRootDirectory: join(
-      options.layout.hostOperationTemporaryDirectory,
-      "agents",
-    ),
-    recordsDirectory: join(options.layout.taskRecordDirectory, "agents"),
-    taskId: options.taskId,
-  });
+  const candidateGate = new AgentWorkspaceGate();
   const rootScope = new AgentExecutionScope({
     controller: options.controller,
     taskRootDirectory: options.layout.taskRootDirectory,
@@ -116,17 +89,28 @@ export async function createProjectMultiAgentEnvironment(
     nodePath: options.nodePath,
     godotPath: options.godotPath,
     budget,
-    assertUsable: () => {
-      if (manager.poisoned)
-        throw new Error(
-          "Root workspace is unavailable after a failed patch rollback",
-        );
-    },
+    candidateGate,
   });
   await rootScope.initialize();
   const scopes = new Map<string, AgentExecutionScope>();
   const createResource = async (agentId: string): Promise<AgentResource> => {
-    const binding = await rootScope.gate.run(() => manager.create(agentId));
+    z.uuid().parse(agentId);
+    const resourceDirectory = join(
+      options.layout.hostOperationTemporaryDirectory,
+      "agents",
+      agentId,
+    );
+    const recordsDirectory = join(
+      options.layout.taskRecordDirectory,
+      "agents",
+      agentId,
+    );
+    const binding = {
+      workspaceDirectory: options.layout.workspaceDirectory,
+      resourceDirectory,
+      recordsDirectory,
+      hostOperationTemporaryDirectory: join(resourceDirectory, "host-tmp"),
+    };
     const scope = new AgentExecutionScope({
       controller: options.controller,
       taskRootDirectory: options.layout.taskRootDirectory,
@@ -141,21 +125,13 @@ export async function createProjectMultiAgentEnvironment(
       nodePath: options.nodePath,
       godotPath: options.godotPath,
       budget,
+      candidateGate,
     });
     scopes.set(agentId, scope);
     await scope.initialize();
     const sessionDirectory = join(binding.recordsDirectory, "pi-sessions");
     await mkdir(sessionDirectory, { mode: 0o700 });
     const tools = new Map(scope.tools().map((tool) => [tool.name, tool]));
-    const completed = new Map<
-      number,
-      {
-        completion: AgentTurnCompletion;
-        patch: unknown;
-        captureError: string | null;
-        executions: ReturnType<AgentExecutionScope["records"]>;
-      }
-    >();
     let recordCursor = 0;
     return {
       workerConfiguration: {
@@ -169,7 +145,7 @@ export async function createProjectMultiAgentEnvironment(
           ? {}
           : { agentDir: options.agentDir }),
         environmentProfile: "coding",
-        additionalEnvironmentInstructions: `${options.instructions}\nYou are a delegated agent with your own candidate workspace and Godot executions. Your result does not change the Root candidate. Report observed results and remaining uncertainty.`,
+        additionalEnvironmentInstructions: `${options.instructions}\nYou share the private candidate workspace with Root and the other agents. Completed edits are immediately visible to all agents; coordinate overlapping changes and preserve other agents’ work. Your Godot executions and temporary files remain independent. Runtime observations describe the captured source of that execution, not later workspace edits. Report actual observations and uncertainty.`,
       },
       invokeTool: async (request, signal, onUpdate) => {
         const tool = tools.get(request.name);
@@ -188,56 +164,37 @@ export async function createProjectMultiAgentEnvironment(
         );
       },
       finishTurn: async (turnId, completion) => {
-        let patch: unknown = null;
-        let captureError: string | null = null;
+        // Stop only this actor's executions. Other actors may continue editing
+        // the shared candidate, so no per-worker patch or candidate is claimed.
+        let cleanupError: string | null = null;
         try {
           await scope.cancel();
-          patch = await scope.gate.run(() =>
-            manager.finishTurn(agentId, turnId),
-          );
         } catch (error) {
-          captureError = String(
+          cleanupError = String(
             error instanceof Error ? error.message : error,
           ).slice(0, 4096);
         }
         const records = scope.records();
         const executions = records.slice(recordCursor);
         recordCursor = records.length;
-        // A rejected source snapshot must not hide actual runtime evidence.
-        const value = { completion, patch, captureError, executions };
-        completed.set(turnId, value);
         await writeFile(
           join(binding.recordsDirectory, `result-${turnId}.json`),
-          JSON.stringify({ schemaVersion: 1, ...value }, null, 2) + "\n",
+          JSON.stringify(
+            {
+              schemaVersion: 2,
+              workspaceMode: "shared",
+              completion,
+              cleanupError,
+              executions,
+            },
+            null,
+            2,
+          ) + "\n",
           { flag: "wx", mode: 0o600 },
         );
-        if (captureError !== null) throw new Error(captureError);
-        return {
-          patch,
-          executions: executions.map((record) => record.executionId),
-        };
+        if (cleanupError !== null) throw new Error(cleanupError);
+        return { executions: executions.map((record) => record.executionId) };
       },
-      readResult: async (turnId, section, offset, limit) => {
-        if (section === "diff")
-          return manager.readPatch(agentId, turnId, offset, limit);
-        const result = completed.get(turnId);
-        if (result === undefined)
-          throw new Error("No recorded result for this agent turn");
-        return jsonPage(
-          section === "summary"
-            ? {
-                ...result.completion,
-                piResult: undefined,
-                patch: result.patch,
-                captureError: result.captureError,
-              }
-            : result.executions,
-          offset,
-          limit,
-        );
-      },
-      apply: (turnId) =>
-        rootScope.gate.run(() => manager.applyTurn(agentId, turnId)),
       cancel: () => scope.cancel(),
       close: () => scope.close(),
     };
@@ -246,6 +203,9 @@ export async function createProjectMultiAgentEnvironment(
     createResource,
     maxAgents: configuration.maxAgents,
     cancelRoot: () => rootScope.cancel(),
+    ...(options.spawnPolicy === undefined
+      ? {}
+      : { spawnPolicy: options.spawnPolicy }),
     ...(options.workerFactory === undefined
       ? {}
       : { workerFactory: options.workerFactory }),
@@ -254,7 +214,7 @@ export async function createProjectMultiAgentEnvironment(
     ...rootScope.tools(),
     ...createAgentSupervisorTools(supervisor),
   ];
-  const recordPath = join(options.layout.taskRecordDirectory, "agents.v1.json");
+  const recordPath = join(options.layout.taskRecordDirectory, "agents.v2.json");
   return {
     tools,
     supervisor,
@@ -278,18 +238,24 @@ export async function createProjectMultiAgentEnvironment(
         );
     },
     async writeSummary(rootResult?: VNextPiTurnResult) {
-      const agents = supervisor.listAgents();
+      const agents = supervisor
+        .listAllAgents()
+        .filter((agent) => agent.path !== "/root");
       const results = supervisor.results;
       const workerUsage = agents.map(({ agentId }) => {
         const turns = results.filter((result) => result.agentId === agentId);
         const latest = turns.findLast(
           (result) => result.piResult !== undefined,
         );
+        const lastTurn = turns.at(-1);
         return {
           agentId,
           throughTurnId: latest?.turnId ?? null,
           sessionStats: latest?.piResult?.stats ?? null,
-          incomplete: turns.at(-1)?.piResult === undefined,
+          usageOwnership: latest?.piResult?.usageOwnership ?? null,
+          incomplete:
+            lastTurn?.status !== "completed" ||
+            lastTurn?.piResult?.status !== "completed",
         };
       });
       const stats = [
@@ -300,13 +266,18 @@ export async function createProjectMultiAgentEnvironment(
         recordPath,
         JSON.stringify(
           {
-            schemaVersion: 1,
+            schemaVersion: 2,
+            workspaceMode: "shared",
+            spawnPolicy: supervisor.effectiveSpawnPolicy,
             agents,
+            messages: supervisor.messages,
             turns: results.map(({ piResult, ...result }) => ({
               ...result,
               sessionStatsAtTurnEnd: piResult?.stats ?? null,
+              usageOwnership: piResult?.usageOwnership ?? null,
             })),
             rootStats: rootResult?.stats ?? null,
+            rootUsageOwnership: rootResult?.usageOwnership ?? null,
             workerUsage,
             reportedUsage: {
               tokens: stats.reduce(
@@ -315,7 +286,7 @@ export async function createProjectMultiAgentEnvironment(
               ),
               cost: stats.reduce((total, value) => total + value.cost, 0),
               incomplete:
-                rootResult === undefined ||
+                rootResult?.status !== "completed" ||
                 workerUsage.some((worker) => worker.incomplete),
             },
             sharedToolCalls: budget.used,
@@ -323,7 +294,7 @@ export async function createProjectMultiAgentEnvironment(
             limitations: [
               "Session statistics are cumulative; reportedUsage counts each session's latest available snapshot once. Interrupted provider work may be unreported.",
               "Token usage is reported, not a hard token or cost cap.",
-              "Agent completion and patch application are not acceptance verdicts.",
+              "All agents edit one shared candidate; completed turns do not identify an agent-owned patch or acceptance verdict.",
             ],
           },
           null,

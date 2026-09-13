@@ -22,6 +22,15 @@ import {
   type RootCollaborationPort,
 } from "./root-collaboration.js";
 import { configureVNextPiHostHttpTransport } from "./vnext-host-http.js";
+import {
+  createPiCollaborationInbox,
+  exportPiSessionForkContext,
+  importPiSessionForkContext,
+  type PiCollaborationMessage,
+  type PiCollaborationDisposition,
+  type PiCollaborationPhase,
+  type PiSessionForkContext,
+} from "./collaboration-inbox.js";
 
 export const VNEXT_ENVIRONMENT_APPENDIX = `ChronoRift environment:
 - Your file and command tools execute inside the task workspace shown as your current working directory.
@@ -44,6 +53,7 @@ export interface RunVNextPiTurnOptions {
   /** Host-selected ID for a new durable Session; forbidden when resuming. */
   readonly newSessionId?: string | undefined;
   readonly resumeSessionFile?: string | undefined;
+  readonly forkContext?: PiSessionForkContext | undefined;
   readonly agentDir?: string | undefined;
   readonly modelRuntime: ModelRuntime;
   readonly model: Model<Api>;
@@ -86,6 +96,12 @@ export interface VNextPiTurnResult {
   readonly errorMessage: string | null;
   readonly eventsObserved: number;
   readonly stats: SessionStats;
+  readonly usageOwnership?: {
+    readonly scope: "session-owned";
+    readonly sessionId: string;
+    readonly parentSessionId: string | null;
+    readonly inheritedContextMessages: number;
+  };
 }
 
 interface VNextPiSessionDependencies {
@@ -225,6 +241,18 @@ export interface ManagedPiSession {
   readonly sessionFile: string | undefined;
   readonly isIdle: boolean;
   readonly activeTools: readonly string[];
+  readonly collaborationPhase: PiCollaborationPhase;
+  deliverCollaboration(
+    message: PiCollaborationMessage,
+  ): Promise<PiCollaborationDisposition>;
+  exportForkContext(forkTurns: string): PiSessionForkContext;
+  hasPendingMessages(): boolean;
+  subscribeActivity(listener: () => void): () => void;
+  subscribeConsumption(listener: (ids: readonly string[]) => void): () => void;
+  subscribeCollaborationPhase(
+    listener: (phase: PiCollaborationPhase) => void,
+  ): () => void;
+  onUserInput(): void;
   prompt(text: string): Promise<void>;
   sendMessage(text: string, options?: PiSessionMessageOptions): Promise<void>;
   abort(): Promise<void>;
@@ -256,6 +284,20 @@ export function snapshotPiSession(
   if (sessionFile === undefined)
     throw new Error("Pi did not persist the vNext session");
   const failure = finalAssistantFailure(session.messages);
+  const provenance = session.sessionManager
+    .getEntries()
+    .find(
+      (entry) =>
+        entry.type === "custom" &&
+        entry.customType === "chronorift.fork-provenance",
+    );
+  const forkOwnership =
+    provenance?.type === "custom"
+      ? (provenance.data as {
+          parentSessionId: string;
+          inheritedContextMessages: number;
+        })
+      : undefined;
   return {
     schemaVersion: 1,
     status: status ?? failure?.status ?? "completed",
@@ -271,6 +313,12 @@ export function snapshotPiSession(
       errorMessage === undefined ? (failure?.message ?? null) : errorMessage,
     eventsObserved: options.eventsObserved,
     stats: session.getSessionStats(),
+    usageOwnership: {
+      scope: "session-owned",
+      sessionId: session.sessionId,
+      parentSessionId: forkOwnership?.parentSessionId ?? null,
+      inheritedContextMessages: forkOwnership?.inheritedContextMessages ?? 0,
+    },
   };
 }
 
@@ -279,6 +327,11 @@ export async function createManagedPiSession(
   overrides: Partial<VNextPiSessionDependencies> = {},
 ): Promise<ManagedPiSession> {
   const toolNames = normalizedToolNames(options.tools);
+  if (
+    options.resumeSessionFile !== undefined &&
+    options.forkContext !== undefined
+  )
+    throw new Error("forkContext cannot be supplied when resuming a Session");
   const providerRequestTimeoutMs = boundedProviderRequestTimeout(
     options.providerRequestTimeoutMs,
   );
@@ -387,6 +440,16 @@ export async function createManagedPiSession(
 
   let eventsObserved = 0;
   let disposed = false;
+  const inbox = createPiCollaborationInbox(session);
+  if (options.forkContext !== undefined) {
+    try {
+      await importPiSessionForkContext(session, options.forkContext);
+    } catch (error) {
+      inbox.dispose();
+      session.dispose();
+      throw error;
+    }
+  }
   const unsubscribe = session.subscribe((event) => {
     eventsObserved += 1;
     options.onEvent?.(event);
@@ -405,9 +468,21 @@ export async function createManagedPiSession(
       return session.isIdle;
     },
     activeTools: Object.freeze([...activeTools]),
+    get collaborationPhase() {
+      return inbox.phase;
+    },
+    deliverCollaboration: (message) => inbox.deliver(message),
+    exportForkContext: (forkTurns) =>
+      exportPiSessionForkContext(session, forkTurns),
+    hasPendingMessages: () => inbox.hasPendingMessages(),
+    subscribeActivity: (listener) => inbox.subscribeActivity(listener),
+    subscribeConsumption: (listener) => inbox.subscribeConsumption(listener),
+    subscribeCollaborationPhase: (listener) => inbox.subscribePhase(listener),
+    onUserInput: () => inbox.onUserInput(),
     prompt: async (text) => {
       assertOpen();
       if (text.trim().length === 0) throw new Error("prompt must not be empty");
+      inbox.onUserInput();
       await session.prompt(text, { expandPromptTemplates: true });
     },
     sendMessage: async (text, messageOptions = {}) => {
@@ -453,6 +528,7 @@ export async function createManagedPiSession(
       if (disposed) return;
       disposed = true;
       unsubscribe();
+      inbox.dispose();
       session.dispose();
     },
   };
@@ -507,6 +583,7 @@ async function runManagedPiTurn(
   let timedOut = false;
   let signalAborted = options.signal?.aborted ?? false;
   let failedResult: VNextPiTurnResult | undefined;
+  let settledResult: VNextPiTurnResult | undefined;
   let abortPromise: Promise<void> | undefined;
   const cleanupErrors: string[] = [];
   const requestAbort = (): void => {
@@ -555,16 +632,20 @@ async function runManagedPiTurn(
     }
     unbind = collaboration?.bindRoot({
       isIdle: () => session.isIdle,
+      get collaborationPhase() {
+        return session.collaborationPhase;
+      },
+      exportForkContext: (forkTurns) => session.exportForkContext(forkTurns),
+      hasPendingMessages: () => session.hasPendingMessages(),
+      subscribeActivity: (listener) => session.subscribeActivity(listener),
+      subscribeConsumption: (listener) =>
+        session.subscribeConsumption(listener),
+      subscribeCollaborationPhase: (listener) =>
+        session.subscribeCollaborationPhase(listener),
+      onUserInput: () => session.onUserInput(),
       deliver: async (message) => {
         operation.signal.throwIfAborted();
-        await session.sendMessage(message, {
-          triggerTurn: true,
-          deliverAs: "followUp",
-          source: { kind: "agent-supervisor" },
-        });
-        // A message queued during streaming returns before its turn ends;
-        // the settled subscriber handles that path instead.
-        if (session.isIdle) checkSettledFailure();
+        return session.deliverCollaboration(message);
       },
       abort: () => session.abort(),
     });
@@ -577,7 +658,11 @@ async function runManagedPiTurn(
             await session.prompt(options.prompt);
             checkSettledFailure();
             operation.signal.throwIfAborted();
-            await collaboration?.drain(operation.signal);
+            settledResult = session.snapshot();
+            // A completed Root does not get revived by queue-only child mail.
+            // Stop all writers before the Host freezes the shared candidate.
+            collaboration?.interrupt();
+            await collaboration?.stopAgents();
           })(),
           new Promise<never>((_resolve, reject) => {
             timer = setTimeout(() => {
@@ -611,6 +696,7 @@ async function runManagedPiTurn(
         : undefined;
     const result =
       failedResult ??
+      (!timedOut && !signalAborted ? settledResult : undefined) ??
       session.snapshot(
         timedOut ? "timed_out" : signalAborted ? "aborted" : undefined,
         terminationMessage,

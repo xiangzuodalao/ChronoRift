@@ -1,0 +1,877 @@
+{
+  "schemaVersion": 1,
+  "auditedAt": "2026-09-13T10:51:15.846465+00:00",
+  "usageMeaning": "Recorded provider usage and SDK estimates; not a provider invoice. Cancelled requests may have unreported usage.",
+  "usageCrossCheck": "Independent Python per-record token/rate sum agrees with invoked summarize.mjs usageFromEntries and reconcile for every actual Session.",
+  "totals": {
+    "actualSessionCount": 10,
+    "uniqueSessionIds": 10,
+    "uniqueSessionFiles": 10,
+    "actualSessionDiscoveryCount": 10,
+    "recordedTokens": 6281205,
+    "estimatedCostUSD": 0.34688608,
+    "zeroUsageAbortedRecords": 6,
+    "allActualSessionsReconciled": true,
+    "allObservedNoneForkOwnershipVerified": true,
+    "actualBilledCost": null,
+    "observedModelProcesses": 10,
+    "allObservedModelProcessArgumentsIpv4First": true,
+    "actualConnectionAddressFamily": null,
+    "survivingObservedProcesses": 0
+  },
+  "coverage": {
+    "observed": [
+      "Four headless roots and six actual worker Sessions with distinct identities; one additional GN1 identity failed before Session startup.",
+      "Three concurrently active workers per multi arm; workers retain a single Host turn until Root shutdown.",
+      "Task tree canonical child paths and two GN1 peer-to-peer ordinary messages.",
+      "Ordinary mail enters active Sessions at Pi boundaries; City includes two- and three-message batches.",
+      "Mailbox wait activity wake and timeout returns.",
+      "Shared candidate visibility: worker launches observe the Root edit with the same stage hash.",
+      "Pinned Godot stage remains unchanged after shared candidate edits; an old GN1 worker stage persists until shutdown.",
+      "Root final stops headless children; late completion notifications stay unconsumed and do not start another Root response.",
+      "Recorded Session usage and reported multi totals reconcile.",
+      "IPv4-first process arguments and no surviving observed processes at Host cleanup."
+    ],
+    "notExercised": [
+      "Filtered all or numeric fork inheritance; every successful worker requested none.",
+      "Busy followup_task atomic disposition and next-turn scheduling; followup_task was never called.",
+      "Nested spawn, explicit interrupt_agent, idle LRU eviction/resume, and resident capacity rejection.",
+      "Multiple workers writing candidate source or concurrent coding write-lock contention.",
+      "Ordinary mail sent to a settled idle worker and subsequent user-triggered resume.",
+      "Successful worker final followed by parent consumption of its completion notification; all workers were cancelled.",
+      "TUI lifecycle, retry, and compaction; this live run was headless with no observed retry/compaction events.",
+      "Exactly-once delivery under process failure/retry; no such guarantee follows from this run."
+    ]
+  },
+  "limitations": [
+    "The fixed-thinking comparison is invalidated by explicit high worker overrides; GN1 also violates the exact three-identity topology.",
+    "Zero-usage aborted records do not prove provider billing is zero for cancelled work.",
+    "Consumption proves entry into the recipient Session, not model understanding.",
+    "Full stage SHA includes managed overlays and admitted import metadata. Run stages were cleaned; the audit cannot independently reconstruct their full bytes from the retained candidate alone.",
+    "Final-launch coverage is supported by edit/launch ordering, no later source writes in the recorded tool stream, independent patch replay, and repeated same-hash worker stages. This is narrower than retaining the exact full stage bytes."
+  ],
+  "configurationAudit": {
+    "requested": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "thinkingLevel": "max",
+      "maxAgents": 3,
+      "dnsOrder": "ipv4first",
+      "collaborationVersion": 2,
+      "workspaceMode": "shared"
+    },
+    "failureKinds": [
+      "worker_reasoning_override_high_instead_of_manifest_max",
+      "invalid_literal_model_inherit_failed_startup",
+      "retry_reused_reserved_task_path",
+      "gn1_four_registered_worker_identities_instead_of_three"
+    ],
+    "coverageLimits": [
+      "All successful workers explicitly requested fork_turns none; default all and numbered fork inheritance were not exercised.",
+      "Resource and instruction configuration show no oracle injection markers; this is not a general proof of absence of leakage."
+    ],
+    "actualCounts": {
+      "rootSessions": 4,
+      "workerConfigurations": 7,
+      "startedWorkerSessions": 6,
+      "gn1RegisteredWorkerIdentities": 4,
+      "cityRegisteredWorkerIdentities": 3
+    },
+    "configurationFindings": {
+      "allRootSessionsUseManifestModelAndThinking": true,
+      "successfulWorkersUseManifestModel": true,
+      "successfulWorkersUseManifestThinking": false,
+      "allConfigurationDnsIpv4First": true,
+      "allResourcesEquivalent": true,
+      "allEnvironmentProfilesCoding": true,
+      "oracleMarkersObservedInEnvironmentInstructions": false
+    },
+    "rootCause": "The pilot supplies workerModel and workerThinking defaults. The collaboration spawn tool accepts explicit model, reasoning_effort, and fork_turns; the supervisor uses explicit arguments before inherited defaults. Root explicitly selected high and none for every spawn, and selected the literal model inherit for the first GN1 spawn."
+  },
+  "arms": [
+    {
+      "id": "gn1-single",
+      "actualSessionCount": 1,
+      "recordedTokens": 666223,
+      "estimatedCostUSD": 0.03375035999999999,
+      "allActualSessionsReconciled": true,
+      "allActualOwnershipVerifiedForObservedNoneFork": true,
+      "rootTail": {
+        "firstStoppingResponseAt": "2026-09-13T10:41:52.100Z",
+        "laterAssistantResponses": 0,
+        "laterEstimatedCostUSD": 0,
+        "agentStartCount": 1,
+        "agentEndAt": "2026-09-13T10:41:52.100Z",
+        "autoRetryEvents": 0
+      },
+      "candidate": {
+        "patch": {
+          "changedPaths": ["components/platform/platform.tscn"],
+          "hunkCount": 1,
+          "byteLength": 560,
+          "sha256": "317e1edea6a11f6dafc28b2e843734d5ec1bcce94ea8132851e7c143c5caa990",
+          "recordHashAndSizeMatch": true,
+          "recordRoundTripVerified": true,
+          "independentInMemoryReplayMatchesFinalCandidateFile": true,
+          "finalCandidateFileSha256": "5540f0a4b24f6013eb3100288847e75ef7fc0b68a92c7eebe7dadcba426c43e9"
+        },
+        "rootSourceEdits": [
+          {
+            "path": "components/platform/platform.tscn",
+            "startedAt": "2026-09-13T10:40:40.289Z",
+            "completedAt": "2026-09-13T10:40:40.414Z",
+            "success": true
+          }
+        ],
+        "rootFinalLaunchAt": "2026-09-13T10:40:45.573Z",
+        "rootFinalStageSha256": "918f6351df828cea7d361c9dce547f99bf863a2e391e15af0af423ec04693aac",
+        "rootFinalStageUnchanged": true,
+        "finalLaunchAfterLastRecordedSourceEdit": true,
+        "workerProjectEditOrWriteToolCalls": 0,
+        "laterProjectSourceWritesObserved": false,
+        "coverageEvidenceKind": "recorded edit/launch ordering plus in-memory patch replay; no independent full imported-stage replay"
+      },
+      "rootWait": {
+        "calls": 0,
+        "mailboxActivityReturns": 0,
+        "timeoutReturns": 0
+      }
+    },
+    {
+      "id": "gn1-multi",
+      "actualSessionCount": 4,
+      "recordedTokens": 2650822,
+      "estimatedCostUSD": 0.1435864,
+      "allActualSessionsReconciled": true,
+      "allActualOwnershipVerifiedForObservedNoneFork": true,
+      "rootTail": {
+        "firstStoppingResponseAt": "2026-09-13T10:42:40.857Z",
+        "laterAssistantResponses": 0,
+        "laterEstimatedCostUSD": 0,
+        "agentStartCount": 1,
+        "agentEndAt": "2026-09-13T10:42:40.858Z",
+        "autoRetryEvents": 0
+      },
+      "candidate": {
+        "patch": {
+          "changedPaths": ["components/platform/platform.gd"],
+          "hunkCount": 1,
+          "byteLength": 651,
+          "sha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+          "recordHashAndSizeMatch": true,
+          "recordRoundTripVerified": true,
+          "independentInMemoryReplayMatchesFinalCandidateFile": true,
+          "finalCandidateFileSha256": "831ba54ad89671e65d472671d9592f0b45d34dc1052ba58741bbfbb33a1309ba"
+        },
+        "rootSourceEdits": [
+          {
+            "path": "components/platform/platform.gd",
+            "startedAt": "2026-09-13T10:41:03.629Z",
+            "completedAt": "2026-09-13T10:41:03.751Z",
+            "success": true
+          }
+        ],
+        "rootFinalLaunchAt": "2026-09-13T10:41:10.462Z",
+        "rootFinalStageSha256": "43fe5f899036a607dd5374dccd42bbbfa6fa3578b7bb841e0721795c1a790355",
+        "rootFinalStageUnchanged": true,
+        "finalLaunchAfterLastRecordedSourceEdit": true,
+        "workerProjectEditOrWriteToolCalls": 0,
+        "laterProjectSourceWritesObserved": false,
+        "coverageEvidenceKind": "recorded edit/launch ordering plus in-memory patch replay; no independent full imported-stage replay",
+        "workerFinalStageMatchesRoot": [
+          "/root/inspect_scene",
+          "/root/inspect_tests"
+        ],
+        "workerOldStageContinuedAfterRootEdit": [
+          {
+            "taskPath": "/root/inspect_code",
+            "sourceSha256": "3eeb59a160ab68677653c86256395432ba5bb59ad5e768ef1f3fb13c0931f80f",
+            "endedAt": "2026-09-13T10:42:40.887Z",
+            "sourceUnchanged": true
+          }
+        ]
+      },
+      "rootWait": {
+        "calls": 4,
+        "mailboxActivityReturns": 3,
+        "timeoutReturns": 1
+      },
+      "registeredWorkers": [
+        {
+          "taskPath": "/root/inspect_logic",
+          "state": "closed",
+          "hasActualSession": false,
+          "turnStatuses": ["failed"]
+        },
+        {
+          "taskPath": "/root/inspect_scene",
+          "state": "closed",
+          "hasActualSession": true,
+          "turnStatuses": ["cancelled"]
+        },
+        {
+          "taskPath": "/root/inspect_tests",
+          "state": "closed",
+          "hasActualSession": true,
+          "turnStatuses": ["cancelled"]
+        },
+        {
+          "taskPath": "/root/inspect_code",
+          "state": "closed",
+          "hasActualSession": true,
+          "turnStatuses": ["cancelled"]
+        }
+      ],
+      "activeWorkerCommonOverlapMs": 212787,
+      "multiReportedUsage": {
+        "tokens": 2650822,
+        "cost": 0.1435864,
+        "incomplete": true,
+        "recordedSumMatches": true
+      },
+      "mailbox": {
+        "entries": [
+          {
+            "id": "d99dc807-2a8d-49a6-8669-1861780691ec",
+            "kind": "task",
+            "from": "/root",
+            "to": "/root/inspect_logic",
+            "createdAt": "2026-09-13T10:38:42.703Z",
+            "queuedAt": "2026-09-13T10:38:42.703Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "2365ac76-1265-4756-9e4c-3007ed7f952c",
+            "kind": "task",
+            "from": "/root",
+            "to": "/root/inspect_scene",
+            "createdAt": "2026-09-13T10:38:54.469Z",
+            "queuedAt": "2026-09-13T10:38:54.469Z",
+            "consumedAt": "2026-09-13T10:38:56.596Z",
+            "deferredAt": null,
+            "submittedAt": "2026-09-13T10:38:56.595Z",
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "e40dcd81-c645-40fa-b819-0c63edacd86c",
+            "kind": "task",
+            "from": "/root",
+            "to": "/root/inspect_tests",
+            "createdAt": "2026-09-13T10:38:58.925Z",
+            "queuedAt": "2026-09-13T10:38:58.925Z",
+            "consumedAt": "2026-09-13T10:39:00.916Z",
+            "deferredAt": null,
+            "submittedAt": "2026-09-13T10:39:00.915Z",
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "6b4f0bc6-8603-4aba-8c7c-3a04c8889e03",
+            "kind": "task",
+            "from": "/root",
+            "to": "/root/inspect_code",
+            "createdAt": "2026-09-13T10:39:05.912Z",
+            "queuedAt": "2026-09-13T10:39:05.912Z",
+            "consumedAt": "2026-09-13T10:39:08.091Z",
+            "deferredAt": null,
+            "submittedAt": "2026-09-13T10:39:08.090Z",
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "de2e10b3-3216-4dd9-9c41-862fae4ff0a5",
+            "kind": "message",
+            "from": "/root/inspect_code",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:40:03.338Z",
+            "queuedAt": "2026-09-13T10:40:03.339Z",
+            "consumedAt": "2026-09-13T10:40:05.039Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "2a4e9453-0394-425b-a2d6-a415d60bbe0e",
+            "kind": "message",
+            "from": "/root/inspect_scene",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:40:19.636Z",
+            "queuedAt": "2026-09-13T10:40:19.636Z",
+            "consumedAt": "2026-09-13T10:40:32.454Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "615f07b3-30b5-492d-b7eb-4662d763e0a0",
+            "kind": "message",
+            "from": "/root/inspect_scene",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:40:34.780Z",
+            "queuedAt": "2026-09-13T10:40:34.780Z",
+            "consumedAt": "2026-09-13T10:40:34.781Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "bed7cc8b-ea47-4967-b8f9-ba03f779bc17",
+            "kind": "message",
+            "from": "/root/inspect_tests",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:40:41.334Z",
+            "queuedAt": "2026-09-13T10:40:41.334Z",
+            "consumedAt": "2026-09-13T10:40:41.335Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "7671a405-e608-4b4d-8981-90c88f627488",
+            "kind": "message",
+            "from": "/root/inspect_code",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:40:41.570Z",
+            "queuedAt": "2026-09-13T10:40:41.570Z",
+            "consumedAt": "2026-09-13T10:40:59.078Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "a0352c95-0008-4549-81f9-cf33a213008c",
+            "kind": "message",
+            "from": "/root/inspect_scene",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:00.810Z",
+            "queuedAt": "2026-09-13T10:41:00.810Z",
+            "consumedAt": "2026-09-13T10:41:03.751Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "7f8ff1e5-9964-4882-9816-772e139dc072",
+            "kind": "message",
+            "from": "/root/inspect_tests",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:25.289Z",
+            "queuedAt": "2026-09-13T10:41:25.289Z",
+            "consumedAt": "2026-09-13T10:41:27.530Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "97facdf9-cbe0-4837-8707-1c0907a3dab4",
+            "kind": "message",
+            "from": "/root/inspect_tests",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:33.493Z",
+            "queuedAt": "2026-09-13T10:41:33.493Z",
+            "consumedAt": "2026-09-13T10:41:36.403Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "b4614c63-5343-4b84-ab1f-461754fbe549",
+            "kind": "message",
+            "from": "/root/inspect_scene",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:54.434Z",
+            "queuedAt": "2026-09-13T10:41:54.434Z",
+            "consumedAt": "2026-09-13T10:41:54.484Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "48e3be7c-70d4-46d7-a3aa-cd55a0e9b002",
+            "kind": "message",
+            "from": "/root/inspect_code",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:59.755Z",
+            "queuedAt": "2026-09-13T10:41:59.755Z",
+            "consumedAt": "2026-09-13T10:42:01.186Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "4ae81738-9469-4138-b128-0b6310602acd",
+            "kind": "message",
+            "from": "/root/inspect_tests",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:42:03.561Z",
+            "queuedAt": "2026-09-13T10:42:03.561Z",
+            "consumedAt": "2026-09-13T10:42:05.292Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "016ac4de-829d-49f4-89b9-7fde5515d919",
+            "kind": "message",
+            "from": "/root/inspect_code",
+            "to": "/root/inspect_scene",
+            "createdAt": "2026-09-13T10:42:25.513Z",
+            "queuedAt": "2026-09-13T10:42:25.514Z",
+            "consumedAt": "2026-09-13T10:42:25.517Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "d0f08b4a-1ea3-4767-b08e-e0400024acb3",
+            "kind": "message",
+            "from": "/root/inspect_tests",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:42:29.849Z",
+            "queuedAt": "2026-09-13T10:42:29.849Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "f3b7086b-da9e-4538-8288-23dcd8a5a6af",
+            "kind": "message",
+            "from": "/root/inspect_scene",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:42:34.551Z",
+            "queuedAt": "2026-09-13T10:42:34.551Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "7745239f-1045-4640-9a85-b9da622121f0",
+            "kind": "message",
+            "from": "/root/inspect_scene",
+            "to": "/root/inspect_code",
+            "createdAt": "2026-09-13T10:42:37.342Z",
+            "queuedAt": "2026-09-13T10:42:37.342Z",
+            "consumedAt": "2026-09-13T10:42:37.345Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "cd16685d-e64d-4107-abc5-42bce3aa6a11",
+            "kind": "message",
+            "from": "/root/inspect_code",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:42:39.826Z",
+            "queuedAt": "2026-09-13T10:42:39.826Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "d71a58e0-5bbf-43e8-94e7-d2d9833d8c46",
+            "kind": "completion",
+            "from": "/root/inspect_scene",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:42:40.874Z",
+            "queuedAt": "2026-09-13T10:42:40.874Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "2ee1dc1a-8815-474a-b4eb-42368e1509e3",
+            "kind": "completion",
+            "from": "/root/inspect_tests",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:42:40.874Z",
+            "queuedAt": "2026-09-13T10:42:40.874Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "d4c7a3b6-e322-49de-a061-71488d648aea",
+            "kind": "completion",
+            "from": "/root/inspect_code",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:42:40.888Z",
+            "queuedAt": "2026-09-13T10:42:40.888Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          }
+        ],
+        "countsByKind": {
+          "task": 4,
+          "message": 16,
+          "completion": 3
+        },
+        "consumedCount": 16,
+        "pendingCount": 7,
+        "deliveryErrorCount": 0,
+        "consumedNonTaskIdsMatchSessionExactlyOnce": true,
+        "consumedNonTaskCount": 13,
+        "peerMessages": 2,
+        "lateCompletionMessagesAfterRootFinal": 3,
+        "interpretation": "Consumed means entered the Session. Pending initial task belongs to failed startup; pending ordinary GN1 mail and shutdown completions do not trigger another root response."
+      },
+      "temporaryWorkerWrites": {
+        "completedWrites": 0,
+        "paths": [],
+        "unexecutedTailToolCallPaths": [],
+        "projectSourceWritesObserved": false
+      }
+    },
+    {
+      "id": "city-single",
+      "actualSessionCount": 1,
+      "recordedTokens": 582222,
+      "estimatedCostUSD": 0.04160424,
+      "allActualSessionsReconciled": true,
+      "allActualOwnershipVerifiedForObservedNoneFork": true,
+      "rootTail": {
+        "firstStoppingResponseAt": "2026-09-13T10:41:59.773Z",
+        "laterAssistantResponses": 0,
+        "laterEstimatedCostUSD": 0,
+        "agentStartCount": 1,
+        "agentEndAt": "2026-09-13T10:41:59.775Z",
+        "autoRetryEvents": 0
+      },
+      "candidate": {
+        "patch": {
+          "changedPaths": ["scripts/builder.gd"],
+          "hunkCount": 2,
+          "byteLength": 755,
+          "sha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+          "recordHashAndSizeMatch": true,
+          "recordRoundTripVerified": true,
+          "independentInMemoryReplayMatchesFinalCandidateFile": true,
+          "finalCandidateFileSha256": "8770301fe9610500c224772a4b09d3d29751977d370f73885a7faacdef1f38c6"
+        },
+        "rootSourceEdits": [
+          {
+            "path": "scripts/builder.gd",
+            "startedAt": "2026-09-13T10:39:33.095Z",
+            "completedAt": "2026-09-13T10:39:33.217Z",
+            "success": true
+          }
+        ],
+        "rootFinalLaunchAt": "2026-09-13T10:40:24.361Z",
+        "rootFinalStageSha256": "014efb2ff6d3381d7866d82a6d5b557e8df31b70c80cc00464f4c4777d48bf3f",
+        "rootFinalStageUnchanged": true,
+        "finalLaunchAfterLastRecordedSourceEdit": true,
+        "workerProjectEditOrWriteToolCalls": 0,
+        "laterProjectSourceWritesObserved": false,
+        "coverageEvidenceKind": "recorded edit/launch ordering plus in-memory patch replay; no independent full imported-stage replay"
+      },
+      "rootWait": {
+        "calls": 0,
+        "mailboxActivityReturns": 0,
+        "timeoutReturns": 0
+      }
+    },
+    {
+      "id": "city-multi",
+      "actualSessionCount": 4,
+      "recordedTokens": 2381938,
+      "estimatedCostUSD": 0.12794508000000002,
+      "allActualSessionsReconciled": true,
+      "allActualOwnershipVerifiedForObservedNoneFork": true,
+      "rootTail": {
+        "firstStoppingResponseAt": "2026-09-13T10:41:54.889Z",
+        "laterAssistantResponses": 0,
+        "laterEstimatedCostUSD": 0,
+        "agentStartCount": 1,
+        "agentEndAt": "2026-09-13T10:41:54.890Z",
+        "autoRetryEvents": 0
+      },
+      "candidate": {
+        "patch": {
+          "changedPaths": ["scripts/builder.gd"],
+          "hunkCount": 2,
+          "byteLength": 755,
+          "sha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+          "recordHashAndSizeMatch": true,
+          "recordRoundTripVerified": true,
+          "independentInMemoryReplayMatchesFinalCandidateFile": true,
+          "finalCandidateFileSha256": "8770301fe9610500c224772a4b09d3d29751977d370f73885a7faacdef1f38c6"
+        },
+        "rootSourceEdits": [
+          {
+            "path": "scripts/builder.gd",
+            "startedAt": "2026-09-13T10:40:05.686Z",
+            "completedAt": "2026-09-13T10:40:05.829Z",
+            "success": true
+          }
+        ],
+        "rootFinalLaunchAt": "2026-09-13T10:40:16.003Z",
+        "rootFinalStageSha256": "014efb2ff6d3381d7866d82a6d5b557e8df31b70c80cc00464f4c4777d48bf3f",
+        "rootFinalStageUnchanged": true,
+        "finalLaunchAfterLastRecordedSourceEdit": true,
+        "workerProjectEditOrWriteToolCalls": 0,
+        "laterProjectSourceWritesObserved": false,
+        "coverageEvidenceKind": "recorded edit/launch ordering plus in-memory patch replay; no independent full imported-stage replay",
+        "workerFinalStageMatchesRoot": [
+          "/root/runtime_probe",
+          "/root/tests_review"
+        ],
+        "workerOldStageContinuedAfterRootEdit": [
+          {
+            "taskPath": "/root/runtime_probe",
+            "sourceSha256": "8f3f05b8fe3f88c06944abf1e3e2e708b02cc1bf0a6ae971d6573d53b7927777",
+            "endedAt": "2026-09-13T10:40:10.615Z",
+            "sourceUnchanged": true
+          },
+          {
+            "taskPath": "/root/tests_review",
+            "sourceSha256": "8f3f05b8fe3f88c06944abf1e3e2e708b02cc1bf0a6ae971d6573d53b7927777",
+            "endedAt": "2026-09-13T10:40:16.604Z",
+            "sourceUnchanged": true
+          }
+        ]
+      },
+      "rootWait": {
+        "calls": 5,
+        "mailboxActivityReturns": 4,
+        "timeoutReturns": 1
+      },
+      "registeredWorkers": [
+        {
+          "taskPath": "/root/code_path",
+          "state": "closed",
+          "hasActualSession": true,
+          "turnStatuses": ["cancelled"]
+        },
+        {
+          "taskPath": "/root/runtime_probe",
+          "state": "closed",
+          "hasActualSession": true,
+          "turnStatuses": ["cancelled"]
+        },
+        {
+          "taskPath": "/root/tests_review",
+          "state": "closed",
+          "hasActualSession": true,
+          "turnStatuses": ["cancelled"]
+        }
+      ],
+      "activeWorkerCommonOverlapMs": 180350,
+      "multiReportedUsage": {
+        "tokens": 2381938,
+        "cost": 0.12794508000000002,
+        "incomplete": false,
+        "recordedSumMatches": true
+      },
+      "mailbox": {
+        "entries": [
+          {
+            "id": "6e72d12e-56e4-4069-be7c-b2ae50824ce6",
+            "kind": "task",
+            "from": "/root",
+            "to": "/root/code_path",
+            "createdAt": "2026-09-13T10:38:52.153Z",
+            "queuedAt": "2026-09-13T10:38:52.153Z",
+            "consumedAt": "2026-09-13T10:38:54.556Z",
+            "deferredAt": null,
+            "submittedAt": "2026-09-13T10:38:54.553Z",
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "d286ad58-57fc-46ad-a68d-088ebacbac65",
+            "kind": "task",
+            "from": "/root",
+            "to": "/root/runtime_probe",
+            "createdAt": "2026-09-13T10:38:52.155Z",
+            "queuedAt": "2026-09-13T10:38:52.155Z",
+            "consumedAt": "2026-09-13T10:38:54.481Z",
+            "deferredAt": null,
+            "submittedAt": "2026-09-13T10:38:54.478Z",
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "de8849bc-5148-4272-bab5-e21ad9056420",
+            "kind": "task",
+            "from": "/root",
+            "to": "/root/tests_review",
+            "createdAt": "2026-09-13T10:38:52.156Z",
+            "queuedAt": "2026-09-13T10:38:52.156Z",
+            "consumedAt": "2026-09-13T10:38:54.571Z",
+            "deferredAt": null,
+            "submittedAt": "2026-09-13T10:38:54.568Z",
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "673a96f2-c3c0-41d0-810d-40c97e17e170",
+            "kind": "message",
+            "from": "/root/tests_review",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:39:21.048Z",
+            "queuedAt": "2026-09-13T10:39:21.048Z",
+            "consumedAt": "2026-09-13T10:39:22.058Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "8ec00260-8b09-4870-826e-4d95af5596e4",
+            "kind": "message",
+            "from": "/root/code_path",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:39:37.400Z",
+            "queuedAt": "2026-09-13T10:39:37.400Z",
+            "consumedAt": "2026-09-13T10:39:47.725Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "0e9c5c0f-647e-4a9c-84d6-a47e10daae81",
+            "kind": "message",
+            "from": "/root/code_path",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:39:43.910Z",
+            "queuedAt": "2026-09-13T10:39:43.910Z",
+            "consumedAt": "2026-09-13T10:39:47.725Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "328217ba-1442-48f7-8be4-b72fc6a31adc",
+            "kind": "message",
+            "from": "/root/tests_review",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:39:51.257Z",
+            "queuedAt": "2026-09-13T10:39:51.257Z",
+            "consumedAt": "2026-09-13T10:39:51.258Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "c2d0bb36-c48c-48a8-b8b3-2414b3b8f8ab",
+            "kind": "message",
+            "from": "/root/runtime_probe",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:39:53.532Z",
+            "queuedAt": "2026-09-13T10:39:53.532Z",
+            "consumedAt": "2026-09-13T10:39:53.808Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "30d051d1-9485-4b09-a11a-58a2213f4a20",
+            "kind": "message",
+            "from": "/root/tests_review",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:40:42.248Z",
+            "queuedAt": "2026-09-13T10:40:42.248Z",
+            "consumedAt": "2026-09-13T10:41:03.677Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "23806fcc-fa9e-445e-8fbe-f75965cc63b6",
+            "kind": "message",
+            "from": "/root/runtime_probe",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:40:42.296Z",
+            "queuedAt": "2026-09-13T10:40:42.296Z",
+            "consumedAt": "2026-09-13T10:41:03.678Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "e0695418-3352-4ec2-aadd-cde2b8750920",
+            "kind": "message",
+            "from": "/root/runtime_probe",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:03.104Z",
+            "queuedAt": "2026-09-13T10:41:03.104Z",
+            "consumedAt": "2026-09-13T10:41:03.678Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "902a4ed1-1685-4eb7-a150-382e55b7bdcc",
+            "kind": "message",
+            "from": "/root/runtime_probe",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:13.267Z",
+            "queuedAt": "2026-09-13T10:41:13.267Z",
+            "consumedAt": "2026-09-13T10:41:17.920Z",
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "eb419f9b-8522-457d-a5d5-d57adf67f367",
+            "kind": "completion",
+            "from": "/root/tests_review",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:54.911Z",
+            "queuedAt": "2026-09-13T10:41:54.911Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "3e052d75-10c6-4ec6-a13b-5924f03bcd67",
+            "kind": "completion",
+            "from": "/root/code_path",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:54.911Z",
+            "queuedAt": "2026-09-13T10:41:54.911Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          },
+          {
+            "id": "c463d875-eb6a-403d-aea1-d078e80a4a0a",
+            "kind": "completion",
+            "from": "/root/runtime_probe",
+            "to": "/root",
+            "createdAt": "2026-09-13T10:41:54.911Z",
+            "queuedAt": "2026-09-13T10:41:54.911Z",
+            "consumedAt": null,
+            "deferredAt": null,
+            "submittedAt": null,
+            "deliveryErrorPresent": false
+          }
+        ],
+        "countsByKind": {
+          "task": 3,
+          "message": 9,
+          "completion": 3
+        },
+        "consumedCount": 12,
+        "pendingCount": 3,
+        "deliveryErrorCount": 0,
+        "consumedNonTaskIdsMatchSessionExactlyOnce": true,
+        "consumedNonTaskCount": 9,
+        "peerMessages": 0,
+        "lateCompletionMessagesAfterRootFinal": 3,
+        "interpretation": "Consumed means entered the Session. Pending initial task belongs to failed startup; pending ordinary GN1 mail and shutdown completions do not trigger another root response."
+      },
+      "temporaryWorkerWrites": {
+        "completedWrites": 4,
+        "paths": ["/tmp/check_map.gd", "/tmp/check_resources.gd"],
+        "unexecutedTailToolCallPaths": ["/tmp/check_scene.gd"],
+        "projectSourceWritesObserved": false
+      }
+    }
+  ]
+}

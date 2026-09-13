@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { getDefaultResultOrder } from "node:dns";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +32,14 @@ const SHUTDOWN_GRACE_MS = 2_000;
 const STARTUP_TIMEOUT_MS = 30_000;
 const DIAGNOSTIC_MAX_BYTES = 64 * 1024;
 
+/** Forward only the Host's DNS policy, never arbitrary Node execution options. */
+export function agentWorkerRuntimeArguments(): string[] {
+  const order = getDefaultResultOrder();
+  if (!["verbatim", "ipv4first", "ipv6first"].includes(order))
+    throw new Error("Unsupported Host DNS result order");
+  return [`--dns-result-order=${order}`];
+}
+
 /** Keep authentication in this trusted Pi process, but never inherit Node loaders. */
 export function agentWorkerEnvironment(
   hostEnvironment: NodeJS.ProcessEnv,
@@ -55,14 +64,18 @@ export const createNodeAgentWorker: AgentWorkerFactory = async (options) => {
   const args = sourceMode
     ? ["--import", createRequire(import.meta.url).resolve("tsx"), entry]
     : [entry];
-  const child = spawn(process.execPath, args, {
-    cwd: here,
-    env: agentWorkerEnvironment(process.env),
-    shell: false,
-    detached: false,
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
-    serialization: "json",
-  });
+  const child = spawn(
+    process.execPath,
+    [...agentWorkerRuntimeArguments(), ...args],
+    {
+      cwd: here,
+      env: agentWorkerEnvironment(process.env),
+      shell: false,
+      detached: false,
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+      serialization: "json",
+    },
+  );
   return await attachAgentWorkerClient(child, options);
 };
 
@@ -85,8 +98,12 @@ export async function attachAgentWorkerClient(
   // A worker can fail while the initial IPC send is still pending.
   void startup.catch(() => undefined);
   let resolveExit: () => void;
+  let exitObserved = false;
   const exited = new Promise<void>((resolve) => {
-    resolveExit = resolve;
+    resolveExit = () => {
+      exitObserved = true;
+      resolve();
+    };
   });
   const fail = (error: Error): void => {
     if (ended) return;
@@ -164,7 +181,7 @@ export async function attachAgentWorkerClient(
     closePromise ??= (async () => {
       closing = true;
       if (!ended)
-        await send({ version: 1, type: "close" }).catch(() => undefined);
+        await send({ version: 2, type: "close" }).catch(() => undefined);
       const wait = async (): Promise<void> => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
@@ -179,18 +196,24 @@ export async function attachAgentWorkerClient(
         }
       };
       await wait();
-      if (child.exitCode === null && child.signalCode === null) {
+      if (!exitObserved) {
         child.kill("SIGKILL");
-        await exited;
+        await wait();
+        if (!exitObserved)
+          throw new Error("Agent worker exit was not confirmed after SIGKILL");
       }
       ended = true;
       clearTimeout(startupTimer);
-    })();
+    })().catch((error: unknown) => {
+      // Keep failed cleanup retryable; success remains idempotent.
+      closePromise = undefined;
+      throw error;
+    });
     return closePromise;
   };
   try {
     await send({
-      version: 1,
+      version: 2,
       type: "initialize",
       configuration: options.configuration,
     });

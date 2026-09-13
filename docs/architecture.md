@@ -63,8 +63,8 @@ replay、index 与 compare 仍是 planned。为什么发生、哪个
 - 不承诺任意 Godot 项目能零配置捕获私有状态或等价恢复完整引擎状态。
 - 不把 Git worktree 当成 OS sandbox，也不让 Agent 直接修改用户 checkout。
 - 不自动 commit、merge、push、发布或部署候选修改。
-- 首发不覆盖 C#、GDExtension、native plugin、audio、跨平台 GUI 或多人游戏；可选单层多 Agent 的当前实现见
-  [Multi-Agent V1](multi-agent.md)。
+- 首发不覆盖 C#、GDExtension、native plugin、audio、跨平台 GUI 或多人游戏；可选任务树协作的当前实现见
+  [Multi-Agent V2](multi-agent.md)。
 - 产品 Harness 不持有 hidden benchmark oracle，也不根据自己的输出给自己评分。
 
 ## 4. 稳定产品原则与可选 target
@@ -155,10 +155,19 @@ fail closed。GN-1/Mob 的固定 runtime 配置与交付边界另见 §20.2/§20
 一次 `session.prompt()` 返回只结束当前 turn。普通完成不会自动 commit、merge、push、apply 或删除候选和记录。
 
 启用 `project preview --multi-agent` 时，现有 Session 为 Root。Host 的 `AgentSupervisor` 管理持久 Pi worker
-子进程，每个 worker 从 Root 当前 candidate 创建独立副本，使用 IPC proxy tools 访问 Host broker。Root 和 worker
-共享 SRT controller，执行资源、取消范围和 Godot stage 分开绑定；worker 不可继续委派。Root 通过工具显式应用冻结
-候选并重新验证。Headless 在整体超时内等待后台任务并交回 Root；正常 TUI 退出通过 Pi `session_shutdown` hook 完成
-资源清理和结果保存。多代理输出 Preview V3，普通模式继续 V2；详细边界见 [Multi-Agent V1](multi-agent.md)。
+子进程、任务树、邮箱、全树执行名额与闲置进程驻留。Root 和 worker 共享同一个私有 candidate，都可通过六个协作工具
+继续委派或与同树代理通信；每个代理的执行资源、取消范围和 Godot stage 独立绑定。Coding 工具与 launch 源码捕获
+共用 Host candidate 锁；模型调用和固定源码的 Godot execution 可以并行。没有 worker patch 显式导入步骤。
+
+默认保留 Root 名额及 3 个非 Root 活跃名额，worker 等待时仍占位；满额直接返回资源不足。无任务、无待投递邮件或 IPC
+请求的闲置 worker 可以按 LRU 卸载，再沿原 Session 重载。`fork_turns` 默认继承经过筛选的当前对话，也支持 `none`/`N`，
+不复制父请求用量。普通消息与完成通知进入邮箱，不启动闲置轮；忙碌 followup 通过 adapter ACK 确认合入当前轮或由 Host
+分配下一轮。Pi 在原生响应/工具批次边界消费邮件，保留自身重试、compaction 与 `agent_settled` 终态。
+
+Headless 在 Root 完成后停止其余 writer，等待清理后冻结最终共享 candidate；不会为迟到消息自动续跑 Root。TUI 的
+后台 worker 可继续运行，Root 在下次用户轮消费邮件；正常退出通过 Pi `session_shutdown` 完成资源清理和结果保存。
+多代理输出 Preview V4 和 `agents.v2.json`，普通模式继续 Preview V2；旧 V1/V3 记录保留原义。详细边界及 Codex 公开
+实现的设计来源见 [Multi-Agent V2](multi-agent.md)。
 
 ## 7. Physical workspace 与 SRT 边界
 
@@ -198,6 +207,8 @@ ChronoRift 使用官方 Pi SDK 创建 AgentSession，不修改、fork 或 vendor
 - 只追加简短的 sandbox、game-tool、coverage 和 fidelity 环境说明；
 - 通过 SRT-backed port 提供 `read`、`bash`、`edit`、`write`、`grep`、`find` 和 `ls`；
 - 用 strict custom tools 暴露 ChronoRift game/runtime capabilities；
+- 多代理邮箱通过公开 Pi hook 在完整响应/工具批次边界批量投递，不抢占流中的 reasoning/commentary，也不复制父 Session
+  的请求费用；非文本用户内容 fork 明确返回 unsupported；
 - provider 和 model 在 command boundary 显式选择；只有 `*.live.test.ts` 可以在测试中访问 provider。
 - 已安装 Pi package 的 source 与 types 是 SDK API 权威；版本保持 pinned，显式升级必须带兼容测试。
 
@@ -221,7 +232,7 @@ ID 是稳定、不透明的业务 identity，不是路径或 Session capability�
 ownership；maintained DTO 绑定各自需要的 source/Build/Execution/tool-call facts，不要求预先建设完整 lineage graph。
 
 历史 Project Environment DTO、publication 和 binding 模型见 [Project Environment V1 RFC](project-environment-v1.md)。
-Preview 使用独立 Godot Inspection V1 tool/wire contract，命令交付结果为 Preview JSON V2。
+Preview 使用独立 Godot Inspection V1 tool/wire contract，普通命令交付 Preview JSON V2；共享 candidate 多代理交付 V4。
 
 ## 10. Rolling Black Box
 
@@ -309,14 +320,17 @@ children/properties 使用 offset/limit（默认 100、上限 200）；values �
 Color 与显式 int64 值受严格校验；不支持的类型、缺失属性、失效引用、截断和执行错误均明确返回。当前没有表达式、
 方法调用、probe、历史窗口、pause/step/input 或 replay 工具。
 
-Agent 仍自主选择 coding/game tools，没有固定调用顺序或最终 submit/Proposal。一个 Preview 只允许一个存活
-Execution；停止后可以从最新 candidate 创建另一次执行。固定 GN-1/Mob 继续使用各自四工具契约；历史 16 工具
-catalog 的保留类型不意味着新 Preview 提供那些能力。
+Agent 仍自主选择 coding/game tools，没有固定调用顺序或最终 submit/Proposal。每个代理只允许一个存活 Execution；
+停止后可以从最新 candidate 创建另一次执行。多代理可同时运行各自的固定源码 stage，共享文件后续修改不会更新已启动的
+游戏。固定 GN-1/Mob 继续使用各自四工具契约；历史 16 工具 catalog 的保留类型不意味着新 Preview 提供那些能力。
 
 ## 16. 当前结果存储与历史 Artifact
 
 - `.chronorift/` 是 local-only 状态，不提交 Git，不进入 source closure 或候选 patch；Preview 不消费旧环境状态。
 - 当前 Preview 保存 Pi transcript、候选 diff 和每次执行的运行记录；不建立查询数据库、publication 或 freeze ledger。
+- 共享 candidate 协作保存 `agents.v2.json` 与 Preview V4；最终 patch 在所有 writer 停止后提取，不声明每个 worker 拥有
+  独立 patch。清理或提取失败时，`candidateSourceChanged: null` 表示未知，不能记为未修改。用量只累计每个 Session 的
+  最后可用统计一次，继承背景与进程重载不重复归账。
 - import/run 结果分别保留退出、超时、取消、有限日志及截断；source hash 校验和缺失的 process 结果不得伪装为成功。
 - 原始运行记录与历史 raw artifacts 不原地改写；content hash 用于绑定 bytes 和检测损坏，不是签名或外部 attestation。
 - ID 不是路径；接受项目相对内容的操作拒绝 absolute path、`..`、symlink/canonical escape 和跨 workspace 引用。
@@ -655,6 +669,7 @@ PE/M4/E2 campaign 不再是当前 checkout 的 Gate；实现状态只能引用�
 | 2026-08-21 | 退役 v0.3 benchmark/formal 及 PE/M4/E2 的 active campaign、producer、validator 和一次性 Host Gate；冻结归档保持原字节                         | 本文 §§20–22                                            |
 | 2026-08-27 | Host sandbox 收敛到 exact SRT 0.0.74：coding candidate RW，Godot Host stage source RO + hash，默认禁网；删除旧 Task/M3/M4/E2 与自研 broker    | 本文 §§20–21                                            |
 | 2026-09-05 | Preview 改为无需 ProjectAdapter 的三工具当前对象检查；移除初始化/publication/reuse，保留固定案例；时间窗口调查仍待验证                        | 本文 §15/§20.5/§21                                      |
+| 2026-09-13 | 多代理改为任务树、六工具、Pi 边界邮箱和共享私有 candidate；每代理固定 Godot stage，保留独立用量；旧 Pilot 不改写、不代表 V2 性能              | [Multi-Agent V2](multi-agent.md)                        |
 
 当前实现把 ChronoRift 收敛为：**让 coding Agent 在私有 candidate 中修改代码，并在不允许验证进程改写源码的 Godot
 stage 中获取运行时观察；它不替 Agent 规定调查方法，也不替用户宣布修复成功。**

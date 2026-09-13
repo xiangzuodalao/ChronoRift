@@ -622,7 +622,7 @@ async function projectPreviewCommand(
       failureMessage,
     });
     if (hasFlag(args, "json")) {
-      printJson(multiAgent ? { ...failure, schemaVersion: 3 } : failure);
+      printJson(multiAgent ? { ...failure, schemaVersion: 4 } : failure);
     } else {
       process.stderr.write(
         `ChronoRift Project Environment Preview — failed\nfailure: ${failure.failureCode}: ${failure.failureMessage}\n`,
@@ -646,10 +646,10 @@ async function projectPreviewCommand(
       `task: ${result.taskId}`,
       `source: ${result.sourceSha256}`,
       `selected project root: ${result.projectRoot.length === 0 ? "." : result.projectRoot}`,
-      `candidate source: ${result.candidateSourceChanged ? "changed" : "unchanged"}`,
+      `candidate source: ${result.candidateSourceChanged === null ? "unknown (candidate not frozen)" : result.candidateSourceChanged ? "changed" : "unchanged"}`,
       `candidate patch: ${result.candidatePatch?.path ?? "unavailable"}`,
       `runtime executions: ${result.executions.length}`,
-      ...(result.schemaVersion === 3
+      ...(result.schemaVersion === 4
         ? [`agent records: ${result.agents?.recordPath ?? "unavailable"}`]
         : []),
       `Pi: ${result.provider}/${result.model} (${result.thinkingLevel})`,

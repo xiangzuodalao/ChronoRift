@@ -46,6 +46,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
     ) => {
       sdk.created = options;
       Object.assign(sdk.session, {
+        sessionManager: options.sessionManager,
         sessionId: options.sessionManager.getSessionId(),
         sessionFile: options.sessionManager.getSessionFile(),
       });
@@ -80,6 +81,7 @@ beforeEach(() => {
   sdk.dispose.mockResolvedValue(undefined);
   sdk.abort.mockResolvedValue(undefined);
   sdk.session = {
+    agent: { subscribe: () => () => undefined },
     model: { provider: "fixture", id: "fixture-model" },
     thinkingLevel: "low",
     isIdle: true,

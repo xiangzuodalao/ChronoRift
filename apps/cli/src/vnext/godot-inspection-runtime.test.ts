@@ -24,6 +24,8 @@ import {
 } from "@chronorift/godot-protocol";
 
 import { GodotInspectionRuntime } from "./godot-inspection-runtime.js";
+import { AgentWorkspaceGate } from "./agent-execution-scope.js";
+import { prepareGodotInspectionCandidate } from "./godot-inspection-source.js";
 import { SrtGodotRunner } from "./srt-godot-runner.js";
 import type {
   SrtCommandResult,
@@ -57,6 +59,7 @@ describe("GodotInspectionRuntime", () => {
   let runtime: GodotInspectionRuntime;
   let importMode: "normal" | "error" | "pending";
   let importStarted: boolean;
+  let candidateGate: AgentWorkspaceGate;
   let behavior:
     | "normal"
     | "no_query"
@@ -72,6 +75,7 @@ describe("GodotInspectionRuntime", () => {
     executions.length = 0;
     importMode = "normal";
     importStarted = false;
+    candidateGate = new AgentWorkspaceGate();
     behavior = "normal";
     await mkdir(candidate);
     await writeFile(
@@ -286,6 +290,11 @@ describe("GodotInspectionRuntime", () => {
       },
     });
     runtime = new GodotInspectionRuntime({
+      captureCandidate: (signal) =>
+        candidateGate.run(
+          () => prepareGodotInspectionCandidate(candidate),
+          signal,
+        ),
       runner,
       candidateWorkspace: candidate,
       artifactsDirectory: join(root, "records"),
@@ -321,6 +330,21 @@ describe("GodotInspectionRuntime", () => {
       throw new Error(JSON.stringify(response));
     return response.output;
   };
+
+  it("releases the shared candidate lock before native import completes", async () => {
+    importMode = "pending";
+    const launching = invoke("game_launch", { schemaVersion: 1 });
+    await expect.poll(() => importStarted).toBe(true);
+    await candidateGate.run(() =>
+      writeFile(join(candidate, "later.txt"), "another agent edit"),
+    );
+    expect(await readFile(join(candidate, "later.txt"), "utf8")).toBe(
+      "another agent edit",
+    );
+    await runtime.close();
+    await launching;
+    expect(executions).toHaveLength(0);
+  });
 
   it("launches immutable current source, queries, and saves idempotent process results", async () => {
     const first = await launch();

@@ -30,26 +30,35 @@ const port = (): RootCollaborationPort => ({
 });
 
 describe("trusted Root collaboration UI", () => {
-  it("queues results with the pending user prompt during Pi preflight", async () => {
+  it("retains results without waking an idle or preflighting Root", async () => {
     const sendCustomMessage = vi.fn(async () => undefined);
     let preparing = true;
     const control = rootPiSessionControl(
-      { isIdle: true, sendCustomMessage } as unknown as AgentSession,
+      {
+        isIdle: true,
+        sendCustomMessage,
+        agent: { subscribe: () => () => undefined },
+        subscribe: () => () => undefined,
+      } as unknown as AgentSession,
       () => preparing,
     );
     expect(control.isIdle()).toBe(false);
-    await control.deliver("Worker completed during user prompt preflight.");
-    expect(sendCustomMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({ customType: "chronorift.collaboration" }),
-      { triggerTurn: false, deliverAs: "nextTurn" },
-    );
+    const envelope = {
+      id: "first",
+      kind: "completion" as const,
+      from: "/root/worker",
+      to: "/root",
+      text: "Worker completed during user prompt preflight.",
+      createdAt: new Date().toISOString(),
+    };
+    await control.deliver(envelope);
+    expect(sendCustomMessage).not.toHaveBeenCalled();
     preparing = false;
     expect(control.isIdle()).toBe(true);
-    await control.deliver("Worker completed while Root is idle.");
-    expect(sendCustomMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({ customType: "chronorift.collaboration" }),
-      { triggerTurn: true, deliverAs: "followUp" },
-    );
+    await control.deliver({ ...envelope, id: "second" });
+    expect(sendCustomMessage).not.toHaveBeenCalled();
+    expect(control.hasPendingMessages()).toBe(true);
+    control.dispose?.();
   });
 
   it("keeps /agents stop on the control path and closes automatic wake before stopping", async () => {

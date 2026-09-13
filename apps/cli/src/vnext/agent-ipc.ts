@@ -3,16 +3,23 @@ import { z } from "zod";
 import type {
   PiProxyToolDescriptor,
   PiProxyToolResult,
+  PiCollaborationMessage,
+  PiSessionForkContext,
   PiThinkingLevel,
   VNextPiTurnResult,
 } from "@chronorift/pi-harness";
 
-export const AGENT_IPC_VERSION = 1;
+export const AGENT_IPC_VERSION = 2;
 export const AGENT_IPC_MAX_BYTES = 16 * 1024 * 1024;
 export const AGENT_MESSAGE_MAX_LENGTH = 64 * 1024;
 export const AGENT_IPC_MAX_PENDING = 16;
 
 export interface AgentWorkerConfiguration {
+  readonly agentId?: string;
+  readonly taskName?: string;
+  readonly parentAgentId?: string;
+  readonly forkContext?: PiSessionForkContext;
+  readonly resumeSessionFile?: string;
   readonly resourceWorkspaceDirectory: string;
   readonly sessionDirectory: string;
   readonly provider: string;
@@ -30,6 +37,38 @@ export interface AgentWorkerConfiguration {
 const boundedText = z.string().max(AGENT_MESSAGE_MAX_LENGTH);
 const id = z.string().min(1).max(128);
 const turnId = z.number().int().positive();
+const agentPath = z
+  .string()
+  .max(4096)
+  .regex(/^\/root(?:\/[a-z0-9_]+)*$/u);
+const collaborationEnvelope = z
+  .object({
+    id,
+    kind: z.enum(["message", "task", "completion"]),
+    from: agentPath,
+    to: agentPath,
+    text: boundedText,
+    createdAt: z.string().datetime(),
+  })
+  .strict();
+const forkContext = z
+  .object({
+    schemaVersion: z.literal(1),
+    parentSessionId: id,
+    forkTurns: z.string().max(32),
+    messages: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant", "context"]),
+            text: z.string(),
+            turnStart: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(100_000),
+  })
+  .strict();
 const toolResult = z
   .object({
     content: z
@@ -52,6 +91,11 @@ const toolResult = z
   .strict();
 const configuration = z
   .object({
+    agentId: z.string().uuid().optional(),
+    taskName: agentPath.optional(),
+    parentAgentId: z.string().min(1).max(128).optional(),
+    forkContext: forkContext.optional(),
+    resumeSessionFile: z.string().min(1).optional(),
     resourceWorkspaceDirectory: z.string().min(1),
     sessionDirectory: z.string().min(1),
     provider: id,
@@ -99,7 +143,22 @@ const hostMessage = z.discriminatedUnion("type", [
   z
     .object({ ...base, type: z.literal("prompt"), turnId, text: boundedText })
     .strict(),
-  z.object({ ...base, type: z.literal("message"), text: boundedText }).strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("collaboration"),
+      requestId: id,
+      envelope: collaborationEnvelope,
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("export_context"),
+      requestId: id,
+      forkTurns: z.string().max(32),
+    })
+    .strict(),
   z.object({ ...base, type: z.literal("interrupt"), turnId }).strict(),
   z.object({ ...base, type: z.literal("close") }).strict(),
   z
@@ -123,6 +182,36 @@ const hostMessage = z.discriminatedUnion("type", [
 ]);
 const workerMessage = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("ready") }).strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("collaboration_consumed"),
+      ids: z.array(id).max(4096),
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("collaboration_accepted"),
+      requestId: id,
+      acceptedInCurrentTurn: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("context_exported"),
+      requestId: id,
+      context: forkContext,
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("phase"),
+      phase: z.enum(["current", "next", "idle"]),
+    })
+    .strict(),
   z
     .object({
       ...base,
@@ -152,21 +241,32 @@ const workerMessage = z.discriminatedUnion("type", [
 
 export type AgentHostMessage =
   | {
-      readonly version: 1;
+      readonly version: 2;
       readonly type: "initialize";
       readonly configuration: AgentWorkerConfiguration;
     }
   | {
-      readonly version: 1;
+      readonly version: 2;
       readonly type: "prompt";
       readonly turnId: number;
       readonly text: string;
     }
-  | { readonly version: 1; readonly type: "message"; readonly text: string }
-  | { readonly version: 1; readonly type: "interrupt"; readonly turnId: number }
-  | { readonly version: 1; readonly type: "close" }
   | {
-      readonly version: 1;
+      readonly version: 2;
+      readonly type: "collaboration";
+      readonly requestId: string;
+      readonly envelope: PiCollaborationMessage;
+    }
+  | {
+      readonly version: 2;
+      readonly type: "export_context";
+      readonly requestId: string;
+      readonly forkTurns: string;
+    }
+  | { readonly version: 2; readonly type: "interrupt"; readonly turnId: number }
+  | { readonly version: 2; readonly type: "close" }
+  | {
+      readonly version: 2;
       readonly type: "tool_result" | "tool_update";
       readonly turnId: number;
       readonly requestId: string;
@@ -174,9 +274,31 @@ export type AgentHostMessage =
     };
 
 export type AgentWorkerMessage =
-  | { readonly version: 1; readonly type: "ready" }
+  | { readonly version: 2; readonly type: "ready" }
   | {
-      readonly version: 1;
+      readonly version: 2;
+      readonly type: "collaboration_consumed";
+      readonly ids: readonly string[];
+    }
+  | {
+      readonly version: 2;
+      readonly type: "collaboration_accepted";
+      readonly requestId: string;
+      readonly acceptedInCurrentTurn: boolean;
+    }
+  | {
+      readonly version: 2;
+      readonly type: "context_exported";
+      readonly requestId: string;
+      readonly context: PiSessionForkContext;
+    }
+  | {
+      readonly version: 2;
+      readonly type: "phase";
+      readonly phase: "current" | "next" | "idle";
+    }
+  | {
+      readonly version: 2;
       readonly type: "tool_request";
       readonly turnId: number;
       readonly requestId: string;
@@ -184,24 +306,24 @@ export type AgentWorkerMessage =
       readonly arguments: unknown;
     }
   | {
-      readonly version: 1;
+      readonly version: 2;
       readonly type: "tool_cancel";
       readonly turnId: number;
       readonly requestId: string;
     }
   | {
-      readonly version: 1;
+      readonly version: 2;
       readonly type: "completed";
       readonly turnId: number;
       readonly result: VNextPiTurnResult;
     }
   | {
-      readonly version: 1;
+      readonly version: 2;
       readonly type: "failed";
       readonly turnId: number;
       readonly error: string;
     }
-  | { readonly version: 1; readonly type: "fatal"; readonly error: string };
+  | { readonly version: 2; readonly type: "fatal"; readonly error: string };
 
 export function assertAgentIpcSize(message: unknown): void {
   const serialized = JSON.stringify(message);

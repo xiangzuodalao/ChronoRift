@@ -119,6 +119,8 @@ const fakeSessionFactory =
       },
     ];
     const session = {
+      agent: { subscribe: () => () => undefined },
+      sessionManager: options.sessionManager,
       isIdle: true,
       clearQueue: () => ({ steering: [], followUp: [] }),
       abortCompaction: () => undefined,
@@ -226,11 +228,11 @@ describe("vNext Pi AgentSession host", () => {
     );
     session.dispose();
     session.dispose();
-    expect(lifecycle).toEqual({ disposeCalls: 1, unsubscribeCalls: 1 });
+    expect(lifecycle).toEqual({ disposeCalls: 1, unsubscribeCalls: 2 });
     await expect(session.prompt("Another task")).rejects.toThrow("disposed");
   });
 
-  it("drains child results before taking the final snapshot and disposing", async () => {
+  it("stops remaining writers without restarting a settled Root", async () => {
     const root = await createRoot();
     const captures: CreateAgentSessionOptions[] = [];
     const lifecycle = { disposeCalls: 0, unsubscribeCalls: 0 };
@@ -257,7 +259,14 @@ describe("vNext Pi AgentSession host", () => {
           },
           drain: async () => {
             expect(lifecycle.disposeCalls).toBe(0);
-            await control!.deliver("Worker result: issue reproduced.");
+            await control!.deliver({
+              id: "late",
+              kind: "completion",
+              from: "/root/worker",
+              to: "/root",
+              text: "Worker result: issue reproduced.",
+              createdAt: new Date().toISOString(),
+            });
           },
           interrupt: vi.fn(),
           stopAgents: vi.fn(async () => undefined),
@@ -293,15 +302,13 @@ describe("vNext Pi AgentSession host", () => {
       },
     );
     expect(result.status).toBe("completed");
-    expect(result.assistantText).toBe("Worker evidence reviewed.");
-    expect(delivered).toHaveBeenCalledOnce();
-    expect(delivered.mock.invocationCallOrder[0]).toBeLessThan(
-      unbind.mock.invocationCallOrder[0]!,
-    );
+    expect(result.assistantText).toBe("Waiting for worker.");
+    expect(delivered).not.toHaveBeenCalled();
+    expect(unbind).toHaveBeenCalledOnce();
     expect(lifecycle.disposeCalls).toBe(1);
   });
 
-  it("cancels a root waiting for workers even when drain never settles", async () => {
+  it("cancels an active Root without entering legacy result drain", async () => {
     const root = await createRoot();
     const interrupt = vi.fn();
     const stopAgents = vi.fn(async () => undefined);
@@ -328,15 +335,15 @@ describe("vNext Pi AgentSession host", () => {
           describeAgents: () => "worker-1 running",
         },
       },
-      { createSession: fakeSessionFactory([]) },
+      { createSession: fakeSessionFactory([], "wait-for-abort") },
     );
     expect(result.status).toBe("timed_out");
-    expect(drainSignal?.aborted).toBe(true);
+    expect(drainSignal).toBeUndefined();
     expect(interrupt).toHaveBeenCalledOnce();
     expect(stopAgents).toHaveBeenCalledOnce();
   });
 
-  it("retains a failed continuation even when stopping the team changes the Session or fails", async () => {
+  it("retains a failed Root even when stopping the team changes the Session or fails", async () => {
     const root = await createRoot();
     let control: RootPiSessionControl | undefined;
     const stopAgents = vi.fn(() =>
@@ -357,7 +364,14 @@ describe("vNext Pi AgentSession host", () => {
             control = value;
           },
           drain: async () => {
-            await control!.deliver("Worker result");
+            await control!.deliver({
+              id: "late",
+              kind: "completion",
+              from: "/root/worker",
+              to: "/root",
+              text: "Worker result",
+              createdAt: new Date().toISOString(),
+            });
           },
           interrupt: vi.fn(),
           stopAgents,
@@ -371,7 +385,7 @@ describe("vNext Pi AgentSession host", () => {
           Object.defineProperty(created.session, "messages", {
             get: () => messages,
           });
-          created.session.sendCustomMessage = () => {
+          created.session.prompt = () => {
             messages = [
               {
                 role: "assistant",
@@ -604,7 +618,7 @@ describe("vNext Pi AgentSession host", () => {
         { createSession: fakeSessionFactory(captures, "reject", lifecycle) },
       ),
     ).rejects.toThrow("provider request failed");
-    expect(lifecycle).toEqual({ disposeCalls: 1, unsubscribeCalls: 1 });
+    expect(lifecycle).toEqual({ disposeCalls: 1, unsubscribeCalls: 2 });
   });
 
   it.each([

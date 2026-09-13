@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "preparedAt": "2026-09-13T11:14:13.235Z",
+  "config": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "timeoutMs": 1200000,
+    "sharedToolCallLimit": 256,
+    "maxAgents": 3,
+    "dnsOrder": "ipv4first",
+    "collaborationVersion": 2,
+    "workspaceMode": "shared"
+  },
+  "goals": {
+    "gn1": "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy.",
+    "city": "建筑预览在空闲时似乎反复重建。请调查并作最小合理修复：选中建筑不变时避免重复重建，同时保留初始化显示、前后切换及首尾循环时的正确更新。自行选择调查、修改和验证方式，并说明实际验证结果与未覆盖部分。"
+  },
+  "multiAppendix": "本次使用一个 Root 和三个 worker。Root 开始调查时先创建恰好三个 worker，并让三个初始任务并行开展；由你决定分工和后续协作。全组只使用这三个 worker，不创建替代或更下层的代理。所有代理共享同一个私有候选工作区，修改立即相互可见；协调同文件修改。Root 负责在交付前收齐需要的结果，并在最终共享候选上重新运行验证。",
+  "source": {
+    "gn1": {
+      "commit": "e78b339500dec8e480b33723c4156bf9b74cd25c",
+      "tree": "9941cb045b3cd73c4554ca1de337a341b383590b",
+      "sha256": "e7c86bfb83a0b9ed2bc0beebcd7aa402f8def73ee7c0d2547e3e7c36eb9cdb3f"
+    },
+    "city": {
+      "commit": "4535092b740b378b700efd9df9e27a631815b84a",
+      "tree": "528433a6580c8f48c9a1fcd7ddcae251a6f75c00",
+      "sha256": "5395a3aa8e39d8f888eece93af83b383cd3af57263fc1ef5c92425d14c1b9005"
+    }
+  },
+  "node": "v22.23.1",
+  "piVersion": "0.83.0",
+  "srtVersion": "0.0.74",
+  "godotSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+  "checkers": {
+    "gn1": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+    "city": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db"
+  },
+  "productAtExecution": {
+    "commit": "41c9d00799b792ca3dac58f64ba6d14560b5f429",
+    "sha256": "7583e209854ab941a35ac5d9aeae6df588eb61e63612244e116c2aec916b9711",
+    "fileCount": 385,
+    "note": "Working tree identity at execution; all 385 product files remained unchanged through completion."
+  },
+  "hostSpawnPolicyAtExecution": {
+    "maxCreatedAgents": 3,
+    "maxDepth": 1,
+    "lockedRuntime": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "thinkingLevel": "max"
+    }
+  },
+  "model": {
+    "metadata": {
+      "id": "gpt-5.6-luna",
+      "provider": "openai-codex",
+      "api": "openai-codex-responses",
+      "cost": {
+        "input": 0.2,
+        "output": 1.2,
+        "cacheRead": 0.02,
+        "cacheWrite": 0.25,
+        "tiers": [
+          {
+            "inputTokensAbove": 272000,
+            "input": 0.4,
+            "output": 1.8,
+            "cacheRead": 0.04,
+            "cacheWrite": 0.5
+          }
+        ]
+      },
+      "contextWindow": 272000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "xhigh": "xhigh",
+        "max": "max",
+        "minimal": "low"
+      }
+    },
+    "sha256": "d2dbd41a9cb5b5e2039902b448f68b238a7160265cdbcc3ffc748d633f9c2b61",
+    "costMeaning": "SDK estimate; actual provider bill unavailable"
+  },
+  "sourceRepositories": {
+    "gn1": "https://github.com/endlessm/moddable-platformer",
+    "city": "https://github.com/KenneyNL/Starter-Kit-City-Builder"
+  },
+  "controls": {
+    "passed": true,
+    "count": 15,
+    "modelInvoked": false
+  }
+}

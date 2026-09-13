@@ -43,9 +43,11 @@ sandbox、Godot execution 和 runtime evidence。
 
 完整目标契约见 [架构文档](docs/architecture.md)；它描述 vNext 方向，不等于当前功能清单。
 
-Project Preview 可选 `--multi-agent`：Root Pi Session 委派独立子会话，每个子代理拥有自己的 candidate 和 Godot
-执行。Host 隔离工具权限、收集结果；Root 显式导入候选后重新验证。默认最多 3 个子代理，加上 1 个 Root 共 4 个代理，
-支持持续会话、消息、等待和取消。使用方法及限制见 [Multi-Agent V1](docs/multi-agent.md)。
+Project Preview 可选 `--multi-agent`：Root 和 worker 使用独立 Pi Session，共享一个私有 candidate，各自拥有固定源码的
+Godot execution。所有代理都可继续委派、发消息和等待；默认全树最多 3 个活跃 worker，加上预留的 Root 共 4 个并发名额。
+普通消息不自动启动闲置模型轮，Root 完成后 Headless 会停止剩余 writer，再输出最终共享 patch。使用方法、用量归属和
+Codex 公开设计的适配边界见 [Multi-Agent V2](docs/multi-agent.md)；旧 Pilot 的性能结果不代表当前实现。
+最新的 [V2 四路复测](docs/case-studies/codex-v2-retest.md)满足固定配置协议，八次验收通过；两个小任务中 Multi 均更慢、已上报估算费用更高。
 
 ## Runtime evidence 改变候选：GN-1
 

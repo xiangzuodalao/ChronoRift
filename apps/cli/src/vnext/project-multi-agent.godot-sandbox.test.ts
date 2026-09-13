@@ -24,7 +24,7 @@ import type {
 import { expect, it } from "vitest";
 import { z } from "zod";
 
-import type { AgentHostMessage } from "./agent-ipc.js";
+import { AGENT_IPC_VERSION, type AgentHostMessage } from "./agent-ipc.js";
 import type {
   AgentWorkerClient,
   AgentWorkerClientOptions,
@@ -74,7 +74,7 @@ class ScriptedWorker implements AgentWorkerClient {
     return new Promise((resolve) => {
       this.#requests.set(requestId, resolve);
       this.options.onMessage({
-        version: 1,
+        version: AGENT_IPC_VERSION,
         type: "tool_request",
         turnId: this.#turnId,
         requestId,
@@ -114,7 +114,7 @@ class ScriptedWorker implements AgentWorkerClient {
       },
     };
     this.options.onMessage({
-      version: 1,
+      version: AGENT_IPC_VERSION,
       type: "completed",
       turnId: this.#turnId,
       result,
@@ -153,7 +153,7 @@ const assertAnswer = (result: PiProxyToolResult, answer: number): void => {
   ]);
 };
 
-it("brokers independent worker coding and Godot executions, scopes cancellation, and explicitly applies one frozen candidate", async () => {
+it("shares candidate edits while pinning independent Godot executions and scoped cancellation", async () => {
   if (process.env.GODOT_BIN === undefined)
     throw new Error(
       "GODOT_BIN is required for the multi-agent sandbox integration test",
@@ -224,9 +224,11 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
     );
     const firstTarget = await environment.supervisor.spawnAgent(
       "Investigate candidate answer 11",
+      { taskName: "first", forkTurns: "none" },
     );
     const secondTarget = await environment.supervisor.spawnAgent(
       "Investigate candidate answer 22",
+      { taskName: "second", forkTurns: "none" },
     );
     const first = workers[0]!;
     const second = workers[1]!;
@@ -245,22 +247,22 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
       (await first.request("write", { path: "main.gd", content: script(11) }))
         .isError,
     ).not.toBe(true);
+    const firstLaunch = InspectionLaunchOutputV1Schema.parse(
+      gameOutput(await first.request("game_launch", { schemaVersion: 1 })),
+    );
+    expect(first.options.configuration.resourceWorkspaceDirectory).toBe(
+      layout.workspaceDirectory,
+    );
+    expect(second.options.configuration.resourceWorkspaceDirectory).toBe(
+      layout.workspaceDirectory,
+    );
     expect(
       (await second.request("write", { path: "main.gd", content: script(22) }))
         .isError,
     ).not.toBe(true);
-    const [firstLaunch, secondLaunch] = await Promise.all([
-      first
-        .request("game_launch", { schemaVersion: 1 })
-        .then((result) =>
-          InspectionLaunchOutputV1Schema.parse(gameOutput(result)),
-        ),
-      second
-        .request("game_launch", { schemaVersion: 1 })
-        .then((result) =>
-          InspectionLaunchOutputV1Schema.parse(gameOutput(result)),
-        ),
-    ]);
+    const secondLaunch = InspectionLaunchOutputV1Schema.parse(
+      gameOutput(await second.request("game_launch", { schemaVersion: 1 })),
+    );
     expect(
       new Set([
         rootLaunch.executionId,
@@ -305,22 +307,26 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
       outcome: "error",
       error: { code: "execution_not_found" },
     });
+    const privateRecord = join(
+      second.options.configuration.sessionDirectory,
+      "host-only.txt",
+    );
+    await writeFile(privateRecord, "private session data");
     const deniedRead = await first.request("bash", {
-      command: `/usr/bin/cat -- ${quotePosixShellArg(join(second.options.configuration.resourceWorkspaceDirectory, "main.gd"))} ${quotePosixShellArg(join(layout.workspaceDirectory, "main.gd"))}`,
+      command: `/usr/bin/cat -- ${quotePosixShellArg(privateRecord)}`,
       timeout: 5,
     });
     const deniedText = deniedRead.content
       .flatMap((part) => (part.type === "text" ? [part.text] : []))
       .join("\n");
     expect(deniedText).toMatch(/Permission denied|No such file or directory/u);
-    expect(deniedText).toContain("[Command failed; exitCode=1]");
-    expect(deniedText).not.toContain("extends Node");
+    expect(deniedText).not.toContain("private session data");
     expect(
       await readFile(join(layout.workspaceDirectory, "main.gd"), "utf8"),
-    ).toBe(script(0));
+    ).toBe(script(22));
 
     await environment.supervisor.interruptAgent(secondTarget.agentId);
-    const cancelled = await environment.supervisor.waitAgent(
+    const cancelled = await environment.supervisor.waitForTurns(
       [secondTarget],
       "all",
       30_000,
@@ -329,18 +335,20 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
       timedOut: false,
       results: [{ status: "cancelled" }],
     });
-    const evidencePage = z
-      .object({ text: z.string() })
-      .parse(
-        await environment.supervisor.readAgentResult(
+    const completedRecord = JSON.parse(
+      await readFile(
+        join(
+          layout.taskRecordDirectory,
+          "agents",
           secondTarget.agentId,
-          secondTarget.turnId,
-          "evidence",
+          `result-${secondTarget.turnId}.json`,
         ),
-      );
+        "utf8",
+      ),
+    ) as { executions: unknown };
     const terminated = z
       .array(InspectionRunRecordV1Schema)
-      .parse(JSON.parse(evidencePage.text));
+      .parse(completedRecord.executions);
     expect(terminated).toHaveLength(1);
     expect(terminated[0]).toMatchObject({
       executionId: secondLaunch.executionId,
@@ -361,10 +369,10 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
     );
     expect(
       await readFile(join(layout.workspaceDirectory, "main.gd"), "utf8"),
-    ).toBe(script(0));
+    ).toBe(script(22));
 
     first.complete("The actual property query returned answer 11.");
-    const finished = await environment.supervisor.waitAgent(
+    const finished = await environment.supervisor.waitForTurns(
       [firstTarget],
       "all",
       30_000,
@@ -373,22 +381,13 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
       timedOut: false,
       results: [{ status: "completed" }],
     });
-    const diff = await environment.supervisor.readAgentResult(
-      firstTarget.agentId,
-      firstTarget.turnId,
-      "diff",
-    );
-    expect(diff).toMatchObject({ truncated: false });
-    expect(
-      await environment.supervisor.applyAgentPatch(
-        firstTarget.agentId,
-        firstTarget.turnId,
-      ),
-    ).toMatchObject({ status: "applied" });
     expect(
       await readFile(join(layout.workspaceDirectory, "main.gd"), "utf8"),
-    ).toBe(script(11));
-    // A previous execution still describes its own staged source after integration.
+    ).toBe(script(22));
+    expect(
+      environment.tools.some((tool) => tool.name === "apply_agent_patch"),
+    ).toBe(false);
+    // A previous execution still describes its own staged source after shared edits.
     assertAnswer(
       await rootTool("game_query", queryArguments(rootLaunch.executionId)),
       0,
@@ -416,25 +415,21 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
         "game_query",
         queryArguments(integratedLaunch.executionId),
       ),
-      11,
+      22,
     );
-    const resumed = environment.supervisor.followupTask(
+    const resumed = await environment.supervisor.followupTask(
       secondTarget.agentId,
       "Continue the existing worker Session",
     );
-    const queued = environment.supervisor.followupTask(
-      secondTarget.agentId,
-      "This queued turn must be reported if cancelled",
-    );
     await environment.supervisor.stopAgents();
-    const stoppedTurns = await environment.supervisor.waitAgent(
-      [resumed, queued],
+    const stoppedTurns = await environment.supervisor.waitForTurns(
+      [resumed],
       "all",
       30_000,
     );
     expect(stoppedTurns).toMatchObject({
       timedOut: false,
-      results: [{ status: "cancelled" }, { status: "cancelled" }],
+      results: [{ status: "cancelled" }],
     });
     const rootRecords = await Promise.all(
       environment
@@ -467,7 +462,8 @@ it("brokers independent worker coding and Godot executions, scopes cancellation,
       })
       .parse(JSON.parse(await readFile(summary.recordPath, "utf8")));
     expect(summaryRecord.turns).toContainEqual({
-      ...queued,
+      agentId: resumed.agentId,
+      turnId: resumed.turnId,
       status: "cancelled",
     });
   } finally {

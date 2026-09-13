@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { getDefaultResultOrder, setDefaultResultOrder } from "node:dns";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -9,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentWorkerMessage } from "./agent-ipc.js";
 import {
   agentWorkerEnvironment,
+  agentWorkerRuntimeArguments,
   attachAgentWorkerClient,
 } from "./agent-worker-client.js";
 
@@ -32,6 +34,14 @@ const factory = async (options) => ({
     finally { current = undefined; resolveIdle?.(); }
   },
   sendMessage: async (message) => { messages.push(message); },
+  deliverCollaboration: async (message) => {
+    if (message.kind === 'task' && !current) return 'next-turn';
+    messages.push(message.text);
+    return current ? 'current-turn' : 'next-turn';
+  },
+  exportForkContext: (forkTurns) => ({schemaVersion:1,parentSessionId:'fixture',forkTurns,messages:[{role:'user',text:'inspect',turnStart:true}]}),
+  subscribeConsumption: () => () => {},
+  subscribeCollaborationPhase: () => () => {},
   abort: async () => { current?.abort(); },
   waitForIdle: async () => { if (current) await new Promise((resolve) => { resolveIdle = resolve; }); },
   snapshot: (status) => ({
@@ -50,6 +60,32 @@ runAgentWorkerBridge({
 `;
 
 describe("trusted agent worker", () => {
+  it("passes Host DNS ordering to a real child without inheriting Node loaders", () => {
+    const original = getDefaultResultOrder();
+    try {
+      for (const order of ["ipv4first", "verbatim"] as const) {
+        setDefaultResultOrder(order);
+        const output = execFileSync(
+          process.execPath,
+          [
+            ...agentWorkerRuntimeArguments(),
+            "-e",
+            "process.stdout.write(require('node:dns').getDefaultResultOrder())",
+          ],
+          {
+            env: agentWorkerEnvironment({
+              NODE_OPTIONS: "--import /untrusted/must-not-load.mjs",
+            }),
+            encoding: "utf8",
+            timeout: 5_000,
+          },
+        );
+        expect(output).toBe(order);
+      }
+    } finally {
+      setDefaultResultOrder(original);
+    }
+  });
   it("strips inherited runtime code loading options while retaining Host model authentication", () => {
     expect(
       agentWorkerEnvironment({
@@ -119,7 +155,7 @@ describe("trusted agent worker", () => {
         },
       });
       await client.send({
-        version: 1,
+        version: 2,
         type: "prompt",
         turnId: 1,
         text: "inspect",
@@ -130,12 +166,27 @@ describe("trusted agent worker", () => {
       if (first.type !== "tool_request")
         throw new Error("Expected a tool request");
       await client.send({
-        version: 1,
-        type: "message",
-        text: "root correction",
+        version: 2,
+        type: "collaboration",
+        requestId: "correction",
+        envelope: {
+          id: "correction",
+          kind: "message",
+          from: "/root",
+          to: "/root/worker",
+          text: "root correction",
+          createdAt: new Date().toISOString(),
+        },
       });
+      expect(
+        await waitMessage(
+          (message) =>
+            message.type === "collaboration_accepted" &&
+            message.requestId === "correction",
+        ),
+      ).toMatchObject({ acceptedInCurrentTurn: true });
       await client.send({
-        version: 1,
+        version: 2,
         type: "tool_result",
         turnId: 1,
         requestId: first.requestId,
@@ -152,7 +203,39 @@ describe("trusted agent worker", () => {
         },
       });
       await client.send({
-        version: 1,
+        version: 2,
+        type: "export_context",
+        requestId: "fork",
+        forkTurns: "all",
+      });
+      expect(
+        await waitMessage((message) => message.type === "context_exported"),
+      ).toMatchObject({
+        requestId: "fork",
+        context: { parentSessionId: "fixture", forkTurns: "all" },
+      });
+      await client.send({
+        version: 2,
+        type: "collaboration",
+        requestId: "idle-task",
+        envelope: {
+          id: "idle-task",
+          kind: "task",
+          from: "/root",
+          to: "/root/worker",
+          text: "next task",
+          createdAt: new Date().toISOString(),
+        },
+      });
+      expect(
+        await waitMessage(
+          (message) =>
+            message.type === "collaboration_accepted" &&
+            message.requestId === "idle-task",
+        ),
+      ).toMatchObject({ acceptedInCurrentTurn: false });
+      await client.send({
+        version: 2,
         type: "prompt",
         turnId: 2,
         text: "continue",
@@ -160,7 +243,7 @@ describe("trusted agent worker", () => {
       await waitMessage(
         (message) => message.type === "tool_request" && message.turnId === 2,
       );
-      await client.send({ version: 1, type: "interrupt", turnId: 2 });
+      await client.send({ version: 2, type: "interrupt", turnId: 2 });
       expect(
         await waitMessage(
           (message) => message.type === "completed" && message.turnId === 2,
@@ -169,7 +252,7 @@ describe("trusted agent worker", () => {
         result: { status: "aborted", assistantText: "cancelled 2" },
       });
       await client.send({
-        version: 1,
+        version: 2,
         type: "prompt",
         turnId: 3,
         text: "recover",
@@ -181,14 +264,14 @@ describe("trusted agent worker", () => {
         throw new Error("Expected a tool request");
       // Old responses cannot complete a new turn's tool, even with a current ID.
       await client.send({
-        version: 1,
+        version: 2,
         type: "tool_result",
         turnId: 1,
         requestId: third.requestId,
         result: { content: [{ type: "text", text: "stale" }] },
       });
       await client.send({
-        version: 1,
+        version: 2,
         type: "tool_result",
         turnId: 3,
         requestId: third.requestId,

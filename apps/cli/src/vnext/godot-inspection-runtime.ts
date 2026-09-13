@@ -40,6 +40,9 @@ import type { SrtCommandResult } from "./srt-sandbox-controller.js";
 export interface GodotInspectionRuntimeOptions {
   readonly runner: Pick<SrtGodotRunner, "open" | "prepareImport">;
   readonly candidateWorkspace: string;
+  readonly captureCandidate?: (
+    signal?: AbortSignal,
+  ) => ReturnType<typeof prepareGodotInspectionCandidate>;
   readonly artifactsDirectory: string;
   readonly nodePath: string;
   readonly godotPath: string;
@@ -267,9 +270,9 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         ? execution.launchAbort.signal
         : AbortSignal.any([signal, execution.launchAbort.signal]);
     try {
-      const source = await prepareGodotInspectionCandidate(
-        this.options.candidateWorkspace,
-      );
+      const source = await (this.options.captureCandidate === undefined
+        ? prepareGodotInspectionCandidate(this.options.candidateWorkspace)
+        : this.options.captureCandidate(launchSignal));
       execution.mainScene = source.mainScene;
       if (this.#closed || signal?.aborted)
         throw failure("cancelled", "Game launch was cancelled");

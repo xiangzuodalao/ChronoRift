@@ -22,7 +22,7 @@ import type {
 } from "@chronorift/pi-harness";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  ProjectEnvironmentPreviewResultV3Schema,
+  ProjectEnvironmentPreviewResultV4Schema,
   runProjectEnvironmentPreviewV2,
   type ProjectEnvironmentPreviewDependenciesV2,
 } from "./project-environment-preview.js";
@@ -339,7 +339,7 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
               join(
                 options.resourceWorkspaceDirectory,
                 "../records",
-                `preview.v${multiAgent ? 3 : 2}.json`,
+                `preview.v${multiAgent ? 4 : 2}.json`,
               ),
               "utf8",
             ),
@@ -347,12 +347,12 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
           expect(saved).toMatchObject({
             status: "completed",
             sessionFile: path,
-            schemaVersion: multiAgent ? 3 : 2,
+            schemaVersion: multiAgent ? 4 : 2,
           });
           if (multiAgent) {
             const agents: unknown = JSON.parse(
               await readFile(
-                ProjectEnvironmentPreviewResultV3Schema.parse(saved).agents!
+                ProjectEnvironmentPreviewResultV4Schema.parse(saved).agents!
                   .recordPath,
                 "utf8",
               ),

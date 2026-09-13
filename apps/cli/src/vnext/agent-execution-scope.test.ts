@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   AgentExecutionBudget,
   AgentExecutionScope,
+  AgentWorkspaceGate,
 } from "./agent-execution-scope.js";
 import type {
   SrtCodingRequest,
@@ -34,6 +35,7 @@ async function scope(
   controller: SrtSandboxController,
   budget = new AgentExecutionBudget(),
   taskRoot?: string,
+  candidateGate?: AgentWorkspaceGate,
 ) {
   const root = await mkdtemp(join(tmpdir(), "agent-scope-"));
   roots.push(root);
@@ -48,6 +50,7 @@ async function scope(
     nodePath: process.execPath,
     godotPath: "/host/godot",
     budget,
+    ...(candidateGate === undefined ? {} : { candidateGate }),
   });
   await value.initialize();
   return value;
@@ -119,12 +122,72 @@ it("waits for a coding command before entering the snapshot gate", async () => {
   } as unknown as SrtSandboxController;
   const value = await scope(controller);
   const coding = callRead(value);
-  const freeze = vi.fn(async () => "snapshot");
-  const snapshot = value.gate.run(freeze);
   await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  const freeze = vi.fn(async () => "snapshot");
+  const snapshot = value.candidateGate.run(freeze);
   expect(freeze).not.toHaveBeenCalled();
   release();
   await coding;
   expect(await snapshot).toBe("snapshot");
   await value.close();
+});
+
+it("serializes shared candidate operations and snapshots across scopes", async () => {
+  let release!: () => void;
+  const calls: string[] = [];
+  const controller = {
+    runCoding: vi.fn(async () => {
+      calls.push("coding");
+      if (calls.length === 1)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return result;
+    }),
+  } as unknown as SrtSandboxController;
+  const candidateGate = new AgentWorkspaceGate();
+  const budget = new AgentExecutionBudget();
+  const a = await scope(controller, budget, undefined, candidateGate);
+  const b = await scope(controller, budget, undefined, candidateGate);
+  const first = callRead(a);
+  await vi.waitFor(() => expect(calls).toEqual(["coding"]));
+  const second = callRead(b);
+  await Promise.resolve();
+  const snapshot = candidateGate.run(async () => {
+    calls.push("snapshot");
+  });
+  expect(calls).toEqual(["coding"]);
+  release();
+  await Promise.all([first, second, snapshot]);
+  expect(calls).toEqual(["coding", "coding", "snapshot"]);
+  await Promise.all([a.close(), b.close()]);
+});
+
+it("cancels a shared-lock waiter without waiting for or stopping its sibling", async () => {
+  let release!: () => void;
+  let siblingSignal: AbortSignal | undefined;
+  const runCoding = vi.fn(async (request: SrtCodingRequest) => {
+    siblingSignal = request.signal;
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return result;
+  });
+  const controller = { runCoding } as unknown as SrtSandboxController;
+  const candidateGate = new AgentWorkspaceGate();
+  const budget = new AgentExecutionBudget();
+  const a = await scope(controller, budget, undefined, candidateGate);
+  const b = await scope(controller, budget, undefined, candidateGate);
+  const first = callRead(b);
+  await vi.waitFor(() => expect(runCoding).toHaveBeenCalledOnce());
+  const waiting = expect(callRead(a)).rejects.toThrow("cancelled");
+  await a.cancel();
+  await waiting;
+  expect(siblingSignal?.aborted).toBe(false);
+  expect(budget.used).toBe(1);
+  release();
+  await first;
+  await candidateGate.idle();
+  expect(runCoding).toHaveBeenCalledOnce();
+  await Promise.all([a.close(), b.close()]);
 });

@@ -1,10 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Type } from "typebox";
 
 import {
   createPiProxyToolDefinitions,
+  type PiCollaborationMessage,
+  type PiSessionForkContext,
   type PiProxyToolDescriptor,
   type PiProxyToolResult,
+  type PiThinkingLevel,
   type RootCollaborationPort,
   type RootPiSessionControl,
   type VNextPiTurnResult,
@@ -35,6 +39,8 @@ export interface AgentTurnCompletion {
 }
 
 export interface AgentTurnRecord extends AgentTurnCompletion {
+  readonly taskName: string;
+  readonly parentAgentId: string;
   readonly task: string;
   readonly startedAt: string | null;
   readonly finishedAt: string;
@@ -59,39 +65,63 @@ export interface AgentResource {
     turnId: number,
     result: AgentTurnCompletion,
   ): Promise<unknown>;
-  readResult(
-    this: void,
-    turnId: number,
-    section: "summary" | "diff" | "evidence",
-    offset?: number,
-    limit?: number,
-  ): Promise<unknown>;
-  apply(this: void, turnId: number): Promise<unknown>;
   cancel(this: void): Promise<void>;
   close(this: void): Promise<void>;
 }
 
 export type AgentResourceFactory = (agentId: string) => Promise<AgentResource>;
 
+/** Optional Host constraints for controlled runs; ordinary collaboration has no spawn policy. */
+export interface AgentSpawnPolicy {
+  /** Lifetime non-root identities, including failed, closed, and unloaded agents. */
+  readonly maxCreatedAgents?: number;
+  /** Root has depth zero. A value of one permits only Root's direct children. */
+  readonly maxDepth?: number;
+  readonly lockedRuntime?: {
+    readonly provider: string;
+    readonly model: string;
+    readonly thinkingLevel: PiThinkingLevel;
+  };
+}
+
 export interface AgentSupervisorOptions {
   readonly createResource: AgentResourceFactory;
   readonly cancelRoot?: () => Promise<void>;
+  /** Non-root active turns and loaded workers. Root has its own reserved slot. */
   readonly maxAgents?: number;
   readonly turnTimeoutMs?: number;
   readonly interruptGraceMs?: number;
   readonly workerFactory?: AgentWorkerFactory;
+  readonly spawnPolicy?: AgentSpawnPolicy;
   readonly onResult?: (record: AgentTurnRecord) => void | Promise<void>;
 }
 
 export interface AgentTurnTarget {
   readonly agentId: string;
   readonly turnId: number;
+  readonly taskName: string;
+}
+
+export interface SpawnAgentOptions {
+  readonly taskName: string;
+  readonly forkTurns?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: PiThinkingLevel;
+}
+
+export interface AgentMessageRecord {
+  readonly envelope: PiCollaborationMessage;
+  readonly queuedAt: string;
+  consumedAt: string | null;
+  deferredAt: string | null;
+  submittedAt: string | null;
+  error: string | null;
 }
 
 interface PendingTurn {
   readonly turnId: number;
   readonly task: string;
-  readonly prompt: string;
+  readonly tasks: PiCollaborationMessage[];
   readonly done: Promise<AgentTurnRecord>;
   readonly resolve: (result: AgentTurnRecord) => void;
   startedAt: string | null;
@@ -103,46 +133,124 @@ interface PendingTurn {
   result?: AgentTurnRecord;
 }
 
+interface Request<T> {
+  readonly resolve: (value: T) => void;
+  readonly reject: (error: Error) => void;
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
 interface AgentEntry {
   readonly agentId: string;
+  readonly taskName: string;
+  readonly parentAgentId: string;
   readonly turns: Map<number, PendingTurn>;
-  readonly queue: PendingTurn[];
+  readonly mailbox: Map<string, PiCollaborationMessage>;
+  readonly deliveries: Map<string, Request<boolean>>;
+  readonly exports: Map<string, Request<PiSessionForkContext>>;
   readonly requests: Map<
     string,
-    {
-      readonly turnId: number;
-      readonly controller: AbortController;
-      readonly done: Promise<void>;
-    }
+    { readonly controller: AbortController; readonly done: Promise<void> }
   >;
   resource?: AgentResource;
-  client?: AgentWorkerClient;
+  configuration?: AgentWorkerConfiguration;
+  client?: AgentWorkerClient | undefined;
   state: "starting" | "idle" | "running" | "closing" | "closed" | "failed";
   current?: PendingTurn | undefined;
+  next?: PendingTurn | undefined;
   nextTurnId: number;
-  closing?: Promise<void>;
-  failing?: Promise<void>;
-  startupDone?: Promise<void>;
+  resident: boolean;
+  lastUsed: number;
+  processGeneration: number;
+  sessionFile?: string;
+  sessionId?: string;
+  loading?: Promise<void> | undefined;
+  closing?: Promise<void> | undefined;
+  failing?: Promise<void> | undefined;
   resourcesClosed?: boolean;
+  cleanupBlocked: boolean;
   failure?: string;
 }
 
-const MAX_QUEUE = 8;
-const MAX_NOTIFICATIONS = 512;
+const ROOT = "/root";
+const MAX_MAILBOX = 512;
 const TURN_TOOL_BUDGET = 64;
+const IPC_RESPONSE_TIMEOUT_MS = 30_000;
 const CONTROL_NAMES = new Set([
   "spawn_agent",
   "list_agents",
   "followup_task",
+  "send_message",
   "wait_agent",
-  "read_agent_result",
   "interrupt_agent",
-  "close_agent",
-  "apply_agent_patch",
 ]);
-const textInput = z.string().trim().min(1).max(AGENT_MESSAGE_MAX_LENGTH);
-const agentIdInput = z.string().regex(/^agent-[1-9][0-9]*$/u);
-const turnIdInput = z.number().int().positive();
+const textInput = z
+  .string()
+  .trim()
+  .min(1)
+  .max(AGENT_MESSAGE_MAX_LENGTH)
+  .refine(
+    (text) => Buffer.byteLength(text, "utf8") <= AGENT_MESSAGE_MAX_LENGTH,
+    "Message exceeds 64 KiB",
+  );
+const taskNameInput = z
+  .string()
+  .max(128)
+  .regex(/^[a-z0-9_]+$/u)
+  .refine((name) => name !== "root", "task_name root is reserved");
+const reasoningInput = z.enum([
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+const spawnArgumentsSchema = z
+  .object({
+    message: textInput,
+    task_name: taskNameInput,
+    fork_turns: z.string().optional(),
+    model: textInput.optional(),
+    reasoning_effort: reasoningInput.optional(),
+  })
+  .strict();
+const lockedSpawnArgumentsSchema = spawnArgumentsSchema.omit({
+  model: true,
+  reasoning_effort: true,
+});
+
+function validatedSpawnPolicy(
+  value: AgentSpawnPolicy | undefined,
+): AgentSpawnPolicy | null {
+  if (value === undefined) return null;
+  const limit = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+  const identifier = z.string().trim().min(1).max(128);
+  const parsed = z
+    .object({
+      maxCreatedAgents: limit.optional(),
+      maxDepth: limit.optional(),
+      lockedRuntime: z
+        .object({
+          provider: identifier,
+          model: identifier,
+          thinkingLevel: reasoningInput,
+        })
+        .strict()
+        .optional(),
+    })
+    .strict()
+    .parse(value);
+  return Object.freeze({
+    ...(parsed.maxCreatedAgents === undefined
+      ? {}
+      : { maxCreatedAgents: parsed.maxCreatedAgents }),
+    ...(parsed.maxDepth === undefined ? {} : { maxDepth: parsed.maxDepth }),
+    ...(parsed.lockedRuntime === undefined
+      ? {}
+      : { lockedRuntime: Object.freeze({ ...parsed.lockedRuntime }) }),
+  });
+}
 const errorText = (error: unknown): string =>
   String(error instanceof Error ? error.message : error).slice(
     0,
@@ -155,41 +263,68 @@ const boundedInteger = (
   name: string,
 ): number => {
   const selected = value ?? fallback;
-  if (!Number.isInteger(selected) || selected < 1 || selected > maximum)
+  if (!Number.isSafeInteger(selected) || selected < 1 || selected > maximum)
     throw new TypeError(`${name} must be an integer from 1 to ${maximum}`);
   return selected;
 };
-const workerMessageDescriptor: PiProxyToolDescriptor = {
-  name: "send_message",
-  description:
-    "Send an observation or question to the Root agent. This does not grant permissions or complete your task.",
-  parameters: Type.Object(
-    {
-      message: Type.String({
-        minLength: 1,
-        maxLength: AGENT_MESSAGE_MAX_LENGTH,
-      }),
-    },
-    { additionalProperties: false },
-  ) as unknown as Record<string, unknown>,
-};
 
+function forkMode(value = "all"): string {
+  const selected = value.trim().toLowerCase() || "all";
+  if (selected === "all" || selected === "none") return selected;
+  if (
+    !/^[0-9]+$/u.test(selected) ||
+    !Number.isSafeInteger(Number(selected)) ||
+    Number(selected) < 1
+  )
+    throw new Error(
+      "fork_turns must be none, all, or a positive integer string",
+    );
+  return String(Number(selected));
+}
+
+function canonicalPath(value: string): string {
+  if (value.length > 4096)
+    throw new Error("Agent path exceeds 4096 characters");
+  if (value === ROOT) return ROOT;
+  if (!value.startsWith(`${ROOT}/`) || value.endsWith("/"))
+    throw new Error(
+      "Agent paths must start with /root and have no trailing slash",
+    );
+  for (const part of value.slice(ROOT.length + 1).split("/"))
+    taskNameInput.parse(part);
+  return value;
+}
+
+function pathMatches(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+const targetFor = (entry: AgentEntry, turn: PendingTurn): AgentTurnTarget => ({
+  agentId: entry.agentId,
+  taskName: entry.taskName,
+  turnId: turn.turnId,
+});
+
+/** One Host owns the complete task tree, admission, mail identities and tool authority. */
 export class AgentSupervisor implements RootCollaborationPort {
   private readonly agents = new Map<string, AgentEntry>();
-  private readonly notifications: string[] = [];
+  private readonly paths = new Map<string, string>();
+  private readonly rootMailbox = new Map<string, PiCollaborationMessage>();
+  private readonly messageRecords: AgentMessageRecord[] = [];
   private readonly listeners = new Set<() => void>();
   private readonly maxAgents: number;
   private readonly timeoutMs: number;
   private readonly interruptGraceMs: number;
   private readonly workerFactory: AgentWorkerFactory;
-  private nextAgentId = 1;
+  private readonly spawnPolicy: AgentSpawnPolicy | null;
   private root: RootPiSessionControl | undefined;
-  private generation = 0;
-  private autoContinue = true;
+  private rootUnsubscribe: (() => void) | undefined;
+  private rootDelivery: Promise<void> = Promise.resolve();
+  private residencyOperation: Promise<void> = Promise.resolve();
+  private userRevision = 0;
+  private clock = 0;
   private disposed = false;
-  private drainPromise: Promise<void> | undefined;
-  private backgroundDelivery: Promise<void> | undefined;
-  private notificationOverflow = 0;
+  private accepting = true;
 
   public constructor(private readonly options: AgentSupervisorOptions) {
     this.maxAgents = boundedInteger(options.maxAgents, 3, 4, "maxAgents");
@@ -206,110 +341,126 @@ export class AgentSupervisor implements RootCollaborationPort {
       "interruptGraceMs",
     );
     this.workerFactory = options.workerFactory ?? createNodeAgentWorker;
+    this.spawnPolicy = validatedSpawnPolicy(options.spawnPolicy);
+  }
+
+  public get effectiveSpawnPolicy(): AgentSpawnPolicy | null {
+    return this.spawnPolicy;
   }
 
   public async spawnAgent(
-    task: string,
-    context?: string,
+    message: string,
+    options: SpawnAgentOptions,
+    caller = ROOT,
   ): Promise<AgentTurnTarget> {
-    textInput.parse(task);
-    if (context !== undefined) textInput.parse(context);
-    const prompt =
-      context === undefined
-        ? task
-        : `${task}\n\nBackground supplied by Root:\n${context}`;
-    textInput.parse(prompt);
-    if (this.disposed) throw new Error("Agent supervisor is closed");
-    const live = [...this.agents.values()].filter(
-      (agent) =>
-        agent.state !== "closed" &&
-        !(agent.state === "failed" && agent.resourcesClosed === true),
-    ).length;
-    if (live >= this.maxAgents)
-      throw new Error(
-        `All ${this.maxAgents} worker slots are occupied; close an idle worker first`,
-      );
-    const agentId = `agent-${this.nextAgentId++}`;
+    textInput.parse(message);
+    taskNameInput.parse(options.taskName);
+    const forkTurns = forkMode(options.forkTurns);
+    if (options.model !== undefined) textInput.parse(options.model);
+    if (options.reasoningEffort !== undefined)
+      reasoningInput.parse(options.reasoningEffort);
+    const parentId = this.resolveTarget(caller, ROOT);
+    const parentPath = this.pathOf(parentId);
+    const taskName = canonicalPath(`${parentPath}/${options.taskName}`);
+    this.assertSpawnPolicy(options, parentPath);
+    this.renderTasks([{ from: parentPath, to: taskName, text: message }]);
+    this.assertAccepting();
+    if (this.paths.has(taskName))
+      throw new Error(`Agent path ${taskName} already exists`);
+    this.assertCapacity();
     const entry: AgentEntry = {
-      agentId,
-      state: "starting",
+      agentId: randomUUID(),
+      taskName,
+      parentAgentId: parentId,
       turns: new Map(),
-      queue: [],
+      mailbox: new Map(),
+      deliveries: new Map(),
+      exports: new Map(),
       requests: new Map(),
+      state: "starting",
       nextTurnId: 1,
+      resident: false,
+      lastUsed: ++this.clock,
+      processGeneration: 0,
+      cleanupBlocked: false,
     };
-    this.agents.set(agentId, entry);
-    const turn = this.makeTurn(entry, task, prompt);
-    entry.queue.push(turn);
-    let resolveStartup: () => void = () => undefined;
-    entry.startupDone = new Promise<void>((resolve) => {
-      resolveStartup = resolve;
-    });
-    this.changed();
-    try {
-      entry.resource = await this.options.createResource(agentId);
-      if (this.disposed || entry.state !== "starting")
-        throw new Error("Agent startup was cancelled");
-      const configuration = entry.resource.workerConfiguration;
-      if (
-        configuration.tools.some(
-          (tool) =>
-            CONTROL_NAMES.has(tool.name) || tool.name === "send_message",
-        )
-      )
-        throw new Error(
-          "Worker resource cannot expose Root collaboration tools",
-        );
-      const client = await this.workerFactory({
-        configuration: {
-          ...configuration,
-          tools: [...configuration.tools, workerMessageDescriptor],
-          additionalEnvironmentInstructions: [
-            configuration.additionalEnvironmentInstructions,
-            `You are ${agentId}, delegated by Root. Work only on your assigned task. Your workspace and game executions are independent. Send useful findings to Root with send_message. A completed turn is not acceptance of a fix.`,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        },
-        onMessage: (message) => {
-          this.handleMessage(entry, message);
-        },
-        onExit: (error) => {
-          void this.workerFailed(entry, error).catch((failure: unknown) => {
-            entry.failure = errorText(failure);
-            this.changed();
-          });
-        },
-      });
-      entry.client = client;
-      if (this.disposed || entry.state !== "starting") {
-        await client.close();
-        throw new Error("Agent startup was cancelled");
-      }
+    this.agents.set(entry.agentId, entry);
+    this.paths.set(taskName, entry.agentId);
+    const initial = this.envelope(parentId, entry.agentId, "task", message);
+    const turn = this.makeTurn(entry, initial);
+    entry.next = turn;
+    // The entry reserves active capacity synchronously, before any asynchronous preparation.
+    const startup = (async () => {
+      entry.resource = await this.options.createResource(entry.agentId);
+      this.assertEntryStarting(entry);
+      const base = entry.resource.workerConfiguration;
+      if (base.tools.some((tool) => CONTROL_NAMES.has(tool.name)))
+        throw new Error("Agent resources must not inject collaboration tools");
+      const inherited =
+        parentId === ROOT
+          ? base
+          : (this.requireAgent(parentId).configuration ?? base);
+      const forkContext =
+        forkTurns === "none"
+          ? undefined
+          : await this.exportContext(parentId, forkTurns);
+      this.assertEntryStarting(entry);
+      entry.configuration = {
+        ...base,
+        agentId: entry.agentId,
+        taskName,
+        parentAgentId: parentId,
+        provider: this.spawnPolicy?.lockedRuntime?.provider ?? base.provider,
+        model:
+          this.spawnPolicy?.lockedRuntime?.model ??
+          options.model ??
+          inherited.model,
+        thinkingLevel:
+          this.spawnPolicy?.lockedRuntime?.thinkingLevel ??
+          options.reasoningEffort ??
+          inherited.thinkingLevel,
+        ...(forkContext === undefined ? {} : { forkContext }),
+        tools: [...base.tools, ...collaborationDescriptors(this.spawnPolicy)],
+        additionalEnvironmentInstructions: [
+          base.additionalEnvironmentInstructions,
+          `You are ${taskName}, a member of the team rooted at /root. Your parent is ${parentPath}. All agents share the same private candidate directory; edits are immediately visible. Coordinate overlapping edits and preserve other agents' changes. You may delegate bounded subtasks and communicate with any agent in this tree. There are ${this.maxAgents + 1} concurrency slots including Root; waiting keeps your slot. Your final answer goes to your parent. A completed turn is not acceptance of a fix.`,
+          spawnPolicyDescription(this.spawnPolicy),
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      };
+      await this.loadWorker(entry);
+      this.assertEntryStarting(entry);
       entry.state = "idle";
       this.startNext(entry);
-      return { agentId, turnId: turn.turnId };
+    })();
+    entry.loading = startup;
+    try {
+      await startup;
+      return targetFor(entry, turn);
     } catch (error) {
       await this.workerFailed(entry, error);
       throw error;
     } finally {
-      resolveStartup();
+      entry.loading = undefined;
+      this.changed();
     }
   }
 
-  public listAgents(): readonly {
-    agentId: string;
-    state: AgentEntry["state"];
-    currentTurnId: number | null;
-    queuedTurns: number;
-    completedTurns: number;
-    failure: string | null;
-  }[] {
+  /** Host records include unloaded agents; the model-facing tool filters residents. */
+  public listAllAgents() {
     return [...this.agents.values()].map((entry) => ({
       agentId: entry.agentId,
+      taskName: entry.taskName,
+      path: entry.taskName,
+      parentAgentId: entry.parentAgentId,
       state: entry.state,
+      resident: entry.resident,
+      cleanupBlocked: entry.cleanupBlocked,
+      sessionId: entry.sessionId ?? null,
+      sessionFile: entry.sessionFile ?? null,
       currentTurnId: entry.current?.turnId ?? null,
-      queuedTurns: entry.queue.length,
+      queuedTurns: entry.next === undefined ? 0 : 1,
       completedTurns: [...entry.turns.values()].filter(
         (turn) => turn.result !== undefined,
       ).length,
@@ -317,153 +468,202 @@ export class AgentSupervisor implements RootCollaborationPort {
     }));
   }
 
-  public async sendMessage(agentId: string, message: string): Promise<void> {
-    textInput.parse(message);
-    const entry = this.requireLive(agentId);
-    if (entry.client === undefined)
-      throw new Error("Agent worker is still starting");
-    await entry.client.send({ version: 1, type: "message", text: message });
+  public listAgents() {
+    return this.listAllAgents();
   }
 
-  public followupTask(agentId: string, task: string): AgentTurnTarget {
-    textInput.parse(task);
-    const entry = this.requireLive(agentId);
-    if (entry.queue.length >= MAX_QUEUE)
-      throw new Error(`Agent already has ${MAX_QUEUE} queued tasks`);
-    const turn = this.makeTurn(entry, task, task);
-    entry.queue.push(turn);
-    this.startNext(entry);
-    this.changed();
-    return { agentId, turnId: turn.turnId };
+  public async sendMessage(
+    target: string,
+    message: string,
+    caller = ROOT,
+  ): Promise<void> {
+    textInput.parse(message);
+    const senderId = this.resolveTarget(caller, ROOT);
+    const receiverId = this.resolveTarget(target, senderId);
+    await this.queueMessage(
+      this.envelope(senderId, receiverId, "message", message),
+    );
+  }
+
+  public async followupTask(
+    target: string,
+    message: string,
+    caller = ROOT,
+  ): Promise<AgentTurnTarget> {
+    textInput.parse(message);
+    this.assertAccepting();
+    const senderId = this.resolveTarget(caller, ROOT);
+    const receiverId = this.resolveTarget(target, senderId);
+    if (receiverId === ROOT)
+      throw new Error("Follow-up tasks cannot target Root");
+    const entry = this.requireAgent(receiverId);
+    if (entry.failing !== undefined) await entry.failing;
+    this.requireLive(receiverId);
+    const envelope = this.envelope(senderId, receiverId, "task", message);
+    this.renderTasks([envelope]);
+    if (entry.mailbox.size >= MAX_MAILBOX)
+      throw new Error("Agent mailbox is full");
+    if (
+      entry.current !== undefined &&
+      entry.current.forcedStatus === undefined &&
+      entry.current.finishing === undefined
+    ) {
+      const current = entry.current;
+      this.recordMessage(entry.mailbox, envelope);
+      try {
+        const accepted = await this.deliverToWorker(entry, envelope);
+        if (accepted) return targetFor(entry, current);
+      } catch (error) {
+        this.failMessage(entry.mailbox, envelope.id, error);
+        throw error;
+      }
+      // A task arriving after Pi closed its response is admitted by this Host as a new turn.
+      entry.mailbox.delete(envelope.id);
+      const record = this.messageRecords.find(
+        (item) => item.envelope.id === envelope.id,
+      );
+      if (record !== undefined) record.deferredAt = new Date().toISOString();
+    }
+    if (entry.next !== undefined) {
+      if (entry.next.tasks.length >= MAX_MAILBOX)
+        throw new Error("Agent task queue is full");
+      this.renderTasks([...entry.next.tasks, envelope]);
+      entry.next.tasks.push(envelope);
+      this.recordTask(envelope);
+      return targetFor(entry, entry.next);
+    }
+    if (entry.current === undefined) this.assertCapacity();
+    const next = this.makeTurn(entry, envelope);
+    entry.next = next;
+    if (entry.current === undefined) {
+      entry.state = "starting";
+      const loading = this.ensureLoaded(entry).then(() => {
+        if (entry.state !== "starting" || this.disposed)
+          throw new Error("Agent startup was cancelled");
+        entry.state = "idle";
+        this.startNext(entry);
+      });
+      entry.loading = loading;
+      try {
+        await loading;
+      } catch (error) {
+        await this.workerFailed(entry, error);
+        throw error;
+      } finally {
+        entry.loading = undefined;
+      }
+    }
+    return targetFor(entry, next);
   }
 
   public async waitAgent(
-    targets: readonly AgentTurnTarget[],
+    timeoutMs = 30_000,
+    signal?: AbortSignal,
+    caller = ROOT,
+  ): Promise<{ message: string; timed_out: boolean }> {
+    const id = this.resolveTarget(caller, ROOT);
+    const requested = boundedInteger(
+      timeoutMs,
+      30_000,
+      3_600_000,
+      "timeout_ms",
+    );
+    const duration = Math.max(10_000, requested);
+    const revision = this.userRevision;
+    const deadline = Date.now() + duration;
+    const pending = () =>
+      id === ROOT
+        ? this.rootMailbox.size !== 0 ||
+          this.root?.hasPendingMessages() === true
+        : this.requireAgent(id).mailbox.size !== 0;
+    while (true) {
+      signal?.throwIfAborted();
+      if (pending())
+        return { message: "Mailbox activity is available.", timed_out: false };
+      if (id === ROOT && revision !== this.userRevision)
+        return {
+          message: "Wait interrupted by new user input.",
+          timed_out: false,
+        };
+      const remaining = deadline - Date.now();
+      if (remaining <= 0)
+        return { message: "Wait timed out.", timed_out: true };
+      await this.waitForChange(
+        remaining,
+        signal,
+        () => pending() || (id === ROOT && revision !== this.userRevision),
+      );
+    }
+  }
+
+  /** Internal evidence/fixture helper, intentionally absent from the six model tools. */
+  public async waitForTurns(
+    targets: readonly Pick<AgentTurnTarget, "agentId" | "turnId">[],
     mode: "any" | "all" = "all",
     timeoutMs = 30_000,
     signal?: AbortSignal,
   ): Promise<{ timedOut: boolean; results: readonly AgentTurnRecord[] }> {
-    if (targets.length === 0 || targets.length > 32)
-      throw new Error("wait_agent requires 1 to 32 targets");
+    if (targets.length < 1 || targets.length > 32)
+      throw new Error("Expected 1 to 32 turn targets");
     z.enum(["any", "all"]).parse(mode);
-    const duration = boundedInteger(
-      timeoutMs,
-      30_000,
-      3_600_000,
-      "wait timeoutMs",
-    );
     const turns = targets.map((target) =>
       this.requireTurn(target.agentId, target.turnId),
     );
-    const end = Date.now() + duration;
-    while (
-      !(mode === "any"
-        ? turns.some((turn) => turn.result !== undefined)
-        : turns.every((turn) => turn.result !== undefined))
-    ) {
-      signal?.throwIfAborted();
-      const remaining = end - Date.now();
-      if (remaining <= 0)
-        return {
-          timedOut: true,
-          results: turns.flatMap((turn) =>
-            turn.result === undefined ? [] : [turn.result],
-          ),
-        };
-      await this.waitForChange(remaining, signal);
-    }
-    const results = turns.flatMap((turn) =>
-      turn.result === undefined ? [] : [turn.result],
-    );
-    for (const result of results) this.consumeCompletion(result);
-    return { timedOut: false, results };
-  }
-
-  public async readAgentResult(
-    agentId: string,
-    turnId: number,
-    section: "summary" | "diff" | "evidence" = "summary",
-    offset = 0,
-    limit = 16_384,
-  ): Promise<unknown> {
-    const entry = this.requireAgent(agentId);
-    const turn = this.requireTurn(agentId, turnId);
-    if (turn.result === undefined)
-      throw new Error("Agent turn has not finished");
-    z.enum(["summary", "diff", "evidence"]).parse(section);
-    z.number().int().min(0).parse(offset);
-    boundedInteger(limit, 16_384, 65_536, "result limit");
-    if (section !== "summary")
-      return (
-        (await entry.resource?.readResult(turnId, section, offset, limit)) ?? {
-          available: false,
-        }
-      );
-    this.consumeCompletion(turn.result);
-    const { assistantText, status, errorMessage, task, startedAt, finishedAt } =
-      turn.result;
-    const summary = {
-      agentId,
-      turnId,
-      status,
-      errorMessage,
-      task,
-      startedAt,
-      finishedAt,
-    };
-    const data = Buffer.from(assistantText);
-    const text = data.subarray(offset, offset + limit).toString("utf8");
+    const deadline =
+      Date.now() + boundedInteger(timeoutMs, 30_000, 3_600_000, "timeoutMs");
+    const ready = () =>
+      mode === "all"
+        ? turns.every((turn) => turn.result !== undefined)
+        : turns.some((turn) => turn.result !== undefined);
+    while (!ready() && Date.now() < deadline)
+      await this.waitForChange(deadline - Date.now(), signal, ready);
     return {
-      ...summary,
-      text,
-      nextOffset: Math.min(data.length, offset + limit),
-      totalBytes: data.length,
-      truncated: offset + limit < data.length,
+      timedOut: !ready(),
+      results: turns.flatMap((turn) =>
+        turn.result === undefined ? [] : [turn.result],
+      ),
     };
   }
 
-  public async applyAgentPatch(
-    agentId: string,
-    turnId: number,
-  ): Promise<unknown> {
-    const entry = this.requireAgent(agentId);
-    const turn = this.requireTurn(agentId, turnId);
-    if (turn.result === undefined || turn.result.evidence === undefined)
-      throw new Error("Agent turn has no frozen candidate");
-    if (entry.resource === undefined)
-      throw new Error("Agent resource is unavailable");
-    return await entry.resource.apply(turnId);
-  }
-
-  public async interruptAgent(agentId: string): Promise<void> {
-    const entry = this.requireAgent(agentId);
-    this.cancelQueued(entry, "cancelled", "Queued task was cancelled");
-    const turn = entry.current;
-    if (turn === undefined) {
-      await entry.resource?.cancel();
-      return;
-    }
-    await this.cancelTurn(entry, turn, "cancelled");
+  public async interruptAgent(
+    target: string,
+    caller = ROOT,
+  ): Promise<{ previous_status: unknown }> {
+    const sender = this.resolveTarget(caller, ROOT);
+    const id = this.resolveTarget(target, sender);
+    if (id === ROOT) throw new Error("Root is not a spawned agent");
+    if (id === sender) throw new Error("An agent cannot interrupt itself");
+    const entry = this.requireAgent(id);
+    const previous_status = this.modelStatus(entry);
+    this.cancelPending(entry, "cancelled", "Pending task was interrupted");
+    if (entry.current !== undefined)
+      await this.cancelTurn(entry, entry.current, "cancelled");
+    else await entry.resource?.cancel();
+    return { previous_status };
   }
 
   public closeAgent(agentId: string): Promise<void> {
     const entry = this.requireAgent(agentId);
-    entry.closing ??= (async () => {
+    if (entry.closing !== undefined) return entry.closing;
+    const closing = (async () => {
       entry.state = "closing";
-      const errors: unknown[] = [];
-      this.cancelQueued(
+      entry.cleanupBlocked = true;
+      this.cancelPending(
         entry,
         "cancelled",
-        "Agent was closed before the task started",
+        "Agent was closed before its task started",
       );
-      if (entry.current !== undefined) {
-        try {
+      const errors: unknown[] = [];
+      try {
+        if (entry.current !== undefined)
           await this.cancelTurn(entry, entry.current, "cancelled");
-        } catch (error) {
-          errors.push(error);
-        }
+      } catch (error) {
+        errors.push(error);
       }
-      await entry.startupDone;
+      await entry.loading?.catch(() => undefined);
+      await entry.failing?.catch(() => undefined);
+      this.rejectIpc(entry, new Error("Agent is closing"));
+      entry.processGeneration += 1;
       const cleanup = await Promise.allSettled([
         entry.client?.close(),
         entry.resource?.close(),
@@ -473,71 +673,77 @@ export class AgentSupervisor implements RootCollaborationPort {
           result.status === "rejected" ? [result.reason as unknown] : [],
         ),
       );
-      if (entry.current !== undefined) {
-        await this.finish(entry, entry.current, {
-          agentId,
-          turnId: entry.current.turnId,
-          status: "cancelled",
-          assistantText: "",
-          errorMessage: "Agent closed during resource cleanup",
-        });
+      if (cleanup[0]?.status === "fulfilled") {
+        entry.client = undefined;
+        entry.resident = false;
       }
+      entry.resourcesClosed = cleanup.every(
+        (result) => result.status === "fulfilled",
+      );
+      entry.cleanupBlocked = !entry.resourcesClosed;
       if (errors.length !== 0) {
         entry.state = "failed";
-        throw new AggregateError(errors, `Agent ${agentId} cleanup failed`);
+        entry.failure = `Agent cleanup failed: ${errors.map(errorText).join("; ")}`;
+        this.changed();
+        throw new AggregateError(errors, entry.failure);
       }
-      entry.resourcesClosed = true;
       entry.state = "closed";
       this.changed();
     })();
-    return entry.closing;
+    entry.closing = closing;
+    void closing.catch(() => {
+      if (entry.closing === closing) entry.closing = undefined;
+    });
+    return closing;
   }
 
   public bindRoot(control: RootPiSessionControl): () => void {
+    this.rootUnsubscribe?.();
     this.root = control;
-    this.generation += 1;
-    this.changed();
-    return () => {
-      if (this.root === control) {
-        this.root = undefined;
-        this.generation += 1;
-        this.changed();
-      }
+    const activity = control.subscribeActivity(() => this.changed());
+    const consumption = control.subscribeConsumption((ids) =>
+      this.consume(this.rootMailbox, ids),
+    );
+    const unbind = () => {
+      activity();
+      consumption();
+      if (this.root === control) this.root = undefined;
     };
+    this.rootUnsubscribe = unbind;
+    for (const message of this.rootMailbox.values()) this.deliverRoot(message);
+    return unbind;
   }
 
-  public drain(signal?: AbortSignal): Promise<void> {
-    this.drainPromise ??= this.drainResults(signal).finally(() => {
-      this.drainPromise = undefined;
-    });
-    return this.drainPromise;
+  /** Headless Root settled: queued ordinary mail never starts another Root prompt. */
+  public async drain(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    this.accepting = false;
+    await this.stopWorkers();
   }
 
   public interrupt(): void {
-    this.autoContinue = false;
-    this.generation += 1;
+    this.accepting = false;
+    this.userRevision += 1;
     this.changed();
   }
   public onUserInput(): void {
-    this.autoContinue = true;
+    if (!this.disposed) this.accepting = true;
+    this.userRevision += 1;
+    this.root?.onUserInput();
     this.changed();
   }
   public describeAgents(): string {
-    return JSON.stringify(this.listAgents(), null, 2);
+    return JSON.stringify(this.listAllAgents(), null, 2);
   }
 
   public async stopAgents(): Promise<void> {
     this.interrupt();
-    const results = await Promise.allSettled([
+    const stopped = await Promise.allSettled([
       this.root?.abort(),
       this.options.cancelRoot?.(),
-      ...[...this.agents.values()]
-        .filter((entry) => entry.state !== "closed" && entry.state !== "failed")
-        .map((entry) => this.interruptAgent(entry.agentId)),
+      this.stopWorkers(),
     ]);
-    this.notifications.length = 0;
-    this.notificationOverflow = 0;
-    const errors = results.flatMap((result) =>
+    const errors = stopped.flatMap((result) =>
       result.status === "rejected" ? [result.reason as unknown] : [],
     );
     if (errors.length !== 0)
@@ -550,10 +756,12 @@ export class AgentSupervisor implements RootCollaborationPort {
   public async close(): Promise<void> {
     this.disposed = true;
     this.interrupt();
-    const results = await Promise.allSettled(
-      [...this.agents.keys()].map((agentId) => this.closeAgent(agentId)),
+    const closed = await Promise.allSettled(
+      [...this.agents.keys()].map((id) => this.closeAgent(id)),
     );
-    const errors = results.flatMap((result) =>
+    await this.rootDelivery;
+    this.rootUnsubscribe?.();
+    const errors = closed.flatMap((result) =>
       result.status === "rejected" ? [result.reason as unknown] : [],
     );
     if (errors.length !== 0)
@@ -570,20 +778,554 @@ export class AgentSupervisor implements RootCollaborationPort {
       ),
     );
   }
+  public get messages(): readonly AgentMessageRecord[] {
+    return this.messageRecords;
+  }
+
+  public async invokeCollaboration(
+    name: string,
+    input: unknown,
+    signal?: AbortSignal,
+    caller = ROOT,
+  ): Promise<PiProxyToolResult> {
+    const callerId = this.resolveTarget(caller, ROOT);
+    let result: unknown;
+    switch (name) {
+      case "spawn_agent": {
+        // Omitted tool fields are also rejected at the Host boundary, including
+        // callers that bypass the model-facing JSON schema.
+        const args = spawnArgumentsSchema.parse(
+          this.spawnPolicy?.lockedRuntime === undefined
+            ? input
+            : lockedSpawnArgumentsSchema.parse(input),
+        );
+        const spawned = await this.spawnAgent(
+          args.message,
+          {
+            taskName: args.task_name,
+            ...(args.fork_turns === undefined
+              ? {}
+              : { forkTurns: args.fork_turns }),
+            ...(args.model === undefined ? {} : { model: args.model }),
+            ...(args.reasoning_effort === undefined
+              ? {}
+              : { reasoningEffort: args.reasoning_effort }),
+          },
+          callerId,
+        );
+        result = { agent_id: spawned.agentId, task_name: spawned.taskName };
+        break;
+      }
+      case "list_agents": {
+        const args = z
+          .object({ path_prefix: z.string().optional() })
+          .strict()
+          .parse(input);
+        const prefix =
+          args.path_prefix === undefined
+            ? ROOT
+            : this.resolvePath(args.path_prefix, callerId);
+        result = {
+          agents: [
+            ...(pathMatches(ROOT, prefix)
+              ? [
+                  {
+                    agent_name: ROOT,
+                    agent_status:
+                      this.root?.isIdle() === false
+                        ? "running"
+                        : { completed: null },
+                  },
+                ]
+              : []),
+            ...[...this.agents.values()]
+              .filter(
+                (entry) =>
+                  entry.resident && pathMatches(entry.taskName, prefix),
+              )
+              .sort((a, b) => a.taskName.localeCompare(b.taskName))
+              .map((entry) => ({
+                agent_name: entry.taskName,
+                agent_status: this.modelStatus(entry),
+              })),
+          ],
+        };
+        break;
+      }
+      case "send_message": {
+        const args = z
+          .object({ target: textInput, message: textInput })
+          .strict()
+          .parse(input);
+        await this.sendMessage(args.target, args.message, callerId);
+        result = { queued: true };
+        break;
+      }
+      case "followup_task": {
+        const args = z
+          .object({ target: textInput, message: textInput })
+          .strict()
+          .parse(input);
+        await this.followupTask(args.target, args.message, callerId);
+        result = { queued: true };
+        break;
+      }
+      case "wait_agent": {
+        const args = z
+          .object({ timeout_ms: z.number().int().optional() })
+          .strict()
+          .parse(input);
+        result = await this.waitAgent(args.timeout_ms, signal, callerId);
+        break;
+      }
+      case "interrupt_agent": {
+        const args = z.object({ target: textInput }).strict().parse(input);
+        result = await this.interruptAgent(args.target, callerId);
+        break;
+      }
+      default:
+        throw new Error("Unknown collaboration tool");
+    }
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }],
+      details: result,
+    };
+  }
+
+  private assertAccepting(): void {
+    if (this.disposed || !this.accepting)
+      throw new Error("Agent task admission is closed");
+  }
+  private assertSpawnPolicy(
+    options: SpawnAgentOptions,
+    parentPath: string,
+  ): void {
+    const policy = this.spawnPolicy;
+    if (policy === null) return;
+    if (
+      policy.lockedRuntime !== undefined &&
+      ("model" in options || "reasoningEffort" in options)
+    )
+      throw new Error(
+        "Host spawn policy locks the worker runtime; model and reasoning overrides are forbidden",
+      );
+    const childDepth = parentPath.split("/").length - 1;
+    if (policy.maxDepth !== undefined && childDepth > policy.maxDepth)
+      throw new Error(
+        `Host spawn policy permits a maximum agent depth of ${policy.maxDepth}`,
+      );
+    if (
+      policy.maxCreatedAgents !== undefined &&
+      this.agents.size >= policy.maxCreatedAgents
+    )
+      throw new Error(
+        `Host spawn policy permits at most ${policy.maxCreatedAgents} created agent identities`,
+      );
+  }
+  private assertEntryStarting(entry: AgentEntry): void {
+    if (this.disposed || !this.accepting || entry.state !== "starting")
+      throw new Error("Agent startup was cancelled");
+  }
+  private assertCapacity(): void {
+    const active = [...this.agents.values()].filter(
+      (entry) =>
+        entry.current !== undefined ||
+        entry.next !== undefined ||
+        entry.state === "starting" ||
+        entry.state === "closing" ||
+        entry.cleanupBlocked,
+    ).length;
+    if (active >= this.maxAgents)
+      throw new Error(
+        `All ${this.maxAgents} non-root execution slots are occupied`,
+      );
+  }
+  private resolvePath(reference: string, caller: string): string {
+    return canonicalPath(
+      reference.startsWith("/")
+        ? reference
+        : `${this.pathOf(caller)}/${reference}`,
+    );
+  }
+  private resolveTarget(reference: string, caller: string): string {
+    if (reference === ROOT) return ROOT;
+    if (this.agents.has(reference)) return reference;
+    const path = this.resolvePath(reference, caller);
+    const id = this.paths.get(path);
+    if (id === undefined) throw new Error(`Unknown agent ${path}`);
+    return id;
+  }
+  private pathOf(id: string): string {
+    return id === ROOT ? ROOT : this.requireAgent(id).taskName;
+  }
+  private requireAgent(id: string): AgentEntry {
+    const entry =
+      this.agents.get(id) ?? this.agents.get(this.paths.get(id) ?? "");
+    if (entry === undefined) throw new Error(`Unknown agent ${id}`);
+    return entry;
+  }
+  private requireLive(id: string): AgentEntry {
+    const entry = this.requireAgent(id);
+    if (entry.cleanupBlocked)
+      throw new Error(`Agent ${entry.taskName} cleanup is incomplete`);
+    if (
+      entry.state === "closed" ||
+      entry.state === "closing" ||
+      entry.resourcesClosed === true
+    )
+      throw new Error(`Agent ${entry.taskName} is closed`);
+    return entry;
+  }
+  private requireTurn(id: string, turnId: number): PendingTurn {
+    z.number().int().positive().parse(turnId);
+    const turn = this.requireAgent(id).turns.get(turnId);
+    if (turn === undefined) throw new Error(`Unknown turn ${turnId} for ${id}`);
+    return turn;
+  }
+  private modelStatus(entry: AgentEntry): unknown {
+    if (entry.state === "starting") return "pending_init";
+    if (entry.current !== undefined) return "running";
+    if (entry.state === "closed" || entry.state === "closing")
+      return "shutdown";
+    if (entry.state === "failed")
+      return { errored: entry.failure ?? "Worker failed" };
+    const last = [...entry.turns.values()].at(-1)?.result;
+    if (last?.status === "cancelled" || last?.status === "timed_out")
+      return "interrupted";
+    if (last?.status === "failed")
+      return { errored: last.errorMessage ?? "Worker failed" };
+    return { completed: last?.assistantText ?? null };
+  }
+
+  private envelope(
+    from: string,
+    to: string,
+    kind: PiCollaborationMessage["kind"],
+    text: string,
+  ): PiCollaborationMessage {
+    return {
+      id: randomUUID(),
+      kind,
+      from: this.pathOf(from),
+      to: this.pathOf(to),
+      text,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  private recordMessage(
+    mailbox: Map<string, PiCollaborationMessage>,
+    envelope: PiCollaborationMessage,
+  ): void {
+    if (mailbox.size >= MAX_MAILBOX) throw new Error("Agent mailbox is full");
+    if (mailbox.has(envelope.id)) return;
+    mailbox.set(envelope.id, envelope);
+    this.recordTask(envelope);
+    this.changed();
+  }
+  private recordTask(envelope: PiCollaborationMessage): void {
+    if (
+      this.messageRecords.some((record) => record.envelope.id === envelope.id)
+    )
+      return;
+    this.messageRecords.push({
+      envelope,
+      queuedAt: new Date().toISOString(),
+      consumedAt: null,
+      deferredAt: null,
+      submittedAt: null,
+      error: null,
+    });
+  }
+  private renderTasks(
+    tasks: readonly Pick<PiCollaborationMessage, "from" | "to" | "text">[],
+  ): string {
+    const text = tasks
+      .map((task) => `Task for ${task.to} from ${task.from}:\n${task.text}`)
+      .join("\n\n");
+    textInput.parse(text);
+    return text;
+  }
+  private background(entry: AgentEntry, operation: Promise<unknown>): void {
+    void operation.catch((error: unknown) => {
+      entry.failure = errorText(error);
+      if (entry.state !== "closed" && entry.state !== "closing")
+        entry.state = "failed";
+      this.changed();
+    });
+  }
+  private consume(
+    mailbox: Map<string, PiCollaborationMessage>,
+    ids: readonly string[],
+  ): void {
+    for (const id of ids) {
+      if (!mailbox.delete(id)) continue;
+      const record = this.messageRecords.find(
+        (item) => item.envelope.id === id,
+      );
+      if (record !== undefined) record.consumedAt = new Date().toISOString();
+    }
+    this.changed();
+  }
+  private failMessage(
+    mailbox: Map<string, PiCollaborationMessage>,
+    id: string,
+    error: unknown,
+  ): void {
+    mailbox.delete(id);
+    const record = this.messageRecords.find((item) => item.envelope.id === id);
+    if (record !== undefined) record.error = errorText(error);
+    this.changed();
+  }
+  private async queueMessage(envelope: PiCollaborationMessage): Promise<void> {
+    const id = this.resolveTarget(envelope.to, ROOT);
+    if (id === ROOT) {
+      this.recordMessage(this.rootMailbox, envelope);
+      this.deliverRoot(envelope);
+      return;
+    }
+    const entry = this.requireLive(id);
+    if (entry.mailbox.size >= MAX_MAILBOX)
+      throw new Error("Agent mailbox is full");
+    await this.ensureLoaded(entry);
+    this.recordMessage(entry.mailbox, envelope);
+    try {
+      await this.deliverToWorker(entry, envelope);
+    } catch (error) {
+      this.failMessage(entry.mailbox, envelope.id, error);
+      throw error;
+    }
+  }
+  private deliverRoot(envelope: PiCollaborationMessage): void {
+    this.rootDelivery = this.rootDelivery.then(async () => {
+      const root = this.root;
+      if (root === undefined || !this.rootMailbox.has(envelope.id)) return;
+      try {
+        await root.deliver(envelope);
+      } catch (error) {
+        const record = this.messageRecords.find(
+          (item) => item.envelope.id === envelope.id,
+        );
+        if (record !== undefined) record.error = errorText(error);
+      }
+    });
+  }
+  private async deliverToWorker(
+    entry: AgentEntry,
+    envelope: PiCollaborationMessage,
+  ): Promise<boolean> {
+    if (entry.client === undefined) throw new Error("Worker is not loaded");
+    const requestId = randomUUID();
+    const response = this.ipcResponse(entry.deliveries, requestId);
+    try {
+      await entry.client.send({
+        version: 2,
+        type: "collaboration",
+        requestId,
+        envelope,
+      });
+    } catch (error) {
+      this.rejectRequest(entry.deliveries, requestId, error);
+    }
+    return await response;
+  }
+  private async exportContext(
+    id: string,
+    forkTurns: string,
+  ): Promise<PiSessionForkContext> {
+    if (id === ROOT) {
+      if (this.root === undefined)
+        throw new Error("Root Session is unavailable for context fork");
+      return this.root.exportForkContext(forkTurns);
+    }
+    const entry = this.requireLive(id);
+    await this.ensureLoaded(entry);
+    const requestId = randomUUID();
+    const response = this.ipcResponse(entry.exports, requestId);
+    try {
+      await entry.client!.send({
+        version: 2,
+        type: "export_context",
+        requestId,
+        forkTurns,
+      });
+    } catch (error) {
+      this.rejectRequest(entry.exports, requestId, error);
+    }
+    return await response;
+  }
+  private ipcResponse<T>(
+    requests: Map<string, Request<T>>,
+    id: string,
+  ): Promise<T> {
+    if (requests.size >= AGENT_IPC_MAX_PENDING)
+      throw new Error("Too many pending worker control requests");
+    const response = new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        requests.delete(id);
+        reject(new Error("Worker control response timed out"));
+      }, IPC_RESPONSE_TIMEOUT_MS);
+      requests.set(id, { resolve, reject, timer });
+    });
+    void response.catch(() => undefined);
+    return response;
+  }
+  private rejectRequest<T>(
+    requests: Map<string, Request<T>>,
+    id: string,
+    error: unknown,
+  ): void {
+    const pending = requests.get(id);
+    if (pending === undefined) return;
+    clearTimeout(pending.timer);
+    requests.delete(id);
+    pending.reject(new Error(errorText(error)));
+  }
+  private rejectIpc(entry: AgentEntry, error: Error): void {
+    for (const id of entry.deliveries.keys())
+      this.rejectRequest(entry.deliveries, id, error);
+    for (const id of entry.exports.keys())
+      this.rejectRequest(entry.exports, id, error);
+  }
+
+  private async reserveResident(entry: AgentEntry): Promise<void> {
+    const operation = this.residencyOperation.then(async () => {
+      if (entry.resident) return;
+      const residents = [...this.agents.values()].filter(
+        (agent) => agent.resident,
+      );
+      if (residents.length >= this.maxAgents) {
+        const candidate = residents
+          .filter(
+            (agent) =>
+              agent !== entry &&
+              agent.current === undefined &&
+              agent.next === undefined &&
+              agent.state === "idle" &&
+              agent.mailbox.size === 0 &&
+              agent.requests.size === 0 &&
+              agent.deliveries.size === 0 &&
+              agent.exports.size === 0 &&
+              agent.sessionFile !== undefined,
+          )
+          .sort((a, b) => a.lastUsed - b.lastUsed)[0];
+        if (candidate === undefined)
+          throw new Error(
+            `All ${this.maxAgents} worker residency slots are occupied`,
+          );
+        candidate.processGeneration += 1;
+        candidate.cleanupBlocked = true;
+        const cleanup = await Promise.allSettled([
+          candidate.resource?.cancel(),
+          candidate.client?.close(),
+        ]);
+        if (cleanup[1]?.status === "fulfilled") {
+          candidate.client = undefined;
+          candidate.resident = false;
+        }
+        const errors = cleanup.flatMap((result) =>
+          result.status === "rejected" ? [result.reason as unknown] : [],
+        );
+        if (errors.length !== 0) {
+          candidate.state = "failed";
+          candidate.failure = `Worker eviction cleanup failed: ${errors.map(errorText).join("; ")}`;
+          throw new AggregateError(errors, candidate.failure);
+        }
+        candidate.cleanupBlocked = false;
+      }
+      entry.resident = true;
+      entry.lastUsed = ++this.clock;
+      this.changed();
+    });
+    this.residencyOperation = operation.catch(() => undefined);
+    await operation;
+  }
+  private async loadWorker(entry: AgentEntry): Promise<void> {
+    if (entry.configuration === undefined)
+      throw new Error("Worker configuration is unavailable");
+    await this.reserveResident(entry);
+    const generation = ++entry.processGeneration;
+    entry.failing = undefined;
+    const { forkContext, ...resumeConfiguration } = entry.configuration;
+    try {
+      const client = await this.workerFactory({
+        configuration: {
+          ...(entry.sessionFile === undefined
+            ? {
+                ...resumeConfiguration,
+                ...(forkContext === undefined ? {} : { forkContext }),
+              }
+            : resumeConfiguration),
+          ...(entry.sessionFile === undefined
+            ? {}
+            : { resumeSessionFile: entry.sessionFile }),
+        },
+        onMessage: (message) => {
+          if (entry.processGeneration === generation)
+            this.handleMessage(entry, message);
+        },
+        onExit: (error) => {
+          if (entry.processGeneration === generation)
+            this.background(entry, this.workerFailed(entry, error));
+        },
+      });
+      // Retain ownership before attempting cancellation cleanup. A failed close
+      // must remain reachable for the Host's final cleanup retry.
+      entry.client = client;
+      if (
+        entry.processGeneration !== generation ||
+        this.disposed ||
+        entry.state === "closing" ||
+        entry.state === "closed"
+      ) {
+        await client.close();
+        entry.client = undefined;
+        throw new Error("Agent startup was cancelled");
+      }
+      for (const message of entry.mailbox.values())
+        await this.deliverToWorker(entry, message);
+    } catch (error) {
+      entry.resident = entry.client !== undefined;
+      if (entry.client !== undefined) {
+        entry.cleanupBlocked = true;
+        if (entry.state !== "closing" && entry.state !== "closed")
+          entry.state = "failed";
+      }
+      throw error;
+    }
+  }
+  private async ensureLoaded(entry: AgentEntry): Promise<void> {
+    if (entry.loading !== undefined) return await entry.loading;
+    if (entry.client !== undefined && entry.failing === undefined) {
+      entry.lastUsed = ++this.clock;
+      return;
+    }
+    const loading = (async () => {
+      if (entry.failing !== undefined) await entry.failing;
+      if (entry.cleanupBlocked)
+        throw new Error(`Agent ${entry.taskName} cleanup is incomplete`);
+      if (entry.client === undefined) await this.loadWorker(entry);
+    })();
+    entry.loading = loading;
+    try {
+      await loading;
+    } finally {
+      if (entry.loading === loading) entry.loading = undefined;
+    }
+  }
 
   private makeTurn(
     entry: AgentEntry,
-    task: string,
-    prompt: string,
+    task: PiCollaborationMessage,
   ): PendingTurn {
+    this.recordTask(task);
     let resolve: (result: AgentTurnRecord) => void = () => undefined;
-    const done = new Promise<AgentTurnRecord>((resolveResult) => {
-      resolve = resolveResult;
+    const done = new Promise<AgentTurnRecord>((accept) => {
+      resolve = accept;
     });
     const turn: PendingTurn = {
       turnId: entry.nextTurnId++,
-      task,
-      prompt,
+      task: task.text,
+      tasks: [task],
       done,
       resolve,
       startedAt: null,
@@ -592,40 +1334,96 @@ export class AgentSupervisor implements RootCollaborationPort {
     entry.turns.set(turn.turnId, turn);
     return turn;
   }
-
   private startNext(entry: AgentEntry): void {
-    if (entry.state !== "idle" || entry.current !== undefined || this.disposed)
+    if (
+      entry.state !== "idle" ||
+      entry.current !== undefined ||
+      entry.next === undefined ||
+      this.disposed ||
+      !this.accepting
+    )
       return;
-    const turn = entry.queue.shift();
-    if (turn === undefined) return;
+    const turn = entry.next;
+    entry.next = undefined;
     entry.current = turn;
     entry.state = "running";
+    entry.lastUsed = ++this.clock;
     turn.startedAt = new Date().toISOString();
     turn.timer = setTimeout(() => {
-      void this.cancelTurn(entry, turn, "timed_out").catch((error: unknown) => {
-        void this.workerFailed(entry, error);
-      });
+      this.background(
+        entry,
+        this.cancelTurn(entry, turn, "timed_out").catch((error: unknown) =>
+          this.workerFailed(entry, error),
+        ),
+      );
     }, this.timeoutMs);
+    const text = this.renderTasks(turn.tasks);
     this.changed();
-    void entry.client
-      ?.send({
-        version: 1,
-        type: "prompt",
-        turnId: turn.turnId,
-        text: turn.prompt,
-      })
-      .catch((error: unknown) => this.workerFailed(entry, error));
+    this.background(
+      entry,
+      entry.client
+        ?.send({ version: 2, type: "prompt", turnId: turn.turnId, text })
+        .then(() => {
+          for (const task of turn.tasks) {
+            const record = this.messageRecords.find(
+              (item) => item.envelope.id === task.id,
+            );
+            if (record !== undefined)
+              record.submittedAt = new Date().toISOString();
+          }
+        })
+        .catch((error: unknown) => this.workerFailed(entry, error)) ??
+        Promise.resolve(),
+    );
   }
 
   private handleMessage(entry: AgentEntry, message: AgentWorkerMessage): void {
-    const turn = entry.current;
     if (message.type === "ready") return;
     if (message.type === "fatal") {
-      void this.workerFailed(entry, new Error(message.error));
+      this.background(
+        entry,
+        this.workerFailed(entry, new Error(message.error)),
+      );
       return;
     }
+    if (message.type === "phase") {
+      if (message.phase === "current") {
+        for (const task of entry.current?.tasks ?? []) {
+          const record = this.messageRecords.find(
+            (item) => item.envelope.id === task.id,
+          );
+          if (record !== undefined)
+            record.consumedAt ??= new Date().toISOString();
+        }
+      }
+      return;
+    }
+    if (message.type === "collaboration_consumed") {
+      this.consume(entry.mailbox, message.ids);
+      return;
+    }
+    if (message.type === "collaboration_accepted") {
+      const request = entry.deliveries.get(message.requestId);
+      if (request !== undefined) {
+        clearTimeout(request.timer);
+        entry.deliveries.delete(message.requestId);
+        request.resolve(message.acceptedInCurrentTurn);
+      }
+      return;
+    }
+    if (message.type === "context_exported") {
+      const request = entry.exports.get(message.requestId);
+      if (request !== undefined) {
+        clearTimeout(request.timer);
+        entry.exports.delete(message.requestId);
+        request.resolve(message.context);
+      }
+      return;
+    }
+    const turn = entry.current;
     if (
       turn === undefined ||
+      !("turnId" in message) ||
       message.turnId !== turn.turnId ||
       turn.result !== undefined
     )
@@ -638,6 +1436,7 @@ export class AgentSupervisor implements RootCollaborationPort {
       entry.requests.get(message.requestId)?.controller.abort();
       return;
     }
+    if (message.type !== "completed" && message.type !== "failed") return;
     const result: AgentTurnCompletion =
       message.type === "failed"
         ? {
@@ -663,7 +1462,7 @@ export class AgentSupervisor implements RootCollaborationPort {
             errorMessage: message.result.errorMessage,
             piResult: message.result,
           };
-    void this.finish(entry, turn, result);
+    this.background(entry, this.finish(entry, turn, result));
   }
 
   private handleTool(
@@ -671,19 +1470,22 @@ export class AgentSupervisor implements RootCollaborationPort {
     turn: PendingTurn,
     message: Extract<AgentWorkerMessage, { type: "tool_request" }>,
   ): void {
-    const respond = async (result: PiProxyToolResult): Promise<void> => {
+    const respond = async (result: PiProxyToolResult) => {
       if (entry.current === turn && turn.result === undefined)
         await entry.client?.send({
-          version: 1,
+          version: 2,
           type: "tool_result",
           turnId: turn.turnId,
           requestId: message.requestId,
           result,
         });
     };
-    const reject = (reason: string): void => {
-      void respond(agentToolError(reason)).catch((error: unknown) =>
-        this.workerFailed(entry, error),
+    const reject = (reason: string) => {
+      this.background(
+        entry,
+        respond(agentToolError(reason)).catch((error: unknown) =>
+          this.workerFailed(entry, error),
+        ),
       );
     };
     if (turn.forcedStatus !== undefined || turn.finishing !== undefined) {
@@ -691,9 +1493,9 @@ export class AgentSupervisor implements RootCollaborationPort {
       return;
     }
     if (entry.requests.has(message.requestId)) {
-      void this.workerFailed(
+      this.background(
         entry,
-        new Error("Worker reused a tool request ID"),
+        this.workerFailed(entry, new Error("Worker reused a tool request ID")),
       );
       return;
     }
@@ -701,30 +1503,9 @@ export class AgentSupervisor implements RootCollaborationPort {
       reject("Too many outstanding worker tool requests");
       return;
     }
-    if (message.name === "send_message") {
-      try {
-        const args = z
-          .object({ message: textInput })
-          .strict()
-          .parse(message.arguments);
-        if (this.notifications.length >= MAX_NOTIFICATIONS) {
-          reject(
-            "Root message queue is full; wait before sending more messages",
-          );
-          return;
-        }
-        this.notify(
-          `Message from ${entry.agentId}, turn ${turn.turnId} (collaboration information):\n${args.message}`,
-        );
-        void respond({
-          content: [{ type: "text", text: "Message queued for Root" }],
-        }).catch((error: unknown) => this.workerFailed(entry, error));
-      } catch (error) {
-        reject(errorText(error));
-      }
-      return;
-    }
+    const collaboration = CONTROL_NAMES.has(message.name);
     if (
+      !collaboration &&
       !entry.resource?.workerConfiguration.tools.some(
         (tool) => tool.name === message.name,
       )
@@ -732,49 +1513,60 @@ export class AgentSupervisor implements RootCollaborationPort {
       reject("Tool is not available to this worker");
       return;
     }
-    if (message.name !== "game_stop" && turn.toolCalls >= TURN_TOOL_BUDGET) {
+    if (
+      !collaboration &&
+      message.name !== "game_stop" &&
+      turn.toolCalls >= TURN_TOOL_BUDGET
+    ) {
       reject(`Worker turn tool budget exhausted (${TURN_TOOL_BUDGET})`);
       return;
     }
-    if (message.name !== "game_stop") turn.toolCalls += 1;
+    if (!collaboration && message.name !== "game_stop") turn.toolCalls += 1;
     const controller = new AbortController();
     const done = Promise.resolve()
       .then(async () => {
         try {
-          const result = await entry.resource!.invokeTool(
-            message,
-            controller.signal,
-            (update) => {
-              if (entry.current !== turn || turn.forcedStatus !== undefined)
-                return;
-              void entry.client
-                ?.send({
-                  version: 1,
-                  type: "tool_update",
-                  turnId: turn.turnId,
-                  requestId: message.requestId,
-                  result: update,
-                })
-                .catch((error: unknown) => this.workerFailed(entry, error));
-            },
-          );
+          const result = collaboration
+            ? await this.invokeCollaboration(
+                message.name,
+                message.arguments,
+                controller.signal,
+                entry.agentId,
+              )
+            : await entry.resource!.invokeTool(
+                message,
+                controller.signal,
+                (result) => {
+                  if (entry.current === turn && turn.forcedStatus === undefined)
+                    this.background(
+                      entry,
+                      entry.client
+                        ?.send({
+                          version: 2,
+                          type: "tool_update",
+                          turnId: turn.turnId,
+                          requestId: message.requestId,
+                          result,
+                        })
+                        .catch((error: unknown) =>
+                          this.workerFailed(entry, error),
+                        ) ?? Promise.resolve(),
+                    );
+                },
+              );
           await respond(result);
         } catch (error) {
           await respond(agentToolError(errorText(error)));
         }
       })
       .catch((error: unknown) => {
-        void this.workerFailed(entry, error);
+        this.background(entry, this.workerFailed(entry, error));
       })
       .finally(() => {
         entry.requests.delete(message.requestId);
         this.changed();
       });
-    entry.requests.set(message.requestId, {
-      turnId: turn.turnId,
-      controller,
-      done,
-    });
+    entry.requests.set(message.requestId, { controller, done });
   }
 
   private async finish(
@@ -800,32 +1592,44 @@ export class AgentSupervisor implements RootCollaborationPort {
         resourcesSettled = true;
         evidence = await entry.resource?.finishTurn(turn.turnId, completion);
       } catch (error) {
+        entry.failure = `Result capture failed: ${errorText(error)}`;
+        entry.state = entry.state === "closing" ? "closing" : "failed";
+        this.cancelPending(entry, "failed", entry.failure);
         if (!resourcesSettled) {
-          if (entry.state !== "closing") entry.state = "failed";
-          entry.failure = `Worker resources failed to stop: ${errorText(error)}`;
-          this.cancelQueued(entry, "failed", entry.failure);
-          const stopped = await Promise.allSettled([
+          entry.processGeneration += 1;
+          this.rejectIpc(entry, new Error(entry.failure));
+          const cleanup = await Promise.allSettled([
             entry.client?.close(),
             entry.resource?.close(),
           ]);
-          entry.resourcesClosed = stopped.every(
+          entry.resourcesClosed = cleanup.every(
             (result) => result.status === "fulfilled",
           );
+          entry.cleanupBlocked = !entry.resourcesClosed;
+          if (cleanup[0]?.status === "fulfilled") {
+            entry.client = undefined;
+            entry.resident = false;
+          }
+          if (!entry.resourcesClosed)
+            entry.failure += `; cleanup: ${cleanup.flatMap((result) => (result.status === "rejected" ? [errorText(result.reason)] : [])).join("; ")}`;
         }
         completion = {
           ...completion,
           status:
             completion.status === "completed" ? "failed" : completion.status,
-          errorMessage: [
-            completion.errorMessage,
-            `Result capture failed: ${errorText(error)}`,
-          ]
+          errorMessage: [completion.errorMessage, entry.failure]
             .filter(Boolean)
             .join("; "),
         };
       }
-      const record = Object.freeze({
+      if (completion.piResult !== undefined) {
+        entry.sessionFile = completion.piResult.sessionFile;
+        entry.sessionId = completion.piResult.sessionId;
+      }
+      const record: AgentTurnRecord = Object.freeze({
         ...completion,
+        taskName: entry.taskName,
+        parentAgentId: entry.parentAgentId,
         task: turn.task,
         startedAt: turn.startedAt,
         finishedAt: new Date().toISOString(),
@@ -837,48 +1641,65 @@ export class AgentSupervisor implements RootCollaborationPort {
       } catch (error) {
         entry.failure = `Result persistence failed: ${errorText(error)}`;
       }
-      turn.resolve(record);
       if (entry.current === turn) entry.current = undefined;
       if (entry.state === "running") entry.state = "idle";
-      this.notify(
-        `Agent ${entry.agentId}, turn ${turn.turnId} ${record.status}. Completed means the loop finished, not acceptance.\n${record.assistantText.slice(0, 16_384)}${record.assistantText.length > 16_384 ? "\n[Summary truncated; use read_agent_result]" : ""}${record.errorMessage === null ? "" : `\nError: ${record.errorMessage}`}`,
-      );
+      entry.lastUsed = ++this.clock;
+      turn.resolve(record);
+      const fullSummary = `${record.status}. Completed means the loop finished, not acceptance.\n${record.assistantText}${record.errorMessage === null ? "" : `\nError: ${record.errorMessage}`}`;
+      const summary =
+        Buffer.byteLength(fullSummary) > 60 * 1024
+          ? `${Buffer.from(fullSummary)
+              .subarray(0, 60 * 1024)
+              .toString(
+                "utf8",
+              )}\n[Completion truncated; full record retained by Host]`
+          : fullSummary;
+      try {
+        await this.queueMessage(
+          this.envelope(
+            entry.agentId,
+            entry.parentAgentId,
+            "completion",
+            summary,
+          ),
+        );
+      } catch (error) {
+        entry.failure = `Completion delivery failed: ${errorText(error)}`;
+      }
       this.changed();
       this.startNext(entry);
     })();
     return await turn.finishing;
   }
-
-  private cancelQueued(
+  private cancelPending(
     entry: AgentEntry,
     status: "cancelled" | "failed",
     reason: string,
   ): void {
-    for (const turn of entry.queue.splice(0)) {
-      const record: AgentTurnRecord = Object.freeze({
-        agentId: entry.agentId,
-        turnId: turn.turnId,
-        task: turn.task,
-        startedAt: null,
-        finishedAt: new Date().toISOString(),
-        status,
-        assistantText: "",
-        errorMessage: reason,
+    const turn = entry.next;
+    if (turn === undefined) return;
+    entry.next = undefined;
+    const record: AgentTurnRecord = Object.freeze({
+      agentId: entry.agentId,
+      taskName: entry.taskName,
+      parentAgentId: entry.parentAgentId,
+      turnId: turn.turnId,
+      task: turn.task,
+      startedAt: null,
+      finishedAt: new Date().toISOString(),
+      status,
+      assistantText: "",
+      errorMessage: reason,
+    });
+    turn.result = record;
+    turn.resolve(record);
+    void Promise.resolve()
+      .then(() => this.options.onResult?.(record))
+      .catch((error: unknown) => {
+        entry.failure = errorText(error);
       });
-      turn.result = record;
-      turn.resolve(record);
-      this.notify(
-        `Agent ${entry.agentId}, queued turn ${turn.turnId} ${status}: ${reason}`,
-      );
-      void Promise.resolve(this.options.onResult?.(record)).catch(
-        (error: unknown) => {
-          entry.failure = `Result persistence failed: ${errorText(error)}`;
-        },
-      );
-    }
     this.changed();
   }
-
   private async cancelTurn(
     entry: AgentEntry,
     turn: PendingTurn,
@@ -889,401 +1710,255 @@ export class AgentSupervisor implements RootCollaborationPort {
     for (const request of entry.requests.values()) request.controller.abort();
     if (turn.finishing === undefined && turn.interruptTimer === undefined) {
       turn.interruptTimer = setTimeout(() => {
-        entry.state = entry.state === "closing" ? "closing" : "failed";
-        entry.failure =
-          "Worker did not settle after cancellation and was terminated";
         void (async () => {
-          await entry.client?.close().catch((error: unknown) => {
-            entry.failure += `; process cleanup: ${errorText(error)}`;
-          });
+          entry.processGeneration += 1;
+          this.rejectIpc(
+            entry,
+            new Error("Worker was terminated after cancellation"),
+          );
+          let closeFailure: unknown;
+          try {
+            await entry.client?.close();
+            entry.client = undefined;
+            entry.resident = false;
+          } catch (error) {
+            closeFailure = error;
+            entry.cleanupBlocked = true;
+            if (entry.state !== "closing") entry.state = "failed";
+          }
           await this.finish(entry, turn, {
             agentId: entry.agentId,
             turnId: turn.turnId,
             status,
             assistantText: "",
-            errorMessage: entry.failure ?? "Worker was terminated",
+            errorMessage:
+              closeFailure === undefined
+                ? "Worker did not settle after cancellation and was terminated"
+                : `Worker did not settle; termination failed: ${errorText(closeFailure)}`,
           });
-          this.cancelQueued(entry, "cancelled", "Worker was terminated");
-          await entry.resource?.close();
-          entry.resourcesClosed = true;
         })().catch((error: unknown) => {
           entry.failure = errorText(error);
           this.changed();
         });
       }, this.interruptGraceMs);
       await entry.client
-        ?.send({ version: 1, type: "interrupt", turnId: turn.turnId })
+        ?.send({ version: 2, type: "interrupt", turnId: turn.turnId })
         .catch(() => undefined);
     }
     await entry.resource?.cancel();
     await turn.done;
   }
-
   private async workerFailed(entry: AgentEntry, error: unknown): Promise<void> {
     if (entry.state === "closed") return;
     entry.failing ??= (async () => {
       entry.failure = errorText(error);
+      entry.cleanupBlocked = true;
       if (entry.state !== "closing") entry.state = "failed";
-      this.cancelQueued(entry, "failed", entry.failure);
-      if (entry.current !== undefined) {
-        const turn = entry.current;
-        await this.finish(entry, turn, {
+      this.rejectIpc(entry, new Error(entry.failure));
+      this.cancelPending(entry, "failed", entry.failure);
+      if (entry.current !== undefined)
+        await this.finish(entry, entry.current, {
           agentId: entry.agentId,
-          turnId: turn.turnId,
-          status: turn.forcedStatus ?? "failed",
+          turnId: entry.current.turnId,
+          status: entry.current.forcedStatus ?? "failed",
           assistantText: "",
           errorMessage: entry.failure,
         });
-      }
+      entry.processGeneration += 1;
       const cleanup = await Promise.allSettled([
         entry.resource?.cancel(),
         entry.client?.close(),
       ]);
-      await entry.resource?.close();
+      if (cleanup[1]?.status === "fulfilled") {
+        entry.client = undefined;
+        entry.resident = false;
+      }
+      entry.cleanupBlocked = cleanup.some(
+        (result) => result.status === "rejected",
+      );
       const errors = cleanup.flatMap((result) =>
         result.status === "rejected" ? [errorText(result.reason)] : [],
       );
       if (errors.length !== 0)
         entry.failure += `; cleanup: ${errors.join("; ")}`;
-      else entry.resourcesClosed = true;
       this.changed();
     })();
-    return await entry.failing;
+    await entry.failing;
   }
-
-  private requireAgent(agentId: string): AgentEntry {
-    agentIdInput.parse(agentId);
-    const entry = this.agents.get(agentId);
-    if (entry === undefined) throw new Error(`Unknown agent ${agentId}`);
-    return entry;
-  }
-  private requireLive(agentId: string): AgentEntry {
-    const entry = this.requireAgent(agentId);
-    if (
-      entry.state === "closed" ||
-      entry.state === "closing" ||
-      entry.state === "failed"
-    )
-      throw new Error(`Agent ${agentId} is ${entry.state}`);
-    return entry;
-  }
-  private requireTurn(agentId: string, turnId: number): PendingTurn {
-    turnIdInput.parse(turnId);
-    const turn = this.requireAgent(agentId).turns.get(turnId);
-    if (turn === undefined)
-      throw new Error(`Unknown turn ${turnId} for ${agentId}`);
-    return turn;
+  private async stopWorkers(): Promise<void> {
+    const results = await Promise.allSettled(
+      [...this.agents.values()].map(async (entry) => {
+        this.cancelPending(
+          entry,
+          "cancelled",
+          "Task stopped before activation",
+        );
+        if (entry.current !== undefined)
+          await this.cancelTurn(entry, entry.current, "cancelled");
+        await entry.loading?.catch(() => undefined);
+        if (entry.cleanupBlocked) await this.closeAgent(entry.agentId);
+      }),
+    );
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason as unknown] : [],
+    );
+    if (errors.length !== 0)
+      throw new AggregateError(errors, "Workers failed to stop");
   }
   private changed(): void {
-    for (const listener of this.listeners) listener();
-  }
-  private notify(message: string): void {
-    if (this.notifications.length >= MAX_NOTIFICATIONS) {
-      this.notifications.shift();
-      this.notificationOverflow += 1;
-    }
-    this.notifications.push(message);
-    this.changed();
-    this.deliverWhileRootRuns();
-  }
-  private consumeCompletion(result: AgentTurnCompletion): void {
-    const prefix = `Agent ${result.agentId}, turn ${result.turnId} `;
-    for (let index = this.notifications.length - 1; index >= 0; index -= 1) {
-      if (this.notifications[index]?.startsWith(prefix))
-        this.notifications.splice(index, 1);
-    }
-  }
-  private deliverWhileRootRuns(): void {
-    if (
-      this.backgroundDelivery !== undefined ||
-      !this.autoContinue ||
-      this.root === undefined ||
-      this.root.isIdle() ||
-      this.disposed
-    )
-      return;
-    const control = this.root;
-    const generation = this.generation;
-    let delivered = false;
-    this.backgroundDelivery = Promise.resolve()
-      .then(async () => {
-        if (
-          this.root !== control ||
-          generation !== this.generation ||
-          !this.autoContinue ||
-          control.isIdle()
-        )
-          return;
-        const messages = this.notifications.splice(0, 16);
-        if (messages.length === 0) return;
-        try {
-          await control.deliver(
-            `Worker collaboration information; assess against actual source and execution evidence.\n${messages.join("\n\n")}`,
-          );
-          delivered = true;
-        } catch {
-          if (this.root === control && generation === this.generation)
-            this.notifications.unshift(...messages);
-        }
-      })
-      .finally(() => {
-        this.backgroundDelivery = undefined;
-        this.changed();
-        if (delivered && this.notifications.length !== 0)
-          this.deliverWhileRootRuns();
-      });
+    for (const listener of [...this.listeners]) listener();
   }
   private async waitForChange(
     timeoutMs: number,
     signal?: AbortSignal,
+    ready: () => boolean = () => false,
   ): Promise<void> {
     signal?.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
-      const finish = (): void => {
+      const clean = () => {
         clearTimeout(timer);
         this.listeners.delete(finish);
         signal?.removeEventListener("abort", abort);
+      };
+      const finish = () => {
+        clean();
         resolve();
       };
-      const abort = (): void => {
-        clearTimeout(timer);
-        this.listeners.delete(finish);
-        signal?.removeEventListener("abort", abort);
+      const abort = () => {
+        clean();
         reject(
           signal?.reason instanceof Error
             ? signal.reason
             : new Error("Agent wait cancelled"),
         );
       };
-      const timer = setTimeout(finish, timeoutMs);
+      const timer = setTimeout(finish, Math.max(0, timeoutMs));
       this.listeners.add(finish);
       signal?.addEventListener("abort", abort, { once: true });
+      // Subscribe before the final check so an arriving message cannot be lost.
+      if (ready()) finish();
+      else if (signal?.aborted === true) abort();
     });
-  }
-  private async drainResults(signal?: AbortSignal): Promise<void> {
-    const generation = this.generation;
-    const control = this.root;
-    if (control === undefined) return;
-    while (
-      this.autoContinue &&
-      generation === this.generation &&
-      this.root === control &&
-      !this.disposed
-    ) {
-      signal?.throwIfAborted();
-      if (this.backgroundDelivery !== undefined) {
-        await this.backgroundDelivery;
-        continue;
-      }
-      if (!control.isIdle()) {
-        await this.waitForChange(25, signal);
-        continue;
-      }
-      if (this.notifications.length !== 0) {
-        const messages = this.notifications.splice(0, 16);
-        const dropped = this.notificationOverflow;
-        this.notificationOverflow = 0;
-        await control.deliver(
-          `Worker collaboration information; assess findings using actual source and execution evidence.\n${dropped === 0 ? "" : `[${dropped} older notifications omitted; durable turn results remain available.]\n`}${messages.join("\n\n")}`,
-        );
-        continue;
-      }
-      if (
-        ![...this.agents.values()].some(
-          (entry) =>
-            entry.current !== undefined ||
-            entry.queue.length !== 0 ||
-            entry.state === "starting",
-        )
-      )
-        return;
-      await this.waitForChange(60_000, signal);
-    }
   }
 }
 
-const targetSchema = Type.Object(
-  { agentId: Type.String(), turnId: Type.Integer({ minimum: 1 }) },
-  { additionalProperties: false },
-);
-const named = { agentId: Type.String() };
-const numbered = { ...named, turnId: Type.Integer({ minimum: 1 }) };
 const messageSchema = Type.String({
   minLength: 1,
   maxLength: AGENT_MESSAGE_MAX_LENGTH,
 });
-const descriptor = (
+function descriptor(
   name: string,
   description: string,
   properties: Parameters<typeof Type.Object>[0],
-): PiProxyToolDescriptor => ({
-  name,
-  description,
-  parameters: Type.Object(properties, {
-    additionalProperties: false,
-  }) as unknown as Record<string, unknown>,
-});
+): PiProxyToolDescriptor {
+  return {
+    name,
+    description,
+    parameters: Type.Object(properties, {
+      additionalProperties: false,
+    }) as unknown as Record<string, unknown>,
+  };
+}
+function spawnPolicyDescription(policy: AgentSpawnPolicy | null): string {
+  if (policy === null) return "";
+  const constraints = [
+    ...(policy.maxCreatedAgents === undefined
+      ? []
+      : [
+          `At most ${policy.maxCreatedAgents} non-root agent identities may be created over this run, including failed, closed and unloaded agents.`,
+        ]),
+    ...(policy.maxDepth === undefined
+      ? []
+      : [`Maximum agent depth is ${policy.maxDepth}; Root has depth zero.`]),
+    ...(policy.lockedRuntime === undefined
+      ? []
+      : [
+          `Worker runtime is fixed to ${policy.lockedRuntime.provider}/${policy.lockedRuntime.model} with thinking level ${policy.lockedRuntime.thinkingLevel}; omit model and reasoning_effort.`,
+        ]),
+  ];
+  return constraints.length === 0
+    ? ""
+    : `Host spawn policy: ${constraints.join(" ")}`;
+}
 
-export function createAgentSupervisorTools(
-  supervisor: AgentSupervisor,
-): ReturnType<typeof createPiProxyToolDefinitions> {
-  const descriptors: PiProxyToolDescriptor[] = [
+function collaborationDescriptors(
+  policy: AgentSpawnPolicy | null = null,
+): PiProxyToolDescriptor[] {
+  return [
     descriptor(
       "spawn_agent",
-      "Delegate an independent bounded task to a new Pi worker with its own candidate workspace. Returns immediately after startup. Only Root can spawn.",
-      { task: messageSchema, context: Type.Optional(messageSchema) },
+      [
+        "Spawn an agent for a bounded independent task. All agents share the candidate and can delegate. task_name is relative to you; use canonical paths to address siblings. fork_turns defaults to all and inherits filtered conversation context; none starts from the task alone.",
+        spawnPolicyDescription(policy),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      {
+        message: messageSchema,
+        task_name: Type.String({ pattern: "^[a-z0-9_]+$", maxLength: 128 }),
+        fork_turns: Type.Optional(Type.String()),
+        ...(policy?.lockedRuntime === undefined
+          ? {
+              model: Type.Optional(Type.String()),
+              reasoning_effort: Type.Optional(
+                Type.Union(
+                  [
+                    "off",
+                    "minimal",
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max",
+                  ].map((value) => Type.Literal(value)),
+                ),
+              ),
+            }
+          : {}),
+      },
     ),
     descriptor(
       "list_agents",
-      "Inspect worker state and queue occupancy. Idle workers still occupy slots.",
-      {},
+      "List currently loaded agents in the current root tree, optionally under a relative or canonical path prefix.",
+      { path_prefix: Type.Optional(Type.String()) },
     ),
     descriptor(
       "send_message",
-      "Send a correction or finding to an existing worker without starting a new task.",
-      { ...named, message: messageSchema },
+      "Queue information for an agent. This does not start an idle agent turn.",
+      { target: Type.String(), message: messageSchema },
     ),
     descriptor(
       "followup_task",
-      "Queue another task in an existing worker Session and workspace.",
-      { ...named, task: messageSchema },
+      "Give a non-root agent a task. Busy agents consume it at the next safe boundary; idle agents start one turn.",
+      { target: Type.String(), message: messageSchema },
     ),
     descriptor(
       "wait_agent",
-      "Wait for specified immutable turn results. A timeout does not cancel workers.",
+      "Wait for any mailbox activity or new user input. Returns a summary; messages are delivered through the normal inbox. Timeout does not cancel workers; waiting keeps your execution slot.",
       {
-        targets: Type.Array(targetSchema, { minItems: 1, maxItems: 32 }),
-        mode: Type.Optional(
-          Type.Union([Type.Literal("any"), Type.Literal("all")]),
-        ),
-        timeoutMs: Type.Optional(
+        timeout_ms: Type.Optional(
           Type.Integer({ minimum: 1, maximum: 3_600_000 }),
         ),
       },
     ),
     descriptor(
-      "read_agent_result",
-      "Read a finished worker summary, candidate diff, or execution evidence with pagination.",
-      {
-        ...numbered,
-        section: Type.Optional(
-          Type.Union([
-            Type.Literal("summary"),
-            Type.Literal("diff"),
-            Type.Literal("evidence"),
-          ]),
-        ),
-        offset: Type.Optional(Type.Integer({ minimum: 0 })),
-        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 65_536 })),
-      },
-    ),
-    descriptor(
       "interrupt_agent",
-      "Cancel the current worker turn and queued tasks; retain a cooperative worker Session.",
-      named,
-    ),
-    descriptor(
-      "close_agent",
-      "Close a worker and free its slot; retain recorded candidates and evidence.",
-      named,
-    ),
-    descriptor(
-      "apply_agent_patch",
-      "Explicitly merge a frozen worker candidate into Root. Conflicts leave Root unchanged; verify the merged candidate afterwards.",
-      numbered,
+      "Interrupt another non-root agent's current turn, retaining its Session and changes. Descendants are not interrupted.",
+      { target: Type.String() },
     ),
   ];
-  return createPiProxyToolDefinitions(descriptors, async (request, signal) => {
-    const args = z.record(z.string(), z.unknown()).parse(request.arguments);
-    const agentId = (): string => agentIdInput.parse(args.agentId);
-    const turnId = (): number => turnIdInput.parse(args.turnId);
-    let result: unknown;
-    switch (request.name) {
-      case "spawn_agent":
-        result = await supervisor.spawnAgent(
-          textInput.parse(args.task),
-          args.context === undefined
-            ? undefined
-            : textInput.parse(args.context),
-        );
-        break;
-      case "list_agents":
-        result = supervisor.listAgents();
-        break;
-      case "send_message":
-        await supervisor.sendMessage(agentId(), textInput.parse(args.message));
-        result = { queued: true };
-        break;
-      case "followup_task":
-        result = supervisor.followupTask(agentId(), textInput.parse(args.task));
-        break;
-      case "wait_agent": {
-        const targets = z
-          .array(
-            z.object({ agentId: agentIdInput, turnId: turnIdInput }).strict(),
-          )
-          .min(1)
-          .max(32)
-          .parse(args.targets);
-        const waited = await supervisor.waitAgent(
-          targets,
-          args.mode === undefined
-            ? "all"
-            : z.enum(["any", "all"]).parse(args.mode),
-          args.timeoutMs === undefined
-            ? 30_000
-            : z.number().parse(args.timeoutMs),
-          signal,
-        );
-        result = {
-          timedOut: waited.timedOut,
-          results: waited.results.map(
-            ({
-              agentId: id,
-              turnId: number,
-              status,
-              assistantText,
-              errorMessage,
-            }) => ({
-              agentId: id,
-              turnId: number,
-              status,
-              assistantText: assistantText.slice(0, 4096),
-              truncated: assistantText.length > 4096,
-              errorMessage,
-            }),
-          ),
-        };
-        break;
-      }
-      case "read_agent_result":
-        result = await supervisor.readAgentResult(
-          agentId(),
-          turnId(),
-          args.section === undefined
-            ? "summary"
-            : z.enum(["summary", "diff", "evidence"]).parse(args.section),
-          args.offset === undefined ? 0 : z.number().parse(args.offset),
-          args.limit === undefined ? 16_384 : z.number().parse(args.limit),
-        );
-        break;
-      case "interrupt_agent":
-        await supervisor.interruptAgent(agentId());
-        result = { interrupted: true };
-        break;
-      case "close_agent":
-        await supervisor.closeAgent(agentId());
-        result = { closed: true };
-        break;
-      case "apply_agent_patch":
-        result = await supervisor.applyAgentPatch(agentId(), turnId());
-        break;
-      default:
-        throw new Error("Unknown collaboration tool");
-    }
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
-      details: result,
-    };
-  });
+}
+
+export function createAgentSupervisorTools(
+  supervisor: AgentSupervisor,
+): ReturnType<typeof createPiProxyToolDefinitions> {
+  return createPiProxyToolDefinitions(
+    collaborationDescriptors(supervisor.effectiveSpawnPolicy),
+    async (request, signal) =>
+      await supervisor.invokeCollaboration(
+        request.name,
+        request.arguments,
+        signal,
+      ),
+  );
 }

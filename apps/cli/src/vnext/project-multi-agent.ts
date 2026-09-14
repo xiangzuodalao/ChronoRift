@@ -23,6 +23,10 @@ import {
 } from "./agent-supervisor.js";
 import type { SrtSandboxController } from "./srt-sandbox-controller.js";
 import type { ProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
+import {
+  ProjectExecutionLimitsSchema,
+  type ProjectExecutionLimits,
+} from "./project-execution-limits.js";
 
 const name = z.string().trim().min(1).max(256);
 export const ProjectMultiAgentOptionsSchema = z
@@ -60,6 +64,7 @@ export interface ProjectMultiAgentEnvironmentOptions {
   readonly agentDir?: string | undefined;
   readonly instructions: string;
   readonly configuration: ProjectMultiAgentOptions;
+  readonly executionLimits?: ProjectExecutionLimits | undefined;
   /** Host-only experiment constraints; never populated from model tool input. */
   readonly spawnPolicy?: AgentSpawnPolicy;
   readonly workerFactory?: ConstructorParameters<
@@ -73,7 +78,10 @@ export async function createProjectMultiAgentEnvironment(
   const configuration = ProjectMultiAgentOptionsSchema.parse(
     options.configuration,
   );
-  const budget = new AgentExecutionBudget();
+  const executionLimits = ProjectExecutionLimitsSchema.parse(
+    options.executionLimits ?? {},
+  );
+  const budget = new AgentExecutionBudget(executionLimits.sharedToolCallLimit);
   const candidateGate = new AgentWorkspaceGate();
   const rootScope = new AgentExecutionScope({
     controller: options.controller,
@@ -202,6 +210,8 @@ export async function createProjectMultiAgentEnvironment(
   const supervisor = new AgentSupervisor({
     createResource,
     maxAgents: configuration.maxAgents,
+    turnTimeoutMs: executionLimits.workerTurnTimeoutMs,
+    turnToolCallLimit: executionLimits.workerTurnToolCallLimit,
     cancelRoot: () => rootScope.cancel(),
     ...(options.spawnPolicy === undefined
       ? {}
@@ -293,6 +303,9 @@ export async function createProjectMultiAgentEnvironment(
             },
             sharedToolCalls: budget.used,
             sharedToolCallLimit: budget.limit,
+            ...(options.executionLimits === undefined
+              ? {}
+              : { executionLimits }),
             limitations: [
               "Session statistics are cumulative; reportedUsage counts each session's latest available snapshot once. Interrupted provider work may be unreported.",
               "Token usage is reported, not a hard token or cost cap.",
@@ -309,7 +322,7 @@ export async function createProjectMultiAgentEnvironment(
         count: agents.length,
         maxAgents: configuration.maxAgents,
         sharedToolCalls: budget.used,
-        sharedToolCallLimit: 256 as const,
+        sharedToolCallLimit: budget.limit,
       };
     },
   };

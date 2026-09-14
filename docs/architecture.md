@@ -348,12 +348,24 @@ wire contract 保留原契约，见历史 RFC；
 不在 sandbox 内执行；source snapshot、import cache、operation scratch 和 read-only managed overlay 分离。
 
 Preview 的 native import 在独立 SRT process 和一次性可写 source copy 中执行，candidate 始终隐藏、网络始终拒绝。
-进程结束后 Host 拒绝普通源码/overlay 的新增、删除、内容或 executable 位变化；只允许对应原始文件的 `.import`、
-GDScript/shader 的 `.uid`，以及 `.godot/imported/`、global script class cache 和 UID cache 进入新运行副本。
+进程结束后 Host 拒绝普通源码/overlay 的新增、删除、内容或 executable 位变化；对应原始文件的 `.import`、
+GDScript/shader 的 `.uid`，以及 `.godot/imported/`、global script class cache 和 UID cache 可以进入新运行副本。
+CSV 翻译资源是受限例外：仅接受原始 CSV 的表头 locale、导入声明和路径共同绑定的 data-only Translation /
+OptimizedTranslation。已 tracked 的派生翻译还须验证原声明及原资源，才可重新生成；不按 `.translation` 后缀放行普通文件。
 输出树拒绝软/硬链接、特殊文件、路径逃逸及超限；当前上限为 16,384 项/64 层、单文件 64 MiB/总 256 MiB。
-这些是路径、文件类型、归属和大小检查，不是对 Godot-native 产物内容的可信性背书；引擎仍在 SRT 中解析这些不可信字节。
-编辑器布局/日志不进入新副本。导入非零退出、超时、取消、stderr 中的 Godot ERROR 或 stderr 截断会阻止启动；
-实际 import 输出在无 game process 时也保存。只读 run sidecar 不再二次 import，固定案例与 legacy 路径保持原样。
+这些检查不是对资源语义的可信性背书；引擎仍在 SRT 中解析不可信字节。
+
+导入副本使用 Host 空编辑器场景，临时关闭编辑器插件和提前加载翻译；运行副本恢复原配置。
+自定义 EditorImportPlugin 当前拒绝。普通 `override.cfg` 与 Host inspection 设置按 feature-qualified 设置优先级合并，
+保留原 InputMap、主场景和用户 autoload；阻止自定义 override 链、禁用 override、受管 autoload 和 project.binary 绕过。
+可选 `.cs` 文件仅作为惰性源码保留，显式 .NET/native 依赖仍拒绝；动态加载是否失败以实际引擎输出为准。
+
+编辑器布局/日志不进入新副本。导入非零退出、超时、取消或 stderr 截断阻止启动。只有首次扫描缺失 editor texture
+metadata 的精确诊断允许在完整性检查后进行一次复查，两阶段共享同一 timeout；其他 ERROR 和复查 ERROR 仍拒绝。
+首次诊断以可选 `importBootstrap` 保存在运行记录中，最终 import 输出在无 game process 时也保存。
+只读 run sidecar 不再二次 import，固定案例与 legacy 路径保持原有版本限制。
+Preview 另接受已验证的官方标准 Godot 4.2.2 / 4.3 构建，保留真实 executable version/hash 与每次 launch 的版本 pin 检查；
+具体版本和兼容限制见[开发指南](development.md)。
 
 ProjectAdapter、probe、项目 GDScript、`@tool` 和 EditorPlugin 是同一不可信 Godot principal。只读 overlay、content
 hash 和一次性 handshake token 约束 identity 与意外 peer，但不隔离同进程恶意代码，也不证明 telemetry、Addon

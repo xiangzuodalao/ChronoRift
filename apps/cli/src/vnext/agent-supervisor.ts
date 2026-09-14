@@ -92,6 +92,8 @@ export interface AgentSupervisorOptions {
   /** Non-root active turns and loaded workers. Root has its own reserved slot. */
   readonly maxAgents?: number;
   readonly turnTimeoutMs?: number;
+  /** Host-only non-collaboration calls per turn; cleanup remains available. */
+  readonly turnToolCallLimit?: number;
   readonly interruptGraceMs?: number;
   readonly workerFactory?: AgentWorkerFactory;
   readonly spawnPolicy?: AgentSpawnPolicy;
@@ -317,6 +319,7 @@ export class AgentSupervisor implements RootCollaborationPort {
   private readonly listeners = new Set<() => void>();
   private readonly maxAgents: number;
   private readonly timeoutMs: number;
+  private readonly turnToolCallLimit: number;
   private readonly interruptGraceMs: number;
   private readonly workerFactory: AgentWorkerFactory;
   private readonly spawnPolicy: AgentSpawnPolicy | null;
@@ -336,6 +339,12 @@ export class AgentSupervisor implements RootCollaborationPort {
       600_000,
       3_600_000,
       "turnTimeoutMs",
+    );
+    this.turnToolCallLimit = boundedInteger(
+      options.turnToolCallLimit,
+      TURN_TOOL_BUDGET,
+      512,
+      "turnToolCallLimit",
     );
     this.interruptGraceMs = boundedInteger(
       options.interruptGraceMs,
@@ -1520,9 +1529,9 @@ export class AgentSupervisor implements RootCollaborationPort {
     if (
       !collaboration &&
       message.name !== "game_stop" &&
-      turn.toolCalls >= TURN_TOOL_BUDGET
+      turn.toolCalls >= this.turnToolCallLimit
     ) {
-      reject(`Worker turn tool budget exhausted (${TURN_TOOL_BUDGET})`);
+      reject(`Worker turn tool budget exhausted (${this.turnToolCallLimit})`);
       return;
     }
     if (!collaboration && message.name !== "game_stop") turn.toolCalls += 1;

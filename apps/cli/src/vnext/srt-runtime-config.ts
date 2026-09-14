@@ -13,11 +13,19 @@ const execFileAsync = promisify(execFile);
 const EXACT_GODOT_VERSION = "4.7.1" as const;
 const EXACT_TOOLCHAIN_KEY = "godot-4.7.1-linux-x86_64-official" as const;
 const OFFICIAL_VERSION = /^4\.7\.1\.stable\.official\.[a-f0-9]{7,64}$/u;
+const VERIFIED_INSPECTION_VERSIONS = new Map<string, SrtGodotVersion>([
+  ["4.2.2.stable.official.15073afe3", "4.2.2"],
+  ["4.3.stable.official.77dcf97d8", "4.3"],
+]);
+export type SrtGodotVersion = "4.2.2" | "4.3" | "4.7.1";
 
 export interface SrtRuntimeConfigInput {
   readonly repositoryRoot?: string | undefined;
   readonly stateRoot?: string | undefined;
   readonly godotBin?: string | undefined;
+  /** Preview accepts the separately verified standard Godot builds; legacy callers stay pinned. */
+  readonly godotVersionPolicy?:
+    "exact-4.7.1" | "inspection-verified" | undefined;
   readonly environment?:
     Readonly<Record<string, string | undefined>> | undefined;
 }
@@ -34,9 +42,9 @@ export interface SrtRuntimeConfig {
 /** Structurally compatible with the current PE toolchain receipt. */
 export interface SrtGodotToolchainReceipt {
   readonly schemaVersion: 1;
-  readonly registryKey: typeof EXACT_TOOLCHAIN_KEY;
-  readonly requestedVersion: typeof EXACT_GODOT_VERSION;
-  readonly realizedVersion: typeof EXACT_GODOT_VERSION;
+  readonly registryKey: `godot-${SrtGodotVersion}-linux-x86_64-official`;
+  readonly requestedVersion: SrtGodotVersion;
+  readonly realizedVersion: SrtGodotVersion;
   readonly realizedVersionOutput: string;
   readonly platform: "linux-x86_64";
   readonly executableSha256: Sha256DigestV1;
@@ -195,11 +203,17 @@ export async function resolveSrtRuntimeConfig(
     dependencies.sha256File(godotPath),
   ]);
   const realizedVersionOutput = rawVersion.trim();
-  if (
-    realizedVersionOutput.length > 128 ||
-    !OFFICIAL_VERSION.test(realizedVersionOutput)
-  ) {
-    throw new Error("Godot binary must be an exact official Godot 4.7.1 build");
+  const realizedVersion = OFFICIAL_VERSION.test(realizedVersionOutput)
+    ? EXACT_GODOT_VERSION
+    : input.godotVersionPolicy === "inspection-verified"
+      ? VERIFIED_INSPECTION_VERSIONS.get(realizedVersionOutput)
+      : undefined;
+  if (realizedVersionOutput.length > 128 || realizedVersion === undefined) {
+    throw new Error(
+      input.godotVersionPolicy === "inspection-verified"
+        ? "Inspection requires an explicitly verified standard official Godot build (4.2.2, 4.3, or 4.7.1); Mono and unverified builds are unsupported"
+        : "Godot binary must be an exact official Godot 4.7.1 build",
+    );
   }
 
   return Object.freeze({
@@ -208,9 +222,12 @@ export async function resolveSrtRuntimeConfig(
     godot: Object.freeze({
       receipt: Object.freeze({
         schemaVersion: 1 as const,
-        registryKey: EXACT_TOOLCHAIN_KEY,
-        requestedVersion: EXACT_GODOT_VERSION,
-        realizedVersion: EXACT_GODOT_VERSION,
+        registryKey:
+          realizedVersion === EXACT_GODOT_VERSION
+            ? EXACT_TOOLCHAIN_KEY
+            : (`godot-${realizedVersion}-linux-x86_64-official` as const),
+        requestedVersion: realizedVersion,
+        realizedVersion,
         realizedVersionOutput,
         platform: "linux-x86_64" as const,
         executableSha256,

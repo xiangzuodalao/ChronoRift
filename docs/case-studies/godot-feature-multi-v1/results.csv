@@ -1,0 +1,4 @@
+recordType,caseId,title,preparationStatus,arm,acceptance,wallClockMs,totalTokens,estimatedCostUsd,actualWorkerCount,rootOnlyTokens,rootToolCalls,workerToolCalls,workspaceLockWaitMs,workersNaturallyCompleted,workersCancelled,reason
+preparation,pr498,Add input hints,blocked,,,,,,,,,,,,,"Full source retains override.cfg, which current Runtime rejects. Baseline/reference imports also report translation-resource and editor-plugin HTTP errors."
+preparation,pr180,Saved app state,blocked,,,,,,,,,,,,,"Full source retains override.cfg, which current Runtime rejects. Baseline/reference ordinary import processes succeed, but strict output admission rejects generated translation resources."
+preparation,pr332,SimpleParallelComposite,blocked,,,,,,,,,,,,,"Full source retains vendored C# helpers, which current Runtime rejects; full imports also report errors. A separate component diagnostic finds a reference finite-repeat/delay combination failure."

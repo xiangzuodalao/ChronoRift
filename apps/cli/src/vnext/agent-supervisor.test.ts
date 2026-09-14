@@ -53,6 +53,7 @@ function fixture(
   options: {
     maxAgents?: number;
     turnTimeoutMs?: number;
+    turnToolCallLimit?: number;
     interruptGraceMs?: number;
     cooperative?: boolean;
     acceptTask?: boolean;
@@ -1162,62 +1163,78 @@ describe("MultiAgentV2 supervisor", () => {
       await f.supervisor.close();
     }
   });
-  it("bounds execution calls while keeping stop and collaboration tools available", async () => {
-    const f = fixture();
-    try {
-      await f.spawn("a");
-      for (let index = 0; index < 64; index += 1) {
-        f.emit(0, {
-          version: 2,
-          type: "tool_request",
-          turnId: 1,
-          requestId: `read-${index}`,
-          name: "read",
-          arguments: {},
-        });
-        await vi.waitFor(
-          () =>
-            expect(
-              f.workers[0]!.sent.some(
-                (message) =>
-                  message.type === "tool_result" &&
-                  message.requestId === `read-${index}`,
-              ),
-            ).toBe(true),
-          { interval: 1 },
-        );
-      }
-      for (const [requestId, name] of [
-        ["over", "read"],
-        ["stop", "game_stop"],
-        ["list", "list_agents"],
-      ] as const)
-        f.emit(0, {
-          version: 2,
-          type: "tool_request",
-          turnId: 1,
-          requestId,
-          name,
-          arguments: {},
-        });
-      await vi.waitFor(() =>
-        expect(
-          f.workers[0]!.sent.filter(
-            (message) => message.type === "tool_result",
-          ),
-        ).toHaveLength(67),
+  it.each([undefined, 512])(
+    "bounds execution calls at %s while keeping stop and collaboration available",
+    async (limit) => {
+      const f = fixture(
+        limit === undefined ? {} : { turnToolCallLimit: limit },
       );
-      expect(
-        f.workers[0]!.sent.find(
-          (message) =>
-            message.type === "tool_result" && message.requestId === "over",
-        ),
-      ).toMatchObject({ result: { isError: true } });
-      expect(f.resources[0]!.invokeTool).toHaveBeenCalledTimes(65);
-    } finally {
-      await f.supervisor.close();
-    }
-  });
+      const expectedLimit = limit ?? 64;
+      try {
+        await f.spawn("a");
+        for (let index = 0; index < expectedLimit; index += 1) {
+          f.emit(0, {
+            version: 2,
+            type: "tool_request",
+            turnId: 1,
+            requestId: `read-${index}`,
+            name: "read",
+            arguments: {},
+          });
+          await vi.waitFor(
+            () =>
+              expect(
+                f.workers[0]!.sent.some(
+                  (message) =>
+                    message.type === "tool_result" &&
+                    message.requestId === `read-${index}`,
+                ),
+              ).toBe(true),
+            { interval: 1 },
+          );
+        }
+        for (const [requestId, name] of [
+          ["over", "read"],
+          ["stop", "game_stop"],
+          ["list", "list_agents"],
+        ] as const)
+          f.emit(0, {
+            version: 2,
+            type: "tool_request",
+            turnId: 1,
+            requestId,
+            name,
+            arguments: {},
+          });
+        await vi.waitFor(() =>
+          expect(
+            f.workers[0]!.sent.filter(
+              (message) => message.type === "tool_result",
+            ),
+          ).toHaveLength(expectedLimit + 3),
+        );
+        expect(
+          f.workers[0]!.sent.find(
+            (message) =>
+              message.type === "tool_result" && message.requestId === "over",
+          ),
+        ).toMatchObject({ result: { isError: true } });
+        expect(f.resources[0]!.invokeTool).toHaveBeenCalledTimes(
+          expectedLimit + 1,
+        );
+      } finally {
+        await f.supervisor.close();
+      }
+    },
+  );
+  it.each([0, -1, 1.5, 513, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid Host worker call limits before allocating resources: %s",
+    (turnToolCallLimit) => {
+      expect(() => fixture({ turnToolCallLimit })).toThrow(
+        /turnToolCallLimit/u,
+      );
+    },
+  );
   it("rejects oversized names, unknown fields and oversized deferred task batches before activation", async () => {
     const f = fixture({ acceptTask: false });
     try {

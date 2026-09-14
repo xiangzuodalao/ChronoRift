@@ -115,6 +115,11 @@ Worker 驻留进程也受 N 限制。需要加载新代理时，Host 可按 LRU 
 不消耗执行预算。Token/cost 是记录值，不是硬 token、费用、CPU、内存或磁盘配额。
 Single Preview 的 256 次执行预算同样豁免 `game_stop`，耗尽执行预算后仍可请求清理。
 
+受控实验的 Host 调用可通过 `executionLimits` 配置团队执行上限、worker 每轮时长和执行次数；这些值不进入模型工具
+参数，普通调用的默认值不变。显式预算使用 Preview V5，记录实际 `executionLimits`、`workspaceMode` 和团队计数；
+旧调用继续输出 V2/V4。`scripts/godot-capacity-multi-pilot/run.mjs` 提供独立的 90 分钟、团队 2048 次执行、worker
+每轮 45 分钟/512 次配置，Single 与 Adaptive 使用同一份预算，最多创建 3 个 worker，允许 0 个。
+
 Headless 在 Root 完成后关闭新任务入口、中断剩余 worker，并等待资源清理，再冻结最终 candidate；不会等所有 worker
 自然完成后自动续跑 Root。未完成 worker 如实标记中断，其已写入共享 candidate 的修改不会自动回滚。
 
@@ -189,6 +194,16 @@ Pi 用量是累计值，汇总只计每个 Session 最后可用快照，卸载/�
 
 [Adaptive Multi 实验](case-studies/adaptive-multi-v1.md)保留两轮开发对照和一次 holdout：部分 Root 工作可被替代，
 但 holdout 仍出现重复调查、延迟交付和更高耗时/费用。共享锁等待很小，没有据此移除锁。
+
+[真实 Godot 功能任务预检](case-studies/godot-feature-multi-v1.md)随后准备了三个既有 PR。完整源码均被当前准入或
+导入要求阻塞，冻结名单为空，未调用受测模型；组件诊断与完整验收分开记录，没有新的 Single/Adaptive 性能结论。
+
+[提高预算后的功能对照](case-studies/godot-capacity-multi-v1.md)使用 90 分钟/2048 次团队执行上限。18 个候选中仅
+PR180 通过完整资格检查；Single 与 Adaptive 各一次均自然完成、独立验收 37/37。耗时分别为 40 分 52.522 秒与
+41 分 29.541 秒。Adaptive 的三个 worker 被 Root 指定做只读调查，没有代码交付；Root coding 调用 220→218，
+团队记录 tokens 约 2.17 倍、SDK 已报告费用约 1.86 倍。Single 有一次 provider error 的 usage 缺口，比例不是完整
+总用量或实际账单比较。共享锁累计等待约 1.15 秒；有用 review 存在，但没有证明实现工作被替代或协作加速。
+本批没有新的 holdout，也未根据结果追加重跑或修改策略。旧失败与限制继续保留。
 
 旧 `agents.v1.json`、Preview V3 与 [Single/Multi Pilot](case-studies/single-multi-pilot.md) 属于当时的独立 candidate
 实现，保留历史原记录；其耗时、费用和结论不能归到当前 V2。

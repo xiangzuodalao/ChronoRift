@@ -20,6 +20,7 @@ import {
 } from "./project-multi-agent.js";
 import { SrtSandboxController } from "./srt-sandbox-controller.js";
 import { createProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
+import type { ProjectExecutionLimits } from "./project-execution-limits.js";
 
 const result = (
   sessionId: string,
@@ -117,7 +118,10 @@ afterEach(async () => {
   }
 });
 
-const setup = async (spawnPolicy?: AgentSpawnPolicy) => {
+const setup = async (
+  spawnPolicy?: AgentSpawnPolicy,
+  executionLimits?: ProjectExecutionLimits,
+) => {
   const root = await mkdtemp(join(tmpdir(), "chronorift-multi-agent-offline-"));
   cleanups.push(() => rm(root, { recursive: true, force: true }));
   const source = join(root, "source");
@@ -175,6 +179,7 @@ const setup = async (spawnPolicy?: AgentSpawnPolicy) => {
     instructions:
       "No model or tool execution is allowed in this offline fixture.",
     configuration: { maxAgents: 2 },
+    ...(executionLimits === undefined ? {} : { executionLimits }),
     ...(spawnPolicy === undefined ? {} : { spawnPolicy }),
     workerFactory: async (options) => {
       const worker = new OfflineWorker(options);
@@ -187,6 +192,27 @@ const setup = async (spawnPolicy?: AgentSpawnPolicy) => {
 };
 
 describe("Project multi-agent evidence and summaries", () => {
+  it("records the actual Host limits without changing worker policy", async () => {
+    const executionLimits = {
+      sharedToolCallLimit: 2048,
+      workerTurnTimeoutMs: 2_700_000,
+      workerTurnToolCallLimit: 512,
+    };
+    const { environment } = await setup(undefined, executionLimits);
+    await environment.close();
+    const summary = await environment.writeSummary(result("root", 0, 0));
+    expect(summary).toMatchObject({
+      sharedToolCallLimit: 2048,
+      sharedToolCalls: 0,
+    });
+    const record: unknown = JSON.parse(
+      await readFile(summary.recordPath, "utf8"),
+    );
+    expect(record).toMatchObject({
+      executionLimits,
+      sharedToolCallLimit: 2048,
+    });
+  });
   it("finishes with zero workers and reports only Root usage", async () => {
     const { environment, workers } = await setup({
       maxCreatedAgents: 3,

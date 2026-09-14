@@ -1,0 +1,1253 @@
+{
+  "schemaVersion": 1,
+  "cohort": "godot-feature-multi-v1",
+  "freeze": {
+    "status": "frozen",
+    "frozenAt": "2026-09-13T16:09:16.641Z",
+    "manifest": {
+      "privateRecord": "batch/manifest.json",
+      "sha256": "c5ec378da62afa4295c680e7271f3571e209ba520bd868cd91c6f11fc389b7b1"
+    },
+    "product": {
+      "commit": "d19d7ccd8e0b9f116b8940efdc2aacadb5e313ac",
+      "sha256": "17e5e69db0769a8f862b583662a7e06cbf801d46e81cad6fbd8cd67f356df9ff",
+      "fileCount": 400
+    }
+  },
+  "publicationPolicy": {
+    "method": "explicit_allowlist_projection",
+    "hostAbsolutePathsIncluded": false,
+    "rawStdoutStderrIncluded": false,
+    "toolArgumentsIncluded": false,
+    "hiddenTestSourceIncluded": false,
+    "rawModelRequestsIncluded": false,
+    "relativeEvidenceNamesAndSha256Included": true
+  },
+  "trialIntegrity": {
+    "modelTrialsStarted": 0,
+    "modelRequestsStarted": 0,
+    "noSyntheticTrials": true,
+    "trials": [],
+    "scheduledIds": [],
+    "noPerformanceValuesInPreparationRows": true,
+    "automaticModelReruns": false,
+    "oldReportsAndRunRecordsUnmodified": true,
+    "runtimeSourceAndNativeCollaborationMetadataUnmodified": true
+  },
+  "cases": [
+    {
+      "caseId": "pr498",
+      "sourceSnapshot": {
+        "snapshotCommit": "c33226b9bbfd7de8ca95dc5459e2f07124fb30b8",
+        "tree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62",
+        "allObjectCount": 651,
+        "reachableObjectCount": 651,
+        "allObjectsReachableFromHead": true,
+        "fullBaseTreeMatches": true,
+        "clean": true,
+        "commitCount": 1,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "remotes": [],
+        "trackedFileCount": 586,
+        "sourceProof": {
+          "privateRecord": "prep/pr498/source-proof.json",
+          "sha256": "2390211bb645a5451ffc647f91dce828e62a92277b63c27798563886418369e2"
+        }
+      },
+      "controlsPassed": false,
+      "fullSourceControls": [
+        {
+          "id": "runtime-source-admission",
+          "outcome": "blocked",
+          "reason": "Project Environment source collides with a reserved managed path",
+          "pathConflict": "override.cfg",
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr498/runtime-compatibility-v2.json",
+            "sha256": "216fb319e0b233dbb39cb5b284573b8011d75e38126fe244b833b9ce6ef6f178"
+          }
+        },
+        {
+          "id": "baseline",
+          "outcome": "requires_review",
+          "reason": "Godot import reported errors or incomplete stderr",
+          "featureAssertionsObserved": false,
+          "readOnlyRuntimeStarted": false,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr498/control-baseline-complete-source/result.json",
+            "sha256": "9992173c69070a3d4ccabc73900e9d5190d6512e1bf03d3f14fd42a04bcbe344"
+          },
+          "diagnostics": [
+            "missing menus_translations.en.translation",
+            "missing menus_translations.fr.translation",
+            "plugin api_client.gd HTTP Result error: 3"
+          ]
+        },
+        {
+          "id": "reference",
+          "outcome": "requires_review",
+          "reason": "Godot import reported errors or incomplete stderr",
+          "featureAssertionsObserved": false,
+          "readOnlyRuntimeStarted": false,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr498/control-reference-complete-source/result.json",
+            "sha256": "7b7f173f343fa51f92ac5b98105e1d05b9d697c29d3c60ba98efb89927b9889f"
+          },
+          "diagnostics": [
+            "missing menus_translations.en.translation",
+            "missing menus_translations.fr.translation",
+            "plugin api_client.gd HTTP Result error: 3"
+          ]
+        }
+      ],
+      "ordinaryImportProcesses": [
+        {
+          "control": "baseline",
+          "scope": "full_original_project_ordinary_import",
+          "status": "exited",
+          "exitCode": 0,
+          "signal": null,
+          "durationMs": 3727.3392369999997,
+          "timedOut": false,
+          "cancelled": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "stderrEmpty": false,
+          "errorReported": true,
+          "warningReported": false,
+          "evidence": {
+            "privateRecord": "prep/pr498/control-baseline-complete-source/import-process.json",
+            "sha256": "5b2bf943b8745aa09e24efb1c82956939729bcf49970f682faf145c3d3b9515e"
+          }
+        },
+        {
+          "control": "reference",
+          "scope": "full_original_project_ordinary_import",
+          "status": "exited",
+          "exitCode": 0,
+          "signal": null,
+          "durationMs": 3729.2590779999996,
+          "timedOut": false,
+          "cancelled": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "stderrEmpty": false,
+          "errorReported": true,
+          "warningReported": false,
+          "evidence": {
+            "privateRecord": "prep/pr498/control-reference-complete-source/import-process.json",
+            "sha256": "0244fdcb4145027720ff0b4e114fde2459fd20b1362a6d05f4c3521eb6a3f29f"
+          }
+        }
+      ],
+      "featureAssertionsReachedOnFullSource": false,
+      "limitations": [
+        "No model was invoked; this case yields no Single/Multi performance or acceptance comparison.",
+        "Independent GDScript was prepared but not executed after failed import; its target behavior and mutants remain unobserved.",
+        "Combined keyboard/mouse cycling with unequal binding counts looks suspect in source review; this is unconfirmed, not a measured reference failure.",
+        "No physical-controller, visual-layout, full-menu gameplay or external-network behavior acceptance is claimed.",
+        "Archive export-ignore omitted three .github files per revision; all were fetched at the same pinned commits before final complete-source controls. Every file mode/blob and reconstructed Git tree then matched the upstream commit."
+      ],
+      "preservedPreparationRecords": [
+        {
+          "privateRecord": "prep/pr498/control-baseline-complete-source/result.json",
+          "sha256": "9992173c69070a3d4ccabc73900e9d5190d6512e1bf03d3f14fd42a04bcbe344"
+        },
+        {
+          "privateRecord": "prep/pr498/control-baseline-v1/result.json",
+          "sha256": "70322cf3af3ec9ec6baf4b24fd2ad06f0204f62a38e17ddd1bd503aad5f6d5b3"
+        },
+        {
+          "privateRecord": "prep/pr498/control-baseline-v2/result.json",
+          "sha256": "565b2dab0403dd8c5c486e6beeed8753f74b955084ca2707accc5a8eac5df22e"
+        },
+        {
+          "privateRecord": "prep/pr498/control-reference-complete-source/result.json",
+          "sha256": "7b7f173f343fa51f92ac5b98105e1d05b9d697c29d3c60ba98efb89927b9889f"
+        },
+        {
+          "privateRecord": "prep/pr498/control-reference-v1/result.json",
+          "sha256": "95a21be31e82710f91d0b6b597a178fa3ee0f6703871a83f6fd1148b6281068b"
+        },
+        {
+          "privateRecord": "prep/pr498/runtime-compatibility.json",
+          "sha256": "22db701406d7a8d78e0454b0ce296c27ba247ac7f0dd4be76891d69d48bab662"
+        },
+        {
+          "privateRecord": "prep/pr498/runtime-compatibility-v2.json",
+          "sha256": "216fb319e0b233dbb39cb5b284573b8011d75e38126fe244b833b9ce6ef6f178"
+        }
+      ]
+    },
+    {
+      "caseId": "pr180",
+      "sourceSnapshot": {
+        "snapshotCommit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124",
+        "tree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+        "allObjectCount": 299,
+        "reachableObjectCount": 299,
+        "allObjectsReachableFromHead": true,
+        "fullBaseTreeMatches": true,
+        "clean": true,
+        "commitCount": 1,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "remotes": [],
+        "trackedFileCount": 259,
+        "sourceProof": {
+          "privateRecord": "prep/pr180/source-proof.json",
+          "sha256": "538be8c3502ec9b429b1a6e4217b2028a612e82f5b872fbd53e237599e797752"
+        }
+      },
+      "controlsPassed": false,
+      "fullSourceControls": [
+        {
+          "id": "runtime-compatibility",
+          "outcome": "requires_review",
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr180/runtime-compatibility-v2.json",
+            "sha256": "d3b7c0a4a1faac094bb3243fa203b2c27d2520156a2f495f1c1a8a7f5b6c0e83"
+          }
+        },
+        {
+          "id": "baseline-product-admission",
+          "outcome": "requires_review",
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr180/baseline-control-v1/result.json",
+            "sha256": "12f46885b82f74ee7e4112987273ebf7254be740a1736f07602e1d4f61b4f08e"
+          }
+        },
+        {
+          "id": "reference-product-admission",
+          "outcome": "requires_review",
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr180/reference-control-v1/result.json",
+            "sha256": "82df4bdb18b62c66e7c23b7ec1d6a28217dce5dd612f7423eb460dc78c0255ab"
+          }
+        },
+        {
+          "id": "baseline-full-source-ordinary-import",
+          "outcome": "requires_review",
+          "reason": "Import changed or added ordinary source: addons/maaacks_game_template/base/translations/menus_translations.en.translation",
+          "importProcessPassed": true,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr180/baseline-ordinary-v1/result.json",
+            "sha256": "22b6cb28c54c125e40adfead3bd7eda6abbe8c21c8e184ba37e577d1eb09b7b7"
+          }
+        },
+        {
+          "id": "reference-full-source-ordinary-import",
+          "outcome": "requires_review",
+          "reason": "Import changed or added ordinary source: addons/maaacks_game_template/base/translations/menus_translations.en.translation",
+          "importProcessPassed": true,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr180/reference-ordinary-v2/result.json",
+            "sha256": "11a278d2df07d5d5aa1c051620cc3026c129690842dbf637edaeadc6e474269b"
+          }
+        },
+        {
+          "id": "baseline-target-assertions",
+          "outcome": "not_run",
+          "reason": "Import output admission blocked readonly runtime.",
+          "scope": "full_original_project"
+        },
+        {
+          "id": "reference-target-assertions",
+          "outcome": "not_run",
+          "reason": "Import output admission blocked readonly runtime.",
+          "scope": "full_original_project"
+        },
+        {
+          "id": "obvious-wrong-mutants",
+          "outcome": "not_run",
+          "reason": "Prerequisite gates failed; no mutation-sensitivity claim.",
+          "scope": "full_original_project"
+        }
+      ],
+      "ordinaryImportProcesses": [
+        {
+          "control": "baseline",
+          "scope": "full_original_project_ordinary_import",
+          "status": "exited",
+          "exitCode": 0,
+          "signal": null,
+          "durationMs": 4846.696153999999,
+          "timedOut": false,
+          "cancelled": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "stderrEmpty": true,
+          "errorReported": false,
+          "warningReported": false,
+          "evidence": {
+            "privateRecord": "prep/pr180/baseline-ordinary-v1/import-process.json",
+            "sha256": "a5b8bc51394d74cc8f86adec010cb05c51c2cff0a76ff9be43d534800127f685"
+          }
+        },
+        {
+          "control": "reference",
+          "scope": "full_original_project_ordinary_import",
+          "status": "exited",
+          "exitCode": 0,
+          "signal": null,
+          "durationMs": 4846.602624,
+          "timedOut": false,
+          "cancelled": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "stderrEmpty": true,
+          "errorReported": false,
+          "warningReported": false,
+          "evidence": {
+            "privateRecord": "prep/pr180/reference-ordinary-v2/import-process.json",
+            "sha256": "652fb711951bf592f572ea77845540bb5541ea1dc0b8823acf7339b6a4e969de"
+          }
+        }
+      ],
+      "featureAssertionsReachedOnFullSource": false,
+      "limitations": [
+        "Blocked before model calls: current public sourceIdentity/preflight rejects the complete upstream root override.cfg as a reserved managed path; the independent inspection admission rejects it too. No file was deleted or rewritten to obtain compatibility.",
+        "Complete baseline/reference Godot 4.3 import processes exited 0 with empty stderr inside SRT, but existing import output admission rejects generated menus_translations.en.translation as ordinary source. No import admission rule or runtime policy was changed.",
+        "Hidden behavioral assertions were authored for the full task scope but never reached a read-only run. They are unvalidated preparation artifacts; neither baseline target failure nor reference target success has been established.",
+        "Mutant controls were not run because compatibility/import-output prerequisites failed. No claim of evaluator mutation sensitivity or acceptance readiness is made.",
+        "GameState versus GameStateExample loader integration is a static unconfirmed concern, not an observed feature failure and not used to exclude this case.",
+        "No existing automated test suite was present in the pinned source. Intended behavioral checks do not cover rendered visuals, export/install packaging, application-process restart, corrupt saves, or migration from legacy Config progress.",
+        "Initial public preflight invocation used an overlapping state directory and returned path_denied; this preparation mistake was retained and corrected to a separate sibling preflight-state directory. Corrected invocation reproduces source_feature_unsupported before any model invocation.",
+        "Original base reconstruction contains one unreachable baseline-only tree from a prior export-ignore repair. It remains preserved; final model-source-clean contains exactly the unchanged HEAD closure (299 objects), with the same commit/tree and no remote. This preparation-only correction occurred before any model call."
+      ],
+      "preservedPreparationRecords": [
+        {
+          "privateRecord": "prep/pr180/baseline-control-v1/result.json",
+          "sha256": "12f46885b82f74ee7e4112987273ebf7254be740a1736f07602e1d4f61b4f08e"
+        },
+        {
+          "privateRecord": "prep/pr180/baseline-ordinary-v1/result.json",
+          "sha256": "22b6cb28c54c125e40adfead3bd7eda6abbe8c21c8e184ba37e577d1eb09b7b7"
+        },
+        {
+          "privateRecord": "prep/pr180/reference-control-v1/result.json",
+          "sha256": "82df4bdb18b62c66e7c23b7ec1d6a28217dce5dd612f7423eb460dc78c0255ab"
+        },
+        {
+          "privateRecord": "prep/pr180/reference-ordinary-v1/result.json",
+          "sha256": "546f06e9b54fc613d7baf911e12bb152a9f09cebf6007426c8042ba55f7406c1"
+        },
+        {
+          "privateRecord": "prep/pr180/reference-ordinary-v2/result.json",
+          "sha256": "11a278d2df07d5d5aa1c051620cc3026c129690842dbf637edaeadc6e474269b"
+        },
+        {
+          "privateRecord": "prep/pr180/runtime-compatibility.json",
+          "sha256": "877c3cfd09484aeb88cd4a3a7b283ed934be11da6c000bb5f6aa2dea2983e9ac"
+        },
+        {
+          "privateRecord": "prep/pr180/runtime-compatibility-v2.json",
+          "sha256": "d3b7c0a4a1faac094bb3243fa203b2c27d2520156a2f495f1c1a8a7f5b6c0e83"
+        }
+      ]
+    },
+    {
+      "caseId": "pr332",
+      "sourceSnapshot": {
+        "snapshotCommit": "a1b8b0aae1859aa9731414952cdc3bd3d5d4ba38",
+        "tree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+        "allObjectCount": 603,
+        "reachableObjectCount": 603,
+        "allObjectsReachableFromHead": true,
+        "fullBaseTreeMatches": true,
+        "clean": true,
+        "commitCount": 1,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "remotes": [],
+        "trackedFileCount": 537,
+        "sourceProof": {
+          "privateRecord": "prep/pr332/source-proof.json",
+          "sha256": "cb04cc3996aa4fea53a3bb890799576c08d820643c3b990c1caccc34290fa43d"
+        }
+      },
+      "controlsPassed": false,
+      "fullSourceControls": [
+        {
+          "id": "runtime-source-admission",
+          "outcome": "requires_review",
+          "reason": "Project Environment supports GDScript without native or C# extensions",
+          "featureAssertionsObserved": false,
+          "readOnlyRuntimeStarted": false,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr332/currentpreview-preflight-v2.json",
+            "sha256": "9224734598768f445568a102eb9c5040101fae56d45973538c3237b0a7b7261c"
+          }
+        },
+        {
+          "id": "baseline-evaluator-source-admission",
+          "outcome": "requires_review",
+          "reason": "external Godot lifecycle candidate contains a native or non-GDScript path: addons/gdUnit4/src/mono/GdUnit4MonoApi.cs",
+          "featureAssertionsObserved": false,
+          "readOnlyRuntimeStarted": false,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr332/control-baseline-v1/result.json",
+            "sha256": "98133f32598a93bc33c048b7754bee237c952acc97c8fb3ad26e307f33f4d169"
+          }
+        },
+        {
+          "id": "base-full-source-direct-srt-import",
+          "outcome": "requires_review",
+          "reason": "Godot import reported errors or incomplete stderr",
+          "featureAssertionsObserved": false,
+          "readOnlyRuntimeStarted": false,
+          "sourceUnchanged": true,
+          "trackedFileCount": 537,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr332/control-full-base-import/result.json",
+            "sha256": "27c5d78ac539db49dd4aca45fbf86a49864702f430dd7a80f15cbf9f184f8988"
+          },
+          "diagnostics": [
+            "SVG editor.ctex/metadata missing during enabled editor plugin loading",
+            "Beehave debugger and gdUnit4 script parse/compile errors"
+          ]
+        },
+        {
+          "id": "reference-full-source-direct-srt-import",
+          "outcome": "requires_review",
+          "reason": "Godot import reported errors or incomplete stderr",
+          "featureAssertionsObserved": false,
+          "readOnlyRuntimeStarted": false,
+          "sourceUnchanged": true,
+          "trackedFileCount": 541,
+          "scope": "full_original_project",
+          "evidence": {
+            "privateRecord": "prep/pr332/control-full-reference-import/result.json",
+            "sha256": "94bda4538488b7fab0723cf7a0110b3cad12e14e35fe77c64cf69590fd6c3a1a"
+          },
+          "diagnostics": [
+            "SVG editor.ctex/metadata missing during enabled editor plugin loading",
+            "Beehave debugger and gdUnit4 script parse/compile errors"
+          ]
+        }
+      ],
+      "ordinaryImportProcesses": [
+        {
+          "control": "baseline",
+          "scope": "full_original_project_ordinary_import",
+          "status": "exited",
+          "exitCode": 0,
+          "signal": null,
+          "durationMs": 5899.1395059999995,
+          "timedOut": false,
+          "cancelled": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "stderrEmpty": false,
+          "errorReported": true,
+          "warningReported": true,
+          "evidence": {
+            "privateRecord": "prep/pr332/control-full-base-import/import-process.json",
+            "sha256": "57a25442d07fc602a9476bf8346d44a283ab444a623e286575d7c8420c1b9261"
+          }
+        },
+        {
+          "control": "reference",
+          "scope": "full_original_project_ordinary_import",
+          "status": "exited",
+          "exitCode": 0,
+          "signal": null,
+          "durationMs": 5704.161505,
+          "timedOut": false,
+          "cancelled": false,
+          "stdoutTruncated": false,
+          "stderrTruncated": false,
+          "stderrEmpty": false,
+          "errorReported": true,
+          "warningReported": true,
+          "evidence": {
+            "privateRecord": "prep/pr332/control-full-reference-import/import-process.json",
+            "sha256": "b218beb6b21999782b0484f071a1644e6a4abc16458a75fb8d27fc5b3bdb29b5"
+          }
+        }
+      ],
+      "featureAssertionsReachedOnFullSource": false,
+      "limitations": [
+        "No Single or Adaptive model calls were made. This case is ineligible; blocked preparation and diagnostic controls are not acceptance samples.",
+        "The complete model source retains all 537 original tracked files and exact base Git tree, including vendored C# helpers. No runtime rule or prompt was changed and no source file was removed to make it admissible.",
+        "Direct low-level prepareImport used existing SRT sandbox and disposable writable import copy with all tracked source. Both full base and reference processes exited zero but emitted complete error output, so fail-closed import rejected them before any read-only semantic execution. A successful normal full-project import was not established.",
+        "Semantic results use only 10 byte-for-byte original GDScript/icon dependencies plus generated minimal project.godot and scene. Other source, editor plugins, gdUnit4, examples and original project configuration are absent from this diagnostic projection. It is never modelSource and never establishes full reference acceptance.",
+        "The hidden checker ports observable scenarios from the seven upstream test functions instead of running the complete gdUnit4 suite. It additionally checks delayed failure, lifecycle restart and finite-repeat exhaustion with delay. The frozen contract does not require reference internals.",
+        "In the component diagnostic, reference passes 72 of 74 assertions and fails two terminal-result observations after finite secondary budget exhaustion with delay. The full requested contract remains unchanged and the failure is retained.",
+        "All four component mutants fail behavioral assertions beyond the reference failures. Mutation results demonstrate select sensitivity within this deterministic component scope, not exhaustive correctness or full gameplay/debugger/editor coverage.",
+        "Only Godot 4.2.2 was used for controls, matching the project 4.2 feature declaration. Import failures may involve first-import editor initialization; no version change, disabled plugin workaround, or relaxed import error check was used for full-project acceptance."
+      ],
+      "preservedPreparationRecords": [
+        {
+          "privateRecord": "prep/pr332/control-baseline-v1/result.json",
+          "sha256": "98133f32598a93bc33c048b7754bee237c952acc97c8fb3ad26e307f33f4d169"
+        },
+        {
+          "privateRecord": "prep/pr332/control-full-base-import/result.json",
+          "sha256": "27c5d78ac539db49dd4aca45fbf86a49864702f430dd7a80f15cbf9f184f8988"
+        },
+        {
+          "privateRecord": "prep/pr332/control-full-reference-import/result.json",
+          "sha256": "94bda4538488b7fab0723cf7a0110b3cad12e14e35fe77c64cf69590fd6c3a1a"
+        },
+        {
+          "privateRecord": "prep/pr332/control-projection-always-success/result.json",
+          "sha256": "cd1b968cef5ba15fb8e80aaadd31464a777e6d3439fd17a96c900358a4aff69f"
+        },
+        {
+          "privateRecord": "prep/pr332/control-projection-baseline/result.json",
+          "sha256": "cf0aeaa219db838b5a24896f2e48827ca5af9bfc077f93f25d6814e33c804649"
+        },
+        {
+          "privateRecord": "prep/pr332/control-projection-ignore-finite-repeat/result.json",
+          "sha256": "69dc891cfaa24f0d789e503dc431586cefacaf34980a84cf0221a0b5ad17a148"
+        },
+        {
+          "privateRecord": "prep/pr332/control-projection-no-secondary-interrupt/result.json",
+          "sha256": "7172c46ffc50461771c4b8ee96777010bb525a666635d7ab028be6575abf3858"
+        },
+        {
+          "privateRecord": "prep/pr332/control-projection-reference-v1/result.json",
+          "sha256": "ff4b049ac2a20ce85615f52fb0fa64aadd2e1ee95d9e50197cc887e772b45905"
+        },
+        {
+          "privateRecord": "prep/pr332/control-projection-reference-v2/result.json",
+          "sha256": "91a05a9f02b7d9ef95e3eba81a2f5b34a1d416d9c52b9851ff2bb9fb5c31a64f"
+        },
+        {
+          "privateRecord": "prep/pr332/control-projection-skip-secondary/result.json",
+          "sha256": "6a5ea2923bae31020f0932aaa38190dfb5114c30318f884c1a86813d91888bb9"
+        },
+        {
+          "privateRecord": "prep/pr332/currentpreview-preflight.json",
+          "sha256": "43878e4fa155ae4e44c51fa51c9292c5eabc100f519f42137d44150d548ae24a"
+        },
+        {
+          "privateRecord": "prep/pr332/currentpreview-preflight-v2.json",
+          "sha256": "9224734598768f445568a102eb9c5040101fae56d45973538c3237b0a7b7261c"
+        }
+      ]
+    }
+  ],
+  "separateComponentDiagnostics": [
+    {
+      "caseId": "pr332",
+      "scope": "component_projection_diagnostic_only",
+      "neverUsedAsModelSource": true,
+      "eligibleForFullProjectAcceptance": false,
+      "sourceProjection": {
+        "copiedOriginalFileCount": 10,
+        "generatedFileCount": 2,
+        "omittedScope": "Remaining source, enabled editor plugins, vendored gdUnit4, examples and original project configuration.",
+        "evidence": {
+          "privateRecord": "prep/pr332/diagnostic-projection.json",
+          "sha256": "bf985bec8bc2cb19d4897fea5dfc89438e73f18b06fcb7d9ab78b3ad46d8ff21"
+        }
+      },
+      "referenceFailure": "With delayed completion enabled and a finite secondary repeat budget already exhausted, the reference returns RUNNING after the primary ends with SUCCESS or FAILURE instead of returning that terminal result.",
+      "referenceAssertions": {
+        "total": 74,
+        "passed": 72,
+        "failed": 2
+      },
+      "mutationSensitivityMeaning": "A mutant demonstrates sensitivity only if it fails an assertion that the unmodified reference passed; existing reference failures alone do not count.",
+      "controls": [
+        {
+          "id": "baseline",
+          "scope": "component_projection_diagnostic_only",
+          "eligibleForFullProjectAcceptance": false,
+          "outcome": "assertions_failed",
+          "assertionCount": 1,
+          "passed": 0,
+          "failed": 1,
+          "sourceUnchanged": true,
+          "import": {
+            "status": "exited",
+            "exitCode": 0,
+            "signal": null,
+            "durationMs": 7214.7102270000005,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": false,
+            "errorReported": false,
+            "warningReported": true,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-baseline/import-process.json",
+              "sha256": "16907826e8e9743205d367b7359e27e581deec58fefc757b8d9fcdda1a1fc008"
+            }
+          },
+          "runtime": {
+            "status": "exited",
+            "exitCode": 1,
+            "signal": null,
+            "durationMs": 345.71443100000033,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": true,
+            "errorReported": false,
+            "warningReported": false,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-baseline/runtime-process.json",
+              "sha256": "028c4abe793608bb92918d43068f3adb381c7bddf1d1404a4b4407f79f701276"
+            }
+          },
+          "evidence": {
+            "privateRecord": "prep/pr332/control-projection-baseline/result.json",
+            "sha256": "cf0aeaa219db838b5a24896f2e48827ca5af9bfc077f93f25d6814e33c804649"
+          }
+        },
+        {
+          "id": "reference",
+          "scope": "component_projection_diagnostic_only",
+          "eligibleForFullProjectAcceptance": false,
+          "outcome": "assertions_failed",
+          "assertionCount": 74,
+          "passed": 72,
+          "failed": 2,
+          "sourceUnchanged": true,
+          "import": {
+            "status": "exited",
+            "exitCode": 0,
+            "signal": null,
+            "durationMs": 3442.8363879999997,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": false,
+            "errorReported": false,
+            "warningReported": true,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-reference-v2/import-process.json",
+              "sha256": "9dcd5586a109783cc092754a39e290036f66a0f6e94c8175c80f52346f9dea2e"
+            }
+          },
+          "runtime": {
+            "status": "exited",
+            "exitCode": 1,
+            "signal": null,
+            "durationMs": 166.837896,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": true,
+            "errorReported": false,
+            "warningReported": false,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-reference-v2/runtime-process.json",
+              "sha256": "cfb34ff2b8f7915ac935c0be05f8dc89bed0e874513577f313f53fcda6e1e72c"
+            }
+          },
+          "evidence": {
+            "privateRecord": "prep/pr332/control-projection-reference-v2/result.json",
+            "sha256": "91a05a9f02b7d9ef95e3eba81a2f5b34a1d416d9c52b9851ff2bb9fb5c31a64f"
+          }
+        },
+        {
+          "id": "always-success",
+          "scope": "component_projection_diagnostic_only",
+          "eligibleForFullProjectAcceptance": false,
+          "outcome": "assertions_failed",
+          "assertionCount": 74,
+          "passed": 69,
+          "failed": 5,
+          "sourceUnchanged": true,
+          "import": {
+            "status": "exited",
+            "exitCode": 0,
+            "signal": null,
+            "durationMs": 7144.142262,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": false,
+            "errorReported": false,
+            "warningReported": true,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-always-success/import-process.json",
+              "sha256": "e2a755ebb6e1d3041975c80e5deb241d4c25fbcc28bab21e4b94a9e9e61e9b6a"
+            }
+          },
+          "runtime": {
+            "status": "exited",
+            "exitCode": 1,
+            "signal": null,
+            "durationMs": 319.8509470000008,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": true,
+            "errorReported": false,
+            "warningReported": false,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-always-success/runtime-process.json",
+              "sha256": "907033f16c45151dd3a033544b0f70f6eedf5ad51070e9694b6a40fce5be2979"
+            }
+          },
+          "evidence": {
+            "privateRecord": "prep/pr332/control-projection-always-success/result.json",
+            "sha256": "cd1b968cef5ba15fb8e80aaadd31464a777e6d3439fd17a96c900358a4aff69f"
+          },
+          "mutationSensitivity": {
+            "newFailuresAmongReferencePassingAssertions": 3,
+            "remainingReferenceFailures": 2,
+            "referenceFailuresNoLongerObserved": 0,
+            "demonstrated": true
+          }
+        },
+        {
+          "id": "skip-secondary",
+          "scope": "component_projection_diagnostic_only",
+          "eligibleForFullProjectAcceptance": false,
+          "outcome": "assertions_failed",
+          "assertionCount": 74,
+          "passed": 48,
+          "failed": 26,
+          "sourceUnchanged": true,
+          "import": {
+            "status": "exited",
+            "exitCode": 0,
+            "signal": null,
+            "durationMs": 7173.763451000001,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": false,
+            "errorReported": false,
+            "warningReported": true,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-skip-secondary/import-process.json",
+              "sha256": "a3ef71d434cf0a41eda3e37b66c3bb1719ee6ca0a6e3b5a78cdae2afd6a6428a"
+            }
+          },
+          "runtime": {
+            "status": "exited",
+            "exitCode": 1,
+            "signal": null,
+            "durationMs": 333.03105099999993,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": true,
+            "errorReported": false,
+            "warningReported": false,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-skip-secondary/runtime-process.json",
+              "sha256": "cc75ee2dfd2b6970756209dafe46f3038e69ee03cb7384e010d89912a615217a"
+            }
+          },
+          "evidence": {
+            "privateRecord": "prep/pr332/control-projection-skip-secondary/result.json",
+            "sha256": "6a5ea2923bae31020f0932aaa38190dfb5114c30318f884c1a86813d91888bb9"
+          },
+          "mutationSensitivity": {
+            "newFailuresAmongReferencePassingAssertions": 24,
+            "remainingReferenceFailures": 2,
+            "referenceFailuresNoLongerObserved": 0,
+            "demonstrated": true
+          }
+        },
+        {
+          "id": "ignore-finite-repeat",
+          "scope": "component_projection_diagnostic_only",
+          "eligibleForFullProjectAcceptance": false,
+          "outcome": "assertions_failed",
+          "assertionCount": 74,
+          "passed": 67,
+          "failed": 7,
+          "sourceUnchanged": true,
+          "import": {
+            "status": "exited",
+            "exitCode": 0,
+            "signal": null,
+            "durationMs": 7445.432301999999,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": false,
+            "errorReported": false,
+            "warningReported": true,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-ignore-finite-repeat/import-process.json",
+              "sha256": "dcdbab927109d9f6263ce3134e8096585921b3571dd7c8378e32f1070452b3bf"
+            }
+          },
+          "runtime": {
+            "status": "exited",
+            "exitCode": 1,
+            "signal": null,
+            "durationMs": 318.87520699999914,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": true,
+            "errorReported": false,
+            "warningReported": false,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-ignore-finite-repeat/runtime-process.json",
+              "sha256": "0583839185a2b849cfbdf9d21d75ed21bd4f9729c54b4bcc6444ab07cceb69d1"
+            }
+          },
+          "evidence": {
+            "privateRecord": "prep/pr332/control-projection-ignore-finite-repeat/result.json",
+            "sha256": "69dc891cfaa24f0d789e503dc431586cefacaf34980a84cf0221a0b5ad17a148"
+          },
+          "mutationSensitivity": {
+            "newFailuresAmongReferencePassingAssertions": 7,
+            "remainingReferenceFailures": 0,
+            "referenceFailuresNoLongerObserved": 2,
+            "demonstrated": true
+          }
+        },
+        {
+          "id": "no-secondary-interrupt",
+          "scope": "component_projection_diagnostic_only",
+          "eligibleForFullProjectAcceptance": false,
+          "outcome": "assertions_failed",
+          "assertionCount": 74,
+          "passed": 67,
+          "failed": 7,
+          "sourceUnchanged": true,
+          "import": {
+            "status": "exited",
+            "exitCode": 0,
+            "signal": null,
+            "durationMs": 7526.828335,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": false,
+            "errorReported": false,
+            "warningReported": true,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-no-secondary-interrupt/import-process.json",
+              "sha256": "acdbc7c33f963d469f3d6023995e9217c152eb733507d8a1cf4d1cccb40a588f"
+            }
+          },
+          "runtime": {
+            "status": "exited",
+            "exitCode": 1,
+            "signal": null,
+            "durationMs": 306.0721510000003,
+            "timedOut": false,
+            "cancelled": false,
+            "stdoutTruncated": false,
+            "stderrTruncated": false,
+            "stderrEmpty": true,
+            "errorReported": false,
+            "warningReported": false,
+            "evidence": {
+              "privateRecord": "prep/pr332/control-projection-no-secondary-interrupt/runtime-process.json",
+              "sha256": "c4ccd237e71b09f4ca152e693aa624cb321ea6d426fd60a4d28769dea289cb8e"
+            }
+          },
+          "evidence": {
+            "privateRecord": "prep/pr332/control-projection-no-secondary-interrupt/result.json",
+            "sha256": "7172c46ffc50461771c4b8ee96777010bb525a666635d7ab028be6575abf3858"
+          },
+          "mutationSensitivity": {
+            "newFailuresAmongReferencePassingAssertions": 5,
+            "remainingReferenceFailures": 2,
+            "referenceFailuresNoLongerObserved": 0,
+            "demonstrated": true
+          }
+        }
+      ],
+      "limitation": "Deterministic component scenarios only; no full-project, editor/debugger, gdUnit4-suite, gameplay or rendered-visual acceptance."
+    }
+  ],
+  "validation": {
+    "status": "passed",
+    "checkedAt": "2026-09-13T16:08:33.417871+00:00",
+    "checks": [
+      {
+        "name": "repository_check",
+        "passed": true,
+        "testFiles": 130,
+        "tests": 1016,
+        "evidence": {
+          "privateRecord": "final-pnpm-check.log",
+          "sha256": "b43ee4dc6ba68adafb60553199026628aecf896be6d9c402e11b04d1f07ac818"
+        }
+      },
+      {
+        "name": "pilot_script_regressions",
+        "passed": true,
+        "testFiles": null,
+        "tests": 40,
+        "evidence": {
+          "privateRecord": "final-script-regression.log",
+          "sha256": "8269809c68bcfdccdf0c4a535c70a2e4890a9e737eecb376e7058c91b67d9cb8"
+        }
+      },
+      {
+        "name": "godot_regressions",
+        "passed": true,
+        "testFiles": 13,
+        "tests": 20,
+        "evidence": {
+          "privateRecord": "godot-regression.log",
+          "sha256": "9897b897133335317d3dcee95dfcc71c77eb0e9ba430ce6862a12c7c673f176c"
+        }
+      },
+      {
+        "name": "srt_sandbox_conformance",
+        "passed": true,
+        "testFiles": 6,
+        "tests": 10,
+        "evidence": {
+          "privateRecord": "sandbox-conformance.log",
+          "sha256": "68bdc1d81b0f52e090048f3449d06c396216e88aea1be841f1307d3067aecd24"
+        }
+      }
+    ],
+    "runtimeAndDependencyFilesUnchanged": true,
+    "blockedEngineeringChecks": [],
+    "skippedRequiredEngineeringChecks": [],
+    "originalAgentsMdSha256": "b5404c3a554e9156d5ca54f9e8cf570c9f6c0405a0ad91f893ab7cd8a2ccdda6",
+    "evidence": {
+      "privateRecord": "final-validation.json",
+      "sha256": "596a0a72ee22f98cf84a94844e807746806a20d0e8c23cd0e32fd0d402a405e4"
+    }
+  },
+  "assertionLimits": [
+    "Blocked preparation is not an acceptance failure by a model.",
+    "No full-source target assertions were reached for any of the three cases.",
+    "The two Maaack reference implementations have unconfirmed source-review concerns only; no feature failures are attributed to them.",
+    "PR332 component controls do not establish full-project compatibility or acceptance, and four mutants demonstrate selected sensitivity rather than exhaustive correctness.",
+    "Null or empty metrics mean not observed, not zero cost, zero latency or a policy decision to spawn zero workers."
+  ],
+  "sourceEvidence": [
+    {
+      "privateRecord": "prep/pr498/manifest.json",
+      "sha256": "01bc5b9e52fe046791b57aaf4f60ad5adf52944c5ebd70a4401b91b18974f93e"
+    },
+    {
+      "privateRecord": "prep/pr180/manifest.json",
+      "sha256": "dfe265a07b157b9ad1668a851e7e4128cca0843de24ff8bc184e7d9550c55a6e"
+    },
+    {
+      "privateRecord": "prep/pr332/manifest.json",
+      "sha256": "14efcd21b7571e5ecb0f48b6bd52656fc9bf29778491eae726e7d458594e0002"
+    }
+  ],
+  "sourceIsolationCorrections": [
+    {
+      "caseId": "pr180",
+      "scope": "preparation_only_before_model_calls",
+      "reason": "Original base reconstruction retained one unreachable tree from the export-ignore repair attempt. Final model source must contain only baseline HEAD closure.",
+      "originalSourcePreserved": true,
+      "trackedSourceBytesChanged": false,
+      "runtimeOrPromptChanged": false,
+      "originalObjectCount": 300,
+      "originalReachableCount": 299,
+      "unreachableOriginalObjects": [
+        "06db41c443850789e65ee78205cfa7c3b77cc5ed"
+      ],
+      "replacementObjectCount": 299,
+      "replacementReachableCount": 299,
+      "sameSnapshotCommit": true,
+      "sameFullSourceTree": true,
+      "evidence": {
+        "privateRecord": "prep/pr180/source-isolation-correction.json",
+        "sha256": "93c3dc408884961e9704d9991a9f6b224c7af773429fdc35b10358d4cb96299e"
+      },
+      "preservedMetadata": [
+        {
+          "privateRecord": "prep/pr180/manifest-before-model-source-clean.json",
+          "sha256": "4da3a6bfe25d9b8b2e919dc075674bbfaea798b2af752122c1b34ef43eedd2ed"
+        },
+        {
+          "privateRecord": "prep/pr180/source-proof-before-model-source-clean.json",
+          "sha256": "5d44702b082d0fe96789783ec73f4face7b8bb6779a90493272189888350af62"
+        }
+      ]
+    }
+  ],
+  "sourceIsolationAuditRecords": [
+    {
+      "passed": false,
+      "auditedAt": "2026-09-13T16:06:49.445741+00:00",
+      "scope": "source_isolation_and_preparation_metadata_only",
+      "evidence": {
+        "privateRecord": "source-isolation-audit.json",
+        "sha256": "ee2c92a741693fe3c12886fe2b7538a50c0bcf23ae75f49d1609ab79b5c46b08"
+      },
+      "cases": [
+        {
+          "caseId": "pr498",
+          "status": "passed",
+          "snapshotCommit": "c33226b9bbfd7de8ca95dc5459e2f07124fb30b8",
+          "baseTree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62",
+          "trackedFileCount": 586,
+          "gitObjectCount": 651,
+          "reachableObjectCount": 651,
+          "unreachableObjectCount": 0,
+          "missingReachableObjectCount": 0,
+          "gitObjectIdSetSha256": "a2ebe1ef937726996cc093b0dc81dbb108d236b35677d84bd4b5f0ba3431b731",
+          "checks": {
+            "fullBaseTreeMatches": true,
+            "singleParentlessCommit": true,
+            "noRemotes": true,
+            "cleanIncludingIgnoredUntracked": true,
+            "storedObjectsExactlyHeadClosure": true,
+            "oneCommitObjectNoTags": true,
+            "referenceCommitObjectAbsent": true,
+            "gitMetadataLocalDirectory": true,
+            "noObjectAlternates": true,
+            "allWorktreeBytesAndModesMatchPinnedTree": true,
+            "noFilesOutsidePinnedTree": true,
+            "noAssumeUnchangedOrSkipWorktree": true,
+            "taskEvaluatorReferencePathsOutsideSource": true,
+            "noInjectedTaskOrOracleBytesInSource": true,
+            "sourceProofTreeMatches": true,
+            "sourceProofSnapshotMatches": true,
+            "metadataHashesMatch": true,
+            "controlOutcomesMatch": true
+          }
+        },
+        {
+          "caseId": "pr180",
+          "status": "failed",
+          "snapshotCommit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124",
+          "baseTree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+          "trackedFileCount": 259,
+          "gitObjectCount": 300,
+          "reachableObjectCount": 299,
+          "unreachableObjectCount": 1,
+          "missingReachableObjectCount": 0,
+          "gitObjectIdSetSha256": "656ba2546376db64adb661927284e74f7bc101ea0fc91e40620059968e7a3a47",
+          "checks": {
+            "fullBaseTreeMatches": true,
+            "singleParentlessCommit": true,
+            "noRemotes": true,
+            "cleanIncludingIgnoredUntracked": true,
+            "storedObjectsExactlyHeadClosure": false,
+            "oneCommitObjectNoTags": true,
+            "referenceCommitObjectAbsent": true,
+            "gitMetadataLocalDirectory": true,
+            "noObjectAlternates": true,
+            "allWorktreeBytesAndModesMatchPinnedTree": true,
+            "noFilesOutsidePinnedTree": true,
+            "noAssumeUnchangedOrSkipWorktree": true,
+            "taskEvaluatorReferencePathsOutsideSource": true,
+            "noInjectedTaskOrOracleBytesInSource": true,
+            "sourceProofTreeMatches": true,
+            "sourceProofSnapshotMatches": true,
+            "metadataHashesMatch": true,
+            "controlOutcomesMatch": true
+          }
+        },
+        {
+          "caseId": "pr332",
+          "status": "passed",
+          "snapshotCommit": "a1b8b0aae1859aa9731414952cdc3bd3d5d4ba38",
+          "baseTree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+          "trackedFileCount": 537,
+          "gitObjectCount": 603,
+          "reachableObjectCount": 603,
+          "unreachableObjectCount": 0,
+          "missingReachableObjectCount": 0,
+          "gitObjectIdSetSha256": "8907ba1e82326dcdb77a9ebbfd05cef066bb6f6868600d631e59f18adbb1339d",
+          "checks": {
+            "fullBaseTreeMatches": true,
+            "singleParentlessCommit": true,
+            "noRemotes": true,
+            "cleanIncludingIgnoredUntracked": true,
+            "storedObjectsExactlyHeadClosure": true,
+            "oneCommitObjectNoTags": true,
+            "referenceCommitObjectAbsent": true,
+            "gitMetadataLocalDirectory": true,
+            "noObjectAlternates": true,
+            "allWorktreeBytesAndModesMatchPinnedTree": true,
+            "noFilesOutsidePinnedTree": true,
+            "noAssumeUnchangedOrSkipWorktree": true,
+            "taskEvaluatorReferencePathsOutsideSource": true,
+            "noInjectedTaskOrOracleBytesInSource": true,
+            "sourceProofTreeMatches": true,
+            "sourceProofSnapshotMatches": true,
+            "metadataHashesMatch": true,
+            "controlOutcomesMatch": true
+          }
+        }
+      ]
+    },
+    {
+      "passed": true,
+      "auditedAt": "2026-09-13T16:10:03.100036+00:00",
+      "scope": "source_isolation_and_preparation_metadata_only",
+      "evidence": {
+        "privateRecord": "source-isolation-audit-v2.json",
+        "sha256": "2256df5b10596e28438b081e5cdbbe0792a7ef700d0ea6eb531adb07f5ee8054"
+      },
+      "cases": [
+        {
+          "caseId": "pr498",
+          "status": "passed",
+          "snapshotCommit": "c33226b9bbfd7de8ca95dc5459e2f07124fb30b8",
+          "baseTree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62",
+          "trackedFileCount": 586,
+          "gitObjectCount": 651,
+          "reachableObjectCount": 651,
+          "unreachableObjectCount": 0,
+          "missingReachableObjectCount": 0,
+          "gitObjectIdSetSha256": "a2ebe1ef937726996cc093b0dc81dbb108d236b35677d84bd4b5f0ba3431b731",
+          "checks": {
+            "fullBaseTreeMatches": true,
+            "singleParentlessCommit": true,
+            "noRemotes": true,
+            "cleanIncludingIgnoredUntracked": true,
+            "storedObjectsExactlyHeadClosure": true,
+            "oneCommitObjectNoTags": true,
+            "referenceCommitObjectAbsent": true,
+            "gitMetadataLocalDirectory": true,
+            "noObjectAlternates": true,
+            "allWorktreeBytesAndModesMatchPinnedTree": true,
+            "noFilesOutsidePinnedTree": true,
+            "noAssumeUnchangedOrSkipWorktree": true,
+            "taskEvaluatorReferencePathsOutsideSource": true,
+            "noInjectedTaskOrOracleBytesInSource": true,
+            "sourceProofTreeMatches": true,
+            "sourceProofSnapshotMatches": true,
+            "metadataHashesMatch": true,
+            "controlOutcomesMatch": true
+          }
+        },
+        {
+          "caseId": "pr180",
+          "status": "passed",
+          "snapshotCommit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124",
+          "baseTree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+          "trackedFileCount": 259,
+          "gitObjectCount": 299,
+          "reachableObjectCount": 299,
+          "unreachableObjectCount": 0,
+          "missingReachableObjectCount": 0,
+          "gitObjectIdSetSha256": "128dee0326af3280cb96b40097cb80411dca500197a78e87d95774a4154092f4",
+          "checks": {
+            "fullBaseTreeMatches": true,
+            "singleParentlessCommit": true,
+            "noRemotes": true,
+            "cleanIncludingIgnoredUntracked": true,
+            "storedObjectsExactlyHeadClosure": true,
+            "oneCommitObjectNoTags": true,
+            "referenceCommitObjectAbsent": true,
+            "gitMetadataLocalDirectory": true,
+            "noObjectAlternates": true,
+            "allWorktreeBytesAndModesMatchPinnedTree": true,
+            "noFilesOutsidePinnedTree": true,
+            "noAssumeUnchangedOrSkipWorktree": true,
+            "taskEvaluatorReferencePathsOutsideSource": true,
+            "noInjectedTaskOrOracleBytesInSource": true,
+            "sourceProofTreeMatches": true,
+            "sourceProofSnapshotMatches": true,
+            "metadataHashesMatch": true,
+            "controlOutcomesMatch": true
+          }
+        },
+        {
+          "caseId": "pr332",
+          "status": "passed",
+          "snapshotCommit": "a1b8b0aae1859aa9731414952cdc3bd3d5d4ba38",
+          "baseTree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+          "trackedFileCount": 537,
+          "gitObjectCount": 603,
+          "reachableObjectCount": 603,
+          "unreachableObjectCount": 0,
+          "missingReachableObjectCount": 0,
+          "gitObjectIdSetSha256": "8907ba1e82326dcdb77a9ebbfd05cef066bb6f6868600d631e59f18adbb1339d",
+          "checks": {
+            "fullBaseTreeMatches": true,
+            "singleParentlessCommit": true,
+            "noRemotes": true,
+            "cleanIncludingIgnoredUntracked": true,
+            "storedObjectsExactlyHeadClosure": true,
+            "oneCommitObjectNoTags": true,
+            "referenceCommitObjectAbsent": true,
+            "gitMetadataLocalDirectory": true,
+            "noObjectAlternates": true,
+            "allWorktreeBytesAndModesMatchPinnedTree": true,
+            "noFilesOutsidePinnedTree": true,
+            "noAssumeUnchangedOrSkipWorktree": true,
+            "taskEvaluatorReferencePathsOutsideSource": true,
+            "noInjectedTaskOrOracleBytesInSource": true,
+            "sourceProofTreeMatches": true,
+            "sourceProofSnapshotMatches": true,
+            "metadataHashesMatch": true,
+            "controlOutcomesMatch": true
+          }
+        }
+      ]
+    }
+  ],
+  "emptyBatchExecution": {
+    "scope": "empty_cohort_orchestration_not_a_model_performance_sample",
+    "startedAt": "2026-09-13T16:09:33.837Z",
+    "finishedAt": "2026-09-13T16:09:33.838Z",
+    "scheduledIds": [],
+    "results": [],
+    "observedProcesses": [],
+    "survivingObservedProcesses": [],
+    "unstartedIds": [],
+    "failure": null,
+    "stopRequested": false,
+    "evaluationCandidateCount": 0,
+    "derivedTrialCount": 0,
+    "frozenFilesVerified": 46,
+    "frozenProductFilesVerified": 400,
+    "evidence": [
+      {
+        "privateRecord": "batch/live-start.json",
+        "sha256": "ededc2085cbc8e9eeb1b472834f02fe5fd3b963608d61afe0fcbc6c34d496a12"
+      },
+      {
+        "privateRecord": "batch/live-completion.json",
+        "sha256": "b23ca18afebffb498f6d64700233a3dbaa4eb8fe9f4b35ffdc14cedf18ead2fc"
+      },
+      {
+        "privateRecord": "batch/evaluation/results.json",
+        "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      },
+      {
+        "privateRecord": "batch/derived/summary.json",
+        "sha256": "7f3ace164888fff9dc562dceec6bea0318d7ca3eecf448af30c034802281e72d"
+      },
+      {
+        "privateRecord": "batch/derived/results.csv",
+        "sha256": "31d8b8ea0e0dbf3630b86a759468f475d70f61705415126b6c171bbb94ef7fd6"
+      },
+      {
+        "privateRecord": "batch/derived/accounting.json",
+        "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      },
+      {
+        "privateRecord": "batch/derived/timing-audit.json",
+        "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      }
+    ],
+    "accountingInterpretation": "Private empty-set totals are arithmetic placeholders; public performance metrics remain null because no model trial ran."
+  }
+}

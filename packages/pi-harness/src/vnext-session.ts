@@ -122,8 +122,8 @@ const DEFAULT_DEPENDENCIES: VNextPiSessionDependencies = {
 
 const boundedTimeout = (value: number | undefined): number => {
   const timeoutMs = value ?? 600_000;
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
-    throw new Error("timeoutMs must be an integer from 1 to 3600000");
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5_400_000) {
+    throw new Error("timeoutMs must be an integer from 1 to 5400000");
   }
   return timeoutMs;
 };

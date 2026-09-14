@@ -280,3 +280,119 @@ it("inspects live GN-1-shaped resource aliases without an Adapter and restarts f
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("preserves user override settings alongside the Host observer in a readonly SRT launch", async () => {
+  const configuredGodot = process.env.GODOT_BIN;
+  if (configuredGodot === undefined)
+    throw new Error("GODOT_BIN is required for the inspection sandbox test");
+  const root = await mkdtemp(join(tmpdir(), "chronorift-override-sandbox-"));
+  const candidate = join(root, "candidate");
+  await mkdir(candidate);
+  const project =
+    'config_version=5\n[application]\nrun/main_scene="res://fallback.tscn"\n[rendering]\nrenderer/rendering_method="gl_compatibility"\n';
+  const override =
+    '; Original user configuration remains intact.\n[application]\nrun/main_scene="res://main.tscn"\n[autoload]\nUserState="*res://state.gd"\n[custom]\nmarker="user-override"\n[input]\ninspect_action={"deadzone": 0.5, "events": [Object(InputEventKey, "physical_keycode": 81)]}\n';
+  await writeFile(join(candidate, "project.godot"), project);
+  await writeFile(join(candidate, "override.cfg"), override);
+  await writeFile(
+    join(candidate, "fallback.tscn"),
+    '[gd_scene format=3]\n[node name="Fallback" type="Node"]\n',
+  );
+  await writeFile(
+    join(candidate, "main.tscn"),
+    '[gd_scene load_steps=2 format=3]\n[ext_resource type="Script" path="res://main.gd" id="1"]\n[node name="Main" type="Node"]\nscript = ExtResource("1")\n',
+  );
+  await writeFile(
+    join(candidate, "state.gd"),
+    "extends Node\nvar marker := 41\n",
+  );
+  await writeFile(
+    join(candidate, "main.gd"),
+    `extends Node
+var physical_key: int = 0
+var user_autoload_marker: int = 0
+var config_marker: String = ""
+var override_write_blocked := false
+func _ready() -> void:
+    physical_key = InputMap.action_get_events("inspect_action")[0].physical_keycode
+    user_autoload_marker = get_node("/root/UserState").marker
+    config_marker = ProjectSettings.get_setting("custom/marker")
+    override_write_blocked = FileAccess.open("res://override.cfg", FileAccess.WRITE) == null
+`,
+  );
+  const controller = new SrtSandboxController();
+  const runtime = new GodotInspectionRuntime({
+    runner: new SrtGodotRunner({
+      controller,
+      candidateWorkspace: candidate,
+      validationRoot: join(root, "stages"),
+    }),
+    candidateWorkspace: candidate,
+    artifactsDirectory: join(root, "records"),
+    nodePath: await realpath(process.execPath),
+    godotPath: await realpath(configuredGodot),
+  });
+  const invoke = async (toolName: InspectionToolNameV1, input: unknown) => {
+    const response = InspectionToolResponseV1Schema.parse(
+      await runtime.invoke({
+        schemaVersion: 1,
+        toolCallId: "override-sandbox-test",
+        toolName,
+        input,
+      }),
+    );
+    if (response.outcome !== "success")
+      throw new Error(
+        `${JSON.stringify(response)}\n${JSON.stringify(runtime.records())}`,
+      );
+    return response.output;
+  };
+  try {
+    const launch = InspectionLaunchOutputV1Schema.parse(
+      await invoke("game_launch", { schemaVersion: 1 }),
+    );
+    const query = InspectionQueryOutputV1Schema.parse(
+      await invoke("game_query", {
+        schemaVersion: 1,
+        executionId: launch.executionId,
+        target: { path: "." },
+        select: "values",
+        names: [
+          "physical_key",
+          "user_autoload_marker",
+          "config_marker",
+          "override_write_blocked",
+        ],
+      }),
+    );
+    if (query.select !== "values") throw new Error("Expected values");
+    expect(query.values).toMatchObject([
+      { status: "success", value: 81 },
+      { status: "success", value: 41 },
+      { status: "success", value: "user-override" },
+      { status: "success", value: true },
+    ]);
+    const stop = InspectionStopOutputV1Schema.parse(
+      await invoke("game_stop", {
+        schemaVersion: 1,
+        executionId: launch.executionId,
+      }),
+    );
+    expect(stop.record).toMatchObject({
+      sourceUnchanged: true,
+      import: { exitCode: 0, stderr: "" },
+      run: { stderr: "" },
+      error: null,
+    });
+    expect(await readFile(join(candidate, "project.godot"), "utf8")).toBe(
+      project,
+    );
+    expect(await readFile(join(candidate, "override.cfg"), "utf8")).toBe(
+      override,
+    );
+  } finally {
+    await runtime.close();
+    await controller.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

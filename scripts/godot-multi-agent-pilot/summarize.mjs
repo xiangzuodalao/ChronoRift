@@ -602,8 +602,14 @@ export async function summarize(root, outputDirectory = root) {
     const done = await optional(join(directory, "completion.json"));
     const preview = await optional(join(directory, "preview.json"));
     const rootResult = await optional(join(directory, "root-result.json"));
+    // Serial batches can stop before later arm directories are created. Retain
+    // those arms as missing records; malformed or inaccessible inputs still fail.
+    const armFiles = await readdir(directory).catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
     const workerConfigurations = await Promise.all(
-      (await readdir(directory))
+      armFiles
         .filter((name) => /^worker-[0-9]+-configuration\.json$/u.test(name))
         .map((name) => json(join(directory, name))),
     );

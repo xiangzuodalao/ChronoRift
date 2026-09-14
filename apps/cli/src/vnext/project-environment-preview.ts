@@ -50,6 +50,10 @@ import {
 } from "./source-preflight.js";
 import { createProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 import { materializePrivateTaskWorkspace } from "./workspace-materializer.js";
+import {
+  ProjectExecutionLimitsSchema,
+  type ProjectExecutionLimits,
+} from "./project-execution-limits.js";
 
 type PreviewTaskLayoutV1 = Awaited<
   ReturnType<typeof createProjectEnvironmentTaskDirectoryLayout>
@@ -297,6 +301,8 @@ export interface ProjectEnvironmentPreviewRequestV2 {
   readonly timeoutMs?: number | undefined;
   readonly interactive?: boolean | undefined;
   readonly multiAgent?: ProjectMultiAgentOptions | undefined;
+  /** Optional trusted Host budget; model tools cannot raise it. */
+  readonly executionLimits?: ProjectExecutionLimits | undefined;
 }
 
 const pathText = z.string().min(1).max(8192);
@@ -382,6 +388,49 @@ export type ProjectEnvironmentPreviewResultV4 = z.infer<
   typeof ProjectEnvironmentPreviewResultV4Schema
 >;
 
+/** Explicit Host budgets; V2/V4 retain their original fixed limits. */
+export const ProjectEnvironmentPreviewResultV5Schema =
+  ProjectEnvironmentPreviewResultV2Schema.extend({
+    schemaVersion: z.literal(5),
+    workspaceMode: z.enum(["single", "shared"]),
+    candidateSourceChanged: z.boolean().nullable(),
+    executions: z.array(pathText).max(2048),
+    executionLimits: ProjectExecutionLimitsSchema,
+    agents: z
+      .object({
+        recordPath: pathText,
+        count: z.number().int().nonnegative(),
+        maxAgents: z.number().int().min(1).max(4),
+        sharedToolCalls: z.number().int().min(0).max(2048),
+        sharedToolCallLimit: z.number().int().min(1).max(2048),
+      })
+      .strict()
+      .nullable(),
+  })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.agents !== null &&
+        (value.workspaceMode !== "shared" ||
+          value.agents.sharedToolCallLimit !==
+            value.executionLimits.sharedToolCallLimit ||
+          value.agents.sharedToolCalls > value.agents.sharedToolCallLimit)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["agents"],
+          message: "Agent budget record must match the Host execution limits",
+        });
+    });
+export type ProjectEnvironmentPreviewResultV5 = z.infer<
+  typeof ProjectEnvironmentPreviewResultV5Schema
+>;
+
+export type ProjectEnvironmentPreviewResult =
+  | ProjectEnvironmentPreviewResultV2
+  | ProjectEnvironmentPreviewResultV4
+  | ProjectEnvironmentPreviewResultV5;
+
 export interface ProjectEnvironmentPreviewDependenciesV2 {
   readonly runPiTurn: typeof runVNextPiTurnWithSdk;
   readonly runInteractive?: typeof runProjectEnvironmentInteractivePiSessionV1;
@@ -420,9 +469,10 @@ const failure = (error: unknown): { code: string; message: string } => {
 export async function runProjectEnvironmentPreviewV2(
   request: ProjectEnvironmentPreviewRequestV2,
   dependencies: ProjectEnvironmentPreviewDependenciesV2 = defaultDependencies,
-): Promise<
-  ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV4
-> {
+): Promise<ProjectEnvironmentPreviewResult> {
+  const executionLimits = ProjectExecutionLimitsSchema.parse(
+    request.executionLimits ?? {},
+  );
   const multiAgent =
     request.multiAgent === undefined
       ? undefined
@@ -437,12 +487,14 @@ export async function runProjectEnvironmentPreviewV2(
       code: "goal_required",
     });
   const runtimeConfig = await resolveSrtRuntimeConfig({
+    godotVersionPolicy: "inspection-verified",
     ...(request.stateRoot === undefined
       ? {}
       : { stateRoot: request.stateRoot }),
     ...(request.godotBin === undefined ? {} : { godotBin: request.godotBin }),
   });
   const source = await preflightCleanProjectEnvironmentV1({
+    godotVersion: runtimeConfig.godot.receipt.realizedVersion,
     projectPath: request.projectPath,
     ...(request.projectRoot === undefined
       ? {}
@@ -492,7 +544,9 @@ export async function runProjectEnvironmentPreviewV2(
     nodePath: runtimeConfig.nodePath,
     godotPath: runtimeConfig.godot.binding.executablePath,
   });
-  const admission = createProjectEnvironmentToolCallAdmissionV1(256);
+  const admission = createProjectEnvironmentToolCallAdmissionV1(
+    executionLimits.sharedToolCallLimit,
+  );
   const telemetry = new ExecutionTelemetry();
   let tools = [
     ...createVNextCodingToolDefinitions(
@@ -535,14 +589,8 @@ export async function runProjectEnvironmentPreviewV2(
   };
   // Pi's official TUI exits the process after session_shutdown. Finalize from
   // that awaited Host hook as well as the normal headless path, exactly once.
-  let finalization:
-    | Promise<
-        ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV4
-      >
-    | undefined;
-  const finalize = (): Promise<
-    ProjectEnvironmentPreviewResultV2 | ProjectEnvironmentPreviewResultV4
-  > => {
+  let finalization: Promise<ProjectEnvironmentPreviewResult> | undefined;
+  const finalize = (): Promise<ProjectEnvironmentPreviewResult> => {
     finalization ??= (async () => {
       let writersStopped = true;
       try {
@@ -564,9 +612,9 @@ export async function runProjectEnvironmentPreviewV2(
         recordFailure(error);
       }
       try {
-        if (collaboration !== undefined && !writersStopped)
+        if (!writersStopped)
           throw new Error(
-            "Shared candidate cannot be frozen: writer cleanup was not confirmed",
+            "Candidate cannot be frozen: writer cleanup was not confirmed",
           );
         const extracted = await extractTaskPatch({
           taskId,
@@ -595,7 +643,7 @@ export async function runProjectEnvironmentPreviewV2(
       } catch (error) {
         recordFailure(error);
       }
-      let agents: ProjectEnvironmentPreviewResultV3["agents"] = null;
+      let agents: ProjectEnvironmentPreviewResultV5["agents"] = null;
       if (collaboration === undefined) {
         try {
           await telemetry.save(
@@ -613,7 +661,12 @@ export async function runProjectEnvironmentPreviewV2(
         }
       }
       const rawResult = {
-        schemaVersion: multiAgent === undefined ? 2 : 4,
+        schemaVersion:
+          request.executionLimits !== undefined
+            ? 5
+            : multiAgent === undefined
+              ? 2
+              : 4,
         status,
         taskId,
         sessionId,
@@ -638,11 +691,20 @@ export async function runProjectEnvironmentPreviewV2(
         ...(multiAgent === undefined
           ? {}
           : { agents, workspaceMode: "shared" }),
+        ...(request.executionLimits === undefined
+          ? {}
+          : {
+              agents,
+              executionLimits,
+              workspaceMode: multiAgent === undefined ? "single" : "shared",
+            }),
       };
       const result =
-        multiAgent === undefined
-          ? ProjectEnvironmentPreviewResultV2Schema.parse(rawResult)
-          : ProjectEnvironmentPreviewResultV4Schema.parse(rawResult);
+        request.executionLimits !== undefined
+          ? ProjectEnvironmentPreviewResultV5Schema.parse(rawResult)
+          : multiAgent === undefined
+            ? ProjectEnvironmentPreviewResultV2Schema.parse(rawResult)
+            : ProjectEnvironmentPreviewResultV4Schema.parse(rawResult);
       await writeFile(
         join(
           layout.taskRecordDirectory,
@@ -673,6 +735,7 @@ export async function runProjectEnvironmentPreviewV2(
         agentDir: request.agentDir,
         instructions: inspectionInstructions,
         configuration: multiAgent,
+        ...(request.executionLimits === undefined ? {} : { executionLimits }),
       });
       tools = [...collaboration.tools];
     }

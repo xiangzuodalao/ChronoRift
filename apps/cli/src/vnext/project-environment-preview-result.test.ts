@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ProjectEnvironmentPreviewResultV2Schema } from "./project-environment-preview.js";
+import {
+  ProjectEnvironmentPreviewResultV2Schema,
+  ProjectEnvironmentPreviewResultV4Schema,
+  ProjectEnvironmentPreviewResultV5Schema,
+} from "./project-environment-preview.js";
 
 const result = (thinkingLevel: unknown) => ({
   schemaVersion: 2,
@@ -24,6 +28,57 @@ const result = (thinkingLevel: unknown) => ({
 });
 
 describe("inspection Preview result V2", () => {
+  it("versions explicit Host budgets and preserves the historical V4 limit", () => {
+    const raised = {
+      ...result("max"),
+      schemaVersion: 5,
+      workspaceMode: "shared",
+      executionLimits: {
+        sharedToolCallLimit: 2048,
+        workerTurnTimeoutMs: 2_700_000,
+        workerTurnToolCallLimit: 512,
+      },
+      agents: {
+        recordPath: "/task/agents.v2.json",
+        count: 0,
+        maxAgents: 3,
+        sharedToolCalls: 513,
+        sharedToolCallLimit: 2048,
+      },
+    };
+    expect(ProjectEnvironmentPreviewResultV5Schema.parse(raised)).toEqual(
+      raised,
+    );
+    const { executionLimits: _limits, ...historical } = raised;
+    void _limits;
+    expect(
+      ProjectEnvironmentPreviewResultV4Schema.safeParse({
+        ...historical,
+        schemaVersion: 4,
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectEnvironmentPreviewResultV5Schema.safeParse({
+        ...raised,
+        agents: { ...raised.agents, sharedToolCallLimit: 256 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectEnvironmentPreviewResultV5Schema.safeParse({
+        ...raised,
+        workspaceMode: "single",
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectEnvironmentPreviewResultV5Schema.safeParse({
+        ...raised,
+        executionLimits: {
+          ...raised.executionLimits,
+          sharedToolCallLimit: 2049,
+        },
+      }).success,
+    ).toBe(false);
+  });
   it("accepts max thinking without changing the result schema version", () => {
     expect(
       ProjectEnvironmentPreviewResultV2Schema.parse(result("max")),

@@ -59,6 +59,7 @@ interface Execution {
   readonly startedAt: string;
   readonly launchAbort: AbortController;
   importProcess: SrtCommandResult | null;
+  importBootstrapProcess: SrtCommandResult | null;
   mainScene: string | null;
   engineVersion: string | null;
   handle: SrtGodotRunHandle | null;
@@ -253,6 +254,7 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
       startedAt: this.now(),
       launchAbort: new AbortController(),
       importProcess: null,
+      importBootstrapProcess: null,
       mainScene: null,
       engineVersion: null,
       handle: null,
@@ -284,6 +286,7 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         signal: launchSignal,
       });
       execution.importProcess = prepared.process;
+      execution.importBootstrapProcess = prepared.bootstrapProcess;
       launchSignal.throwIfAborted();
       const handle = await this.options.runner.open({
         sourceFiles: prepared.sourceFiles,
@@ -363,6 +366,22 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         );
       execution.mainScene = ready.scene;
       execution.engineVersion = ready.engineVersion;
+      const versionPin = source.sourceFiles.find(
+        (file) => file.relativePath === ".godot-version",
+      );
+      if (versionPin !== undefined) {
+        const requested = new TextDecoder("utf-8", { fatal: true })
+          .decode(versionPin.bytes)
+          .trim();
+        const realized = /^([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?=[.-])/u.exec(
+          ready.engineVersion,
+        )?.[1];
+        if (realized !== requested)
+          throw failure(
+            "launch_failed",
+            `Candidate requests Godot ${requested} but running engine reports ${ready.engineVersion}`,
+          );
+      }
       if (execution.record !== null || this.#closed)
         throw failure(
           "execution_exited",
@@ -377,8 +396,10 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         root: ready.root,
       });
     } catch (error) {
-      if (error instanceof GodotImportPreparationError)
+      if (error instanceof GodotImportPreparationError) {
         execution.importProcess = error.process;
+        execution.importBootstrapProcess = error.bootstrapProcess;
+      }
       if (this.#closed || launchSignal.aborted)
         execution.error ??= errorDetail(
           failure("cancelled", "Game launch was cancelled"),
@@ -540,6 +561,13 @@ export class GodotInspectionRuntime implements InspectionGameToolPort {
         execution.importProcess === null
           ? (execution.terminated?.import ?? null)
           : importObservation(execution.importProcess),
+      ...(execution.importBootstrapProcess === null
+        ? {}
+        : {
+            importBootstrap: importObservation(
+              execution.importBootstrapProcess,
+            ),
+          }),
       run: execution.terminated?.run ?? null,
       stderr: stderr.slice(0, 64 * 1_024),
       stderrTruncated:

@@ -206,6 +206,8 @@ describe("resolveSrtRuntimeConfig", () => {
       "4.7.1.custom_build",
       "4.7.2.stable.official.a13da4feb",
       "4.7.1.stable.official.short",
+      "4.2.2.stable.official.15073afe3",
+      "4.3.stable.official.77dcf97d8",
     ]) {
       await expect(
         resolveSrtRuntimeConfig(
@@ -219,5 +221,52 @@ describe("resolveSrtRuntimeConfig", () => {
         ),
       ).rejects.toThrow(/exact official Godot 4\.7\.1/u);
     }
+  });
+
+  it.each([
+    ["4.2.2.stable.official.15073afe3", "4.2.2"],
+    ["4.3.stable.official.77dcf97d8", "4.3"],
+    ["4.7.1.stable.official.a13da4feb", "4.7.1"],
+  ])(
+    "records the actual verified inspection build %s",
+    async (output, version) => {
+      const config = await resolveSrtRuntimeConfig(
+        {
+          repositoryRoot,
+          stateRoot: join(root, "inspection-state"),
+          godotBin: explicitGodot,
+          environment: {},
+          godotVersionPolicy: "inspection-verified",
+        },
+        dependencies({ probeGodotVersion: async () => output }),
+      );
+      expect(config.godot.receipt).toMatchObject({
+        registryKey: `godot-${version}-linux-x86_64-official`,
+        requestedVersion: version,
+        realizedVersion: version,
+        realizedVersionOutput: output,
+        executableSha256: digest,
+      });
+    },
+  );
+
+  it.each([
+    "4.3.stable.mono.official.77dcf97d8",
+    "4.3.stable.official.12345678",
+    "4.4.stable.official.77dcf97d8",
+    "4.2.2.custom_build.15073afe3",
+  ])("rejects Mono or unverified inspection build %s", async (output) => {
+    await expect(
+      resolveSrtRuntimeConfig(
+        {
+          repositoryRoot,
+          stateRoot: join(root, "inspection-state"),
+          godotBin: explicitGodot,
+          environment: {},
+          godotVersionPolicy: "inspection-verified",
+        },
+        dependencies({ probeGodotVersion: async () => output }),
+      ),
+    ).rejects.toThrow(/verified standard official/u);
   });
 });

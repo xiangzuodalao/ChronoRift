@@ -142,7 +142,154 @@ const completedPi = async (
   };
 };
 
-describe("Shared candidate Preview cleanup", () => {
+describe("Candidate Preview cleanup", () => {
+  it.each([
+    ["runtime", false],
+    ["controller", false],
+    ["runtime", true],
+    ["controller", true],
+  ] as const)(
+    "does not publish Single edits after %s close fails (explicit limits: %s)",
+    async (failed, explicitLimits) => {
+      const source = await fixture();
+      const runPiTurn = vi.fn(completedPi);
+      if (failed === "runtime")
+        vi.spyOn(
+          GodotInspectionRuntime.prototype,
+          "close",
+        ).mockRejectedValueOnce(new Error("runtime cleanup unconfirmed"));
+      else
+        vi.spyOn(SrtSandboxController.prototype, "close").mockRejectedValueOnce(
+          new Error("controller cleanup unconfirmed"),
+        );
+      const output = await runProjectEnvironmentPreviewV2(
+        {
+          projectPath: source,
+          provider: "offline-fixture",
+          model: "offline-fixture",
+          thinkingLevel: "off",
+          goal: "Inspect the candidate",
+          ...(explicitLimits
+            ? { executionLimits: { sharedToolCallLimit: 2048 } }
+            : {}),
+        },
+        { runPiTurn },
+      );
+      expect(runPiTurn).toHaveBeenCalledOnce();
+      expect(output).toMatchObject({
+        schemaVersion: explicitLimits ? 5 : 2,
+        status: "failed",
+        goalDelivered: true,
+        candidatePatch: null,
+        failureMessage: `${failed} cleanup unconfirmed`,
+      });
+      expect(output.limitations.join("\n")).toContain(
+        "writer cleanup was not confirmed",
+      );
+      expect(mocks.extractPatch).not.toHaveBeenCalled();
+      expect(
+        await readdir(join(output.taskDirectory, "records")),
+      ).not.toContain("candidate.patch");
+      expect(await readFile(join(source, "note.txt"), "utf8")).toBe(
+        "original source\n",
+      );
+      expect(
+        await readFile(join(output.workspaceDirectory, "note.txt"), "utf8"),
+      ).toBe("candidate edit\n");
+      const published: unknown = JSON.parse(
+        await readFile(
+          join(
+            output.taskDirectory,
+            "records",
+            `preview.v${output.schemaVersion}.json`,
+          ),
+          "utf8",
+        ),
+      );
+      expect(published).toEqual(output);
+    },
+  );
+
+  it.each(["single", "multi"] as const)(
+    "applies and persists explicit Host limits for %s without a sandbox or model",
+    async (arm) => {
+      const source = await fixture();
+      const executionLimits = {
+        sharedToolCallLimit: 2,
+        workerTurnTimeoutMs: 2_700_000,
+        workerTurnToolCallLimit: 512,
+      };
+      const coding = vi
+        .spyOn(SrtSandboxController.prototype, "runCoding")
+        .mockResolvedValue({
+          status: "exited",
+          exitCode: 0,
+          signal: null,
+          stdout: "ok",
+          stderr: "",
+          durationMs: 1,
+          timedOut: false,
+          cancelled: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
+      const output = await runProjectEnvironmentPreviewV2(
+        {
+          projectPath: source,
+          provider: "offline-fixture",
+          model: "offline-fixture",
+          thinkingLevel: "off",
+          goal: "Inspect the candidate",
+          timeoutMs: 5_400_000,
+          executionLimits,
+          ...(arm === "multi" ? { multiAgent: {} } : {}),
+        },
+        {
+          runPiTurn: async (options) => {
+            expect(options.timeoutMs).toBe(5_400_000);
+            const read = options.tools.find((tool) => tool.name === "read")!;
+            const invoke = (id: string) =>
+              read.execute(
+                id,
+                { path: "note.txt" },
+                undefined,
+                undefined,
+                {} as never,
+              );
+            await invoke("first");
+            await invoke("second");
+            await expect(invoke("over")).rejects.toThrow(
+              /budget exhausted|budget is exhausted/iu,
+            );
+            return completedPi(options);
+          },
+        },
+      );
+      expect(coding).toHaveBeenCalledTimes(2);
+      expect(output).toMatchObject({
+        schemaVersion: 5,
+        status: "completed",
+        executionLimits,
+        workspaceMode: arm === "multi" ? "shared" : "single",
+      });
+      if (output.schemaVersion !== 5)
+        throw new Error("Expected explicit Host limits record");
+      if (arm === "multi")
+        expect(output.agents).toMatchObject({
+          sharedToolCalls: 2,
+          sharedToolCallLimit: 2,
+        });
+      else expect(output.agents).toBeNull();
+      const persisted: unknown = JSON.parse(
+        await readFile(
+          join(output.taskDirectory, "records/preview.v5.json"),
+          "utf8",
+        ),
+      );
+      expect(persisted).toEqual(output);
+    },
+  );
+
   it.each(["collaboration", "runtime", "controller", "none"] as const)(
     "publishes a candidate only after every writer cleanup succeeds: %s",
     async (failed) => {

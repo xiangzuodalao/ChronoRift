@@ -347,6 +347,8 @@ export const InspectionRunRecordV1Schema = z
     status: z.enum(["exited", "timed_out", "cancelled", "failed"]),
     ...processResult.shape,
     import: InspectionProcessResultV1Schema.nullable(),
+    // Optional for old records; retains a cold-cache preparation diagnostic.
+    importBootstrap: InspectionProcessResultV1Schema.optional(),
     run: InspectionProcessResultV1Schema.nullable(),
     stderr: z.string().max(128 * 1_024),
     stderrTruncated: z.boolean(),

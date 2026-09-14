@@ -102,8 +102,32 @@ reuse runs, and old `.chronorift/` environment state is neither loaded nor migra
 `--state-root` selects private ChronoRift state. If omitted, resolution is `CHRONORIFT_STATE_ROOT`, then
 `$XDG_STATE_HOME/chronorift`, then `~/.local/state/chronorift`. `--godot-bin` selects the executable; if omitted,
 `GODOT_BIN` and then the repository-managed Godot are tried. Paths are canonicalized, the state directory must be
-writable, and Godot must report an exact official 4.7.1 Linux x86_64 build. Project-supplied environment variables do
-not configure sandbox policy.
+writable, and Preview accepts standard official Linux x86_64 Godot 4.7.1 plus the verified historical
+`4.3.stable.official.77dcf97d8` and `4.2.2.stable.official.15073afe3` builds. The managed installer and legacy
+runtimes still default to and require 4.7.1. Preview records the selected version and executable hash; a project's
+`.godot-version`, when present, must match the selected engine, including after candidate edits. Project-supplied
+environment variables do not configure sandbox policy.
+
+Preview preserves a project's ordinary `override.cfg`, including InputMap bindings, main scene and user autoloads,
+and appends Host inspection settings in the disposable stage. It rejects reserved Host autoloads, custom override
+chains, disabled overrides and `project.binary` configurations that could bypass this composition. Optional `.cs`
+source can remain as data; explicit C#/.NET dependencies, Mono builds and native extensions remain unsupported.
+Dynamic C# loads are judged by actual Godot errors, not assumed safe from a static reachability claim.
+
+Resource preparation uses an empty editor scene and temporary settings to disable editor UI plugins and early
+translation loading. Original runtime configuration is restored in the admitted snapshot. Custom `EditorImportPlugin`
+implementations remain unsupported. Native CSV translation outputs may be admitted beside their immutable source
+CSV only after validating the import declaration, locale/path mapping and data-only resource structure. Already
+tracked generated translations can regenerate only when their original declarations and resources pass the same
+checks; other ordinary source changes still fail. Supported translation encodings are RSRC format 5/6 with canonical
+locale names (hyphen separators are normalized); unsupported aliases and compressed RSCC containers fail closed.
+
+For Godot's precise cold-cache missing editor texture metadata diagnostic, preparation permits one verification
+pass after source integrity checks, within the same import timeout. All other errors fail immediately; errors or
+truncated stderr in the verification pass also fail. The original diagnostic is retained as `importBootstrap` in
+inspection records. Both processes remain inside SRT with no network or Host credentials. Preview continues to use
+the headless display backend; APIs requiring a window system can still fail and must not be treated as successful
+game operations.
 
 With that Host boundary provisioned, an executable Preview invocation is:
 

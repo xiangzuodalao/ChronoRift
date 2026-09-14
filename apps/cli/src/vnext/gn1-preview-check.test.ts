@@ -432,6 +432,7 @@ describe("pinned GN-1 source snapshot", () => {
           sourceFiles: [...input.sourceFiles],
           importCacheFiles: [],
           process: processResult(),
+          bootstrapProcess: null,
         };
       });
     const launch = vi
@@ -591,6 +592,7 @@ describe("pinned GN-1 source snapshot", () => {
         sourceFiles: [...input.sourceFiles],
         importCacheFiles: [],
         process: processResult(),
+        bootstrapProcess: null,
       };
     });
     const result = await checkGn1Preview(

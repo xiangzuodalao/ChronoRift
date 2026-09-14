@@ -573,6 +573,48 @@ describe("vNext Pi AgentSession host", () => {
     expect(continuedCaptures[0]?.sessionManager?.getCwd()).toBe(root.workspace);
   });
 
+  it("accepts a Host 90-minute turn without changing normal Pi completion", async () => {
+    const root = await createRoot();
+    const result = await runVNextPiTurn(
+      {
+        resourceWorkspaceDirectory: root.workspace,
+        sessionDirectory: root.sessions,
+        agentDir: root.agentDir,
+        modelRuntime,
+        model,
+        thinkingLevel: "max",
+        prompt: "Complete the task",
+        tools,
+        timeoutMs: 5_400_000,
+      },
+      { createSession: fakeSessionFactory([]) },
+    );
+    expect(result.status).toBe("completed");
+  });
+
+  it.each([0, -1, 1.5, 5_400_001, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid Host turn timeouts before creating a Pi Session: %s",
+    async (timeoutMs) => {
+      const createSession = vi.fn();
+      await expect(
+        runVNextPiTurn(
+          {
+            resourceWorkspaceDirectory: "/unused",
+            sessionDirectory: "/unused",
+            modelRuntime,
+            model,
+            thinkingLevel: "max",
+            prompt: "Complete the task",
+            tools,
+            timeoutMs,
+          },
+          { createSession },
+        ),
+      ).rejects.toThrow(/timeoutMs/u);
+      expect(createSession).not.toHaveBeenCalled();
+    },
+  );
+
   it("aborts only for a turn timeout and reports the observed termination", async () => {
     const root = await createRoot();
     const captures: CreateAgentSessionOptions[] = [];

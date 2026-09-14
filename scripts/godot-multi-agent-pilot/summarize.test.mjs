@@ -842,3 +842,79 @@ test("failed or unobserved launches after an edit cannot become final-candidate 
   assert.equal(withOther.rootFinalValidationExecutionId, "final");
   assert.equal(withOther.rootFinalValidationLastQueryAt, null);
 });
+
+test("a stopped serial batch retains an unstarted arm without inventing usage or acceptance", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "chronorift-unstarted-summary-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const save = (path, value) => writeFile(path, JSON.stringify(value) + "\n");
+  await mkdir(join(root, "evaluation"));
+  await mkdir(join(root, "pr498-single"));
+  await save(join(root, "manifest.json"), {
+    ids: ["pr498-single", "pr498-multi"],
+    cohort: "godot-feature-multi-v1",
+    collaborationPolicy: "adaptive",
+    config: { provider: "fixture", model: "fixture", thinkingLevel: "off" },
+    model: { metadata: model },
+  });
+  await save(
+    join(root, "evaluation", "results.json"),
+    ["pr498-single", "pr498-multi"].flatMap((id) =>
+      [1, 2].map((repeat) => ({
+        id,
+        repeat,
+        outcome: "requires_review",
+        reason: "No frozen final candidate patch",
+      })),
+    ),
+  );
+  await save(join(root, "live-completion.json"), {
+    observedProcesses: [],
+    survivingObservedProcesses: [],
+    stopRequested: true,
+    unstartedIds: ["pr498-multi"],
+  });
+  await save(join(root, "pr498-single", "completion.json"), {
+    status: "cancelled",
+    durationMs: 123,
+    failure: "Stopped before model startup",
+  });
+  const sourceRecord = await readFile(
+    join(root, "pr498-single", "completion.json"),
+    "utf8",
+  );
+  const log = console.log;
+  let summary;
+  try {
+    console.log = () => undefined;
+    summary = await summarize(root, join(root, "derived"));
+  } finally {
+    console.log = log;
+  }
+  assert.equal(summary.rows.length, 2);
+  assert.equal(summary.rows[0].status, "cancelled");
+  assert.equal(summary.rows[0].hostDurationMs, 123);
+  const missing = summary.rows[1];
+  assert.equal(missing.status, "missing");
+  assert.equal(missing.acceptance, "requires_review");
+  assert.equal(missing.tokens, null);
+  assert.equal(missing.estimatedCostUSD, null);
+  assert.equal(missing.hostDurationMs, null);
+  assert.equal(missing.rootModelRequests, null);
+  assert.equal(missing.usageIncomplete, true);
+  assert.equal(missing.comparisonProtocolSatisfied, false);
+  assert.equal(summary.comparisonProtocolSatisfied, false);
+  assert.equal(
+    await readFile(join(root, "pr498-single", "completion.json"), "utf8"),
+    sourceRecord,
+  );
+  assert.match(
+    await readFile(join(root, "derived", "results.csv"), "utf8"),
+    /pr498-multi/u,
+  );
+
+  // An existing arm that is not a directory is corruption, not an unstarted arm.
+  await writeFile(join(root, "pr498-multi"), "corrupt arm path");
+  await assert.rejects(summarize(root, join(root, "invalid")), {
+    code: "ENOTDIR",
+  });
+});

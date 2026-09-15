@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import {
   mkdtemp,
   readFile,
@@ -8,9 +9,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 
+import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -385,6 +387,11 @@ describe("pinned GN-1 source snapshot", () => {
   });
 
   async function commandFixture() {
+    const initializeSandbox = vi
+      .spyOn(SandboxManager, "initialize")
+      .mockRejectedValue(
+        new Error("native SRT is unavailable in this offline fixture"),
+      );
     const { directory, git } = await fixture();
     vi.spyOn(
       NodeHostGitPort.prototype,
@@ -420,6 +427,72 @@ describe("pinned GN-1 source snapshot", () => {
       candidatePatch,
       'diff --git a/main.tscn b/main.tscn\n--- a/main.tscn\n+++ b/main.tscn\n@@ -1,2 +1,3 @@\n [gd_scene format=3]\n [node name="Main" type="Node2D"]\n+# saved candidate\n',
     );
+    // Exercise real patch semantics without requiring native SRT in offline tests.
+    // This test-only replacement accepts only the two fixed fixture Git commands.
+    let patchWorkspace: string | undefined;
+    let patchCommandCount = 0;
+    const applyPatch = vi
+      .spyOn(SrtSandboxController.prototype, "runCoding")
+      .mockImplementation(async (input) => {
+        patchCommandCount += 1;
+        expect(patchCommandCount).toBeLessThanOrEqual(2);
+        expect(input.argv).toEqual([
+          "/usr/bin/git",
+          "-c",
+          "core.hooksPath=/dev/null",
+          "apply",
+          "--no-index",
+          ...(patchCommandCount === 1 ? ["--check"] : []),
+          "--",
+          "__gn1_candidate.patch",
+        ]);
+        expect(input.cwd).toBe(input.workspacePath);
+        expect(basename(input.cwd)).toBe("candidate");
+        const privateRoot = dirname(input.cwd);
+        expect(
+          privateRoot.startsWith(join(tmpdir(), "chronorift-gn1-check-")),
+        ).toBe(true);
+        patchWorkspace ??= input.cwd;
+        expect(input.cwd).toBe(patchWorkspace);
+        expect(input.homePath).toBe(join(privateRoot, "patch-home"));
+        expect(input.tempPath).toBe(join(privateRoot, "patch-temp"));
+        expect(input.artifactsPath).toBe(join(privateRoot, "patch-artifacts"));
+        expect(input.environment).toBeUndefined();
+        return new Promise<SrtCommandResult>((resolveResult, rejectResult) => {
+          execFile(
+            "/usr/bin/git",
+            input.argv.slice(1),
+            {
+              cwd: input.cwd,
+              env: {
+                HOME: input.homePath,
+                TMPDIR: input.tempPath,
+                PATH: "/usr/bin:/bin",
+                LANG: "C",
+                LC_ALL: "C",
+                GIT_CONFIG_NOSYSTEM: "1",
+                GIT_CONFIG_GLOBAL: "/dev/null",
+              },
+              encoding: "utf8",
+              shell: false,
+              timeout: 5_000,
+              signal: input.signal,
+            },
+            (error, stdout, stderr) => {
+              const exitCode = error === null ? 0 : error.code;
+              if (typeof exitCode !== "number") {
+                rejectResult(
+                  new Error(error?.message ?? "Fixture Git execution failed", {
+                    cause: error,
+                  }),
+                );
+                return;
+              }
+              resolveResult(processResult({ exitCode, stdout, stderr }));
+            },
+          );
+        });
+      });
     const prepare = vi
       .spyOn(SrtGodotRunner.prototype, "prepareImport")
       .mockImplementation(async (input) => {
@@ -470,6 +543,8 @@ describe("pinned GN-1 source snapshot", () => {
       launch,
       close,
       toolCopies,
+      initializeSandbox,
+      applyPatch,
     };
   }
 
@@ -483,6 +558,8 @@ describe("pinned GN-1 source snapshot", () => {
     });
     directories.push(result.directory);
     expect(result.exitCode).toBe(0);
+    expect(fixture.initializeSandbox).not.toHaveBeenCalled();
+    expect(fixture.applyPatch).toHaveBeenCalledTimes(2);
     expect(await readFile(join(fixture.directory, "main.tscn"))).toEqual(
       before,
     );
@@ -523,6 +600,8 @@ describe("pinned GN-1 source snapshot", () => {
     });
     directories.push(result.directory);
     expect(result.exitCode).toBe(1);
+    expect(fixture.applyPatch).not.toHaveBeenCalled();
+    expect(fixture.initializeSandbox).not.toHaveBeenCalled();
   });
 
   it("preserves failed import output and never launches that runtime unsandboxed", async () => {

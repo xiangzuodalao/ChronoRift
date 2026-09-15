@@ -20,7 +20,7 @@ its investigation and edit strategy; project CI, an independent Eval, or human r
 > evaluator 3/3. Coding-only also passed 3/3, so this case supports product-path reuse rather than a general efficacy
 > claim.
 
-**Status on 2026-08-27:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
+**Status on 2026-09-15:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
 A default `chronorift [goal]`, arbitrary-project support, and automatic “fixed” verdicts do not exist yet.
 
 ![ChronoRift concept art showing an isolated Godot runtime, baseline and candidate executions, and runtime records](docs/assets/chronorift-hero.jpg)
@@ -43,19 +43,19 @@ the surrounding workspace, sandbox, Godot execution, and runtime evidence.
 
 **Core value:** consistent execution, workspace isolation, runtime evidence, and independently reviewable validation.
 
-See the [target architecture](docs/architecture.md) for the full contract; it describes the vNext direction, not a list
-of implemented features.
+See the [architecture](docs/architecture.md) for the current implementation, module responsibilities, and runtime
+boundaries, and the [development guide](docs/development.md) for usage and validation commands.
 
 ## What exists today
 
-| Surface                     | Current implementation                                                                                                                  | Boundary                                                                               |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                             | Not the vNext free Loop and not an arbitrary-project runner                            |
-| Project Environment Preview | Explicit `project preview`; experimental source closure, sandbox, adapter publication/binding, and reuse                                | Narrow historical characterization; not the default command or general project support |
-| GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary | One project, prompt, revision, and pair; raw live outputs remain local-only            |
-| Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                    | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim       |
-| Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                       | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer      |
-| M3/M4/E2                    | Implementations and commands are removed from current HEAD; frozen historical archives remain                                           | Not templates for new slices and not restored to reproduce old producers or Gates      |
+| Surface                     | Current implementation                                                                                                                        | Boundary                                                                                                |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                                   | Not the vNext free Loop and not an arbitrary-project runner                                             |
+| Project Environment Preview | Explicit `project preview`; private candidate, sandboxed coding, adapter-free Godot object inspection, and optional Multi-Agent collaboration | Current-state inspection; no retained history, automatic acceptance, or arbitrary-project compatibility |
+| GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary       | One project, prompt, revision, and pair; raw live outputs remain local-only                             |
+| Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                          | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim                        |
+| Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                             | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer                       |
+| M3/M4/E2                    | Implementations and commands are removed from current HEAD; frozen historical archives remain                                                 | Not templates for new slices and not restored to reproduce old producers or Gates                       |
 
 Not yet available: a default `chronorift [goal]`, arbitrary Godot projects, general adapter authoring/migration,
 cross-platform Hosts, automatic acceptance, or generally available checkpoint/fork/replay on the current product
@@ -140,10 +140,15 @@ workspace. Godot validation instead runs against a Host-copied stage whose proje
 `.godot/`, home, temp, and artifacts are writable, and source SHA-256 is checked before and after execution. The
 commands do not automatically commit, merge, push, or declare a fix.
 
-Optional `--multi-agent` adds persistent Pi workers with independent candidates and Godot executions. The Host brokers
-sandboxed tools, messages, waiting, cancellation, and explicit candidate import into Root. The default limit is three
-workers plus one Root, for four agents in total. TUI commands `/agents` and `/agents stop` inspect or stop the team. See [Multi-Agent V1](docs/multi-agent.md)
-for configuration, tool budgets, patch conflicts, and the experimental boundaries.
+Optional `--multi-agent` adds persistent Pi workers sharing one private candidate. Each agent has independent Godot
+executions and temporary resources. The Host brokers sandboxed tools, asynchronous messages, followups, cancellation,
+and shared execution budgets; coding operations and launch source capture use a shared lock. Adaptive delegation
+allows zero workers and defaults to at most three active workers plus one Root. TUI commands `/agents` and
+`/agents stop` inspect or stop the team. See [Multi-Agent V2](docs/multi-agent.md) for configuration and lifecycle limits.
+
+The [capacity comparison](docs/case-studies/godot-capacity-multi-v1.md) gave both arms enough budget to finish PR180
+and pass independent acceptance. It did not establish a collaboration speedup; the report preserves actual worker
+delivery, duplicated work, and the incomplete Single SDK usage. Earlier negative results remain in the linked studies.
 
 ## Trust boundary
 
@@ -162,8 +167,8 @@ for configuration, tool budgets, patch conflicts, and the experimental boundarie
 - [Engineering walkthrough](docs/portfolio.md): design decisions, a five-file code tour, and known debt.
 - [GN-1 case study](docs/case-studies/gn1-platform-alias.md): a checkable but non-generalizable runtime-observation pair.
 - [Godot Demo Mob orientation](docs/case-studies/godot-demo-mob-orientation.md): a completed second-project V2 slice that did not promote to Hero.
-- [Target architecture](docs/architecture.md): vNext contract, rollout, and current implementation map (§20/§21).
-- [Project Environment V1 RFC](docs/project-environment-v1.md): data model, publication state machine, and wire contract.
+- [Architecture](docs/architecture.md): current Preview flow, workspace and sandbox boundaries, module ownership, and maintained legacy paths.
+- [Multi-Agent Runtime](docs/multi-agent.md): task trees, shared candidate, asynchronous coordination, execution budgets, and telemetry.
 - [Development and conformance](docs/development.md): local, Godot, Host sandbox, and live-provider prerequisites.
 - [`docs/evidence/`](docs/evidence/) and [`docs/benchmarks/`](docs/benchmarks/): immutable historical archives whose
   conclusions do not automatically apply to current HEAD.

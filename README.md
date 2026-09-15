@@ -19,7 +19,7 @@ Agent 返回 Build-bound runtime state、实际 diff 和 tool result。Agent 自
 > 14 个、修改后 5 个 Mob state，候选通过独立 evaluator 3/3。Coding-only 也通过 3/3，因此本案例证明产品路径复用，
 > 不证明总体修复优势。
 
-**截至 2026-08-27：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
+**截至 2026-09-15：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
 `chronorift [goal]`、任意 Godot 项目支持和自动“修复成功”判定尚未实现。
 
 ![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
@@ -41,7 +41,7 @@ sandbox、Godot execution 和 runtime evidence。
 
 **核心价值：** 一致执行、工作区隔离、运行时证据和可独立审阅的验证。
 
-完整目标契约见 [架构文档](docs/architecture.md)；它描述 vNext 方向，不等于当前功能清单。
+当前实现、模块职责和运行边界见 [架构文档](docs/architecture.md)，使用与验证命令见 [开发指南](docs/development.md)。
 
 Project Preview 可选 `--multi-agent`：Root 和 worker 使用独立 Pi Session，共享一个私有 candidate，各自拥有固定源码的
 Godot execution。所有代理都可继续委派、发消息和等待；默认全树最多 3 个活跃 worker，加上预留的 Root 共 4 个并发名额。
@@ -52,6 +52,8 @@ Codex 公开设计的适配边界见 [Multi-Agent V2](docs/multi-agent.md)；旧
 此前的 [V2 四路复测](docs/case-studies/codex-v2-retest.md)满足固定配置协议，八次验收通过；两个小任务中 Multi 均更慢、已上报估算费用更高。
 后续 [Adaptive Multi 实验](docs/case-studies/adaptive-multi-v1.md)保留这些负结果，比较可选 worker 是否减少 Root 工作和关键路径，
 并记录一次针对性优化后的开发对照及独立 holdout。
+[提高预算后的功能对照](docs/case-studies/godot-capacity-multi-v1.md)中，Single 与 Adaptive 均完成 PR180 并通过独立验收，
+但未观察到协作加速；Worker 的实际交付和 SDK 用量缺口均保留在报告中。
 
 ## Runtime evidence 改变候选：GN-1
 

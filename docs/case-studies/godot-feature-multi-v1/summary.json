@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "cohort": "godot-feature-multi-v1",
+  "status": "all_cases_blocked_before_model_trials",
+  "freeze": {
+    "status": "frozen",
+    "frozenAt": "2026-09-13T16:09:16.641Z",
+    "manifest": {
+      "privateRecord": "batch/manifest.json",
+      "sha256": "c5ec378da62afa4295c680e7271f3571e209ba520bd868cd91c6f11fc389b7b1"
+    },
+    "product": {
+      "commit": "d19d7ccd8e0b9f116b8940efdc2aacadb5e313ac",
+      "sha256": "17e5e69db0769a8f862b583662a7e06cbf801d46e81cad6fbd8cd67f356df9ff",
+      "fileCount": 400
+    }
+  },
+  "caseCount": 3,
+  "eligibleCaseCount": 0,
+  "blockedCaseCount": 3,
+  "modelTrialCount": 0,
+  "modelRequestCount": 0,
+  "cases": [
+    {
+      "caseId": "pr498",
+      "title": "Add input hints",
+      "status": "blocked",
+      "eligibleForModelTrial": false,
+      "blockerCodes": [
+        "runtime_reserved_override",
+        "full_source_import_errors"
+      ],
+      "reason": "Full source retains override.cfg, which current Runtime rejects. Baseline/reference imports also report translation-resource and editor-plugin HTTP errors.",
+      "fullProjectAcceptance": {
+        "baselineTarget": null,
+        "referenceTarget": null,
+        "mutantSensitivity": null,
+        "observed": false
+      },
+      "modelTrialAcceptance": null,
+      "performanceObserved": false
+    },
+    {
+      "caseId": "pr180",
+      "title": "Saved app state",
+      "status": "blocked",
+      "eligibleForModelTrial": false,
+      "blockerCodes": [
+        "runtime_reserved_override",
+        "generated_translation_output_rejected"
+      ],
+      "reason": "Full source retains override.cfg, which current Runtime rejects. Baseline/reference ordinary import processes succeed, but strict output admission rejects generated translation resources.",
+      "fullProjectAcceptance": {
+        "baselineTarget": null,
+        "referenceTarget": null,
+        "mutantSensitivity": null,
+        "observed": false
+      },
+      "modelTrialAcceptance": null,
+      "performanceObserved": false
+    },
+    {
+      "caseId": "pr332",
+      "title": "SimpleParallelComposite",
+      "status": "blocked",
+      "eligibleForModelTrial": false,
+      "blockerCodes": [
+        "runtime_native_csharp_source_rejected",
+        "full_source_import_errors",
+        "component_reference_combination_failed"
+      ],
+      "reason": "Full source retains vendored C# helpers, which current Runtime rejects; full imports also report errors. A separate component diagnostic finds a reference finite-repeat/delay combination failure.",
+      "fullProjectAcceptance": {
+        "baselineTarget": null,
+        "referenceTarget": null,
+        "mutantSensitivity": null,
+        "observed": false
+      },
+      "modelTrialAcceptance": null,
+      "performanceObserved": false,
+      "separateComponentDiagnostic": {
+        "scope": "component_projection_diagnostic_only",
+        "referenceAssertions": {
+          "total": 74,
+          "passed": 72,
+          "failed": 2
+        },
+        "fourMutantsShowAdditionalFailures": true,
+        "fullProjectAcceptanceEstablished": false
+      }
+    }
+  ],
+  "trials": [],
+  "comparisons": [],
+  "performance": {
+    "status": "not_observed",
+    "metrics": {
+      "acceptance": null,
+      "wallClockMs": null,
+      "totalTokens": null,
+      "estimatedCostUsd": null,
+      "actualWorkerCount": null,
+      "rootOnlyTokens": null,
+      "rootToolCalls": null,
+      "workerToolCalls": null,
+      "workspaceLockWaitMs": null,
+      "workersNaturallyCompleted": null,
+      "workersCancelled": null
+    },
+    "reason": "No model trials started. Preparation imports and component diagnostics are not Single/Adaptive performance observations."
+  },
+  "conclusion": "This batch provides prerequisite and limited component-diagnostic evidence only. It provides no Single versus Adaptive acceptance, cost, token, latency, worker-selection, lock-contention or Root-work-reduction conclusion.",
+  "batchExecutionStatus": "empty_batch_completed_without_model_sessions"
+}

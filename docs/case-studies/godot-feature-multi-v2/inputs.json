@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "report": "godot-feature-multi-v2",
+  "protocolCohort": "godot-feature-multi-v1",
+  "frozenAt": "2026-09-13T16:44:52.877Z",
+  "batchManifestSha256": "610e1fee82511eb720fa5c15ef690e00affd6773edca015274fd2cc46a2911a2",
+  "baseProductHead": "d19d7ccd8e0b9f116b8940efdc2aacadb5e313ac",
+  "frozenProductSha256": "fc6c07fcf80d2c6eaafa1bc23d5da5f1d1b9e7ddc3a50098e85ddfb589ef9253",
+  "frozenProductFiles": 408,
+  "frozenInputFiles": 957,
+  "model": {
+    "id": "gpt-5.6-luna",
+    "provider": "openai-codex",
+    "api": "openai-codex-responses",
+    "cost": {
+      "input": 0.2,
+      "output": 1.2,
+      "cacheRead": 0.02,
+      "cacheWrite": 0.25,
+      "tiers": [
+        {
+          "inputTokensAbove": 272000,
+          "input": 0.4,
+          "output": 1.8,
+          "cacheRead": 0.04,
+          "cacheWrite": 0.5
+        }
+      ]
+    },
+    "contextWindow": 272000,
+    "maxTokens": 128000,
+    "reasoning": true,
+    "thinkingLevelMap": {
+      "xhigh": "xhigh",
+      "max": "max",
+      "minimal": "low"
+    }
+  },
+  "config": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "timeoutMs": 1200000,
+    "sharedToolCallLimit": 256,
+    "maxAgents": 3,
+    "dnsOrder": "ipv4first",
+    "collaborationVersion": 2,
+    "workspaceMode": "shared"
+  },
+  "spawnPolicy": {
+    "maxCreatedAgents": 3,
+    "maxDepth": 1,
+    "lockedRuntime": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "thinkingLevel": "max"
+    }
+  },
+  "protocol": {
+    "maximumWorkers": 3,
+    "maximumModelTrials": 6,
+    "attemptsPerArm": 1,
+    "serialTrials": true,
+    "alternatingFirstArm": true,
+    "workerCanImplement": true,
+    "referenceAndEvaluatorVisibleToModel": false,
+    "independentEvaluationsPerCandidate": 2,
+    "modelStrategyChangesDuringBatch": false,
+    "deadlineStartsAtHostInvocation": true,
+    "cleanupAllowanceMs": 180000
+  },
+  "eligibleCases": ["pr180"],
+  "trialOrder": ["pr180-single", "pr180-multi"],
+  "commonInstructions": "Implement the complete requested feature in the candidate workspace. You may change code and add focused tests. Choose the investigation, implementation, and validation steps. Preserve unrelated behavior and use existing project conventions where useful; acceptance depends on behavior and the stated public API, not copying a particular code structure. After the relevant final-candidate checks pass, finish and report evidence and unverified requirements. Repeat equivalent work or validation only for an observed failure, a concrete uncovered requirement, conflicting evidence, or source changes. A successful tool call or completed investigation does not prove acceptance; inspect game operation outcomes. Stop live game executions when finished with them and before validating newer source. The overall investigation budget is 20 minutes and the execution-call budget is 256; cleanup calls remain available. Work autonomously within that budget.",
+  "multiAppendix": "Collaboration is enabled with the current Adaptive policy. You may create up to three direct workers, including zero. Workers may implement code within a clearly bounded scope as well as investigate or validate. All agents share the candidate workspace; coordinate overlapping edits. Worker turns have a 10-minute and 64-execution-call limit within the same team budget. No fixed number, roles, or division of work is required.",
+  "tasks": [
+    {
+      "caseId": "pr498",
+      "title": "Add input hints",
+      "status": "blocked",
+      "base": {
+        "commit": "15fdc36b717967b6940aacedc84c00959718f8bf",
+        "tree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62"
+      },
+      "reference": {
+        "commit": "3c28b381fc30424f2cb4c6b930f24db4c707aeee",
+        "tree": "840e0a31695c9480628c3849d48c5d57e188a74e"
+      },
+      "godotVersion": "4.7.1.stable.official.a13da4feb",
+      "godotSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+      "projectDeclaredGodot": "4.7",
+      "pullRequest": "https://github.com/Maaack/Godot-Game-Template/pull/498",
+      "repository": "https://github.com/Maaack/Godot-Game-Template",
+      "requirements": "Add reusable input hints to the Godot Game Template.\n\nThe existing InputEventHelper and InputIconMapper should support displaying an action's bindings as text or mapped icons, and selecting bindings for the active input device. Preserve the existing template's menus and input mapping behavior.\n\nPublic integration contract:\n\n- Extend InputEventHelper with is_keyboard_event, is_screen_event and get_input_device_name. Classify keyboard keys, mouse buttons/motion, joypad buttons/motion, and screen touch/drag as Keyboard, Mouse, Joypad and Screen respectively; unrelated events are Generic. Keep controller-brand naming distinct from these device categories: provide get_joypad_device_name_by_id, get_joypad_device_name and get_event_device_text, updating InputIconMapper's integration.\n- Provide get_action_device_event(action_name, input_device_name, input_number = 0). Select the indexed binding among that device's events, preserving their order and wrapping a nonnegative index. If there are no bindings for the requested device, fall back to the first bound event's device category. An action with no bindings returns null.\n- Provide a reusable Control scene at addons/maaacks_game_template/base/nodes/input_hint/input_hint.tscn. Its public exported properties are action_name, input_number (default 0), input_cycle_delay (default 0), last_device_specific (default true), combine_keyboard_and_mouse (default true), device_update_delay (default 0.5), input_icon_mapper and expand_mode. Internal node names, private methods and implementation structure are unrestricted.\n- Display the selected event's mapped icon when available; otherwise display its human-readable input text. Remove stale text when showing an icon and stale icons when returning to text. Refresh when action_name or input_number changes, and when the mapper signals a joypad-device change.\n- A positive input_cycle_delay advances the displayed binding repeatedly; zero leaves it unchanged. Indexing wraps over eligible bindings. With last_device_specific disabled, all action bindings are eligible. With it enabled, hints follow the last supported input-device category, with a configurable interval to avoid switching too frequently. Generic events must not change the active category.\n- When combine_keyboard_and_mouse is enabled, keyboard and mouse bindings form the eligible hints for either category (and initial Generic selection). Cycling this combined set must eventually display every distinct eligible binding, including when keyboard and mouse have unequal binding counts; neither category should hide another binding permanently. Joypad input remains device-specific. Disabling this option keeps keyboard and mouse separate.\n\nValidate using the project's declared Godot 4.7 version family. No particular visual styling, directory layout beyond the public scene path, timer/node implementation, physical-controller hardware support test, or new framework is required. Document any behavior you cannot verify.\n",
+      "requirementsSha256": "d7de10cb74baa960f3c066203764b1401a095e1461fbbac0cce905466129d7ff",
+      "sourceIdentity": {
+        "snapshotCommit": "c33226b9bbfd7de8ca95dc5459e2f07124fb30b8",
+        "tree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62",
+        "commitCount": 1,
+        "remotes": "",
+        "clean": true,
+        "totalGitObjects": 651,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "hasReferenceObjects": false,
+        "sourceProofPath": "[private preparation resource]"
+      },
+      "evaluatorSha256": "bda24ff36bb65e718572a35a67f1f7cf37090ce30541fa2713e69b7f95b97ee4",
+      "hiddenCheckerSha256": "a68cfae95dae8f58c16e8453d714da2247ee54a760f1783c28f43b904c26c542",
+      "blockedReason": "Original reference never selects the second keyboard binding in combined keyboard/mouse mode with two keyboard bindings and one mouse binding; unchanged full-source diagnostic confirms key65/mouse1 alternating at indices0..11 with empty stderr. Full reference behavior evaluator emits errors because upstream InputEventHelper invokes keyboard_get_keycode_from_physical under the headless display server. Its 10 passing/1 failing raw assertions are observations, not an overall valid passing acceptance result.",
+      "evaluatorFileCount": 1,
+      "blockedReasons": [
+        "Original reference never selects the second keyboard binding in combined keyboard/mouse mode with two keyboard bindings and one mouse binding; unchanged full-source diagnostic confirms key65/mouse1 alternating at indices0..11 with empty stderr.",
+        "Full reference behavior evaluator emits errors because upstream InputEventHelper invokes keyboard_get_keycode_from_physical under the headless display server. Its 10 passing/1 failing raw assertions are observations, not an overall valid passing acceptance result."
+      ]
+    },
+    {
+      "caseId": "pr180",
+      "status": "ready",
+      "base": {
+        "commit": "eea63dab5d96901cdae451473b446d56d7fcea85",
+        "tree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+        "snapshotCommit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124"
+      },
+      "reference": {
+        "commit": "e4549ad6e1bb32ecdfd1dfc24fd0e131ed4116be",
+        "tree": "e23bd42adc4a28325f56ce40f369d4fa420e9b61",
+        "snapshotCommit": "bdd9886ecf4f73c889be5fe0fcf119ee383de8c5",
+        "parents": [
+          "eea63dab5d96901cdae451473b446d56d7fcea85",
+          "dd00851d070b7bd3f4d53e4ef3860781c9ed067c"
+        ]
+      },
+      "godotVersion": "4.3.stable.official.77dcf97d8",
+      "godotSha256": "6e100966e49c69a2d4c163673f606eec1bafe54b4c6170eec5a6a2ee50756ddd",
+      "pullRequest": "https://github.com/Maaack/Godot-Game-Template/pull/180",
+      "repository": "https://github.com/Maaack/Godot-Game-Template",
+      "title": "状态持久化：通用存储、游戏/关卡状态及菜单流程接入",
+      "projectDeclaredGodot": "4.3",
+      "requirements": "Implement persistent, generic application/game state, separated from application settings.\n\nThe project is a reusable Godot template with both packaged example scenes and an installed example project. Add a reusable state layer and integrate the existing game, level, and menu flows in both copies. Preserve unrelated behavior. Choose your own implementation structure; acceptance checks behavior and the public compatibility API below, not the arrangement of files or similarity to a reference implementation.\n\nRequired behavior:\n\n- Open application state during normal application startup. Persist it under `user://` separately from the existing Config settings file. Track the first and latest application versions opened and the last opening timestamp. Reopening updates the latest version/time while preserving the first version; an empty/missing version has a usable fallback.\n- Provide keyed, typed Resource state storage. Repeated requests for the same key/type reuse the same state; different keys are isolated. Replace an existing entry if its saved type no longer matches the requested type. Save registered resources, including nested game and level state, so a fresh disk load restores their values.\n- Maintain game-start count, current level, maximum level reached, and per-level state. Starting a game increments and saves the count. Reaching a level updates/saves current level and the maximum without lowering the maximum; explicitly selecting a level saves current level. Different levels retain independent color choices.\n- Integrate the shipped main-menu Play signal with game-start recording and the existing game-scene request. Integrate the shipped level loader with persisted current-level selection and advancement. Integrate the shipped level color picker with both the displayed background and saved per-level state, including restoration when that level is recreated.\n- Integrate both full and mini game-reset menu controls with clearing and saving registered game state. Reset must preserve application settings and application opening metadata. Freshly requested game/level state after reset uses defaults. Preserve these behaviors in both the installed project and packaged template examples.\n\nPublic compatibility API (new scripts may live anywhere in the project):\n\n- `GlobalState` exposes static `current`, `open()`, `save()`, `reset()`, and `get_state(key: String, state_type_path: String)`. `current` is a Resource with `first_version_opened`, `last_version_opened`, `last_unix_time_opened`, and a `states` dictionary. The persisted top-level resource is `user://global_state.tres`.\n- `GlobalStateData` is the Resource type for the top-level data and exposes `get_state(key, state_type_path)`.\n- `GameState` and the packaged-example counterpart `GameStateExample` expose static `get_game_state()`, `get_level_state(level_key)`, `get_current_level()`, `level_reached(level_number)`, `set_current_level(level_number)`, and `start_game()`. Their data exposes `level_states`, `max_level_reached`, `current_level`, and `total_games_started`.\n- `LevelState` and `LevelStateExample` expose a persisted `color: Color`.\n- Preserve the existing scene and menu interfaces, including LevelListLoader level selection/advancement and the existing Play/reset/color-picker signals. Internal state namespaces are an implementation choice; observed save/resume/reset behavior must be consistent.\n\nValidation should cover persistence by reading serialized data back from disk, independent state keys and levels, counters/progress, actual scene signals, and settings-preserving reset. A successful import or a completed tool call alone is not feature acceptance. No network services or new runtime dependencies are required.\n",
+      "requirementsSha256": "2ee107c304f2adb92cb82a6122e9c41afc2c93d03fd0ced0a673f36aed1a2805",
+      "sourceIdentity": {
+        "commit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124",
+        "tree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+        "sha256": "d7d2d4f0d3506b884cb3ea7598f794640d173f2e4a933bffeb1f0bf5bf1e1673",
+        "projectRoot": "",
+        "oneCommitSnapshot": true,
+        "baselineHistoryOnly": true
+      },
+      "evaluatorSha256": "3c6e31c560a6e5f78638773ed184dd60b3f3ff48fa7c072c62a45195935410ff",
+      "hiddenCheckerSha256": "d9a403557795f24c841b788f7670394530a2381ed9a5b1e2889e230c29776cc7",
+      "blockedReason": null,
+      "evaluatorFileCount": 843
+    },
+    {
+      "caseId": "pr332",
+      "title": "SimpleParallelComposite",
+      "status": "blocked",
+      "base": {
+        "commit": "25a9e75bdbbd75f1f206b38d34fdd539dba470cb",
+        "tree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+        "parents": ["18d24929e3bf0a799da0c24ba0e8c5a20d12d0b4"],
+        "rawCommitSha256": "4f55cbccd4921596c08f1be60c0b17fd5bc4b860379d557fc9305a7165b87cfb"
+      },
+      "reference": {
+        "commit": "2e51a717a5c947658b0e5f3ea41519e1e746082c",
+        "tree": "d5295a70ecebeb0bbdd3e86a313515b1354fb762",
+        "parents": ["25a9e75bdbbd75f1f206b38d34fdd539dba470cb"],
+        "rawCommitSha256": "04bb2ddabc6d2818079abd3904971d5c3fc84b395fa0121fa5125aebaf0d794b"
+      },
+      "godotVersion": "4.2.2.stable.official.15073afe3",
+      "godotSha256": "11666450f64c4e90cfbf7b795bbd3b07aa52ea1afb6feb73d0b4fee876f72def",
+      "projectDeclaredGodot": "4.2",
+      "pullRequest": "https://github.com/bitbrain/beehave/pull/332",
+      "repository": "https://github.com/bitbrain/beehave",
+      "requirements": "Add a SimpleParallelComposite to Beehave so a behavior tree can run a primary action alongside a secondary behavior. Integrate it with the existing GDScript node API, editor naming/icon conventions, and user documentation. Preserve existing node behavior.\n\nThe public API is a `SimpleParallelComposite` class extending `Composite`, loadable at `res://addons/beehave/nodes/composites/simple_parallel.gd`. It has exactly two children: the first is the primary `ActionLeaf`; the second may be a leaf or a composite subtree. Expose `secondary_node_repeat_count` (integer, default `0`) and `delay_mode` (boolean, default `false`). Follow the existing class reporting and lifecycle conventions.\n\nBehavior contract:\n\n- Tick the primary first. While it is RUNNING, tick the eligible secondary in the same composite tick. A secondary SUCCESS or FAILURE must not decide the composite result; the primary determines SUCCESS or FAILURE.\n- In the default mode, a primary terminal result ends the composite immediately. Interrupt any running secondary, including a nested subtree; do not tick or start a secondary after the primary has finished in that tick.\n- In delay mode, remember the primary result and wait for an already running secondary action to finish. Do not tick the completed primary again while waiting. Then return the remembered primary result, even if the secondary has the opposite result.\n- A secondary repeat count of zero means unlimited executions while the primary is active. A positive value limits the number of completed secondary executions per activation; a RUNNING tick does not consume an additional execution. Once that budget is exhausted, leave the secondary finished while continuing the primary.\n- The finite limit and delay mode must work together: if the secondary has already exhausted its executions before the primary finishes, there is no running action to wait for. Return the primary terminal result without restarting the exhausted secondary or remaining RUNNING indefinitely.\n- Completion and external interruption must leave the composite usable on a later activation. Restart the repeat budget on that activation. Interrupt running children when externally interrupted, and support a SimpleParallelComposite nested as the secondary subtree.\n\nUse existing tests and add focused behavioral coverage where useful. No particular internal state representation or implementation structure is required. Avoid unrelated feature additions.\n",
+      "requirementsSha256": "6be30ed99465855e266bc772e88b991b77d8880fced8f3426de428e0b35a3ea9",
+      "sourceIdentity": {
+        "commit": "a1b8b0aae1859aa9731414952cdc3bd3d5d4ba38",
+        "tree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+        "commitCount": 1,
+        "remotes": [],
+        "referenceCommitPresent": false,
+        "fileCount": 537,
+        "snapshotParents": [],
+        "sourceUnchanged": true,
+        "totalGitObjects": 603,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "hiddenCheckerPresent": false,
+        "fullBaseTreeMatches": true,
+        "allOriginalTrackedFilesPreserved": true
+      },
+      "evaluatorSha256": "5230f265c879d47343430f6095d80d4539a8ab7bb1b2dce514f637dd71ff2bd7",
+      "hiddenCheckerSha256": "b49a30693c3d838737bfb9113d0a9b10f97903dd875a307388a71af7cf76206d",
+      "blockedReason": "Complete source admission/import now pass after compatibility fixes. Full reference still observes the two required finite-repeat/delay terminal-result failures, and baseline/reference script-mode shutdown reports Capture not registered: beehave. Original requirements and strict error handling retained.",
+      "evaluatorFileCount": 98
+    }
+  ],
+  "limits": [
+    "Only PR180 is eligible; PR498/PR332 reference defects remain blocked.",
+    "Historical negative reports and original sources are preserved.",
+    "Both arms use the current headless Preview; independent PR180 acceptance uses a private Xvfb inside the unchanged SRT namespace.",
+    "Xvfb is evaluator-only and is not model-visible or a new Runtime display capability.",
+    "No model strategy, prompts, Runtime or frozen evaluator changes are allowed during this batch.",
+    "SDK costs are estimates; actual billed costs are unavailable."
+  ],
+  "acceptanceDisplay": {
+    "caseId": "pr180",
+    "backend": "Xvfb/X11, software rendering",
+    "xvfbVersion": "2:21.1.4-2ubuntu1.7~22.04.16",
+    "xvfbExecutableSha256": "cf71d78eab8321f7c568271053af449f966a75422140117ea1f244bf72a7e81e",
+    "launcherSha256": "13f74a8f002131cc73903dd436680161d784875a8969ecc8c1c5d4bc336d0f45",
+    "dependencyCount": 832,
+    "environmentManifestSha256": "6feb3658322f4abff48d5f7b079764092f897c949a040ab104984cc7af8e3fba",
+    "hostDisplayUsed": false,
+    "externalNetworkAllowed": false,
+    "unixSocketFilterUnchanged": true,
+    "loopbackTcpScope": "same private SRT network namespace"
+  },
+  "frozenEligibilityMeaning": "Eligibility frozen before the two model trials. Subsequent Single grading exposed an unstated scene-structure assumption; eligibility was not retroactively edited and no rescoring occurred."
+}

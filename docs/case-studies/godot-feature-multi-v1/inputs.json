@@ -1,0 +1,395 @@
+{
+  "schemaVersion": 1,
+  "cohort": "godot-feature-multi-v1",
+  "freeze": {
+    "status": "frozen",
+    "frozenAt": "2026-09-13T16:09:16.641Z",
+    "manifest": {
+      "privateRecord": "batch/manifest.json",
+      "sha256": "c5ec378da62afa4295c680e7271f3571e209ba520bd868cd91c6f11fc389b7b1"
+    },
+    "product": {
+      "commit": "d19d7ccd8e0b9f116b8940efdc2aacadb5e313ac",
+      "sha256": "17e5e69db0769a8f862b583662a7e06cbf801d46e81cad6fbd8cd67f356df9ff",
+      "fileCount": 400
+    }
+  },
+  "protocolStatus": "implemented_not_live_exercised",
+  "runtimeSourceCommit": "d19d7ccd8e0b9f116b8940efdc2aacadb5e313ac",
+  "collaborationPolicy": "adaptive",
+  "config": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "timeoutMs": 1200000,
+    "sharedToolCallLimit": 256,
+    "maxAgents": 3,
+    "dnsOrder": "ipv4first",
+    "collaborationVersion": 2,
+    "workspaceMode": "shared"
+  },
+  "spawnPolicy": {
+    "maxCreatedAgents": 3,
+    "maxDepth": 1,
+    "lockedRuntime": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "thinkingLevel": "max"
+    }
+  },
+  "commonInstructions": "Implement the complete requested feature in the candidate workspace. You may change code and add focused tests. Choose the investigation, implementation, and validation steps. Preserve unrelated behavior and use existing project conventions where useful; acceptance depends on behavior and the stated public API, not copying a particular code structure. After the relevant final-candidate checks pass, finish and report evidence and unverified requirements. Repeat equivalent work or validation only for an observed failure, a concrete uncovered requirement, conflicting evidence, or source changes. A successful tool call or completed investigation does not prove acceptance; inspect game operation outcomes. Stop live game executions when finished with them and before validating newer source. The overall investigation budget is 20 minutes and the execution-call budget is 256; cleanup calls remain available. Work autonomously within that budget.",
+  "multiAppendix": "Collaboration is enabled with the current Adaptive policy. You may create up to three direct workers, including zero. Workers may implement code within a clearly bounded scope as well as investigate or validate. All agents share the candidate workspace; coordinate overlapping edits. Worker turns have a 10-minute and 64-execution-call limit within the same team budget. No fixed number, roles, or division of work is required.",
+  "modelMetadataObserved": false,
+  "plannedProtocol": {
+    "eligibleOnly": true,
+    "maximumModelTrials": 6,
+    "attemptsPerArm": 1,
+    "serialTrials": true,
+    "alternatingFirstArm": true,
+    "orderIfAllEligible": [
+      "pr498-single",
+      "pr498-multi",
+      "pr180-multi",
+      "pr180-single",
+      "pr332-single",
+      "pr332-multi"
+    ],
+    "maximumWorkers": 3,
+    "minimumWorkers": 0,
+    "workerCanImplement": true,
+    "sharedTeamWallClockMs": 1200000,
+    "sharedExecutionCallLimit": 256,
+    "workerTurnWallClockMs": 600000,
+    "workerTurnExecutionCallLimit": 64,
+    "referenceAndHiddenEvaluatorVisibleToModel": false,
+    "independentEvaluationsPerCandidate": 2,
+    "automaticModelReruns": false,
+    "strategyChangesDuringBatch": false,
+    "runtimeSourceChangedForThisBatch": false,
+    "nativeCollaborationMetadataChangedForThisBatch": false
+  },
+  "eligibleCases": [],
+  "scheduledTrials": [],
+  "cases": [
+    {
+      "caseId": "pr498",
+      "title": "Add input hints",
+      "pullRequest": "https://github.com/Maaack/Godot-Game-Template/pull/498",
+      "preparationStatus": "blocked",
+      "projectRoot": ".",
+      "base": {
+        "commit": "15fdc36b717967b6940aacedc84c00959718f8bf",
+        "tree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62"
+      },
+      "reference": {
+        "commit": "3c28b381fc30424f2cb4c6b930f24db4c707aeee",
+        "tree": "840e0a31695c9480628c3849d48c5d57e188a74e",
+        "parents": [
+          "15fdc36b717967b6940aacedc84c00959718f8bf",
+          "d0829b967039ff3d639fb2d16d3702915c58aedd"
+        ],
+        "mergeType": "two_parent_merge"
+      },
+      "modelSource": {
+        "snapshotCommit": "c33226b9bbfd7de8ca95dc5459e2f07124fb30b8",
+        "tree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62",
+        "allObjectCount": 651,
+        "reachableObjectCount": 651,
+        "allObjectsReachableFromHead": true,
+        "fullBaseTreeMatches": true,
+        "clean": true,
+        "commitCount": 1,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "remotes": [],
+        "trackedFileCount": 586,
+        "sourceProof": {
+          "privateRecord": "prep/pr498/source-proof.json",
+          "sha256": "2390211bb645a5451ffc647f91dce828e62a92277b63c27798563886418369e2"
+        }
+      },
+      "taskContract": {
+        "language": "English",
+        "text": "Add reusable input hints to the Godot Game Template.\n\nThe existing InputEventHelper and InputIconMapper should support displaying an action's bindings as text or mapped icons, and selecting bindings for the active input device. Preserve the existing template's menus and input mapping behavior.\n\nPublic integration contract:\n\n- Extend InputEventHelper with is_keyboard_event, is_screen_event and get_input_device_name. Classify keyboard keys, mouse buttons/motion, joypad buttons/motion, and screen touch/drag as Keyboard, Mouse, Joypad and Screen respectively; unrelated events are Generic. Keep controller-brand naming distinct from these device categories: provide get_joypad_device_name_by_id, get_joypad_device_name and get_event_device_text, updating InputIconMapper's integration.\n- Provide get_action_device_event(action_name, input_device_name, input_number = 0). Select the indexed binding among that device's events, preserving their order and wrapping a nonnegative index. If there are no bindings for the requested device, fall back to the first bound event's device category. An action with no bindings returns null.\n- Provide a reusable Control scene at addons/maaacks_game_template/base/nodes/input_hint/input_hint.tscn. Its public exported properties are action_name, input_number (default 0), input_cycle_delay (default 0), last_device_specific (default true), combine_keyboard_and_mouse (default true), device_update_delay (default 0.5), input_icon_mapper and expand_mode. Internal node names, private methods and implementation structure are unrestricted.\n- Display the selected event's mapped icon when available; otherwise display its human-readable input text. Remove stale text when showing an icon and stale icons when returning to text. Refresh when action_name or input_number changes, and when the mapper signals a joypad-device change.\n- A positive input_cycle_delay advances the displayed binding repeatedly; zero leaves it unchanged. Indexing wraps over eligible bindings. With last_device_specific disabled, all action bindings are eligible. With it enabled, hints follow the last supported input-device category, with a configurable interval to avoid switching too frequently. Generic events must not change the active category.\n- When combine_keyboard_and_mouse is enabled, keyboard and mouse bindings form the eligible hints for either category (and initial Generic selection). Cycling this combined set must eventually display every distinct eligible binding, including when keyboard and mouse have unequal binding counts; neither category should hide another binding permanently. Joypad input remains device-specific. Disabling this option keeps keyboard and mouse separate.\n\nValidate using the project's declared Godot 4.7 version family. No particular visual styling, directory layout beyond the public scene path, timer/node implementation, physical-controller hardware support test, or new framework is required. Document any behavior you cannot verify.\n",
+        "evidence": {
+          "privateRecord": "prep/pr498/task.md",
+          "sha256": "d7de10cb74baa960f3c066203764b1401a095e1461fbbac0cce905466129d7ff"
+        }
+      },
+      "godot": {
+        "version": "4.7.1.stable.official.a13da4feb",
+        "executableSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+        "projectDeclaredVersion": "4.7"
+      },
+      "evaluator": {
+        "module": "scripts/godot-feature-multi-pilot/cases/pr498/check.mjs",
+        "moduleSha256": "8372c4134111498b9f2888157efea36dd37b2343bd2f19bbbc48a7fb9b7db274",
+        "exportName": "check",
+        "privateFixtures": [
+          {
+            "privateRecord": "prep/pr498/independent-check.gd",
+            "sha256": "a68cfae95dae8f58c16e8453d714da2247ee54a760f1783c28f43b904c26c542"
+          }
+        ]
+      },
+      "preparationManifest": {
+        "privateRecord": "prep/pr498/manifest.json",
+        "sha256": "01bc5b9e52fe046791b57aaf4f60ad5adf52944c5ebd70a4401b91b18974f93e"
+      }
+    },
+    {
+      "caseId": "pr180",
+      "title": "Saved app state",
+      "pullRequest": "https://github.com/Maaack/Godot-Game-Template/pull/180",
+      "preparationStatus": "blocked",
+      "projectRoot": ".",
+      "base": {
+        "commit": "eea63dab5d96901cdae451473b446d56d7fcea85",
+        "tree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79"
+      },
+      "reference": {
+        "commit": "e4549ad6e1bb32ecdfd1dfc24fd0e131ed4116be",
+        "tree": "e23bd42adc4a28325f56ce40f369d4fa420e9b61",
+        "parents": [
+          "eea63dab5d96901cdae451473b446d56d7fcea85",
+          "dd00851d070b7bd3f4d53e4ef3860781c9ed067c"
+        ],
+        "mergeType": "two_parent_merge"
+      },
+      "modelSource": {
+        "snapshotCommit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124",
+        "tree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+        "allObjectCount": 299,
+        "reachableObjectCount": 299,
+        "allObjectsReachableFromHead": true,
+        "fullBaseTreeMatches": true,
+        "clean": true,
+        "commitCount": 1,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "remotes": [],
+        "trackedFileCount": 259,
+        "sourceProof": {
+          "privateRecord": "prep/pr180/source-proof.json",
+          "sha256": "538be8c3502ec9b429b1a6e4217b2028a612e82f5b872fbd53e237599e797752"
+        }
+      },
+      "taskContract": {
+        "language": "English",
+        "text": "Implement persistent, generic application/game state, separated from application settings.\n\nThe project is a reusable Godot template with both packaged example scenes and an installed example project. Add a reusable state layer and integrate the existing game, level, and menu flows in both copies. Preserve unrelated behavior. Choose your own implementation structure; acceptance checks behavior and the public compatibility API below, not the arrangement of files or similarity to a reference implementation.\n\nRequired behavior:\n\n- Open application state during normal application startup. Persist it under `user://` separately from the existing Config settings file. Track the first and latest application versions opened and the last opening timestamp. Reopening updates the latest version/time while preserving the first version; an empty/missing version has a usable fallback.\n- Provide keyed, typed Resource state storage. Repeated requests for the same key/type reuse the same state; different keys are isolated. Replace an existing entry if its saved type no longer matches the requested type. Save registered resources, including nested game and level state, so a fresh disk load restores their values.\n- Maintain game-start count, current level, maximum level reached, and per-level state. Starting a game increments and saves the count. Reaching a level updates/saves current level and the maximum without lowering the maximum; explicitly selecting a level saves current level. Different levels retain independent color choices.\n- Integrate the shipped main-menu Play signal with game-start recording and the existing game-scene request. Integrate the shipped level loader with persisted current-level selection and advancement. Integrate the shipped level color picker with both the displayed background and saved per-level state, including restoration when that level is recreated.\n- Integrate both full and mini game-reset menu controls with clearing and saving registered game state. Reset must preserve application settings and application opening metadata. Freshly requested game/level state after reset uses defaults. Preserve these behaviors in both the installed project and packaged template examples.\n\nPublic compatibility API (new scripts may live anywhere in the project):\n\n- `GlobalState` exposes static `current`, `open()`, `save()`, `reset()`, and `get_state(key: String, state_type_path: String)`. `current` is a Resource with `first_version_opened`, `last_version_opened`, `last_unix_time_opened`, and a `states` dictionary. The persisted top-level resource is `user://global_state.tres`.\n- `GlobalStateData` is the Resource type for the top-level data and exposes `get_state(key, state_type_path)`.\n- `GameState` and the packaged-example counterpart `GameStateExample` expose static `get_game_state()`, `get_level_state(level_key)`, `get_current_level()`, `level_reached(level_number)`, `set_current_level(level_number)`, and `start_game()`. Their data exposes `level_states`, `max_level_reached`, `current_level`, and `total_games_started`.\n- `LevelState` and `LevelStateExample` expose a persisted `color: Color`.\n- Preserve the existing scene and menu interfaces, including LevelListLoader level selection/advancement and the existing Play/reset/color-picker signals. Internal state namespaces are an implementation choice; observed save/resume/reset behavior must be consistent.\n\nValidation should cover persistence by reading serialized data back from disk, independent state keys and levels, counters/progress, actual scene signals, and settings-preserving reset. A successful import or a completed tool call alone is not feature acceptance. No network services or new runtime dependencies are required.\n",
+        "evidence": {
+          "privateRecord": "prep/pr180/task.md",
+          "sha256": "2ee107c304f2adb92cb82a6122e9c41afc2c93d03fd0ced0a673f36aed1a2805"
+        }
+      },
+      "godot": {
+        "version": "4.3.stable.official.77dcf97d8",
+        "executableSha256": "6e100966e49c69a2d4c163673f606eec1bafe54b4c6170eec5a6a2ee50756ddd",
+        "projectDeclaredVersion": "4.3"
+      },
+      "evaluator": {
+        "module": "scripts/godot-feature-multi-pilot/cases/pr180/check.mjs",
+        "moduleSha256": "29c46e589cff2b0827e59a2a54729a87666cf6b4cf48c20171b03bea34a86b5a",
+        "exportName": "check",
+        "privateFixtures": [
+          {
+            "privateRecord": "prep/pr180/hidden-check.gd",
+            "sha256": "d9a403557795f24c841b788f7670394530a2381ed9a5b1e2889e230c29776cc7"
+          },
+          {
+            "privateRecord": "prep/pr180/source-proof.json",
+            "sha256": "538be8c3502ec9b429b1a6e4217b2028a612e82f5b872fbd53e237599e797752"
+          },
+          {
+            "privateRecord": "prep/pr180/source-isolation-correction.json",
+            "sha256": "93c3dc408884961e9704d9991a9f6b224c7af773429fdc35b10358d4cb96299e"
+          },
+          {
+            "privateRecord": "prep/pr180/manifest-before-model-source-clean.json",
+            "sha256": "4da3a6bfe25d9b8b2e919dc075674bbfaea798b2af752122c1b34ef43eedd2ed"
+          },
+          {
+            "privateRecord": "prep/pr180/source-proof-before-model-source-clean.json",
+            "sha256": "5d44702b082d0fe96789783ec73f4face7b8bb6779a90493272189888350af62"
+          }
+        ]
+      },
+      "preparationManifest": {
+        "privateRecord": "prep/pr180/manifest.json",
+        "sha256": "dfe265a07b157b9ad1668a851e7e4128cca0843de24ff8bc184e7d9550c55a6e"
+      }
+    },
+    {
+      "caseId": "pr332",
+      "title": "SimpleParallelComposite",
+      "pullRequest": "https://github.com/bitbrain/beehave/pull/332",
+      "preparationStatus": "blocked",
+      "projectRoot": ".",
+      "base": {
+        "commit": "25a9e75bdbbd75f1f206b38d34fdd539dba470cb",
+        "tree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f"
+      },
+      "reference": {
+        "commit": "2e51a717a5c947658b0e5f3ea41519e1e746082c",
+        "tree": "d5295a70ecebeb0bbdd3e86a313515b1354fb762",
+        "parents": ["25a9e75bdbbd75f1f206b38d34fdd539dba470cb"],
+        "mergeType": "squash_one_parent",
+        "pullRequestHead": {
+          "commit": "35082b77d9a3597e0c9da1c309b8254e5b966a09",
+          "tree": "d5295a70ecebeb0bbdd3e86a313515b1354fb762",
+          "parents": ["cbc16da09edc6d4e4c8474a0df67f34205334ce9"]
+        }
+      },
+      "modelSource": {
+        "snapshotCommit": "a1b8b0aae1859aa9731414952cdc3bd3d5d4ba38",
+        "tree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+        "allObjectCount": 603,
+        "reachableObjectCount": 603,
+        "allObjectsReachableFromHead": true,
+        "fullBaseTreeMatches": true,
+        "clean": true,
+        "commitCount": 1,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "remotes": [],
+        "trackedFileCount": 537,
+        "sourceProof": {
+          "privateRecord": "prep/pr332/source-proof.json",
+          "sha256": "cb04cc3996aa4fea53a3bb890799576c08d820643c3b990c1caccc34290fa43d"
+        }
+      },
+      "taskContract": {
+        "language": "English",
+        "text": "Add a SimpleParallelComposite to Beehave so a behavior tree can run a primary action alongside a secondary behavior. Integrate it with the existing GDScript node API, editor naming/icon conventions, and user documentation. Preserve existing node behavior.\n\nThe public API is a `SimpleParallelComposite` class extending `Composite`, loadable at `res://addons/beehave/nodes/composites/simple_parallel.gd`. It has exactly two children: the first is the primary `ActionLeaf`; the second may be a leaf or a composite subtree. Expose `secondary_node_repeat_count` (integer, default `0`) and `delay_mode` (boolean, default `false`). Follow the existing class reporting and lifecycle conventions.\n\nBehavior contract:\n\n- Tick the primary first. While it is RUNNING, tick the eligible secondary in the same composite tick. A secondary SUCCESS or FAILURE must not decide the composite result; the primary determines SUCCESS or FAILURE.\n- In the default mode, a primary terminal result ends the composite immediately. Interrupt any running secondary, including a nested subtree; do not tick or start a secondary after the primary has finished in that tick.\n- In delay mode, remember the primary result and wait for an already running secondary action to finish. Do not tick the completed primary again while waiting. Then return the remembered primary result, even if the secondary has the opposite result.\n- A secondary repeat count of zero means unlimited executions while the primary is active. A positive value limits the number of completed secondary executions per activation; a RUNNING tick does not consume an additional execution. Once that budget is exhausted, leave the secondary finished while continuing the primary.\n- The finite limit and delay mode must work together: if the secondary has already exhausted its executions before the primary finishes, there is no running action to wait for. Return the primary terminal result without restarting the exhausted secondary or remaining RUNNING indefinitely.\n- Completion and external interruption must leave the composite usable on a later activation. Restart the repeat budget on that activation. Interrupt running children when externally interrupted, and support a SimpleParallelComposite nested as the secondary subtree.\n\nUse existing tests and add focused behavioral coverage where useful. No particular internal state representation or implementation structure is required. Avoid unrelated feature additions.\n",
+        "evidence": {
+          "privateRecord": "prep/pr332/task.md",
+          "sha256": "6be30ed99465855e266bc772e88b991b77d8880fced8f3426de428e0b35a3ea9"
+        }
+      },
+      "godot": {
+        "version": "4.2.2.stable.official.15073afe3",
+        "executableSha256": "11666450f64c4e90cfbf7b795bbd3b07aa52ea1afb6feb73d0b4fee876f72def",
+        "projectDeclaredVersion": "4.2"
+      },
+      "evaluator": {
+        "module": "scripts/godot-feature-multi-pilot/cases/pr332/check.mjs",
+        "moduleSha256": "2534a900137780ce62160a2417342848d8a5cd293b30734151a0f8335be05789",
+        "exportName": "check",
+        "privateFixtures": [
+          {
+            "privateRecord": "prep/pr332/correct-import-metadata.py",
+            "sha256": "34d37a48cdc89a1c67c9c199a462270cd1ed048d0f9dbd559ddfaa7c7ddbc649"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-check.mjs",
+            "sha256": "64708ae08ed6e97b30220ce5c2b0295c99c12efb0d4b46499b1e54fa3fa62cb6"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-mutant-always-success.patch",
+            "sha256": "b204e56eaf487a8b106f36865c98ed9f38b26ea40b317e72825cafa6e72b0d29"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-mutant-ignore-finite-repeat.patch",
+            "sha256": "d90ec179c6b6cc1a6af062a90acd4e70e7f92d9eb73243408bfd38753249c2f4"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-mutant-no-secondary-interrupt.patch",
+            "sha256": "c6619c1af311a549654f16bd2f34fe0297736a1741bcf0d6ebab06d6b44d7ecb"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-mutant-skip-secondary.patch",
+            "sha256": "bedea9c65bbd8f633f51372138f259b1fb45096ee1dbf00cf0e6f32cab62a4d8"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-mutants.json",
+            "sha256": "0392b378f7c6b99fe14e0c178cf81dc2c403cfa5979050028bf297b0dc7be03f"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection.json",
+            "sha256": "bf985bec8bc2cb19d4897fea5dfc89438e73f18b06fcb7d9ab78b3ad46d8ff21"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/blackboard.gd",
+            "sha256": "8edc993f1a8c37373d3bcad8c5cdf1d9cfb2d0eb4427b432229f31274d0cc023"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/debug/debugger_messages.gd",
+            "sha256": "10b9109cbeb55df75064f680d00c6d406185bec8372156de75b151f1c5b1c87f"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/icons/action.svg",
+            "sha256": "ba828aac24fb0b0b3628584a28ab23884bd901d918f1bd752c5994f8f2c85ef7"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/icons/blackboard.svg",
+            "sha256": "7da2bb26b844fd0019291a19d546ade341a7da1165241806d2ade658f093bf17"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/icons/category_composite.svg",
+            "sha256": "0bd205e2c50fb60ef83b6623f7e517318518ed8c6630d8d6046b4c93362ce34b"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/icons/category_leaf.svg",
+            "sha256": "47036e92cfc0dc0763317436a9b479c30d19535b733372ac7f35d1299d4b19c4"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/nodes/beehave_node.gd",
+            "sha256": "74216b6e90c5af865cf73c19f9b2340debd54de91320681f207003b1b8fd6d28"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/nodes/composites/composite.gd",
+            "sha256": "5cec2b6c987685af9d6f3097c30b3248841d6549b49791b75c7ad3558ae7651c"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/nodes/leaves/action.gd",
+            "sha256": "35699ec372b66f8eaf335a7fd01a9553a8616848f45c0424e1e169ae153da9e1"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/addons/beehave/nodes/leaves/leaf.gd",
+            "sha256": "16f8f9d9e3706e8d46ce4bbd8c981dc4530dd5ee6e9d5728dca2e57b802fd60a"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/diagnostic.tscn",
+            "sha256": "b120a56b718719531522afb54e6ce891020af13dc40d1e7ef9b47ec239e036d9"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-projection/project.godot",
+            "sha256": "d4528c36d7ff6c4d46a9a576177ed226bb1b91c8a4010cc4644cb094d4a07d84"
+          },
+          {
+            "privateRecord": "prep/pr332/diagnostic-reference.patch",
+            "sha256": "0b4610b7bbf5f49a6c4cb1607503ff334a5647f1b7dc4b4563923946da4814df"
+          },
+          {
+            "privateRecord": "prep/pr332/direct-import.mjs",
+            "sha256": "bf8264f685e756f92bf58e7ac0f26ff4a3709f1c521d86ae289aeca18244c282"
+          },
+          {
+            "privateRecord": "prep/pr332/finalize-manifest.py",
+            "sha256": "54132174788a558f2b20d59a85aca5987b0fe5a9ee582577fabcc0881c578794"
+          },
+          {
+            "privateRecord": "prep/pr332/identities.json",
+            "sha256": "10daff0179bd0710654eedc31dbbd2cd7063182b75864a00304659f90f95cdc3"
+          },
+          {
+            "privateRecord": "prep/pr332/independent-check.gd",
+            "sha256": "b49a30693c3d838737bfb9113d0a9b10f97903dd875a307388a71af7cf76206d"
+          },
+          {
+            "privateRecord": "prep/pr332/reference.patch",
+            "sha256": "60178dc9042ea9755a22d1c3a423a880fbf8e8dc2c92f56f1051805ba894345d"
+          },
+          {
+            "privateRecord": "prep/pr332/source-proof.json",
+            "sha256": "cb04cc3996aa4fea53a3bb890799576c08d820643c3b990c1caccc34290fa43d"
+          }
+        ]
+      },
+      "preparationManifest": {
+        "privateRecord": "prep/pr332/manifest.json",
+        "sha256": "14efcd21b7571e5ecb0f48b6bd52656fc9bf29778491eae726e7d458594e0002"
+      }
+    }
+  ]
+}

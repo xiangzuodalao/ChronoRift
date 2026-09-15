@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "executedOn": "2026-09-13",
+  "config": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "thinkingLevel": "max",
+    "timeoutMs": 1200000,
+    "sharedToolCallLimit": 256,
+    "maxAgents": 3,
+    "dnsOrder": "ipv4first"
+  },
+  "source": {
+    "gn1": {
+      "commit": "e78b339500dec8e480b33723c4156bf9b74cd25c",
+      "tree": "9941cb045b3cd73c4554ca1de337a341b383590b",
+      "sha256": "e7c86bfb83a0b9ed2bc0beebcd7aa402f8def73ee7c0d2547e3e7c36eb9cdb3f"
+    },
+    "city": {
+      "commit": "4535092b740b378b700efd9df9e27a631815b84a",
+      "tree": "528433a6580c8f48c9a1fcd7ddcae251a6f75c00",
+      "sha256": "5395a3aa8e39d8f888eece93af83b383cd3af57263fc1ef5c92425d14c1b9005"
+    }
+  },
+  "productCommit": "41c9d00799b792ca3dac58f64ba6d14560b5f429",
+  "productSourceSha256AtLaunch": "bb1ef2b0c13e62da68ce06399a76bed79c64e8e5cf15973059e49a84392d3780",
+  "model": {
+    "id": "gpt-5.6-luna",
+    "provider": "openai-codex",
+    "api": "openai-codex-responses",
+    "cost": {
+      "input": 0.2,
+      "output": 1.2,
+      "cacheRead": 0.02,
+      "cacheWrite": 0.25,
+      "tiers": [
+        {
+          "inputTokensAbove": 272000,
+          "input": 0.4,
+          "output": 1.8,
+          "cacheRead": 0.04,
+          "cacheWrite": 0.5
+        }
+      ]
+    },
+    "contextWindow": 272000,
+    "maxTokens": 128000,
+    "reasoning": true,
+    "thinkingLevelMap": {
+      "xhigh": "xhigh",
+      "max": "max",
+      "minimal": "low"
+    }
+  },
+  "modelMetadataSha256": "d2dbd41a9cb5b5e2039902b448f68b238a7160265cdbcc3ffc748d633f9c2b61",
+  "node": "v22.23.1",
+  "piVersion": "0.83.0",
+  "srtVersion": "0.0.74",
+  "godotSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+  "checkers": {
+    "gn1": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+    "city": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db"
+  },
+  "goals": {
+    "gn1": "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy.",
+    "city": "建筑预览在空闲时似乎反复重建。请调查并作最小合理修复：选中建筑不变时避免重复重建，同时保留初始化显示、前后切换及首尾循环时的正确更新。自行选择调查、修改和验证方式，并说明实际验证结果与未覆盖部分。"
+  },
+  "multiAppendix": "本次使用一个 Root 和三个 worker。开始调查时先创建恰好三个 worker，并让三个初始任务并行开展；由你决定分工和后续协作。可继续与这三个 worker 交流，不新建替代 worker。你负责最终候选的整合和验证；需要采用 worker 的修改时显式导入，并在最终候选上重新运行验证。",
+  "rawRecords": "Local private state; no raw model messages in this projection",
+  "postprocessing": "The summarizer was extended after all four live Runs finished to include evaluation duration, token breakdown, DNS and cleanup summaries; its final hash is recorded in summary.json."
+}

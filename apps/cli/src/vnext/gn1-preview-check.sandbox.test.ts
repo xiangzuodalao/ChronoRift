@@ -115,6 +115,20 @@ func _ready() -> void:
       }
     }
     expect(await readFile(join(project, "main.gd"), "utf8")).toBe(mainScript);
+    const escape = join(root, "escape.patch");
+    await writeFile(
+      escape,
+      "--- a/../host-tools/harmless-host-sibling.txt\n+++ b/../host-tools/harmless-host-sibling.txt\n@@ -1 +1 @@\n-This ordinary test file must not enter the sandbox.\n+overwritten\n",
+    );
+    const rejected = await checkGn1Preview(
+      { project, godotBin: godot, candidatePatch: escape },
+      { snapshotBaseline },
+    );
+    reports.push(rejected.directory);
+    expect(rejected.exitCode).toBe(2);
+    expect(
+      await readFile(join(rejected.directory, "result.json"), "utf8"),
+    ).toContain("Sandboxed candidate patch application failed");
     expect(await readFile(canary, "utf8")).toBe(
       "This ordinary test file must not enter the sandbox.",
     );

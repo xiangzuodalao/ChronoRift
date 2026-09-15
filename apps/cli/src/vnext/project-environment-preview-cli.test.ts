@@ -47,6 +47,78 @@ afterEach(() => {
 });
 
 describe("inspection Preview CLI", () => {
+  it.each([
+    { limitFlags: [], maxAgents: 3 },
+    { limitFlags: ["--max-agents", "4"], maxAgents: 4 },
+  ])(
+    "forwards multi-agent configuration $limitFlags and returns the V4 result",
+    async ({ limitFlags, maxAgents }) => {
+      const output = {
+        ...result(),
+        schemaVersion: 4,
+        agents: {
+          recordPath: "/task/records/agents.v2.json",
+          count: 2,
+          maxAgents,
+          sharedToolCalls: 6,
+          sharedToolCallLimit: 256,
+        },
+      };
+      runPreview.mockResolvedValue(output);
+      const write = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
+      await main([
+        ...args,
+        "--multi-agent",
+        ...limitFlags,
+        "--worker-provider",
+        "worker-provider",
+        "--worker-model",
+        "worker-model",
+        "--worker-thinking",
+        "max",
+      ]);
+      expect(
+        (
+          runPreview.mock
+            .calls[0]![0] as PreviewModule.ProjectEnvironmentPreviewRequestV2
+        ).multiAgent,
+      ).toEqual({
+        maxAgents,
+        workerProvider: "worker-provider",
+        workerModel: "worker-model",
+        workerThinking: "max",
+      });
+      expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(output);
+    },
+  );
+
+  it.each([
+    ["--max-agents", "2"],
+    ["--multi-agent", "--max-agents", "5"],
+    ["--multi-agent", "--worker-provider", "provider"],
+  ])(
+    "rejects invalid worker configuration before opening a project: %j",
+    async (...flags) => {
+      await expect(main([...args, ...flags])).rejects.toThrow();
+      expect(runPreview).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports multi-agent startup failures with the V4 version", async () => {
+    runPreview.mockRejectedValueOnce(new Error("worker startup failed"));
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    await main([...args, "--multi-agent"]);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toMatchObject({
+      schemaVersion: 4,
+      status: "failed",
+      goalDelivered: false,
+    });
+  });
+
   it("forwards the goal and source selection without project registration", async () => {
     runPreview.mockResolvedValue(result());
     const write = vi

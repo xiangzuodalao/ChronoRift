@@ -49,9 +49,8 @@ describe("inspection source admission", () => {
     ".env",
     "module.gdextension",
     "native.dll",
-    "script.cs",
+    "project.binary",
     "addons/chronorift_inspection/observer.gd",
-    "override.cfg",
   ])("rejects forbidden candidate content %s", async (path) => {
     const root = await setup();
     await mkdir(dirname(join(root, path)), { recursive: true });
@@ -71,6 +70,45 @@ describe("inspection source admission", () => {
       /reserved/u,
     );
   });
+  it("keeps user overrides in the snapshot and validates the effective main scene", async () => {
+    const root = await setup();
+    const override =
+      '[application]\nrun/main_scene="res://alternate.tscn"\n[input]\naccept={"events": [Object(InputEventKey, "physical_keycode": 81)]}\n';
+    await writeFile(
+      join(root, "alternate.tscn"),
+      '[gd_scene format=3]\n[node name="Alternate" type="Node"]\n',
+    );
+    await writeFile(join(root, "override.cfg"), override);
+    const source = await prepareGodotInspectionCandidate(root);
+    expect(source.mainScene).toBe("res://alternate.tscn");
+    expect(
+      Buffer.from(
+        source.sourceFiles.find((file) => file.relativePath === "override.cfg")!
+          .bytes,
+      ).toString(),
+    ).toBe(override);
+    await writeFile(
+      join(root, "override.cfg"),
+      '[application]\nrun/main_scene="res://../escaped.tscn"\n',
+    );
+    await expect(prepareGodotInspectionCandidate(root)).rejects.toThrow(
+      /main scene/u,
+    );
+  });
+
+  it.each([
+    '[autoload]\n"Chrono\\u0052iftInspection"="*res://spoof.gd"\n',
+    '[application]\nconfig/project_settings_override.linux="res://late.cfg"\n',
+    "[application]\nconfig/disable_project_settings_override=true\n",
+  ])(
+    "refuses upstream overrides that displace Host settings: %s",
+    async (override) => {
+      const root = await setup();
+      await writeFile(join(root, "override.cfg"), override);
+      await expect(prepareGodotInspectionCandidate(root)).rejects.toThrow();
+    },
+  );
+
   it("returns the admitted bytes independently of later candidate edits", async () => {
     const root = await setup();
     const admitted = await prepareGodotInspectionCandidate(root);

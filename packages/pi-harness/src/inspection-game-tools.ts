@@ -50,6 +50,7 @@ export function createInspectionGameToolDefinitions(
           const normalizedInput =
             INSPECTION_INPUT_SCHEMAS_V1[metadata.name].parse(input);
           if (
+            metadata.name !== "game_stop" &&
             options.toolCallAdmission !== undefined &&
             !options.toolCallAdmission.tryAdmit(metadata.name)
           ) {

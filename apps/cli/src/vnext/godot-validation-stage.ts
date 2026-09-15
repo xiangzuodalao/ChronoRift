@@ -20,6 +20,12 @@ import {
   sep,
 } from "node:path";
 
+import {
+  assertInspectionSettingsSafe,
+  readGodotTextSettings,
+  mergeGodotSettingsOverride,
+} from "./godot-settings-overlay.js";
+
 const EXCLUDED_SOURCE_ENTRIES = new Set([".git", ".godot", ".chronorift"]);
 const HASH_EXCLUDED_ENTRIES = new Set([".godot"]);
 
@@ -310,7 +316,7 @@ export const stageGodotValidation = async (
     throw new Error("candidateWorkspace and stageRoot must be disjoint");
   }
 
-  const overlayFiles = options.overlayFiles ?? [];
+  let overlayFiles = options.overlayFiles ?? [];
   // Validate every caller-controlled path before creating the stage.
   for (const overlay of overlayFiles) assertOverlayPath(overlay.relativePath);
   if (options.sourceFiles !== undefined)
@@ -344,7 +350,10 @@ export const stageGodotValidation = async (
         file.relativePath.startsWith("addons/chronorift_inspection/"),
       )
     ) {
-      for (const reserved of ["override.cfg", "addons/chronorift_inspection"]) {
+      for (const reserved of [
+        "addons/chronorift_inspection",
+        "project.binary",
+      ]) {
         try {
           await lstat(join(projectStagePath, reserved));
         } catch (error) {
@@ -355,6 +364,39 @@ export const stageGodotValidation = async (
           `candidate source occupies Host-managed inspection path: ${reserved}`,
         );
       }
+    }
+    if (
+      overlayFiles.some((file) =>
+        file.relativePath.startsWith("addons/chronorift_inspection/"),
+      )
+    ) {
+      const project = await readFile(join(projectStagePath, "project.godot"));
+      const upstreamOverride = await readFile(
+        join(projectStagePath, "override.cfg"),
+      ).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT")
+          return undefined;
+        throw error;
+      });
+      const settings = readGodotTextSettings(project);
+      assertInspectionSettingsSafe([
+        ...settings,
+        ...(upstreamOverride === undefined
+          ? []
+          : readGodotTextSettings(upstreamOverride)),
+      ]);
+      overlayFiles = overlayFiles.map((file) =>
+        file.relativePath === "override.cfg"
+          ? {
+              ...file,
+              bytes: mergeGodotSettingsOverride(
+                upstreamOverride,
+                file.bytes,
+                settings,
+              ),
+            }
+          : file,
+      );
     }
     await writeOverlays(projectStagePath, overlayFiles);
     await Promise.all(

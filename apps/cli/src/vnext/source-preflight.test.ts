@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   access,
   appendFile,
@@ -26,6 +27,7 @@ import {
   preflightCleanGitSubtree,
   preflightCleanExternalGodotProject,
   preflightCleanProjectEnvironmentV1,
+  refreezeProjectEnvironmentSourceV1,
 } from "./source-preflight.js";
 
 const execFileAsync = promisify(execFile);
@@ -558,8 +560,141 @@ describe("preflightCleanProjectEnvironmentV1", () => {
     ).rejects.toMatchObject({ code: "source_feature_unsupported" });
   });
 
+  it("freezes optional C# helper bytes without admitting a .NET requirement", async () => {
+    const repo = await createProject();
+    await mkdir(join(repo.root, "addons", "vendor"), { recursive: true });
+    const helperPath = "addons/vendor/Optional.cs";
+    const helper = "// Optional plugin implementation\n";
+    await writeFile(join(repo.root, helperPath), helper);
+    await writeFile(
+      join(repo.root, "addons/vendor/loader.gd"),
+      'extends RefCounted\nfunc optional_api():\n\tif not ClassDB.class_exists("CSharpScript"):\n\t\treturn null\n\treturn load("res://addons/vendor/Optional.cs").new()\n',
+    );
+    await appendFile(
+      join(repo.root, "project.godot"),
+      '\n[dotnet]\nproject/assembly_name="MetadataOnly"\n',
+    );
+    await commitAll(repo.root, "optional plugin C# source");
+    const request = {
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    };
+    const source = await preflightCleanProjectEnvironmentV1(request);
+    expect(source.sourceClosure?.entries).toContainEqual(
+      expect.objectContaining({
+        relativePath: helperPath,
+        contentSha256: createHash("sha256").update(helper).digest("hex"),
+        provenance: "tracked",
+      }),
+    );
+    // The same check applies to final tracked bytes, including dirty source.
+    await writeFile(
+      join(repo.root, "addons/vendor/loader.gd"),
+      'extends RefCounted\nconst API = preload("res://addons/vendor/Optional.cs")\n',
+    );
+    await expect(
+      preflightCleanProjectEnvironmentV1(request),
+    ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+  });
+
+  it("records the selected verified engine and requires a source pin to match", async () => {
+    const repo = await createProject();
+    const request = {
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    };
+    const unpinned = await preflightCleanProjectEnvironmentV1({
+      ...request,
+      godotVersion: "4.2.2",
+    });
+    expect(unpinned.requestedGodotVersion).toBe("4.2.2");
+    expect(unpinned.sourceClosure?.requestedGodotVersion).toBe("4.2.2");
+    const refrozen = await refreezeProjectEnvironmentSourceV1(unpinned);
+    expect(refrozen.projectSourceIdentity).toBe(unpinned.projectSourceIdentity);
+    expect(refrozen.sourceClosure).toEqual(unpinned.sourceClosure);
+    await writeFile(join(repo.root, ".godot-version"), "4.3\n");
+    await commitAll(repo.root, "pin verified Godot");
+    await expect(
+      preflightCleanProjectEnvironmentV1({ ...request, godotVersion: "4.3" }),
+    ).resolves.toMatchObject({ requestedGodotVersion: "4.3" });
+    await expect(
+      preflightCleanProjectEnvironmentV1({ ...request, godotVersion: "4.2.2" }),
+    ).rejects.toThrow(/match selected Godot 4\.2\.2/u);
+  });
+
+  it.each([
+    [
+      "project.godot",
+      '[application]\nrun/main_scene="res://main.tscn"\n"config/features"=PackedStringArray("4.7", "C#")\n',
+    ],
+    ["override.cfg", '[autoload]\nGame="*res://Game.cs"\n'],
+    [
+      "main.tscn",
+      '[gd_scene load_steps=2 format=3]\n[ext_resource type="Script" path="res://Game.cs" id="1"]\n[node name="Main" type="Node"]\nscript=ExtResource("1")\n',
+    ],
+  ])(
+    "rejects explicit .NET content at PE preflight in %s",
+    async (path, contents) => {
+      const repo = await createProject();
+      await writeFile(join(repo.root, path), contents);
+      await commitAll(repo.root, "C# requirement");
+      await expect(
+        preflightCleanProjectEnvironmentV1({
+          projectPath: repo.root,
+          sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+        }),
+      ).rejects.toThrow(/explicit C#\/\.NET/u);
+    },
+  );
+
+  it("freezes a project override and records its effective main scene", async () => {
+    const repo = await createProject();
+    const override =
+      '[application]\nrun/main_scene="res://alternate.tscn"\n[rendering]\nrenderer/rendering_method="gl_compatibility"\n';
+    await writeFile(join(repo.root, "override.cfg"), override);
+    await writeFile(
+      join(repo.root, "alternate.tscn"),
+      '[gd_scene format=3]\n[node name="Alternate" type="Node"]\n',
+    );
+    await commitAll(repo.root, "preserve project override");
+    const source = await preflightCleanProjectEnvironmentV1({
+      projectPath: repo.root,
+      sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+    });
+    expect(source.mainScene).toBe("res://alternate.tscn");
+    expect(source.sourceClosure?.entries).toContainEqual(
+      expect.objectContaining({
+        relativePath: "override.cfg",
+        contentSha256: createHash("sha256").update(override).digest("hex"),
+      }),
+    );
+  });
+
+  it.each([
+    '[autoload]\n"ChronoRiftInspection.linux"="*res://attack.gd"\n',
+    '[autoload]\n"ChronoRiftProjectEnvironment"="*res://attack.gd"\n',
+    '[application]\nconfig/project_settings_override="res://other.cfg"\n',
+    "[application]\nconfig/disable_project_settings_override=true\n",
+  ])(
+    "rejects overrides that replace managed configuration",
+    async (contents) => {
+      const repo = await createProject();
+      await writeFile(join(repo.root, "override.cfg"), contents);
+      await commitAll(repo.root, "unsafe override");
+      await expect(
+        preflightCleanProjectEnvironmentV1({
+          projectPath: repo.root,
+          sourceRepositoryExclusionRoots: [repo.runtimeRoot],
+        }),
+      ).rejects.toMatchObject({ code: "source_feature_unsupported" });
+    },
+  );
+
   it.each([
     ["credential-like source", ".env.production", "SECRET=value\n"],
+    ["native library", "module.dll", "unsupported\n"],
+    [".NET project", "Game.csproj", "unsupported\n"],
+    ["binary settings override", "project.binary", "unsupported\n"],
     [
       "reserved managed addon",
       "addons/chronorift_project_environment/plugin.gd",
@@ -593,7 +728,7 @@ describe("preflightCleanProjectEnvironmentV1", () => {
       projectPath: dirty.root,
       sourceRepositoryExclusionRoots: [dirty.runtimeRoot],
     });
-    await appendFile(join(dirty.root, "project.godot"), "\n# dirty\n");
+    await appendFile(join(dirty.root, "project.godot"), "\n; dirty\n");
     const frozen = await preflightCleanProjectEnvironmentV1({
       projectPath: dirty.root,
       sourceRepositoryExclusionRoots: [dirty.runtimeRoot],

@@ -1,0 +1,2250 @@
+{
+  "schemaVersion": 1,
+  "report": "godot-feature-multi-v2",
+  "auditedAt": "2026-09-13T17:35:08.866740+00:00",
+  "engineeringChecksPassed": true,
+  "frozenExecutionProtocolAuditPassed": true,
+  "acceptanceDesignAuditPassed": false,
+  "featureComparisonConclusive": false,
+  "engineering": {
+    "completedAt": "2026-09-13T16:44:49.447418+00:00",
+    "modelInvoked": false,
+    "checks": [
+      {
+        "command": "corepack pnpm check",
+        "passed": true,
+        "testFiles": 134,
+        "tests": 1130,
+        "logSha256": "e72f86ddbec48a9302d4ad1ee39e648b696a43f8f28dc3064b5dc0b7b5db5559",
+        "logArtifact": "pnpm-check.log"
+      },
+      {
+        "command": "corepack pnpm test:godot",
+        "passed": true,
+        "testFiles": 13,
+        "tests": 20,
+        "logSha256": "fa5381970940d319b1a46006a9f854cbb76d7beef2b7233b5ca7613078d717e9",
+        "logArtifact": "godot-tests.log"
+      },
+      {
+        "command": ".github/scripts/run-srt-sandbox-conformance.sh",
+        "passed": true,
+        "testFiles": 6,
+        "tests": 11,
+        "logSha256": "02d096a95fd192e50948ee84e7049b4e9b9ccc9edf370a7c6615e43d7b134db0",
+        "logArtifact": "srt-conformance.log"
+      },
+      {
+        "command": "node --dns-result-order=ipv4first --import tsx --test scripts/godot-feature-multi-pilot/*.test.mjs scripts/godot-feature-multi-pilot/cases/*/*.test.mjs scripts/godot-multi-agent-pilot/*.test.mjs",
+        "passed": true,
+        "testFiles": null,
+        "tests": 40,
+        "logSha256": "db7585b0ad6919855e8ab1244e39b319893411c14d8c156566d46adee54ca074",
+        "logArtifact": "experiment-script-tests.log"
+      }
+    ]
+  },
+  "frozenProtocolAndIsolation": {
+    "schemaVersion": 1,
+    "auditedAt": "2026-09-13T17:31:20.954217+00:00",
+    "passed": true,
+    "scope": "Independent final read-only configuration, budget, serial lifecycle, frozen-input and source-isolation audit after both trials completed",
+    "checks": {
+      "manifestExactHashMatches": true,
+      "allProductHashesMatch": true,
+      "allFrozenHashesAndSizesMatch": true,
+      "productHeadMatches": true,
+      "productFileSetMatches": true,
+      "allOriginalSourcesRemainIsolated": true,
+      "sameRootInstructionsAndResources": true,
+      "allSharedToolDefinitionsExactlyEqual": true,
+      "onlyCollaborationToolsAdded": true,
+      "sameEnvironmentProfileAndDns": true,
+      "actualRootGoalAndRuntimeChecksPass": true,
+      "distinctRootSessions": true,
+      "workerConfigurationChecksPass": true,
+      "allActualResourcesFrozen": true,
+      "oneShotSerialOrder": true,
+      "equalHostBudgets": true,
+      "atMostThreeWorkersCreated": true,
+      "workerTurnsUnderTenMinuteDeadline": true,
+      "bothHostDurationsWithinCleanupAllowance": true,
+      "reportedNoSurvivingObservedProcesses": true,
+      "noCurrentlySurvivingObservedPidIdentity": true,
+      "allWorkerRecordsClosed": true,
+      "productAggregateHashMatches": true
+    },
+    "product": {
+      "fileCount": 408,
+      "failures": [],
+      "aggregateSha256": "fc6c07fcf80d2c6eaafa1bc23d5da5f1d1b9e7ddc3a50098e85ddfb589ef9253"
+    },
+    "frozenInputs": {
+      "fileCount": 957,
+      "failures": []
+    },
+    "originalSources": [
+      {
+        "caseId": "pr498",
+        "snapshotCommit": "c33226b9bbfd7de8ca95dc5459e2f07124fb30b8",
+        "tree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62",
+        "storedObjects": 651,
+        "reachableObjects": 651,
+        "checks": {
+          "fullBaseTreeMatches": true,
+          "commitAndTreeUnchangedSinceSmoke": true,
+          "clean": true,
+          "oneParentlessCommit": true,
+          "noRemotes": true,
+          "exactObjectClosure": true,
+          "referenceCommitAndTreeAbsent": true,
+          "gitDirectoryInternal": true,
+          "noGitAlternatesOrShallow": true,
+          "privateInputsOutsideSource": true,
+          "noSymlinks": true
+        },
+        "passed": true
+      },
+      {
+        "caseId": "pr180",
+        "snapshotCommit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124",
+        "tree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+        "storedObjects": 299,
+        "reachableObjects": 299,
+        "checks": {
+          "fullBaseTreeMatches": true,
+          "commitAndTreeUnchangedSinceSmoke": true,
+          "clean": true,
+          "oneParentlessCommit": true,
+          "noRemotes": true,
+          "exactObjectClosure": true,
+          "referenceCommitAndTreeAbsent": true,
+          "gitDirectoryInternal": true,
+          "noGitAlternatesOrShallow": true,
+          "privateInputsOutsideSource": true,
+          "noSymlinks": true
+        },
+        "passed": true
+      },
+      {
+        "caseId": "pr332",
+        "snapshotCommit": "a1b8b0aae1859aa9731414952cdc3bd3d5d4ba38",
+        "tree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+        "storedObjects": 603,
+        "reachableObjects": 603,
+        "checks": {
+          "fullBaseTreeMatches": true,
+          "commitAndTreeUnchangedSinceSmoke": true,
+          "clean": true,
+          "oneParentlessCommit": true,
+          "noRemotes": true,
+          "exactObjectClosure": true,
+          "referenceCommitAndTreeAbsent": true,
+          "gitDirectoryInternal": true,
+          "noGitAlternatesOrShallow": true,
+          "privateInputsOutsideSource": true,
+          "noSymlinks": true
+        },
+        "passed": true
+      }
+    ],
+    "actualRootConfiguration": [
+      {
+        "arm": "single",
+        "initialUserPromptMatchesExpected": true,
+        "goalHashMatchesStart": true,
+        "requestedAndRealizedThinkingMatch": true,
+        "providerAndModelMatch": true,
+        "freshRootSession": true,
+        "initialPromptSha256": "958c1d58e087c1f65b0630d55a017ebaa063110188066f9adc21d51b39ec33c8"
+      },
+      {
+        "arm": "multi",
+        "initialUserPromptMatchesExpected": true,
+        "goalHashMatchesStart": true,
+        "requestedAndRealizedThinkingMatch": true,
+        "providerAndModelMatch": true,
+        "freshRootSession": true,
+        "initialPromptSha256": "6bbea28284c7aa5815b29e870644b660c41da6327f03d694684cd0f050de14be"
+      }
+    ],
+    "actualWorkerConfiguration": [
+      {
+        "actor": "worker-1",
+        "runtimeMatchesRoot": true,
+        "environmentProfileMatches": true,
+        "agentDirectoryMatchesPeers": true,
+        "workerModelRequestsMatchConfig": true,
+        "forkPresent": true,
+        "forkOnlyContainsSameMultiRootUserPrompt": true,
+        "configuredWorkspaceMatchesMultiCandidate": true,
+        "evidence": {
+          "path": "batch-v2/pr180-multi/worker-1-configuration.json",
+          "sha256": "c204b3f7d68c40c16e371a165853d86386c32e8f18ea7d032fe3da69d51373b7",
+          "byteLength": 30990
+        },
+        "forkedPromptSha256": "6bbea28284c7aa5815b29e870644b660c41da6327f03d694684cd0f050de14be"
+      },
+      {
+        "actor": "worker-2",
+        "runtimeMatchesRoot": true,
+        "environmentProfileMatches": true,
+        "agentDirectoryMatchesPeers": true,
+        "workerModelRequestsMatchConfig": true,
+        "forkPresent": true,
+        "forkOnlyContainsSameMultiRootUserPrompt": true,
+        "configuredWorkspaceMatchesMultiCandidate": true,
+        "evidence": {
+          "path": "batch-v2/pr180-multi/worker-2-configuration.json",
+          "sha256": "f50a4603406c6ba8466b27f752992f04fa632b07a4f8ecf29c28b440b5ba6b3e",
+          "byteLength": 30998
+        },
+        "forkedPromptSha256": "6bbea28284c7aa5815b29e870644b660c41da6327f03d694684cd0f050de14be"
+      },
+      {
+        "actor": "worker-3",
+        "runtimeMatchesRoot": true,
+        "environmentProfileMatches": true,
+        "agentDirectoryMatchesPeers": true,
+        "workerModelRequestsMatchConfig": true,
+        "forkPresent": false,
+        "forkOnlyContainsSameMultiRootUserPrompt": true,
+        "configuredWorkspaceMatchesMultiCandidate": true,
+        "evidence": {
+          "path": "batch-v2/pr180-multi/worker-3-configuration.json",
+          "sha256": "200433049150b1ce0756ca4f664c9d7a9cac4838d144f6e1654e81fadcfdbdef",
+          "byteLength": 25572
+        }
+      }
+    ],
+    "actualResources": [
+      {
+        "actor": "single-root",
+        "contextCount": 0,
+        "promptTemplateCount": 0,
+        "customSystemPromptPresent": false,
+        "skillCount": 2,
+        "allObservedResourcesMatchFrozenHashes": true
+      },
+      {
+        "actor": "multi-root",
+        "contextCount": 0,
+        "promptTemplateCount": 0,
+        "customSystemPromptPresent": false,
+        "skillCount": 2,
+        "allObservedResourcesMatchFrozenHashes": true
+      },
+      {
+        "actor": "worker-1",
+        "contextCount": 0,
+        "promptTemplateCount": 0,
+        "customSystemPromptPresent": false,
+        "skillCount": 2,
+        "allObservedResourcesMatchFrozenHashes": true
+      },
+      {
+        "actor": "worker-2",
+        "contextCount": 0,
+        "promptTemplateCount": 0,
+        "customSystemPromptPresent": false,
+        "skillCount": 2,
+        "allObservedResourcesMatchFrozenHashes": true
+      },
+      {
+        "actor": "worker-3",
+        "contextCount": 0,
+        "promptTemplateCount": 0,
+        "customSystemPromptPresent": false,
+        "skillCount": 2,
+        "allObservedResourcesMatchFrozenHashes": true
+      }
+    ],
+    "cohort": {
+      "cases": ["pr180"],
+      "trialIds": ["pr180-single", "pr180-multi"],
+      "sameRootBudgetMs": 1200000,
+      "sameTeamExecutionBudget": 256,
+      "workerTurnBudgetMs": 600000,
+      "workerTurnNonCollaborationExecutionBudget": 64,
+      "maximumCreatedWorkers": 3,
+      "minimumRequiredWorkers": 0,
+      "serialGapMs": 2216.0,
+      "observedProcesses": 195,
+      "reportedSurvivingObservedProcesses": 0,
+      "currentlySurvivingObservedPidIdentities": 0
+    },
+    "preservedEarlierAudits": [
+      {
+        "path": "freeze-audit-v1.json",
+        "sha256": "87572743cbb7167387243a97e44a8f8f62d4b406a231ad12a6f3cbe6bf7fc1e4",
+        "byteLength": 8493
+      },
+      {
+        "path": "freeze-audit-v2.json",
+        "sha256": "c38ff48e364cfb1684bad9b5e3f6414d524f64608663f6a033baf9ca4751dfb8",
+        "byteLength": 9460
+      },
+      {
+        "path": "single-accounting-audit.json",
+        "sha256": "0d6d876a266d94becb5ca7a05a15f37e9eec6ac7eb88c52fc43bd00459f5a16b",
+        "byteLength": 5730
+      }
+    ],
+    "evidence": [
+      {
+        "path": "batch-v2/manifest.json",
+        "sha256": "610e1fee82511eb720fa5c15ef690e00affd6773edca015274fd2cc46a2911a2",
+        "byteLength": 616502
+      },
+      {
+        "path": "batch-v2/live-start.json",
+        "sha256": "caa37586ea08a9009e3c656f4b12294c6f79176b435f1fb239afbf507c25f274",
+        "byteLength": 100
+      },
+      {
+        "path": "batch-v2/live-completion.json",
+        "sha256": "34c8f52ed3fba12ad8bceb24b6152b1c04463210a2201aa3d5e3526b6479c52c",
+        "byteLength": 29813
+      }
+    ],
+    "limitations": [
+      "The initial informal SHA-suffix typo failure remains preserved in freeze-audit-v1; v2 corrected it against the confirmed complete freeze SHA.",
+      "No raw task, model messages, credentials, provider headers, worker instructions or tool contents are copied into this audit. Normal Pi discovery loaded the same two frozen generic ambient skills in both roots and all workers.",
+      "Tool-call counts include rejected calls, collaboration and cleanup. The shared 256-execution admission budget and each 64-execution worker-turn budget are separate counters; static Host code enforces them, and exhausted requests remain visible as errors.",
+      "Process cleanup covers the runner-observed PID plus start-time identities, not a proof over every possible unobserved process.",
+      "Acceptance evaluation is separate and was not executed by this audit."
+    ],
+    "originalObservationsCapturedAt": "2026-09-13T17:30:15.276711+00:00",
+    "correction": {
+      "priorAudit": "final-freeze-protocol-audit-v1.json",
+      "priorAuditSha256": "4de3a417a79f2324a6e7a9c0eac886f9a34016e1849beb3da48b588c97183b37",
+      "priorAuditPreserved": true,
+      "reason": "The audit parser initially expected session-message content in PiSessionForkContext. The frozen public type stores normalized role/text/turnStart instead. Reading the actual text field proves both forked user messages exactly equal the frozen Multi Root task and their parentSessionId is the same Multi Root. This was an audit parser error; no product, configuration, session, or frozen input was modified.",
+      "typeEvidence": {
+        "path": "packages/pi-harness/src/collaboration-inbox.ts",
+        "sha256": "ac05bee5d43fbdd276d6563dd936365bd19e94d2688fe2f79e72b3216cace92a"
+      },
+      "observationReuse": "All unchanged original hash/source/lifecycle observations retained; only fork-text comparison and aggregate product hash were recalculated."
+    }
+  },
+  "accounting": {
+    "reportedUsageReconciled": true,
+    "completeUsageObserved": false,
+    "actualProviderBillUsd": null,
+    "arms": [
+      {
+        "arm": "single",
+        "status": "cancelled",
+        "piStatus": "aborted",
+        "hostInvokedAt": "2026-09-13T16:45:25.807Z",
+        "hostFinishedAt": "2026-09-13T17:05:29.809Z",
+        "hostWallClockMs": 1204002,
+        "investigationStartedAt": "2026-09-13T16:45:36.982Z",
+        "investigationFinishedAt": "2026-09-13T17:05:25.815Z",
+        "workersCreated": 0,
+        "workerTurns": 0,
+        "naturalCompletedWorkerTurns": 0,
+        "cancelledWorkerTurns": 0,
+        "timedOutWorkerTurns": 0,
+        "allWorkersClosed": true,
+        "rootTokens": 7721471,
+        "workerTokens": 0,
+        "rootSdkEstimatedCostUsd": 0.25225963999999995,
+        "workerSdkEstimatedCostUsd": 0,
+        "rootToolCalls": 163,
+        "workerToolCalls": 0,
+        "recordedUsage": {
+          "tokens": 7721471,
+          "sdkEstimatedCostUsd": 0.25225963999999995,
+          "usageIncomplete": true
+        },
+        "recordedAggregateReconciles": true,
+        "sharedExecutionCalls": null,
+        "sharedExecutionCallLimit": 256,
+        "turns": [],
+        "performance": [
+          {
+            "actor": "root",
+            "toolRecordCount": 163,
+            "names": {
+              "ls": 3,
+              "find": 4,
+              "grep": 11,
+              "read": 65,
+              "bash": 12,
+              "write": 14,
+              "edit": 33,
+              "game_launch": 8,
+              "game_query": 5,
+              "game_stop": 8
+            },
+            "outcomes": {
+              "returned": 162,
+              "threw": 1
+            },
+            "workspaceLockWaitSumMs": 0,
+            "workspaceLockWaitMaxMs": 0,
+            "lockRequests": 0,
+            "lockRequestedButNotAcquired": 0,
+            "unfinishedToolRecords": 0,
+            "durationSumMs": 52619.41657799994,
+            "evidence": {
+              "path": "batch-v2/pr180-single/state/srt-tasks-v1/a643ad6190f8de151cd845a611ddb9305160d13c836645bbf70b59abf99f4c16/records/performance.v1.json",
+              "sha256": "f9b97df1353568f3c5f72badd73019250b36c4c642d1f8c72476ea6785bf9d8c",
+              "byteLength": 65284
+            }
+          }
+        ],
+        "workspaceLockWaitSumMs": 0,
+        "rootModelRequestDurationSumMs": 1140920.864219999,
+        "workerModelRequestDurationSumMs": 0,
+        "evidence": [
+          {
+            "path": "batch-v2/pr180-single/root-result.json",
+            "sha256": "038d14f39792c9ad2981c7641181967238e0f32ad9df3db820cecfbc0e80033f",
+            "byteLength": 32142
+          },
+          {
+            "path": "batch-v2/pr180-single/completion.json",
+            "sha256": "fec19907a705b526c95ff203c5240257473c2c5ac8623686628f1d1f4e07c150",
+            "byteLength": 307
+          },
+          {
+            "path": "batch-v2/pr180-single/preview.json",
+            "sha256": "a7ce965e2a82b403ee3c1dc914dc516853869f97d6303169e77fa09d7b9fe6b3",
+            "byteLength": 3729
+          },
+          {
+            "path": "batch-v2/pr180-single/root-configuration.json",
+            "sha256": "fb0622cfc8f7e93d468a30786339b9c22927493915932729e70cfa3eaeaf2bad",
+            "byteLength": 16633
+          },
+          {
+            "path": "batch-v2/pr180-single/start.json",
+            "sha256": "973aa2777d460111280c375ada3b098ffe54c59889dc54a0d2bacff59a85f884",
+            "byteLength": 500
+          }
+        ]
+      },
+      {
+        "arm": "multi",
+        "status": "cancelled",
+        "piStatus": "aborted",
+        "hostInvokedAt": "2026-09-13T17:05:32.058Z",
+        "hostFinishedAt": "2026-09-13T17:25:36.439Z",
+        "hostWallClockMs": 1204381,
+        "investigationStartedAt": "2026-09-13T17:05:42.922Z",
+        "investigationFinishedAt": "2026-09-13T17:25:32.086Z",
+        "workersCreated": 3,
+        "workerTurns": 6,
+        "naturalCompletedWorkerTurns": 6,
+        "cancelledWorkerTurns": 0,
+        "timedOutWorkerTurns": 0,
+        "allWorkersClosed": true,
+        "rootTokens": 10045146,
+        "workerTokens": 2453275,
+        "rootSdkEstimatedCostUsd": 0.29328747999999993,
+        "workerSdkEstimatedCostUsd": 0.10322815999999999,
+        "rootToolCalls": 165,
+        "workerToolCalls": 158,
+        "recordedUsage": {
+          "tokens": 12498421,
+          "sdkEstimatedCostUsd": 0.39651563999999995,
+          "usageIncomplete": true
+        },
+        "recordedAggregateReconciles": true,
+        "sharedExecutionCalls": 256,
+        "sharedExecutionCallLimit": 256,
+        "turns": [
+          {
+            "actor": "worker-1",
+            "turnId": 1,
+            "status": "completed",
+            "taskQueuedAt": "2026-09-13T17:06:01.378Z",
+            "startedAt": "2026-09-13T17:06:02.422Z",
+            "firstResultCreatedAt": "2026-09-13T17:08:02.888Z",
+            "firstResultConsumedAt": "2026-09-13T17:09:54.005Z",
+            "settledAt": "2026-09-13T17:08:16.594Z",
+            "finishedAt": "2026-09-13T17:08:16.596Z",
+            "activeWallClockMs": 134174.0,
+            "reportedTokensDelta": 647202,
+            "toolCallsDelta": 73,
+            "newRequestCount": 18,
+            "newRequestDurationSumMs": 117355.702471,
+            "completionDoesNotMeanAcceptance": true
+          },
+          {
+            "actor": "worker-1",
+            "turnId": 2,
+            "status": "completed",
+            "taskQueuedAt": "2026-09-13T17:20:43.511Z",
+            "startedAt": "2026-09-13T17:20:43.511Z",
+            "firstResultCreatedAt": "2026-09-13T17:20:58.891Z",
+            "firstResultConsumedAt": "2026-09-13T17:20:58.892Z",
+            "settledAt": "2026-09-13T17:21:01.928Z",
+            "finishedAt": "2026-09-13T17:21:01.929Z",
+            "activeWallClockMs": 18418.0,
+            "reportedTokensDelta": 251180,
+            "toolCallsDelta": 3,
+            "newRequestCount": 4,
+            "newRequestDurationSumMs": 18407.17194499995,
+            "completionDoesNotMeanAcceptance": true
+          },
+          {
+            "actor": "worker-1",
+            "turnId": 3,
+            "status": "completed",
+            "taskQueuedAt": "2026-09-13T17:22:35.380Z",
+            "startedAt": "2026-09-13T17:22:35.380Z",
+            "firstResultCreatedAt": "2026-09-13T17:22:41.896Z",
+            "firstResultConsumedAt": "2026-09-13T17:22:42.379Z",
+            "settledAt": "2026-09-13T17:22:43.720Z",
+            "finishedAt": "2026-09-13T17:22:43.721Z",
+            "activeWallClockMs": 8341.0,
+            "reportedTokensDelta": 190022,
+            "toolCallsDelta": 2,
+            "newRequestCount": 3,
+            "newRequestDurationSumMs": 8333.65147700021,
+            "completionDoesNotMeanAcceptance": true
+          },
+          {
+            "actor": "worker-2",
+            "turnId": 1,
+            "status": "completed",
+            "taskQueuedAt": "2026-09-13T17:06:07.407Z",
+            "startedAt": "2026-09-13T17:06:08.467Z",
+            "firstResultCreatedAt": "2026-09-13T17:09:08.303Z",
+            "firstResultConsumedAt": "2026-09-13T17:09:54.005Z",
+            "settledAt": "2026-09-13T17:11:41.387Z",
+            "finishedAt": "2026-09-13T17:11:41.388Z",
+            "activeWallClockMs": 332921.0,
+            "reportedTokensDelta": 1136741,
+            "toolCallsDelta": 70,
+            "newRequestCount": 31,
+            "newRequestDurationSumMs": 303845.013264,
+            "completionDoesNotMeanAcceptance": true
+          },
+          {
+            "actor": "worker-2",
+            "turnId": 2,
+            "status": "completed",
+            "taskQueuedAt": "2026-09-13T17:20:47.603Z",
+            "startedAt": "2026-09-13T17:20:47.603Z",
+            "firstResultCreatedAt": "2026-09-13T17:20:59.563Z",
+            "firstResultConsumedAt": "2026-09-13T17:21:03.473Z",
+            "settledAt": "2026-09-13T17:21:01.799Z",
+            "finishedAt": "2026-09-13T17:21:01.800Z",
+            "activeWallClockMs": 14197.0,
+            "reportedTokensDelta": 212062,
+            "toolCallsDelta": 7,
+            "newRequestCount": 4,
+            "newRequestDurationSumMs": 14184.87242800009,
+            "completionDoesNotMeanAcceptance": true
+          },
+          {
+            "actor": "worker-3",
+            "turnId": 1,
+            "status": "completed",
+            "taskQueuedAt": "2026-09-13T17:23:46.590Z",
+            "startedAt": "2026-09-13T17:23:47.653Z",
+            "firstResultCreatedAt": "2026-09-13T17:23:58.887Z",
+            "firstResultConsumedAt": "2026-09-13T17:23:58.888Z",
+            "settledAt": "2026-09-13T17:24:01.117Z",
+            "finishedAt": "2026-09-13T17:24:01.117Z",
+            "activeWallClockMs": 13464.0,
+            "reportedTokensDelta": 16068,
+            "toolCallsDelta": 3,
+            "newRequestCount": 4,
+            "newRequestDurationSumMs": 13453.138223999998,
+            "completionDoesNotMeanAcceptance": true
+          }
+        ],
+        "performance": [
+          {
+            "actor": "root",
+            "toolRecordCount": 147,
+            "names": {
+              "ls": 5,
+              "find": 1,
+              "grep": 7,
+              "bash": 22,
+              "read": 60,
+              "write": 15,
+              "edit": 29,
+              "game_launch": 3,
+              "capture_candidate": 2,
+              "game_stop": 3
+            },
+            "outcomes": {
+              "returned": 130,
+              "threw": 17
+            },
+            "workspaceLockWaitSumMs": 8044.765304000022,
+            "workspaceLockWaitMaxMs": 8011.629436999996,
+            "lockRequests": 141,
+            "lockRequestedButNotAcquired": 0,
+            "unfinishedToolRecords": 0,
+            "durationSumMs": 103676.21447599972,
+            "evidence": {
+              "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/runtime-records/performance.v1.json",
+              "sha256": "f49fd495710caa1be3ef8e1eaad4c681772091cf0e359c525e5db7bb0e538d34",
+              "byteLength": 67551
+            }
+          },
+          {
+            "actor": "worker-1",
+            "toolRecordCount": 67,
+            "names": {
+              "ls": 1,
+              "find": 7,
+              "read": 52,
+              "grep": 4,
+              "bash": 1,
+              "edit": 2
+            },
+            "outcomes": {
+              "returned": 64,
+              "threw": 3
+            },
+            "workspaceLockWaitSumMs": 14534.079413999978,
+            "workspaceLockWaitMaxMs": 14532.775044000009,
+            "lockRequests": 67,
+            "lockRequestedButNotAcquired": 0,
+            "unfinishedToolRecords": 0,
+            "durationSumMs": 22274.408720000116,
+            "evidence": {
+              "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/records/agents/c21f708a-9ab8-450d-a897-543e0456ea23/runtime/performance.v1.json",
+              "sha256": "7a5d51ae1b498a150c6475f73581c6e36c1e1ad437ea6ab7842584356d363b9f",
+              "byteLength": 27888
+            }
+          },
+          {
+            "actor": "worker-2",
+            "toolRecordCount": 69,
+            "names": {
+              "ls": 3,
+              "find": 9,
+              "read": 33,
+              "grep": 12,
+              "bash": 12
+            },
+            "outcomes": {
+              "returned": 64,
+              "threw": 5
+            },
+            "workspaceLockWaitSumMs": 40.957644000030996,
+            "workspaceLockWaitMaxMs": 34.08478800000012,
+            "lockRequests": 69,
+            "lockRequestedButNotAcquired": 0,
+            "unfinishedToolRecords": 0,
+            "durationSumMs": 33030.97657299992,
+            "evidence": {
+              "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/records/agents/71922029-c07f-4374-8a54-a84d04bc85ba/runtime/performance.v1.json",
+              "sha256": "4e327bdcd4247df1a1999eea397d354f72c303efcce598e93d99ad9b7a162e68",
+              "byteLength": 28711
+            }
+          },
+          {
+            "actor": "worker-3",
+            "toolRecordCount": 2,
+            "names": {
+              "read": 1,
+              "edit": 1
+            },
+            "outcomes": {
+              "threw": 2
+            },
+            "workspaceLockWaitSumMs": 0.03778399992734194,
+            "workspaceLockWaitMaxMs": 0.021298999898135662,
+            "lockRequests": 2,
+            "lockRequestedButNotAcquired": 0,
+            "unfinishedToolRecords": 0,
+            "durationSumMs": 0.21627900004386902,
+            "evidence": {
+              "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/records/agents/3b77ceb3-367a-4aa1-b630-dc148a730959/runtime/performance.v1.json",
+              "sha256": "aa191de65c023b3830e463150797140045f4af2d2549b826dbe32f0b74b0647b",
+              "byteLength": 933
+            }
+          }
+        ],
+        "workspaceLockWaitSumMs": 22619.84014599996,
+        "rootModelRequestDurationSumMs": 990406.8052579992,
+        "workerModelRequestDurationSumMs": 475579.5498090002,
+        "evidence": [
+          {
+            "path": "batch-v2/pr180-multi/root-result.json",
+            "sha256": "8a7c52f0c572ec43e00333e610cb1c860967a6af4e6dd5266b5f9dc7ed60ad27",
+            "byteLength": 43070
+          },
+          {
+            "path": "batch-v2/pr180-multi/completion.json",
+            "sha256": "036fc2f75d5bad3f7c36ef53aeddcd9c77f80b683f7d886af5c3b821c8374ab3",
+            "byteLength": 307
+          },
+          {
+            "path": "batch-v2/pr180-multi/preview.json",
+            "sha256": "927aa4185ca73d358cf59e33fc2544e2869576129a14142c0f9bb04e8e9403e2",
+            "byteLength": 2608
+          },
+          {
+            "path": "batch-v2/pr180-multi/root-configuration.json",
+            "sha256": "a256897a61c0956ea233b0617501e40fef254ef3c0a57f7cac8177dfb280c1fd",
+            "byteLength": 22108
+          },
+          {
+            "path": "batch-v2/pr180-multi/start.json",
+            "sha256": "e18f774e6b51250d2a70dae69009464985961f6dbd5812504af1f834f862eccb",
+            "byteLength": 499
+          }
+        ]
+      }
+    ],
+    "sessions": [
+      {
+        "arm": "single",
+        "actor": "root",
+        "reportedUsageReconciled": true,
+        "completeUsageObserved": false,
+        "checks": {
+          "tokensReconcile": true,
+          "costReconciles": true,
+          "toolCountsReconcile": true,
+          "latestTimingSnapshotExactlyMatchesPersistedFinishedEntries": true,
+          "allRequestTimingsSettled": true,
+          "oneRequestPerAssistant": true,
+          "sameRequestedProviderAndModel": true,
+          "noOtherUsageToOmit": true,
+          "sessionOwnedIdentityMatches": true,
+          "noKnownPrivateReferenceOrEvaluatorMarkers": true,
+          "stableDuringRead": true
+        },
+        "tokens": {
+          "input": 213311,
+          "output": 50368,
+          "cacheRead": 7457792,
+          "cacheWrite": 0,
+          "total": 7721471
+        },
+        "sdkEstimatedCostUsd": 0.25225963999999995,
+        "toolCalls": 163,
+        "toolResults": 163,
+        "toolCallsByName": {
+          "ls": 3,
+          "find": 4,
+          "grep": 11,
+          "read": 65,
+          "bash": 12,
+          "write": 14,
+          "edit": 33,
+          "game_launch": 8,
+          "game_query": 5,
+          "game_stop": 8
+        },
+        "collaborationToolCalls": 0,
+        "toolResultIsErrorCount": 1,
+        "budgetErrorTextCounts": {
+          "Shared agent execution budget exhausted": 0,
+          "Worker turn tool budget exhausted": 0
+        },
+        "usageRecordMissingCount": 0,
+        "usageRecordZeroCount": 1,
+        "abortedOrErrorRequests": [
+          {
+            "outcome": "aborted",
+            "startedAt": "2026-09-13T17:04:55.556Z",
+            "finishedAt": "2026-09-13T17:05:25.809Z",
+            "durationMs": 30253.52130699996,
+            "usagePresent": true,
+            "reportedTokens": 0,
+            "reportedSdkCostUsd": 0,
+            "partialOutputPresent": true,
+            "partialOutputCharacters": 411
+          }
+        ],
+        "requestCount": 82,
+        "requestOutcomes": {
+          "completed": 81,
+          "aborted": 1
+        },
+        "requestDurationSumMs": 1140920.864219999,
+        "firstRequestStartedAt": "2026-09-13T16:45:37.012Z",
+        "lastRequestFinishedAt": "2026-09-13T17:05:25.809Z",
+        "requestIdsUniqueAcrossTurns": true,
+        "usageOwnership": {
+          "scope": "session-owned",
+          "hasParentSession": false,
+          "inheritedContextMessages": 0
+        },
+        "sessionEvidence": {
+          "path": "batch-v2/pr180-single/state/srt-tasks-v1/a643ad6190f8de151cd845a611ddb9305160d13c836645bbf70b59abf99f4c16/pi-sessions/2026-09-13T16-45-37-004Z_4ae9a5e8-d5f8-4b83-a377-9d46297e3169.jsonl",
+          "sha256": "8502dd1b188a103be7ba02dca310b073525c6d990ed55bfc6cb45eeb5411fe00",
+          "byteLength": 1324185
+        }
+      },
+      {
+        "arm": "multi",
+        "actor": "root",
+        "reportedUsageReconciled": true,
+        "completeUsageObserved": false,
+        "checks": {
+          "tokensReconcile": true,
+          "costReconciles": true,
+          "toolCountsReconcile": true,
+          "latestTimingSnapshotExactlyMatchesPersistedFinishedEntries": true,
+          "allRequestTimingsSettled": true,
+          "oneRequestPerAssistant": true,
+          "sameRequestedProviderAndModel": true,
+          "noOtherUsageToOmit": true,
+          "sessionOwnedIdentityMatches": true,
+          "noKnownPrivateReferenceOrEvaluatorMarkers": true,
+          "stableDuringRead": true
+        },
+        "tokens": {
+          "input": 241369,
+          "output": 41473,
+          "cacheRead": 9762304,
+          "cacheWrite": 0,
+          "total": 10045146
+        },
+        "sdkEstimatedCostUsd": 0.29328747999999993,
+        "toolCalls": 165,
+        "toolResults": 165,
+        "toolCallsByName": {
+          "ls": 5,
+          "find": 1,
+          "grep": 7,
+          "bash": 22,
+          "read": 60,
+          "spawn_agent": 3,
+          "write": 16,
+          "edit": 32,
+          "game_launch": 3,
+          "list_agents": 1,
+          "followup_task": 3,
+          "wait_agent": 7,
+          "game_stop": 3,
+          "interrupt_agent": 2
+        },
+        "collaborationToolCalls": 16,
+        "toolResultIsErrorCount": 22,
+        "budgetErrorTextCounts": {
+          "Shared agent execution budget exhausted": 14,
+          "Worker turn tool budget exhausted": 0
+        },
+        "usageRecordMissingCount": 0,
+        "usageRecordZeroCount": 1,
+        "abortedOrErrorRequests": [
+          {
+            "outcome": "aborted",
+            "startedAt": "2026-09-13T17:25:32.071Z",
+            "finishedAt": "2026-09-13T17:25:32.079Z",
+            "durationMs": 7.653102000011131,
+            "usagePresent": true,
+            "reportedTokens": 0,
+            "reportedSdkCostUsd": 0,
+            "partialOutputPresent": false,
+            "partialOutputCharacters": 0
+          }
+        ],
+        "requestCount": 111,
+        "requestOutcomes": {
+          "completed": 110,
+          "aborted": 1
+        },
+        "requestDurationSumMs": 990406.8052579992,
+        "firstRequestStartedAt": "2026-09-13T17:05:42.937Z",
+        "lastRequestFinishedAt": "2026-09-13T17:25:32.079Z",
+        "requestIdsUniqueAcrossTurns": true,
+        "usageOwnership": {
+          "scope": "session-owned",
+          "hasParentSession": false,
+          "inheritedContextMessages": 0
+        },
+        "sessionEvidence": {
+          "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/pi-sessions/2026-09-13T17-05-42-932Z_e2598af6-852e-4c3d-947e-5df9b6d226aa.jsonl",
+          "sha256": "30fcf9846345622514689faa4d2816de58b6a065728d8831aca163d899c8635a",
+          "byteLength": 1187199
+        }
+      },
+      {
+        "arm": "multi",
+        "actor": "worker-1",
+        "reportedUsageReconciled": true,
+        "completeUsageObserved": true,
+        "checks": {
+          "tokensReconcile": true,
+          "costReconciles": true,
+          "toolCountsReconcile": true,
+          "latestTimingSnapshotExactlyMatchesPersistedFinishedEntries": true,
+          "allRequestTimingsSettled": true,
+          "oneRequestPerAssistant": true,
+          "sameRequestedProviderAndModel": true,
+          "noOtherUsageToOmit": true,
+          "sessionOwnedIdentityMatches": true,
+          "noKnownPrivateReferenceOrEvaluatorMarkers": true,
+          "stableDuringRead": true
+        },
+        "tokens": {
+          "input": 81918,
+          "output": 5526,
+          "cacheRead": 1000960,
+          "cacheWrite": 0,
+          "total": 1088404
+        },
+        "sdkEstimatedCostUsd": 0.043034,
+        "toolCalls": 78,
+        "toolResults": 78,
+        "toolCallsByName": {
+          "ls": 1,
+          "find": 7,
+          "read": 59,
+          "grep": 4,
+          "bash": 1,
+          "send_message": 4,
+          "edit": 2
+        },
+        "collaborationToolCalls": 4,
+        "toolResultIsErrorCount": 10,
+        "budgetErrorTextCounts": {
+          "Shared agent execution budget exhausted": 3,
+          "Worker turn tool budget exhausted": 7
+        },
+        "usageRecordMissingCount": 0,
+        "usageRecordZeroCount": 0,
+        "abortedOrErrorRequests": [],
+        "requestCount": 25,
+        "requestOutcomes": {
+          "completed": 25
+        },
+        "requestDurationSumMs": 144096.52589300016,
+        "firstRequestStartedAt": "2026-09-13T17:06:02.424Z",
+        "lastRequestFinishedAt": "2026-09-13T17:22:43.719Z",
+        "requestIdsUniqueAcrossTurns": true,
+        "usageOwnership": {
+          "scope": "session-owned",
+          "hasParentSession": true,
+          "inheritedContextMessages": 1
+        },
+        "sessionEvidence": {
+          "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/records/agents/c21f708a-9ab8-450d-a897-543e0456ea23/pi-sessions/2026-09-13T17-06-02-417Z_01a09bbb-aa31-7639-81c9-cedd8a2fbee8.jsonl",
+          "sha256": "89aa3d3d857dc6c5a10c9cdbf13b3d4ccd02c1b349bab4bdf7c062d33e8f6f53",
+          "byteLength": 465559
+        }
+      },
+      {
+        "arm": "multi",
+        "actor": "worker-2",
+        "reportedUsageReconciled": true,
+        "completeUsageObserved": true,
+        "checks": {
+          "tokensReconcile": true,
+          "costReconciles": true,
+          "toolCountsReconcile": true,
+          "latestTimingSnapshotExactlyMatchesPersistedFinishedEntries": true,
+          "allRequestTimingsSettled": true,
+          "oneRequestPerAssistant": true,
+          "sameRequestedProviderAndModel": true,
+          "noOtherUsageToOmit": true,
+          "sessionOwnedIdentityMatches": true,
+          "noKnownPrivateReferenceOrEvaluatorMarkers": true,
+          "stableDuringRead": true
+        },
+        "tokens": {
+          "input": 77532,
+          "output": 14311,
+          "cacheRead": 1256960,
+          "cacheWrite": 0,
+          "total": 1348803
+        },
+        "sdkEstimatedCostUsd": 0.0578188,
+        "toolCalls": 77,
+        "toolResults": 77,
+        "toolCallsByName": {
+          "ls": 3,
+          "find": 10,
+          "read": 33,
+          "grep": 12,
+          "bash": 13,
+          "send_message": 3,
+          "list_agents": 3
+        },
+        "collaborationToolCalls": 6,
+        "toolResultIsErrorCount": 7,
+        "budgetErrorTextCounts": {
+          "Shared agent execution budget exhausted": 5,
+          "Worker turn tool budget exhausted": 2
+        },
+        "usageRecordMissingCount": 0,
+        "usageRecordZeroCount": 0,
+        "abortedOrErrorRequests": [],
+        "requestCount": 35,
+        "requestOutcomes": {
+          "completed": 35
+        },
+        "requestDurationSumMs": 318029.8856920001,
+        "firstRequestStartedAt": "2026-09-13T17:06:08.469Z",
+        "lastRequestFinishedAt": "2026-09-13T17:21:01.798Z",
+        "requestIdsUniqueAcrossTurns": true,
+        "usageOwnership": {
+          "scope": "session-owned",
+          "hasParentSession": true,
+          "inheritedContextMessages": 1
+        },
+        "sessionEvidence": {
+          "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/records/agents/71922029-c07f-4374-8a54-a84d04bc85ba/pi-sessions/2026-09-13T17-06-08-463Z_01a09bbb-c1cf-70e4-b74a-42c0e9d7bc54.jsonl",
+          "sha256": "feea56138ea875a98cfd36132ede0bd8cf89e504bd814b8898c6aac4184e42ca",
+          "byteLength": 495000
+        }
+      },
+      {
+        "arm": "multi",
+        "actor": "worker-3",
+        "reportedUsageReconciled": true,
+        "completeUsageObserved": true,
+        "checks": {
+          "tokensReconcile": true,
+          "costReconciles": true,
+          "toolCountsReconcile": true,
+          "latestTimingSnapshotExactlyMatchesPersistedFinishedEntries": true,
+          "allRequestTimingsSettled": true,
+          "oneRequestPerAssistant": true,
+          "sameRequestedProviderAndModel": true,
+          "noOtherUsageToOmit": true,
+          "sessionOwnedIdentityMatches": true,
+          "noKnownPrivateReferenceOrEvaluatorMarkers": true,
+          "stableDuringRead": true
+        },
+        "tokens": {
+          "input": 8448,
+          "output": 452,
+          "cacheRead": 7168,
+          "cacheWrite": 0,
+          "total": 16068
+        },
+        "sdkEstimatedCostUsd": 0.00237536,
+        "toolCalls": 3,
+        "toolResults": 3,
+        "toolCallsByName": {
+          "read": 1,
+          "edit": 1,
+          "send_message": 1
+        },
+        "collaborationToolCalls": 1,
+        "toolResultIsErrorCount": 2,
+        "budgetErrorTextCounts": {
+          "Shared agent execution budget exhausted": 2,
+          "Worker turn tool budget exhausted": 0
+        },
+        "usageRecordMissingCount": 0,
+        "usageRecordZeroCount": 0,
+        "abortedOrErrorRequests": [],
+        "requestCount": 4,
+        "requestOutcomes": {
+          "completed": 4
+        },
+        "requestDurationSumMs": 13453.138223999998,
+        "firstRequestStartedAt": "2026-09-13T17:23:47.655Z",
+        "lastRequestFinishedAt": "2026-09-13T17:24:01.115Z",
+        "requestIdsUniqueAcrossTurns": true,
+        "usageOwnership": {
+          "scope": "session-owned",
+          "hasParentSession": false,
+          "inheritedContextMessages": 0
+        },
+        "sessionEvidence": {
+          "path": "batch-v2/pr180-multi/state/srt-tasks-v1/446af9ec40cc44a0946d08f6fc9335db9a07f53a198f48cb78c8bd1923577d2d/records/agents/3b77ceb3-367a-4aa1-b630-dc148a730959/pi-sessions/2026-09-13T17-23-47-649Z_01a09bcb-eb41-7301-b47b-9ce3f7bd6f3f.jsonl",
+          "sha256": "a55020d41105bf07a64fa76d4be71d656ef3381f81cb2b76ab0a548877112996",
+          "byteLength": 17172
+        }
+      }
+    ],
+    "limitations": [
+      "Ratios compare SDK-reported subtotals, not complete actual usage or bill. Both roots ended with one zero-usage aborted request; Single has partial output, Multi does not. The 7.65 ms Multi abort may have occurred before billable network work; actual consumption is unknown.",
+      "Worker followup stats and model-request lists are cumulative: use each session latest stats and unique request IDs, never sum all turn snapshots.",
+      "Worker completed means the turn ended naturally, not successful edits or acceptance. Root made two interrupt calls, but all six worker turn statuses are completed.",
+      "Model request spans are Pi stream-function boundaries, not individual network attempts. Sum across parallel agents exceeds elapsed time and is not a critical-path measurement.",
+      "Lock wait is summed observed queue wait. Tool spans include Host capture_candidate and failures; SDK tool calls also include collaboration, cleanup and rejected calls, so neither equals the shared admission counter.",
+      "No candidate or independent evaluator was executed by this audit, and no acceptance verdict is inferred."
+    ]
+  },
+  "offlinePreflight": [
+    {
+      "caseId": "pr498",
+      "frozenStatus": "blocked",
+      "source": {
+        "snapshotCommit": "c33226b9bbfd7de8ca95dc5459e2f07124fb30b8",
+        "tree": "b125740f2d20e2d508bb7d03aae2eed26b1bed62",
+        "commitCount": 1,
+        "remotes": "",
+        "clean": true,
+        "totalGitObjects": 651,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "hasReferenceObjects": false,
+        "sourceProofPath": "[private preparation resource]"
+      },
+      "controls": [
+        {
+          "id": "runtime-source-admission",
+          "outcome": "passed",
+          "sha256": "bb20468a0cc8ed1d6c9046aed5ede3160915a6cf5eb6c0dc9bb29d0a406406b1"
+        },
+        {
+          "id": "baseline",
+          "outcome": "assertions_failed",
+          "reason": null,
+          "resultSha256": "1635584f37675f62df15c6e5943cf130a93c6942156924f244cbbb06ae9a0e09",
+          "inputSourceUnchanged": true,
+          "sourceUnchanged": true,
+          "rawObservedAssertions": {
+            "passed": 0,
+            "failed": 11,
+            "failedIds": [
+              "event_classification",
+              "device_event_filtering",
+              "filter_wrap_and_fallback",
+              "empty_action",
+              "text_fallback",
+              "icon_mapping_and_refresh",
+              "input_index_refresh",
+              "cycle_timer",
+              "static_hint",
+              "device_switching",
+              "combined_keyboard_mouse_cycle"
+            ],
+            "validAcceptanceResult": true
+          }
+        },
+        {
+          "id": "complete-project-launch-baseline",
+          "outcome": "passed",
+          "sha256": "cdafcdad9ba4ba0e7d0e35b3e98c637c8579dec808bf56283316cc9542b2f4fa",
+          "sourceUnchanged": true
+        },
+        {
+          "id": "reference",
+          "outcome": "requires_review",
+          "reason": "Godot reported import or script errors",
+          "resultSha256": "cb6c107abdec8b11fe981e5be860edfcc0ec53cd31bdabdab0b26decbee01db8",
+          "inputSourceUnchanged": true,
+          "sourceUnchanged": true,
+          "rawObservedAssertions": {
+            "passed": 10,
+            "failed": 1,
+            "failedIds": ["combined_keyboard_mouse_cycle"],
+            "validAcceptanceResult": false
+          }
+        },
+        {
+          "id": "complete-project-launch-reference",
+          "outcome": "passed",
+          "sha256": "e79c65eb259188b1b23395ac5b6de1fa22066cdda16af3bcbdcf7b3f56a1b591",
+          "sourceUnchanged": true
+        },
+        {
+          "id": "combined-selection-diagnostic",
+          "outcome": "observed_target_failure",
+          "sha256": "37c62e4b83dbcf0663839a6ad867778b25e8db164ceb9e8803d72ff863dcaf36",
+          "sourceUnchanged": true
+        }
+      ],
+      "manifestSha256": "64e378af9b1cd15570435136a2a261118bc5f65b056efefbda688b2bb2d3df33"
+    },
+    {
+      "caseId": "pr180",
+      "frozenStatus": "ready",
+      "source": {
+        "snapshotCommit": "7a56bb9c20b0df04d11fc987ad19fc650f09a124",
+        "tree": "af4039f471bac2401b1b4e1a4ae7b15f20b6dd79",
+        "commitCount": 1,
+        "parents": [],
+        "remotes": [],
+        "clean": true,
+        "allObjectCount": 299,
+        "reachableObjectCount": 299,
+        "unreachableObjects": [],
+        "allObjectsReachableFromHead": true,
+        "trackedFileCount": 259
+      },
+      "controls": [
+        {
+          "id": "baseline-display-v2",
+          "outcome": "assertions_failed",
+          "assertionCount": 1,
+          "passedCount": 0,
+          "failedIds": ["public_state_classes"],
+          "resultSha256": "2004282ac55601d7fae924b5bfa69f7537e5d270b270da988d5ff1ba458cee02",
+          "inputSourceUnchanged": true,
+          "stagedSourceUnchanged": true,
+          "importExitCode": 0,
+          "runtimeExitCode": 1,
+          "importErrorFree": true,
+          "runtimeErrorFree": true
+        },
+        {
+          "id": "reference-display-v2",
+          "outcome": "passed",
+          "assertionCount": 37,
+          "passedCount": 37,
+          "failedIds": [],
+          "resultSha256": "c5d6b008c4dbca715696165785d8c4b2720f38a939aac2006996de8cdde3ea9b",
+          "inputSourceUnchanged": true,
+          "stagedSourceUnchanged": true,
+          "importExitCode": 0,
+          "runtimeExitCode": 0,
+          "importErrorFree": true,
+          "runtimeErrorFree": true
+        },
+        {
+          "id": "mutant-skip-game-counter-v2",
+          "outcome": "assertions_failed",
+          "assertionCount": 37,
+          "passedCount": 34,
+          "failedIds": [
+            "game_counter_and_progress",
+            "game_api_persists",
+            "project_play_signal_starts_game"
+          ],
+          "resultSha256": "fe667618c1cc20a68244776dbc8c2b4c5f0c5f4b11996af5388d274f161cafe3",
+          "inputSourceUnchanged": true,
+          "stagedSourceUnchanged": true,
+          "importExitCode": 0,
+          "runtimeExitCode": 1,
+          "importErrorFree": true,
+          "runtimeErrorFree": true
+        },
+        {
+          "id": "mutant-skip-progress-persistence-v2",
+          "outcome": "assertions_failed",
+          "assertionCount": 37,
+          "passedCount": 36,
+          "failedIds": ["game_api_persists"],
+          "resultSha256": "6ab3a42561acceb4d567e8714768bd0c8b5111dbd86f134b5b6e94eaae5d2e6d",
+          "inputSourceUnchanged": true,
+          "stagedSourceUnchanged": true,
+          "importExitCode": 0,
+          "runtimeExitCode": 1,
+          "importErrorFree": true,
+          "runtimeErrorFree": true
+        },
+        {
+          "id": "mutant-reset-keeps-state-v2",
+          "outcome": "assertions_failed",
+          "assertionCount": 37,
+          "passedCount": 23,
+          "failedIds": [
+            "project_play_signal_starts_game",
+            "project_reset_signal_game_options_menu.tscn",
+            "project_reset_disk_game_options_menu.tscn",
+            "project_reset_signal_mini_options_menu_with_reset.tscn",
+            "project_reset_disk_mini_options_menu_with_reset.tscn",
+            "template_loader_starts_at_first_level",
+            "template_loader_advances",
+            "template_loader_progress_disk_roundtrip",
+            "template_reset_signal_game_options_menu.tscn",
+            "template_reset_disk_game_options_menu.tscn",
+            "template_reset_signal_mini_options_menu_with_reset.tscn",
+            "template_reset_disk_mini_options_menu_with_reset.tscn",
+            "global_reset_clears_registered_states",
+            "global_reset_persisted"
+          ],
+          "resultSha256": "a0f3ca2ce403df765417d7632a751f13826851a0a395d1bd6992ca590d19d5a5",
+          "inputSourceUnchanged": true,
+          "stagedSourceUnchanged": true,
+          "importExitCode": 0,
+          "runtimeExitCode": 1,
+          "importErrorFree": true,
+          "runtimeErrorFree": true
+        }
+      ],
+      "manifestSha256": "9895cbeefc049a51cc985c83a453cf531a8fc31f53ad805479c6f6bbc8631c99"
+    },
+    {
+      "caseId": "pr332",
+      "frozenStatus": "blocked",
+      "source": {
+        "commit": "a1b8b0aae1859aa9731414952cdc3bd3d5d4ba38",
+        "tree": "d0eaf8fc82ae5d252da79d745524816c5dd5e94f",
+        "commitCount": 1,
+        "remotes": [],
+        "referenceCommitPresent": false,
+        "fileCount": 537,
+        "snapshotParents": [],
+        "sourceUnchanged": true,
+        "totalGitObjects": 603,
+        "commitObjects": 1,
+        "tagObjects": 0,
+        "hiddenCheckerPresent": false,
+        "fullBaseTreeMatches": true,
+        "allOriginalTrackedFilesPreserved": true
+      },
+      "controls": [
+        {
+          "id": "pr332-reference-v1",
+          "outcome": "requires_review",
+          "reason": "Godot import reported errors or incomplete stderr",
+          "resultSha256": "23f6a5b8df9c40d3b84613e9e2c01226ffe3fe8bc4dbb3dcef42a1be0329c3c3",
+          "inputSourceUnchanged": null
+        },
+        {
+          "id": "pr332-reference-v2",
+          "outcome": "requires_review",
+          "reason": "Godot reported import or script errors",
+          "resultSha256": "031a5170bd3e76192b6228b2957f17d4ce71d2cc0bd95c870105dde16f386294",
+          "inputSourceUnchanged": true
+        },
+        {
+          "id": "pr332-reference-debug",
+          "outcome": "requires_review",
+          "reason": "Godot reported import or script errors",
+          "resultSha256": "23d3527db7b884c0e2cca4e2cc2dfcc65f88e2aa3d4372e144ef54111eeeca3b",
+          "inputSourceUnchanged": true
+        },
+        {
+          "id": "pr332-baseline-v1",
+          "outcome": "requires_review",
+          "reason": "Godot reported import or script errors",
+          "resultSha256": "28e53dfe51d17389ff8034f34546b256ccb275df3af1e3c6faa429db9547a050",
+          "inputSourceUnchanged": true
+        }
+      ],
+      "manifestSha256": "38d669c96d62fe8c6659d5f79c54e5964193218de92ef76d825e2782b437a296"
+    }
+  ],
+  "independentEvaluation": {
+    "writersStoppedBeforeScoring": true,
+    "liveCompletedAt": "2026-09-13T17:25:36.469Z",
+    "resultManifest": {
+      "artifact": "batch-v2/evaluation/results.json",
+      "sha256": "c0664ce82cc3c16908b49b51458faf7c5204b9468329dbb4daf50b6a026c054b",
+      "bytes": 1223
+    },
+    "modelInvoked": false,
+    "evaluations": [
+      {
+        "arm": "single",
+        "repeat": 1,
+        "frozenOutcome": "requires_review",
+        "frozenReason": "Missing acceptance requirements",
+        "patchSha256": "37df2dde15feb9309420aa37e12dabba5674e3a2a2e534a64273113a86a9d200",
+        "import": {
+          "status": "exited",
+          "exitCode": 0,
+          "stderrEmpty": true,
+          "errorLines": 0
+        },
+        "runtimeStarted": true,
+        "runtimeExitCode": 0,
+        "observedAssertionCount": 13,
+        "observedPassCount": 13,
+        "observedFailCount": 0,
+        "observedAssertionIds": [
+          "public_state_classes",
+          "autoload_opens_state",
+          "opening_metadata",
+          "first_version_stable_last_version_updates",
+          "typed_key_reuse",
+          "independent_keys",
+          "incompatible_type_replaced",
+          "generic_data_disk_roundtrip",
+          "game_counter_and_progress",
+          "game_api_persists",
+          "global_reset_clears_registered_states",
+          "global_reset_persisted",
+          "reset_preserves_settings_and_metadata"
+        ],
+        "unobservedRequiredCount": 24,
+        "inputSourceUnchanged": true,
+        "sourceIntegrity": {
+          "sourceSha256": "353ea1e9007a49c380c8b4a2fac345f3c9f637360ae79ce71d6e26b03763f15a",
+          "observedSourceSha256": "353ea1e9007a49c380c8b4a2fac345f3c9f637360ae79ce71d6e26b03763f15a",
+          "sourceUnchanged": true
+        },
+        "evidence": [
+          {
+            "path": "batch-v2/evaluation/pr180-single-1/result.json",
+            "sha256": "ce051a69b64783109896a9420d3364a8258de9648e43af94bc43657f3e523d48"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-1/candidate.patch",
+            "sha256": "37df2dde15feb9309420aa37e12dabba5674e3a2a2e534a64273113a86a9d200"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-1/import-process.json",
+            "sha256": "9f407743ae15a996d95f7feb0529a3d1dcd5a81a6a4f95dd65df9b879a29d21d"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-1/import-stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-1/runtime-process.json",
+            "sha256": "eb01996abb8b4ecb5db3d257e677ebad02799f905217f9c05b2ac204ece34f8e"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-1/runtime-stderr.log",
+            "sha256": "89e520101a37f4140b2384b2a57c155f5fb5d6131e92f0f0be2628bee667987e"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-1/source-integrity.json",
+            "sha256": "b015aa1cb45a1bb96a97e44032b33fcb5cc6435a8263ba99bf91313d6bae90a6"
+          }
+        ]
+      },
+      {
+        "arm": "single",
+        "repeat": 2,
+        "frozenOutcome": "requires_review",
+        "frozenReason": "Missing acceptance requirements",
+        "patchSha256": "37df2dde15feb9309420aa37e12dabba5674e3a2a2e534a64273113a86a9d200",
+        "import": {
+          "status": "exited",
+          "exitCode": 0,
+          "stderrEmpty": true,
+          "errorLines": 0
+        },
+        "runtimeStarted": true,
+        "runtimeExitCode": 0,
+        "observedAssertionCount": 13,
+        "observedPassCount": 13,
+        "observedFailCount": 0,
+        "observedAssertionIds": [
+          "public_state_classes",
+          "autoload_opens_state",
+          "opening_metadata",
+          "first_version_stable_last_version_updates",
+          "typed_key_reuse",
+          "independent_keys",
+          "incompatible_type_replaced",
+          "generic_data_disk_roundtrip",
+          "game_counter_and_progress",
+          "game_api_persists",
+          "global_reset_clears_registered_states",
+          "global_reset_persisted",
+          "reset_preserves_settings_and_metadata"
+        ],
+        "unobservedRequiredCount": 24,
+        "inputSourceUnchanged": true,
+        "sourceIntegrity": {
+          "sourceSha256": "7ca17b5fad989edcd00c1fe6cb1a1ccd63fda52f52130132187d1d7be5a526b6",
+          "observedSourceSha256": "7ca17b5fad989edcd00c1fe6cb1a1ccd63fda52f52130132187d1d7be5a526b6",
+          "sourceUnchanged": true
+        },
+        "evidence": [
+          {
+            "path": "batch-v2/evaluation/pr180-single-2/result.json",
+            "sha256": "8725a2d3ff0f29c6f4b1ca30300b5b3fdb2cb22de9ee62f4558c7f1958ce2a8c"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-2/candidate.patch",
+            "sha256": "37df2dde15feb9309420aa37e12dabba5674e3a2a2e534a64273113a86a9d200"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-2/import-process.json",
+            "sha256": "3433278164e65efd1530e511bb383146fd9bb97739a7a315a2e2b4ce9aec23e1"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-2/import-stderr.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-2/runtime-process.json",
+            "sha256": "ecc33b0973ffa920a683ce2df8be8b07353ced5ac6b31c28b791f8493ab2801d"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-2/runtime-stderr.log",
+            "sha256": "89e520101a37f4140b2384b2a57c155f5fb5d6131e92f0f0be2628bee667987e"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-single-2/source-integrity.json",
+            "sha256": "4e5045e74ccbe88c02809396fd9e267eb33eec1b5f4dd563ce7535b2721aba45"
+          }
+        ]
+      },
+      {
+        "arm": "multi",
+        "repeat": 1,
+        "frozenOutcome": "requires_review",
+        "frozenReason": "Godot import reported errors or incomplete stderr",
+        "patchSha256": "ccc6fd8e2d1d0c1f4a0a30cc999c2b7511fd89898b0ea6e8f9b3f246e09f961d",
+        "import": {
+          "status": "exited",
+          "exitCode": 0,
+          "stderrEmpty": false,
+          "errorLines": 5
+        },
+        "runtimeStarted": false,
+        "runtimeExitCode": null,
+        "observedAssertionCount": 0,
+        "observedPassCount": 0,
+        "observedFailCount": 0,
+        "observedAssertionIds": [],
+        "unobservedRequiredCount": 37,
+        "inputSourceUnchanged": null,
+        "sourceIntegrity": null,
+        "evidence": [
+          {
+            "path": "batch-v2/evaluation/pr180-multi-1/result.json",
+            "sha256": "a604228e23585b6be3824f572cc4b7145508bec3c1a6746ac36ae64c1633c465"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-multi-1/candidate.patch",
+            "sha256": "ccc6fd8e2d1d0c1f4a0a30cc999c2b7511fd89898b0ea6e8f9b3f246e09f961d"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-multi-1/import-process.json",
+            "sha256": "37fe361869679646894814ede208f7e98443c533685704fb55d4470ef7307972"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-multi-1/import-stderr.log",
+            "sha256": "9eb8a40af0cb4733d25a7a4128cf98e3898db5f93967895c2b70d91f5ac5e2c3"
+          }
+        ]
+      },
+      {
+        "arm": "multi",
+        "repeat": 2,
+        "frozenOutcome": "requires_review",
+        "frozenReason": "Godot import reported errors or incomplete stderr",
+        "patchSha256": "ccc6fd8e2d1d0c1f4a0a30cc999c2b7511fd89898b0ea6e8f9b3f246e09f961d",
+        "import": {
+          "status": "exited",
+          "exitCode": 0,
+          "stderrEmpty": false,
+          "errorLines": 5
+        },
+        "runtimeStarted": false,
+        "runtimeExitCode": null,
+        "observedAssertionCount": 0,
+        "observedPassCount": 0,
+        "observedFailCount": 0,
+        "observedAssertionIds": [],
+        "unobservedRequiredCount": 37,
+        "inputSourceUnchanged": null,
+        "sourceIntegrity": null,
+        "evidence": [
+          {
+            "path": "batch-v2/evaluation/pr180-multi-2/result.json",
+            "sha256": "9326da707eff3b78f6c171ea072a3325866fac4fd8a595122a17f4f6055fb487"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-multi-2/candidate.patch",
+            "sha256": "ccc6fd8e2d1d0c1f4a0a30cc999c2b7511fd89898b0ea6e8f9b3f246e09f961d"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-multi-2/import-process.json",
+            "sha256": "7e219bec4dc7dac6f307313cfb0c12a3a87244f77b79b4036f6911a365fb56c3"
+          },
+          {
+            "path": "batch-v2/evaluation/pr180-multi-2/import-stderr.log",
+            "sha256": "9eb8a40af0cb4733d25a7a4128cf98e3898db5f93967895c2b70d91f5ac5e2c3"
+          }
+        ]
+      }
+    ],
+    "structureAssumption": "Checker uses a reference-only unique node lookup for a newly added color picker; baseline and public contract do not require that marker. Both Single families abort there. Existing reference and semantic mutants did not cover implementation-structure freedom.",
+    "unobservedAssertionsAreNotCountedAsFailures": true,
+    "frozenOutcomesUnmodified": true,
+    "postOutcomeCheckerEdits": 0,
+    "postOutcomeRescoring": 0,
+    "reviewEvidence": {
+      "artifact": "candidate-evaluation-analysis.json",
+      "sha256": "c95d799c074b37bad4ce9a3a5b3921e54e9fc04d7df015d5856e8a285682a3f6",
+      "bytes": 35716
+    }
+  },
+  "codeAndStrategyFrozenThroughBothTrials": true,
+  "rawArtifactsRemainLocalUntracked": true,
+  "publicArtifactPolicy": "Only aggregate results, behavior assessments, configuration metadata, file scope and hashes. No raw model requests/outputs, tool arguments, credentials, candidate/reference patch content or hidden checker source.",
+  "preservedNegativeEvidence": [
+    "Old adaptive-multi-v1 and godot-feature-multi-v1 reports are unchanged.",
+    "All preparation failures and reference bugs remain local, including initial import/version probes.",
+    "Both cancelled model trials and all four independent evaluations remain unchanged.",
+    "Initial shorthand manifest-hash audit typo and fork text/content parser error remain as separate failed audits; later audits explicitly correct those audit mistakes."
+  ],
+  "evidence": [
+    {
+      "artifact": "batch-v2/manifest.json",
+      "sha256": "610e1fee82511eb720fa5c15ef690e00affd6773edca015274fd2cc46a2911a2",
+      "bytes": 616502
+    },
+    {
+      "artifact": "batch-v2/live-completion.json",
+      "sha256": "34c8f52ed3fba12ad8bceb24b6152b1c04463210a2201aa3d5e3526b6479c52c",
+      "bytes": 29813
+    },
+    {
+      "artifact": "batch-v2/derived/summary.json",
+      "sha256": "8dc202ee9a980857c288f936d72c51b8251e71e7e87259de2b43608b03956202",
+      "bytes": 7093
+    },
+    {
+      "artifact": "batch-v2/derived/accounting.json",
+      "sha256": "916228b0bbcc80829561b6c40c6f7efca810ce446fb672095ce8ca41279a6c16",
+      "bytes": 85265
+    },
+    {
+      "artifact": "batch-v2/derived/timing-audit.json",
+      "sha256": "1af792d7c70ca9a107da6b69d0f86d27c0ebbc1679e8b51621f41d7a1f020788",
+      "bytes": 613157
+    },
+    {
+      "artifact": "final-accounting-audit-v1.json",
+      "sha256": "22e3d0256dec7aaf67e443dee0650cf32c8154340e76a89627a227da8d22f84e",
+      "bytes": 28066
+    },
+    {
+      "artifact": "final-freeze-protocol-audit-v1.json",
+      "sha256": "4de3a417a79f2324a6e7a9c0eac886f9a34016e1849beb3da48b588c97183b37",
+      "bytes": 9362
+    },
+    {
+      "artifact": "final-freeze-protocol-audit-v2.json",
+      "sha256": "8a4a5a1f9713a244f5bcee2bc349937010076dbabcb620edea636c4615acdce2",
+      "bytes": 10634
+    },
+    {
+      "artifact": "freeze-audit-v1.json",
+      "sha256": "87572743cbb7167387243a97e44a8f8f62d4b406a231ad12a6f3cbe6bf7fc1e4",
+      "bytes": 8493
+    },
+    {
+      "artifact": "freeze-audit-v2.json",
+      "sha256": "c38ff48e364cfb1684bad9b5e3f6414d524f64608663f6a033baf9ca4751dfb8",
+      "bytes": 9460
+    },
+    {
+      "artifact": "single-accounting-audit.json",
+      "sha256": "0d6d876a266d94becb5ca7a05a15f37e9eec6ac7eb88c52fc43bd00459f5a16b",
+      "bytes": 5730
+    },
+    {
+      "artifact": "validation.json",
+      "sha256": "b50255c85f3b17ed9dd47dba829e67ae7408acbfd451098832e046ae27da89c5",
+      "bytes": 1533
+    }
+  ],
+  "workerDeliveryAndCriticalPath": {
+    "reviewEvidence": {
+      "artifact": "batch-v2/delivery-critical-path-analysis-final.json",
+      "sha256": "81e22a733221286503a011dcc9eb307aa1fd7f85d1040b41004be95093a4579c",
+      "bytes": 116139
+    },
+    "workerCodeOrTestsDelivered": false,
+    "successfulWorkerCandidateEdits": 0,
+    "attemptedWorkerCandidateEdits": 3,
+    "budgetDeniedWorkerCandidateEdits": 3,
+    "workerTurnsCompleted": 6,
+    "activeWorkersCancelled": 0,
+    "workerWaitAgentCalls": 0,
+    "workerDetails": [
+      {
+        "worker": 1,
+        "taskName": "flow_inventory",
+        "finalState": "closed",
+        "resident": false,
+        "completedTurns": 3,
+        "spawnRequestedAt": "2026-09-13T17:06:01.376Z",
+        "firstMessageCreatedAt": "2026-09-13T17:08:02.888Z",
+        "firstMessageConsumedAtByRoot": "2026-09-13T17:09:54.005Z",
+        "firstMessageDeliveryDelayMs": 111117.0,
+        "toolCalls": {
+          "total": 78,
+          "byName": {
+            "ls": 1,
+            "find": 7,
+            "read": 59,
+            "grep": 4,
+            "bash": 1,
+            "send_message": 4,
+            "edit": 2
+          },
+          "coding": 74,
+          "game": 0,
+          "collaboration": 4,
+          "writeEditRequested": 2,
+          "writeEditSuccessful": 0,
+          "sharedBudgetRejected": 3,
+          "perTurnBudgetRejected": 7
+        },
+        "performance": {
+          "records": 67,
+          "toolDurationMsSum": 22274.409,
+          "workspaceLockWaitMsSum": 14534.079,
+          "largestLockWaitRecords": [
+            {
+              "toolName": "read",
+              "requestedAt": "2026-09-13T17:07:23.880Z",
+              "lockAcquiredAt": "2026-09-13T17:07:38.413Z",
+              "finishedAt": "2026-09-13T17:07:38.450Z",
+              "workspaceLockWaitMs": 14532.775
+            },
+            {
+              "toolName": "find",
+              "requestedAt": "2026-09-13T17:06:12.304Z",
+              "lockAcquiredAt": "2026-09-13T17:06:12.369Z",
+              "finishedAt": "2026-09-13T17:06:12.401Z",
+              "workspaceLockWaitMs": 0.119
+            },
+            {
+              "toolName": "ls",
+              "requestedAt": "2026-09-13T17:06:06.238Z",
+              "lockAcquiredAt": "2026-09-13T17:06:06.238Z",
+              "finishedAt": "2026-09-13T17:06:06.276Z",
+              "workspaceLockWaitMs": 0.038
+            }
+          ]
+        },
+        "modelRequests": {
+          "count": 25,
+          "outcomes": {
+            "completed": 25
+          },
+          "durationMsSum": 144096.526,
+          "utcIntervalUnionMs": 144098.0
+        },
+        "sdkSessionTokens": {
+          "input": 81918,
+          "output": 5526,
+          "cacheRead": 1000960,
+          "cacheWrite": 0,
+          "total": 1088404
+        },
+        "sdkSessionCost": 0.043034,
+        "successfulCandidateWriteEditPaths": [],
+        "candidateCodeOrTestsImplementedObserved": false,
+        "firstCandidateEditAt": null,
+        "rootReadOverlap": {
+          "uniqueWorkerSuccessfullyReadPaths": 48,
+          "rootSamePathReadCallsBeforeFirstMessage": 32,
+          "uniqueSamePathsBeforeFirstMessage": 32,
+          "rootSamePathReadCallsBeforeFirstMessageConsumed": 32,
+          "uniqueSamePathsBeforeFirstMessageConsumed": 32,
+          "laterReads": [
+            {
+              "at": "2026-09-13T17:10:02.468Z",
+              "path": "addons/maaacks_game_template/base/scenes/menus/options_menu/mini_options_menu.gd"
+            },
+            {
+              "at": "2026-09-13T17:10:02.468Z",
+              "path": "scenes/menus/options_menu/game/game_options_menu.tscn"
+            },
+            {
+              "at": "2026-09-13T17:10:02.468Z",
+              "path": "addons/maaacks_game_template/examples/scenes/menus/options_menu/game/game_options_menu.tscn"
+            },
+            {
+              "at": "2026-09-13T17:12:40.527Z",
+              "path": "scenes/menus/main_menu/main_menu.tscn"
+            },
+            {
+              "at": "2026-09-13T17:12:50.821Z",
+              "path": "addons/maaacks_game_template/examples/scenes/menus/main_menu/main_menu.tscn"
+            },
+            {
+              "at": "2026-09-13T17:13:02.743Z",
+              "path": "scenes/menus/main_menu/main_menu_with_animations.tscn"
+            },
+            {
+              "at": "2026-09-13T17:13:11.297Z",
+              "path": "addons/maaacks_game_template/examples/scenes/menus/main_menu/main_menu_with_animations.tscn"
+            },
+            {
+              "at": "2026-09-13T17:13:51.477Z",
+              "path": "addons/maaacks_game_template/examples/scenes/game_scene/game_ui.tscn"
+            },
+            {
+              "at": "2026-09-13T17:16:08.558Z",
+              "path": "addons/maaacks_game_template/examples/scenes/game_scene/levels/level_2.tscn"
+            },
+            {
+              "at": "2026-09-13T17:16:08.558Z",
+              "path": "addons/maaacks_game_template/examples/scenes/game_scene/levels/level_3.tscn"
+            }
+          ]
+        },
+        "observedFirstTurnDelivery": [
+          "Mapped installed/packaged menu Play signal-to-scene flow and existing animated wrapper game counting.",
+          "Mapped shared LevelListLoader progress, load/advance signals and independent scene copies.",
+          "Mapped mini reset callback and reset scene signal connections; explicitly left the exact full-reset callback for Root verification after read budget exhaustion.",
+          "Reported missing color-picker/background feature in baseline and corresponding work needed in both copies."
+        ]
+      },
+      {
+        "worker": 2,
+        "taskName": "state_api_research",
+        "finalState": "closed",
+        "resident": false,
+        "completedTurns": 2,
+        "spawnRequestedAt": "2026-09-13T17:06:07.406Z",
+        "firstMessageCreatedAt": "2026-09-13T17:09:08.303Z",
+        "firstMessageConsumedAtByRoot": "2026-09-13T17:09:54.005Z",
+        "firstMessageDeliveryDelayMs": 45702.0,
+        "toolCalls": {
+          "total": 77,
+          "byName": {
+            "ls": 3,
+            "find": 10,
+            "read": 33,
+            "grep": 12,
+            "bash": 13,
+            "send_message": 3,
+            "list_agents": 3
+          },
+          "coding": 71,
+          "game": 0,
+          "collaboration": 6,
+          "writeEditRequested": 0,
+          "writeEditSuccessful": 0,
+          "sharedBudgetRejected": 5,
+          "perTurnBudgetRejected": 2
+        },
+        "performance": {
+          "records": 69,
+          "toolDurationMsSum": 33030.977,
+          "workspaceLockWaitMsSum": 40.958,
+          "largestLockWaitRecords": [
+            {
+              "toolName": "find",
+              "requestedAt": "2026-09-13T17:06:16.078Z",
+              "lockAcquiredAt": "2026-09-13T17:06:16.155Z",
+              "finishedAt": "2026-09-13T17:06:16.192Z",
+              "workspaceLockWaitMs": 34.085
+            },
+            {
+              "toolName": "find",
+              "requestedAt": "2026-09-13T17:06:16.078Z",
+              "lockAcquiredAt": "2026-09-13T17:06:16.084Z",
+              "finishedAt": "2026-09-13T17:06:16.121Z",
+              "workspaceLockWaitMs": 5.74
+            },
+            {
+              "toolName": "grep",
+              "requestedAt": "2026-09-13T17:06:38.956Z",
+              "lockAcquiredAt": "2026-09-13T17:06:38.956Z",
+              "finishedAt": "2026-09-13T17:06:38.991Z",
+              "workspaceLockWaitMs": 0.039
+            }
+          ]
+        },
+        "modelRequests": {
+          "count": 35,
+          "outcomes": {
+            "completed": 35
+          },
+          "durationMsSum": 318029.886,
+          "utcIntervalUnionMs": 318028.0
+        },
+        "sdkSessionTokens": {
+          "input": 77532,
+          "output": 14311,
+          "cacheRead": 1256960,
+          "cacheWrite": 0,
+          "total": 1348803
+        },
+        "sdkSessionCost": 0.0578188,
+        "successfulCandidateWriteEditPaths": [],
+        "candidateCodeOrTestsImplementedObserved": false,
+        "firstCandidateEditAt": null,
+        "rootReadOverlap": {
+          "uniqueWorkerSuccessfullyReadPaths": 33,
+          "rootSamePathReadCallsBeforeFirstMessage": 28,
+          "uniqueSamePathsBeforeFirstMessage": 28,
+          "rootSamePathReadCallsBeforeFirstMessageConsumed": 29,
+          "uniqueSamePathsBeforeFirstMessageConsumed": 29,
+          "laterReads": [
+            {
+              "at": "2026-09-13T17:12:50.821Z",
+              "path": "addons/maaacks_game_template/examples/scenes/menus/main_menu/main_menu.tscn"
+            },
+            {
+              "at": "2026-09-13T17:13:11.297Z",
+              "path": "addons/maaacks_game_template/examples/scenes/menus/main_menu/main_menu_with_animations.tscn"
+            },
+            {
+              "at": "2026-09-13T17:13:51.477Z",
+              "path": "addons/maaacks_game_template/examples/scenes/game_scene/game_ui.tscn"
+            }
+          ]
+        },
+        "observedFirstTurnDelivery": [
+          "Proposed AppConfig startup hook and state storage separate from Config settings.",
+          "Proposed GlobalState typed Resource instantiation/replacement, metadata/reset semantics, exported nested resources and separate installed/packaged namespaces.",
+          "Repeated existing menu/loader/reset/color integration observations also covered by worker1 and Root.",
+          "Advised script type comparison, integer timestamps and ResourceSaver bundling; no target-Godot4.3 typed-resource empirical result was delivered."
+        ]
+      },
+      {
+        "worker": 3,
+        "taskName": "patch_loader",
+        "finalState": "closed",
+        "resident": false,
+        "completedTurns": 1,
+        "spawnRequestedAt": "2026-09-13T17:23:46.589Z",
+        "firstMessageCreatedAt": "2026-09-13T17:23:58.887Z",
+        "firstMessageConsumedAtByRoot": "2026-09-13T17:23:58.888Z",
+        "firstMessageDeliveryDelayMs": 1.0,
+        "toolCalls": {
+          "total": 3,
+          "byName": {
+            "read": 1,
+            "edit": 1,
+            "send_message": 1
+          },
+          "coding": 2,
+          "game": 0,
+          "collaboration": 1,
+          "writeEditRequested": 1,
+          "writeEditSuccessful": 0,
+          "sharedBudgetRejected": 2,
+          "perTurnBudgetRejected": 0
+        },
+        "performance": {
+          "records": 2,
+          "toolDurationMsSum": 0.216,
+          "workspaceLockWaitMsSum": 0.038,
+          "largestLockWaitRecords": [
+            {
+              "toolName": "edit",
+              "requestedAt": "2026-09-13T17:23:56.067Z",
+              "lockAcquiredAt": "2026-09-13T17:23:56.067Z",
+              "finishedAt": "2026-09-13T17:23:56.067Z",
+              "workspaceLockWaitMs": 0.021
+            },
+            {
+              "toolName": "read",
+              "requestedAt": "2026-09-13T17:23:50.595Z",
+              "lockAcquiredAt": "2026-09-13T17:23:50.595Z",
+              "finishedAt": "2026-09-13T17:23:50.595Z",
+              "workspaceLockWaitMs": 0.016
+            }
+          ]
+        },
+        "modelRequests": {
+          "count": 4,
+          "outcomes": {
+            "completed": 4
+          },
+          "durationMsSum": 13453.138,
+          "utcIntervalUnionMs": 13453.0
+        },
+        "sdkSessionTokens": {
+          "input": 8448,
+          "output": 452,
+          "cacheRead": 7168,
+          "cacheWrite": 0,
+          "total": 16068
+        },
+        "sdkSessionCost": 0.00237536,
+        "successfulCandidateWriteEditPaths": [],
+        "candidateCodeOrTestsImplementedObserved": false,
+        "firstCandidateEditAt": null,
+        "rootReadOverlap": {
+          "uniqueWorkerSuccessfullyReadPaths": 0,
+          "rootSamePathReadCallsBeforeFirstMessage": 0,
+          "uniqueSamePathsBeforeFirstMessage": 0,
+          "rootSamePathReadCallsBeforeFirstMessageConsumed": 0,
+          "uniqueSamePathsBeforeFirstMessageConsumed": 0,
+          "laterReads": []
+        },
+        "observedFirstTurnDelivery": [
+          "No edit could execute; exact requested loader replacement was returned as text."
+        ]
+      }
+    ],
+    "rootReuseAndDuplication": {
+      "observed": [
+        "All successful candidate write/edit calls are Root-owned. The first two workers had explicit read-only assignments; the later implementation assignments began only after shared budget exhaustion.",
+        "Before first messages were created, Root had already successfully read32 worker1 paths and28 worker2 paths. The two workers themselves overlapped24 successful read paths. More Root reads happened while messages were queued before consumption.",
+        "Worker1 first report was queued for111.117seconds before Root consumed it. It mapped menus, loaders and reset controls already substantially inspected by Root; it explicitly left a full-reset detail uncovered.",
+        "Worker2 state API advice was consumed before Root wrote the state layer. Root initial implementation used ResourceSaver.FLAG_BUNDLE_RESOURCES matching worker advice; later sandbox diagnostics found duplicate global-script-class/resource-load errors, and Root removed the flag at17:18:29.641Z.",
+        "Root continued integrating both scene copies, correcting failed edit contexts and performing all managed launches and candidate test writes. Some post-message source reads supplied exact edit context or covered stated gaps."
+      ],
+      "inference": [
+        "Some design advice may have influenced Root; matching advice and implementation do not prove causality or time saved.",
+        "Repeated paths establish overlapping investigation, not that every read was unnecessary. The installed and packaged copies require distinct integration checks.",
+        "No worker delivered working feature code or a completed target-version typed-resource test that demonstrably replaced Root implementation/validation. Root token volume increased, and its total tool-call count did not fall."
+      ],
+      "necessaryWorkConcurrency": {
+        "successfulWorkerCandidateMutationCount": 0,
+        "overlappingWorkerRootImplementationObserved": false,
+        "rootImplementationWhileWorker2ResearchActiveMs": 77976.0,
+        "interpretation": "Parallel activity was chiefly source investigation/API research. Root began writing while worker2 was still researching; there was no concurrent successful source implementation by another agent. Later concrete fix delegation produced no candidate work because every relevant tool was denied."
+      }
+    },
+    "budgetExhaustion": {
+      "sharedExecutionCalls": 256,
+      "sharedExecutionLimit": 256,
+      "firstObservedRootRejectionAt": "2026-09-13T17:20:17.935Z",
+      "firstObservedRootRejectionTool": "edit",
+      "blockedTailUntilInvestigationFinishedMs": 314151.0,
+      "rootToolCallsAfterFirstRejection": {
+        "total": 31,
+        "byName": {
+          "edit": 4,
+          "read": 2,
+          "bash": 4,
+          "list_agents": 1,
+          "grep": 1,
+          "followup_task": 3,
+          "wait_agent": 7,
+          "game_stop": 3,
+          "game_launch": 1,
+          "ls": 1,
+          "interrupt_agent": 2,
+          "write": 1,
+          "spawn_agent": 1
+        },
+        "coding": 13,
+        "game": 4,
+        "collaboration": 14,
+        "writeEditRequested": 5,
+        "writeEditSuccessful": 0,
+        "sharedBudgetRejected": 14,
+        "perTurnBudgetRejected": 0
+      },
+      "rootModelRequestsStartingAfterFirstRejection": {
+        "count": 31,
+        "outcomes": {
+          "completed": 30,
+          "aborted": 1
+        },
+        "durationMsSum": 215697.683,
+        "utcIntervalUnionMs": 215698.0
+      },
+      "rootWaitAgentCallsAfterFirstRejection": [
+        {
+          "at": "2026-09-13T17:20:49.854Z",
+          "finishedAt": "2026-09-13T17:20:58.891Z",
+          "elapsedMs": 9037.0,
+          "requestedTimeoutMs": 1000
+        },
+        {
+          "at": "2026-09-13T17:21:28.462Z",
+          "finishedAt": "2026-09-13T17:22:28.473Z",
+          "elapsedMs": 60011.0,
+          "requestedTimeoutMs": 60000
+        },
+        {
+          "at": "2026-09-13T17:22:42.378Z",
+          "finishedAt": "2026-09-13T17:22:42.378Z",
+          "elapsedMs": 0.0,
+          "requestedTimeoutMs": 300000
+        },
+        {
+          "at": "2026-09-13T17:22:56.881Z",
+          "finishedAt": "2026-09-13T17:23:06.892Z",
+          "elapsedMs": 10011.0,
+          "requestedTimeoutMs": 1000
+        },
+        {
+          "at": "2026-09-13T17:23:50.417Z",
+          "finishedAt": "2026-09-13T17:23:58.887Z",
+          "elapsedMs": 8470.0,
+          "requestedTimeoutMs": 1000
+        },
+        {
+          "at": "2026-09-13T17:24:02.755Z",
+          "finishedAt": "2026-09-13T17:24:02.756Z",
+          "elapsedMs": 1.0,
+          "requestedTimeoutMs": 600000
+        },
+        {
+          "at": "2026-09-13T17:25:22.297Z",
+          "finishedAt": "2026-09-13T17:25:32.069Z",
+          "elapsedMs": 9772.0,
+          "requestedTimeoutMs": 3600000
+        }
+      ],
+      "observations": [
+        "Both initial read-only workers reached their64 executed-tool turn limits; together they consumed128 of the team256 execution calls before the late repair assignments.",
+        "The first Root edit attempting to fix the observed static GameLevelLog.callv parse failure was rejected by the exhausted shared budget.",
+        "Subsequent reads, edits, a launch, followups and a third worker could not replenish the shared execution budget.",
+        "Root retried and waited after budget rejection, including a followup saying the budget may have refreshed; workers returned concise blocked results and did not wait in loops."
+      ],
+      "inference": "The terminal5.236-minute tail is a concrete budget-limited inability to repair/validate, not evidence that work needed that much compute. Initial parallel investigation consumed execution capacity without transferring any successful candidate implementation. This trace does not establish a faster correct counterfactual.",
+      "rootAssistantUsageAfterFirstRejection": {
+        "assistantMessages": 31,
+        "tokens": {
+          "input": 25215,
+          "output": 8274,
+          "cacheRead": 3520512,
+          "cacheWrite": 0,
+          "totalTokens": 3554001
+        },
+        "sdkEstimatedCost": 0.08538204,
+        "accountingBoundary": "Sum session-owned assistant usage with timestamp strictly after first rejected Root tool request (17:20:17.935Z). Excludes the model reply timestamped exactly17:20:17.935Z that proposed the first denied edit. Matches31 model requests starting after rejection. Includes final aborted zero-usage response; recorded totals incomplete."
+      },
+      "lastObservedBudgetedExecutionRequestedAt": "2026-09-13T17:19:51.278Z",
+      "exactCounterIncrementTimestampRecorded": false,
+      "timestampInterpretation": "No dedicated counter-increment event exists. The last accepted coding command was requested at17:19:51.278Z; the first explicit budget refusal is the Root edit requested at17:20:17.935Z. Do not call the latter the exact instant the counter reached256.",
+      "lastObservedBudgetedExecutionFinishedAt": "2026-09-13T17:20:11.316Z"
+    },
+    "singleRootPhases": [
+      {
+        "phase": "host_setup",
+        "startedAt": "2026-09-13T16:45:25.807Z",
+        "finishedAt": "2026-09-13T16:45:36.982Z",
+        "wallClockMs": 11175.0,
+        "modelRequestWallClockUnionMs": 0,
+        "toolWallClockUnionMs": 0,
+        "unattributedWallClockMs": 11175.0,
+        "toolCallsStarted": 0,
+        "modelRequestsStarted": 0
+      },
+      {
+        "phase": "investigation_before_first_write",
+        "startedAt": "2026-09-13T16:45:36.982Z",
+        "finishedAt": "2026-09-13T16:51:52.977Z",
+        "wallClockMs": 375995.0,
+        "modelRequestWallClockUnionMs": 374621.0,
+        "toolWallClockUnionMs": 1313.0,
+        "unattributedWallClockMs": 61.0,
+        "toolCallsStarted": 76,
+        "modelRequestsStarted": 17
+      },
+      {
+        "phase": "implementation_and_static_review",
+        "startedAt": "2026-09-13T16:51:52.977Z",
+        "finishedAt": "2026-09-13T16:55:42.175Z",
+        "wallClockMs": 229198.0,
+        "modelRequestWallClockUnionMs": 227406.0,
+        "toolWallClockUnionMs": 1755.0,
+        "unattributedWallClockMs": 37.0,
+        "toolCallsStarted": 36,
+        "modelRequestsStarted": 19
+      },
+      {
+        "phase": "runtime_tests_refinement_and_review",
+        "startedAt": "2026-09-13T16:55:42.175Z",
+        "finishedAt": "2026-09-13T17:04:41.371Z",
+        "wallClockMs": 539196.0,
+        "modelRequestWallClockUnionMs": 499816.0,
+        "toolWallClockUnionMs": 39254.0,
+        "unattributedWallClockMs": 126.0,
+        "toolCallsStarted": 48,
+        "modelRequestsStarted": 43
+      },
+      {
+        "phase": "test_cleanup_and_final_launch",
+        "startedAt": "2026-09-13T17:04:41.371Z",
+        "finishedAt": "2026-09-13T17:04:55.554Z",
+        "wallClockMs": 14183.0,
+        "modelRequestWallClockUnionMs": 8819.0,
+        "toolWallClockUnionMs": 5357.0,
+        "unattributedWallClockMs": 7.0,
+        "toolCallsStarted": 3,
+        "modelRequestsStarted": 2
+      },
+      {
+        "phase": "post_final_launch_model_review",
+        "startedAt": "2026-09-13T17:04:55.554Z",
+        "finishedAt": "2026-09-13T17:05:25.815Z",
+        "wallClockMs": 30261.0,
+        "modelRequestWallClockUnionMs": 30253.0,
+        "toolWallClockUnionMs": 0,
+        "unattributedWallClockMs": 8.0,
+        "toolCallsStarted": 0,
+        "modelRequestsStarted": 1
+      },
+      {
+        "phase": "host_cleanup_and_patch_capture",
+        "startedAt": "2026-09-13T17:05:25.815Z",
+        "finishedAt": "2026-09-13T17:05:29.809Z",
+        "wallClockMs": 3994.0,
+        "modelRequestWallClockUnionMs": 0,
+        "toolWallClockUnionMs": 0,
+        "unattributedWallClockMs": 3994.0,
+        "toolCallsStarted": 0,
+        "modelRequestsStarted": 0
+      }
+    ],
+    "multiRootPhases": [
+      {
+        "phase": "host_setup",
+        "startedAt": "2026-09-13T17:05:32.058Z",
+        "finishedAt": "2026-09-13T17:05:42.922Z",
+        "wallClockMs": 10864.0,
+        "rootModelRequestUnionMs": 0,
+        "rootToolCallUnionMs": 0,
+        "rootWaitAgentUnionMs": 0,
+        "workerModelRequestUnionMs": 0,
+        "unattributedRootWallClockMs": 10864.0,
+        "rootToolCallsStarted": 0,
+        "rootModelsStarted": 0
+      },
+      {
+        "phase": "parallel_inventory_before_first_root_write",
+        "startedAt": "2026-09-13T17:05:42.922Z",
+        "finishedAt": "2026-09-13T17:10:23.411Z",
+        "wallClockMs": 280489.0,
+        "rootModelRequestUnionMs": 268024.0,
+        "rootToolCallUnionMs": 12426.0,
+        "rootWaitAgentUnionMs": 0,
+        "workerModelRequestUnionMs": 245415.0,
+        "unattributedRootWallClockMs": 39.0,
+        "rootToolCallsStarted": 67,
+        "rootModelsStarted": 18
+      },
+      {
+        "phase": "root_implementation_before_first_managed_launch",
+        "startedAt": "2026-09-13T17:10:23.411Z",
+        "finishedAt": "2026-09-13T17:16:35.159Z",
+        "wallClockMs": 371748.0,
+        "rootModelRequestUnionMs": 369507.0,
+        "rootToolCallUnionMs": 2172.0,
+        "rootWaitAgentUnionMs": 0,
+        "workerModelRequestUnionMs": 72666.0,
+        "unattributedRootWallClockMs": 69.0,
+        "rootToolCallsStarted": 45,
+        "rootModelsStarted": 40
+      },
+      {
+        "phase": "failed_managed_imports_and_alternative_diagnostics",
+        "startedAt": "2026-09-13T17:16:35.159Z",
+        "finishedAt": "2026-09-13T17:20:17.935Z",
+        "wallClockMs": 222776.0,
+        "rootModelRequestUnionMs": 137185.0,
+        "rootToolCallUnionMs": 85522.0,
+        "rootWaitAgentUnionMs": 0,
+        "workerModelRequestUnionMs": 0,
+        "unattributedRootWallClockMs": 69.0,
+        "rootToolCallsStarted": 22,
+        "rootModelsStarted": 22
+      },
+      {
+        "phase": "shared_budget_exhausted_until_deadline",
+        "startedAt": "2026-09-13T17:20:17.935Z",
+        "finishedAt": "2026-09-13T17:25:32.086Z",
+        "wallClockMs": 314151.0,
+        "rootModelRequestUnionMs": 215698.0,
+        "rootToolCallUnionMs": 98377.0,
+        "rootWaitAgentUnionMs": 97302.0,
+        "workerModelRequestUnionMs": 40199.0,
+        "unattributedRootWallClockMs": 76.0,
+        "rootToolCallsStarted": 31,
+        "rootModelsStarted": 31
+      },
+      {
+        "phase": "host_cleanup_and_patch_capture",
+        "startedAt": "2026-09-13T17:25:32.086Z",
+        "finishedAt": "2026-09-13T17:25:36.439Z",
+        "wallClockMs": 4353.0,
+        "rootModelRequestUnionMs": 0,
+        "rootToolCallUnionMs": 0,
+        "rootWaitAgentUnionMs": 0,
+        "workerModelRequestUnionMs": 0,
+        "unattributedRootWallClockMs": 4353.0,
+        "rootToolCallsStarted": 0,
+        "rootModelsStarted": 0
+      }
+    ],
+    "limitations": {
+      "timing": "Child-recorded start/finish excludes a small parent process startup component; parent end-to-end timer is authoritative for the whole20-minute budget. UTC interval unions do not double-count overlapping tool/model requests. Summed per-agent durations/lock waits must not be interpreted as elapsed critical path.",
+      "cost": "SDK recorded estimate, not provider invoice. totalTokens includes cacheRead. Both aborted Root final requests record zero usage; agents.v2 explicitly marks Multi aggregate incomplete.",
+      "workerCompletion": "All6 worker turns returned completed naturally. This does not mean implementation succeeded; later turns reported shared-budget inability. Interrupting an already-completed agent is not an active cancellation.",
+      "firstResult": "First send_message created/consumed timestamps are delivery proxies, not proof that the assignment was fully completed. settledAt precedes or equals Host cleanup finishedAt.",
+      "validation": "A managed validation launch must have actual result.details.outcome=success and follow the last observed explicit candidate mutation; a successful launch can still contain runtime errors. Multi has no successful managed launch. Direct coding-shell Godot4.7.1 diagnostics are separate from configured Godot4.3 managed read-only execution."
+    }
+  }
+}

@@ -24,6 +24,8 @@ import {
 } from "@chronorift/godot-protocol";
 
 import { GodotInspectionRuntime } from "./godot-inspection-runtime.js";
+import { AgentWorkspaceGate } from "./agent-execution-scope.js";
+import { prepareGodotInspectionCandidate } from "./godot-inspection-source.js";
 import { SrtGodotRunner } from "./srt-godot-runner.js";
 import type {
   SrtCommandResult,
@@ -55,8 +57,12 @@ describe("GodotInspectionRuntime", () => {
   let root: string;
   let candidate: string;
   let runtime: GodotInspectionRuntime;
-  let importMode: "normal" | "error" | "pending";
+  let importMode: "normal" | "error" | "pending" | "cold";
   let importStarted: boolean;
+  let importAttempts: number;
+  const coldMetadataError =
+    "ERROR: Missing required editor-specific import metadata for a texture (please reimport it using the 'Import' tab): 'res://.godot/imported/icon.svg-123.editor.meta'\n   at: _load_editor_meta (editor/import/resource_importer_texture.cpp:413)\n";
+  let candidateGate: AgentWorkspaceGate;
   let behavior:
     | "normal"
     | "no_query"
@@ -72,6 +78,8 @@ describe("GodotInspectionRuntime", () => {
     executions.length = 0;
     importMode = "normal";
     importStarted = false;
+    importAttempts = 0;
+    candidateGate = new AgentWorkspaceGate();
     behavior = "normal";
     await mkdir(candidate);
     await writeFile(
@@ -88,6 +96,7 @@ describe("GodotInspectionRuntime", () => {
       controller: {
         openGodotImport: async (request) => {
           importStarted = true;
+          importAttempts += 1;
           const result: SrtCommandResult = {
             status: "exited",
             exitCode: 0,
@@ -120,7 +129,9 @@ describe("GodotInspectionRuntime", () => {
               : Promise.resolve(
                   importMode === "error"
                     ? { ...result, stderr: "ERROR: import failed" }
-                    : result,
+                    : importMode === "cold" && importAttempts === 1
+                      ? { ...result, stderr: coldMetadataError }
+                      : result,
                 );
           return {
             pid: 122,
@@ -286,6 +297,11 @@ describe("GodotInspectionRuntime", () => {
       },
     });
     runtime = new GodotInspectionRuntime({
+      captureCandidate: (signal) =>
+        candidateGate.run(
+          () => prepareGodotInspectionCandidate(candidate),
+          signal,
+        ),
       runner,
       candidateWorkspace: candidate,
       artifactsDirectory: join(root, "records"),
@@ -321,6 +337,34 @@ describe("GodotInspectionRuntime", () => {
       throw new Error(JSON.stringify(response));
     return response.output;
   };
+
+  it("rejects a changed candidate engine pin while retaining the actual handshake version", async () => {
+    await writeFile(join(candidate, ".godot-version"), "4.3\n");
+    expect(await invoke("game_launch", { schemaVersion: 1 })).toMatchObject({
+      outcome: "error",
+      error: { code: "launch_failed" },
+    });
+    expect(runtime.records()[0]).toMatchObject({
+      engineVersion: "4.5.2.stable",
+      sourceUnchanged: true,
+      error: { code: "launch_failed" },
+    });
+  });
+
+  it("releases the shared candidate lock before native import completes", async () => {
+    importMode = "pending";
+    const launching = invoke("game_launch", { schemaVersion: 1 });
+    await expect.poll(() => importStarted).toBe(true);
+    await candidateGate.run(() =>
+      writeFile(join(candidate, "later.txt"), "another agent edit"),
+    );
+    expect(await readFile(join(candidate, "later.txt"), "utf8")).toBe(
+      "another agent edit",
+    );
+    await runtime.close();
+    await launching;
+    expect(executions).toHaveLength(0);
+  });
 
   it("launches immutable current source, queries, and saves idempotent process results", async () => {
     const first = await launch();
@@ -398,6 +442,28 @@ describe("GodotInspectionRuntime", () => {
     ).resolves.toMatchObject({
       outcome: "error",
       error: { code: "execution_not_found" },
+    });
+  });
+
+  it("persists the cold import diagnostic separately from the clean verification", async () => {
+    importMode = "cold";
+    const started = await launch();
+    await expect(
+      invoke("game_stop", {
+        schemaVersion: 1,
+        executionId: started.executionId,
+      }),
+    ).resolves.toMatchObject({ outcome: "success" });
+    expect(importAttempts).toBe(2);
+    const persisted = InspectionRunRecordV1Schema.parse(
+      JSON.parse(await readFile(runtime.recordPaths()[0]!, "utf8")),
+    );
+    expect(persisted).toEqual(runtime.records()[0]);
+    expect(persisted).toMatchObject({
+      importBootstrap: { stderr: coldMetadataError, exitCode: 0 },
+      import: { stderr: "", exitCode: 0 },
+      sourceUnchanged: true,
+      error: null,
     });
   });
 

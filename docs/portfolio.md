@@ -1,7 +1,7 @@
 # ChronoRift 工程设计导览
 
-这份导览面向希望快速审阅 Agent Runtime / Harness / Environment 工程能力的读者。它不复述完整 RFC，而是解释当前
-代码里最重要的设计取舍、可以核对的实现入口，以及没有被包装成“已解决”的问题。
+这份导览面向希望快速审阅 Agent Runtime / Harness / Environment 工程能力的读者。它解释当前代码里最重要的
+设计取舍、可以核对的实现入口，以及仍未解决的问题。
 
 ## 问题定义
 
@@ -11,8 +11,8 @@
 
 ChronoRift 的目标不是替 Agent 编写固定诊断脚本，而是提供一个 **Agent 可以自由使用、Host 可以严格约束、reviewer
 可以事后核查** 的运行环境。当前实现包含 legacy v0.4、无需 Adapter 的实验性对象检查 Preview 和固定项目案例。旧
-Task CLI 与 M3/M4/E2 实现已从 current HEAD 删除，只能从历史 tag/归档复现；[目标架构](architecture.md) 中的完整
-runtime primitive 集合并非当前功能清单。
+Task CLI 与 M3/M4/E2 实现已从 current HEAD 删除；历史结果保留原义。当前支持的路径、模块职责与限制见
+[架构文档](architecture.md)。
 
 ## 五个关键设计决定
 
@@ -34,7 +34,8 @@ ChronoRift 直接使用固定版本的 Pi SDK 创建 `AgentSession`，保留 Pi 
 `@anthropic-ai/sandbox-runtime@0.0.74`。Agent 的 coding command 在私有物理 candidate workspace 中拥有读写权限，
 否则无法修 bug。Godot 验证不直接运行该可写树：Host 递归复制普通文件、拒绝 symlink/特殊文件和路径逃逸，叠加受管
 overlay 后，把 stage 项目源码只读交给 SRT；只有 `.godot/`、home、tmp 和 artifacts 可写，并在运行前后比较 source
-SHA-256。两种模式都使用 strict empty network allowlist，Pi 凭据不进入 command environment。
+SHA-256。原生导入使用另一个一次性可写副本，校验普通源码未变和生成产物后才建立只读运行 stage。两种模式都使用
+strict empty network allowlist，Pi 凭据不进入 command environment。
 
 这次 cutover 退役了自研 sandbox broker、cgroup/storage ledger、Host-config schema 和复杂 receipt framework。当前边界适合
 单人作品项目，但不宣称 CPU/memory/PID/容量 quota 或外部 attestation。v0.4 Host process 也没有这一 SRT 隔离保证。
@@ -134,14 +135,14 @@ area 和共享 identity。
   composition 仍聚集较多 lifecycle 分支，应只在真实 ownership seam 出现时继续拆分。
 - **通用检查不等于理解任意项目。** Preview 已移除 author/publish/reuse，通过 Godot 原生对象与属性检查工作；有意义的
   路径、字段仍需 Agent 调查。GN-1/Mob 保留 checked-in 项目 Adapter，其案例结果不能外推到新 Preview 或任意项目。
-- **平台范围窄。** 当前受支持 Host 是 Linux，runtime 是官方 Godot 4.7.1 GDScript；C#、native extension、macOS、
-  Windows、visual/audio/GPU 都未覆盖。
+- **平台范围窄。** 当前受支持 Host 是 Linux x86_64；Preview 支持已验证的官方标准 Godot 4.7.1、4.3 和 4.2.2。
+  可选 C# 源码可以保留为数据，显式 .NET/native 依赖仍拒绝；其他 Host 与 visual/audio/GPU 未覆盖。
 - **时间调查尚未实现。** Preview 只能读取存活执行的当前状态；没有 probe、采集窗口或历史回看，查询不是原子快照且
   getter 可能有副作用。也没有完整 engine snapshot、bit-exact replay 或第三方 telemetry attestation。
-- **协作与交付不在当前范围。** 通用 source migration、多人并发编辑、自动 apply/merge 和长期 retention 都不是这个
-  单人作品项目的已承诺路线。
+- **协作仍需验证收益。** [Adaptive Multi](multi-agent.md) 已支持共享 candidate 与独立 worker Session，但不保证
+  减少 Root 工作或总耗时。通用 source migration、自动 apply/merge 和长期 retention 尚未实现。
 
-这些缺口是产品路线输入，不是让当前窄 slice 宣称更多能力的理由。架构 §20/§21 是 rollout 和当前映射的权威来源。
+这些缺口限定当前实现的适用范围；模块映射和运行边界统一见[架构文档](architecture.md)。
 
 ## 外部项目上的一次实际复用
 
@@ -172,7 +173,6 @@ provider；只有 `*.live.test.ts` 和显式 live 命令可以联系 provider，
 进一步阅读：
 
 - [README](../README.md)：当前公开入口、命令和限制。
-- [目标架构](architecture.md)：产品契约、信任边界、rollout 和 package ownership。
-- [Project Environment V1 RFC](project-environment-v1.md)：已被新 Preview 替代的历史接入、状态机和 DTO/wire 设计。
+- [当前架构](architecture.md)：Preview 生命周期、信任边界、模块职责和仍在维护的 legacy 路径。
 - [开发与验证指南](development.md)：可执行的 Host provisioning 与 conformance 前置条件。
 - [GN-1 案例](case-studies/gn1-platform-alias.md)：固定 pair 的公开材料和局限。

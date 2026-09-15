@@ -37,7 +37,11 @@ import {
   isExternalGodotNativeSourcePathV1,
   isExternalGodotReservedSourcePathV1,
 } from "./external-godot-source-policy.js";
-import { isProjectEnvironmentSensitivePathV1 } from "./project-environment-source-policy.js";
+import {
+  isProjectEnvironmentNativeSourcePathV1,
+  isProjectEnvironmentSensitivePathV1,
+  projectEnvironmentCSharpRequirementV1,
+} from "./project-environment-source-policy.js";
 import {
   selectedTreeSha256,
   type SelectedTreeEntryV1,
@@ -259,6 +263,14 @@ const collectCandidate = async (
         );
       }
       if (
+        policy === "project-environment" &&
+        relativePath.toLowerCase() === "project.binary"
+      ) {
+        throw new TypeError(
+          "Project Environment does not support project.binary overriding inspected text settings",
+        );
+      }
+      if (
         policy === "external-lifecycle" &&
         isExternalGodotReservedSourcePathV1(relativePath)
       ) {
@@ -267,16 +279,13 @@ const collectCandidate = async (
         );
       }
       if (
-        (policy === "external-lifecycle" || policy === "project-environment") &&
-        isExternalGodotNativeSourcePathV1(relativePath)
+        (policy === "external-lifecycle" &&
+          isExternalGodotNativeSourcePathV1(relativePath)) ||
+        (policy === "project-environment" &&
+          isProjectEnvironmentNativeSourcePathV1(relativePath))
       ) {
         throw new TypeError(
           `external Godot lifecycle candidate contains a native or non-GDScript path: ${relativePath}`,
-        );
-      }
-      if (policy === "project-environment" && relativePath === "override.cfg") {
-        throw new TypeError(
-          "Project Environment candidate collides with the managed override",
         );
       }
       const normalizedAddonPath = relativePath.toLocaleLowerCase("en-US");
@@ -331,6 +340,13 @@ const collectCandidate = async (
             "candidate source exceeds its bounded build profile",
           );
         }
+        if (policy === "project-environment") {
+          const unsupported = projectEnvironmentCSharpRequirementV1(
+            relativePath,
+            bytes,
+          );
+          if (unsupported !== undefined) throw new TypeError(unsupported);
+        }
         if (
           policy === "project-environment" &&
           (relativePath === ".godot-version" || relativePath.endsWith(".gd"))
@@ -344,9 +360,12 @@ const collectCandidate = async (
               { cause: error },
             );
           }
-          if (relativePath === ".godot-version" && text.trim() !== "4.7.1") {
+          if (
+            relativePath === ".godot-version" &&
+            !["4.2.2", "4.3", "4.7.1"].includes(text.trim())
+          ) {
             throw new TypeError(
-              "Project Environment candidate must keep exact Godot 4.7.1",
+              "Project Environment candidate must request a supported exact Godot version",
             );
           }
         }

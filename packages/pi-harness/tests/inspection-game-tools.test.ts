@@ -41,6 +41,47 @@ const queryResponse = {
 };
 
 describe("inspection Pi bridge", () => {
+  it("keeps cleanup outside the Single execution budget, including after exhaustion", async () => {
+    const admission = createProjectEnvironmentToolCallAdmissionV1(1);
+    const cleanup = new Error("Host cleanup was reached");
+    const invoke = vi.fn(async (request: { toolName: string }) => {
+      if (request.toolName === "game_stop") throw cleanup;
+      return launchResponse;
+    });
+    const tools = createInspectionGameToolDefinitions(
+      { invoke },
+      { toolCallAdmission: admission },
+    );
+    const stop = () =>
+      tools[2]!.execute(
+        "stop",
+        { schemaVersion: 1, executionId: "run:one" },
+        undefined,
+        undefined,
+        {} as never,
+      );
+    await expect(stop()).rejects.toBe(cleanup);
+    expect(admission.admitted).toBe(0);
+    await tools[0]!.execute(
+      "launch",
+      { schemaVersion: 1 },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    await expect(stop()).rejects.toBe(cleanup);
+    expect(admission.admitted).toBe(1);
+    await expect(
+      tools[0]!.execute(
+        "exhausted",
+        { schemaVersion: 1 },
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    ).rejects.toBeInstanceOf(ProjectEnvironmentToolCallBudgetExhaustedErrorV1);
+    expect(invoke).toHaveBeenCalledTimes(3);
+  });
   it("preserves ordinary agent choice with three sequential tools and no forced workflow", () => {
     const tools = createInspectionGameToolDefinitions({
       invoke: () => Promise.resolve(launchResponse),

@@ -364,7 +364,44 @@ describe("stageGodotValidation", () => {
     },
   );
 
-  it.each(["override.cfg", "addons/chronorift_inspection/observer.gd"])(
+  it("merges upstream override settings into the managed stage without editing the candidate", async () => {
+    const upstream =
+      '[input]\naccept={"events": [Object(InputEventKey, "physical_keycode": 81)]}\n[autoload]\nUserState="*res://state.gd"\n';
+    await writeFile(join(candidateWorkspace, "override.cfg"), upstream);
+    const stage = await stageGodotValidation({
+      candidateWorkspace,
+      stageRoot: join(root, "run"),
+      overlayFiles: [
+        {
+          relativePath: "override.cfg",
+          bytes: Buffer.from(
+            '[autoload]\nChronoRiftInspection="*res://addons/chronorift_inspection/observer.gd"\n',
+          ),
+        },
+        {
+          relativePath: "addons/chronorift_inspection/observer.gd",
+          bytes: Buffer.from("extends Node\n"),
+        },
+      ],
+    });
+    expect(
+      await readFile(join(candidateWorkspace, "override.cfg"), "utf8"),
+    ).toBe(upstream);
+    const merged = await readFile(
+      join(stage.projectStagePath, "override.cfg"),
+      "utf8",
+    );
+    expect(merged.startsWith(upstream)).toBe(true);
+    expect(merged).toContain(
+      'ChronoRiftInspection="*res://addons/chronorift_inspection/observer.gd"',
+    );
+    expect((await stage.verifySourceUnchanged()).sourceUnchanged).toBe(true);
+    await writeFile(join(stage.projectStagePath, "override.cfg"), "tampered");
+    expect((await stage.verifySourceUnchanged()).sourceUnchanged).toBe(false);
+    await stage.cleanup();
+  });
+
+  it.each(["addons/chronorift_inspection/observer.gd", "project.binary"])(
     "does not overwrite candidate-owned inspection source at %s",
     async (reservedPath) => {
       await mkdir(dirname(join(candidateWorkspace, reservedPath)), {

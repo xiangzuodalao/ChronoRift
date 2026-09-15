@@ -1,4 +1,9 @@
 import { collectCandidateGodotSourceV1 } from "./candidate-godot-build.js";
+import {
+  assertInspectionSettingsSafe,
+  readGodotTextSettings,
+  godotSettingString,
+} from "./godot-settings-overlay.js";
 
 /** Admit and pin source bytes once; staging must use this exact snapshot. */
 export async function prepareGodotInspectionCandidate(
@@ -32,25 +37,19 @@ export async function prepareGodotInspectionCandidate(
   );
   if (project === undefined)
     throw new Error("candidate is missing project.godot");
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(
-    project.content,
-  );
-  if (text.includes("\0") || /^\s*ChronoRiftInspection\s*=/mu.test(text))
-    throw new Error(
-      "project.godot contains invalid text or a reserved inspection autoload",
-    );
-  const matches = [
-    ...text.matchAll(/^\s*run\/main_scene\s*=\s*"([^"\r\n]+)"\s*$/gmu),
+  const override = files.find((file) => file.relativePath === "override.cfg");
+  const settings = [
+    ...readGodotTextSettings(project.content),
+    ...(override === undefined ? [] : readGodotTextSettings(override.content)),
   ];
-  const mainScene = matches[0]?.[1];
-  if (
-    matches.length !== 1 ||
-    mainScene === undefined ||
-    mainScene.length > 2048
-  )
-    throw new Error(
-      "project.godot must declare exactly one bounded main scene",
-    );
+  assertInspectionSettingsSafe(settings);
+  const mainSetting = settings.findLast(
+    (setting) => setting.name === "application/run/main_scene",
+  );
+  const mainScene =
+    mainSetting === undefined ? null : godotSettingString(mainSetting.value);
+  if (mainScene === null || mainScene.length > 2048)
+    throw new Error("project settings must declare a bounded main scene");
   if (mainScene.startsWith("res://")) {
     const path = mainScene.slice(6);
     if (

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "gn1-single",
+    "toolResultErrors": 1,
+    "messages": [
+      {
+        "message": "Path must be a normalized relative workspace path",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "id": "gn1-multi",
+    "toolResultErrors": 11,
+    "messages": [
+      {
+        "message": "offset must be a positive integer",
+        "count": 9
+      },
+      {
+        "message": "Path must be a normalized relative workspace path",
+        "count": 1
+      },
+      {
+        "message": "Worker turn tool budget exhausted (64)",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "id": "city-single",
+    "toolResultErrors": 1,
+    "messages": [
+      {
+        "message": "offset must be a positive integer",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "id": "city-multi",
+    "toolResultErrors": 12,
+    "messages": [
+      {
+        "message": "offset must be a positive integer",
+        "count": 12
+      }
+    ]
+  }
+]

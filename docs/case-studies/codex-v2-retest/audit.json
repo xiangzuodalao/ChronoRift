@@ -1,0 +1,1931 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-13T11:27:30.394986+00:00",
+  "scope": "Whitelisted metadata and numeric audit results; no raw Session messages, model reasoning, shell commands, credentials or private filesystem paths. Fixed task definitions appear separately in inputs.json.",
+  "privateSourceSha256": {
+    "manifest.json": "fdce9e12fdaaad9ae5286f9109b6dd93cb2be3fe3dcd76f7fd5e51775fe984ca",
+    "summary.json": "3e070313551ef0e1278efaff6ea5d9849456ee539c468506d7760203340b7435",
+    "results.csv": "88ce470f57aaa96fdcac51233f8734681115f31349539d2a5831c5272ef8678c",
+    "controls.json": "0b143ef7bbb16a1463bad19c2d5f870f52a17b28d4d94ff2d401aa3c287d1809",
+    "evaluation/results.json": "cd2ae317e141fc710b895effd9b23df8c75317aa1cd24b38c5b956596749ead2",
+    "config-audit.json": "c7d08b12b58ffdd1de452768d46449368faa1b261c3b983a9bae29733f8cded2",
+    "usage-audit.json": "a85180350e448b4e9c4099ca0ab321e9ab6618514342ae4f26eb51c3bf077e89",
+    "behavior-audit.json": "d150210392d0068b3549e319b9a583c5f85a1cf900ef0f346bc39d91b05e601d",
+    "execution-audit.json": "0100c3e95b6430d19d5bae7e9be7f53579b66d93981f1e31fbeaff2e33e79ed6"
+  },
+  "metricDefinitions": {
+    "providerRetries": "summary.json providerRetries counts observed Root retry events only; comprehensive worker retry events are unavailable.",
+    "tokens": "Recorded input + output + cacheRead + cacheWrite across actual owned Sessions; inherited parent history is not added a second time.",
+    "estimatedCostUSD": "SDK estimate for recorded usage. Four cancelled workers may have unreported in-flight usage; actual provider billing is unavailable.",
+    "hostDurationMs": "Recorded Host run interval; independent patch evaluation time is excluded.",
+    "initialThreeWorkersOverlapMs": "Common overlap of all three first worker turn lifetimes from final records; this is not continuous CPU or model execution.",
+    "completed": "Agent loop completed; independent patch acceptance is recorded separately.",
+    "toolResultErrors": "Count of recorded isError tool results across the arm Sessions, including aborted wait_agent calls.",
+    "stageSourceSha256": "Captured staged source, including runtime overlay/import metadata; distinct from candidate source and patch hash.",
+    "mailboxConsumed": "Delivered into recipient Session; does not establish model comprehension or fault-recovery exactly-once guarantees."
+  },
+  "execution": {
+    "schemaVersion": 1,
+    "auditedAt": "2026-09-13T11:22:02.822289+00:00",
+    "productAtStartSha256": "7583e209854ab941a35ac5d9aeae6df588eb61e63612244e116c2aec916b9711",
+    "productFileCount": 385,
+    "productUnchangedThroughCompletion": true,
+    "issues": [],
+    "completedRuns": [
+      {
+        "id": "gn1-single",
+        "status": "completed",
+        "hostDurationMs": 163337,
+        "sourceCheckoutUnchanged": true,
+        "candidatePatchSha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120"
+      },
+      {
+        "id": "gn1-multi",
+        "status": "completed",
+        "hostDurationMs": 227816,
+        "sourceCheckoutUnchanged": true,
+        "candidatePatchSha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120"
+      },
+      {
+        "id": "city-single",
+        "status": "completed",
+        "hostDurationMs": 157069,
+        "sourceCheckoutUnchanged": true,
+        "candidatePatchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23"
+      },
+      {
+        "id": "city-multi",
+        "status": "completed",
+        "hostDurationMs": 254643,
+        "sourceCheckoutUnchanged": true,
+        "candidatePatchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23"
+      }
+    ],
+    "liveRunInvocationCount": 1
+  },
+  "configuration": {
+    "findings": {
+      "actualSessionCount": 10,
+      "allSessionInitialModelAndThinkingLocked": true,
+      "allWorkerConfigurationRuntimeLocked": true,
+      "allWorkerSchemasExcludeRuntimeOverrides": true,
+      "noSpawnOverrideArguments": true,
+      "bothArmsHaveThreeDirectWorkersWithConfirmedOverlap": true,
+      "allForkProvenanceMatches": true,
+      "allResourcesEquivalent": true,
+      "allEnvironmentProfilesCoding": true,
+      "allConfigurationDnsIpv4First": true
+    },
+    "failureKinds": [],
+    "coverageLimits": [
+      "All six workers explicitly requested all; this covers copying one initial user task, not omission-default selection, numeric-window selection, filtered historical assistant/tool/thinking content, or compaction summaries.",
+      "Root configuration records expose tool names only; locked root spawn schema was independently constructed from the same Supervisor factory before startup. Worker records include actual complete schema.",
+      "Configuration and initial overlap compliance do not imply acceptance or complete provider billing.",
+      "DNS order ipv4first does not establish the actual network connection address family."
+    ],
+    "workers": [
+      {
+        "arm": "gn1-multi",
+        "workerIndex": 1,
+        "taskPath": "/root/validation_investigation",
+        "parentTaskPath": "/root",
+        "sessionId": "01a09a7b-ab90-7340-9ff7-823410b154a2",
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "requestedForkTurns": "all",
+        "overrideArgumentKeys": [],
+        "spawnIsError": false,
+        "environmentProfile": "coding",
+        "dnsOrder": "ipv4first",
+        "configurationSha256": "31b262526de598f48ecdf0c948a3e0d7b05a066343c860ab925f90ca620c43a1",
+        "fork": {
+          "forkTurns": "all",
+          "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+          "provenance": {
+            "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+            "forkTurns": "all",
+            "inheritedContextMessages": 1
+          },
+          "provenanceMatchesParentAndContext": true,
+          "singleInheritedUserTaskMatchesRootUserInput": true,
+          "backgroundEntryCount": 1,
+          "backgroundEntryHasNoUsage": true
+        }
+      },
+      {
+        "arm": "gn1-multi",
+        "workerIndex": 2,
+        "taskPath": "/root/scene_runtime_investigation",
+        "parentTaskPath": "/root",
+        "sessionId": "01a09a7b-abbc-79b6-8bfc-9f4319b2de78",
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "requestedForkTurns": "all",
+        "overrideArgumentKeys": [],
+        "spawnIsError": false,
+        "environmentProfile": "coding",
+        "dnsOrder": "ipv4first",
+        "configurationSha256": "ef73db2ea45e11a9a5d28e45a08750f245d9f1852b6334762a54163ad9548310",
+        "fork": {
+          "forkTurns": "all",
+          "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+          "provenance": {
+            "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+            "forkTurns": "all",
+            "inheritedContextMessages": 1
+          },
+          "provenanceMatchesParentAndContext": true,
+          "singleInheritedUserTaskMatchesRootUserInput": true,
+          "backgroundEntryCount": 1,
+          "backgroundEntryHasNoUsage": true
+        }
+      },
+      {
+        "arm": "gn1-multi",
+        "workerIndex": 3,
+        "taskPath": "/root/collision_investigation",
+        "parentTaskPath": "/root",
+        "sessionId": "01a09a7b-ab6b-7609-b9b6-27c1e523cdef",
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "requestedForkTurns": "all",
+        "overrideArgumentKeys": [],
+        "spawnIsError": false,
+        "environmentProfile": "coding",
+        "dnsOrder": "ipv4first",
+        "configurationSha256": "e16a51a8653cc8d69e2c130472e553640bb5be859585d2d15c47fe8a5baa06d1",
+        "fork": {
+          "forkTurns": "all",
+          "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+          "provenance": {
+            "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+            "forkTurns": "all",
+            "inheritedContextMessages": 1
+          },
+          "provenanceMatchesParentAndContext": true,
+          "singleInheritedUserTaskMatchesRootUserInput": true,
+          "backgroundEntryCount": 1,
+          "backgroundEntryHasNoUsage": true
+        }
+      },
+      {
+        "arm": "city-multi",
+        "workerIndex": 1,
+        "taskPath": "/root/runtime_probe",
+        "parentTaskPath": "/root",
+        "sessionId": "01a09a7b-be40-7716-93e2-c01547cb9c3e",
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "requestedForkTurns": "all",
+        "overrideArgumentKeys": [],
+        "spawnIsError": false,
+        "environmentProfile": "coding",
+        "dnsOrder": "ipv4first",
+        "configurationSha256": "8a1f33c6f21f9f0c4772b701e318739eee87cc76caaec8a52bf8d91342680239",
+        "fork": {
+          "forkTurns": "all",
+          "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+          "provenance": {
+            "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+            "forkTurns": "all",
+            "inheritedContextMessages": 1
+          },
+          "provenanceMatchesParentAndContext": true,
+          "singleInheritedUserTaskMatchesRootUserInput": true,
+          "backgroundEntryCount": 1,
+          "backgroundEntryHasNoUsage": true
+        }
+      },
+      {
+        "arm": "city-multi",
+        "workerIndex": 2,
+        "taskPath": "/root/locate_preview",
+        "parentTaskPath": "/root",
+        "sessionId": "01a09a7b-be3c-7feb-ad7e-d7b9d341c8a0",
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "requestedForkTurns": "all",
+        "overrideArgumentKeys": [],
+        "spawnIsError": false,
+        "environmentProfile": "coding",
+        "dnsOrder": "ipv4first",
+        "configurationSha256": "fe9da8a1e36701a82976bf64c1c5836b4e163a7e5de52ffe9d06b59094e1abcd",
+        "fork": {
+          "forkTurns": "all",
+          "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+          "provenance": {
+            "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+            "forkTurns": "all",
+            "inheritedContextMessages": 1
+          },
+          "provenanceMatchesParentAndContext": true,
+          "singleInheritedUserTaskMatchesRootUserInput": true,
+          "backgroundEntryCount": 1,
+          "backgroundEntryHasNoUsage": true
+        }
+      },
+      {
+        "arm": "city-multi",
+        "workerIndex": 3,
+        "taskPath": "/root/architecture_review",
+        "parentTaskPath": "/root",
+        "sessionId": "01a09a7b-be19-70f5-b5e0-1dad975f70c6",
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "requestedForkTurns": "all",
+        "overrideArgumentKeys": [],
+        "spawnIsError": false,
+        "environmentProfile": "coding",
+        "dnsOrder": "ipv4first",
+        "configurationSha256": "b9624b8d21e565d3b189b8c96bb0dd1ca487669be302ccd093a150443dd76ee2",
+        "fork": {
+          "forkTurns": "all",
+          "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+          "provenance": {
+            "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+            "forkTurns": "all",
+            "inheritedContextMessages": 1
+          },
+          "provenanceMatchesParentAndContext": true,
+          "singleInheritedUserTaskMatchesRootUserInput": true,
+          "backgroundEntryCount": 1,
+          "backgroundEntryHasNoUsage": true
+        }
+      }
+    ]
+  },
+  "usage": {
+    "totals": {
+      "actualSessionCount": 10,
+      "discoveredSessionFiles": 10,
+      "uniqueSessionIds": 10,
+      "uniqueSessionFiles": 10,
+      "recordedTokens": 6754710,
+      "estimatedCostUSD": 0.32008752,
+      "allActualSessionSnapshotsReconciled": true,
+      "allForkOwnershipVerified": true,
+      "allModelAndMaxUnchanged": true,
+      "rootStatuses": {
+        "completed": 4
+      },
+      "workerStatuses": {
+        "cancelled": 4,
+        "completed": 2
+      },
+      "providerErrorRecords": 0,
+      "abortedRecords": 4,
+      "zeroUsageAbortedRecords": 4,
+      "compactionRecords": 0,
+      "branchSummaryRecords": 0,
+      "rootRetryStartEvents": 0,
+      "workerFullRetryEventCount": null,
+      "rootResponsesAfterFirstStop": 0,
+      "ledgerEntries": 33,
+      "consumedLedgerEntries": 31,
+      "consumedOrdinaryMessages": 21,
+      "consumedCompletionMessages": 4,
+      "naturalCompletionNotificationsConsumed": 2,
+      "allNonTaskMailboxEntriesReconciled": true,
+      "survivingObservedProcesses": 0,
+      "actualBilledCost": null
+    },
+    "limitations": [
+      "Four aborted worker records report zero tokens and zero cost. This cannot establish that cancelled provider work was free or fully reported.",
+      "Root Pi retry events are recorded. Worker IPC does not export the complete Pi retry-event stream; no worker provider error records were found, but a comprehensive worker/internal transport retry count is unavailable.",
+      "Mailbox consumption confirms entry into the recipient Session, not model understanding. This run cannot establish exactly-once delivery across failures.",
+      "All six workers forked one initial user task. This validates initial fork provenance and independent usage, not numeric fork windows, default omission, or filtering of complex historical assistant/tool/thinking content."
+    ],
+    "gaps": [
+      {
+        "kind": "cancelled_provider_usage_may_be_missing",
+        "sessions": [
+          {
+            "arm": "gn1-multi",
+            "taskPath": "/root/collision_investigation",
+            "cancellationSource": "headless_root_final_shutdown"
+          },
+          {
+            "arm": "gn1-multi",
+            "taskPath": "/root/scene_runtime_investigation",
+            "cancellationSource": "headless_root_final_shutdown"
+          },
+          {
+            "arm": "city-multi",
+            "taskPath": "/root/runtime_probe",
+            "cancellationSource": "explicit_root_interrupt_agent"
+          },
+          {
+            "arm": "city-multi",
+            "taskPath": "/root/architecture_review",
+            "cancellationSource": "explicit_root_interrupt_agent"
+          }
+        ],
+        "affectsCompleteInvoiceClaim": true
+      },
+      {
+        "kind": "worker_retry_event_stream_not_recorded",
+        "count": null,
+        "providerErrorRecordsObserved": 0
+      }
+    ],
+    "arms": [
+      {
+        "id": "gn1-single",
+        "actualSessionCount": 1,
+        "missingSessionSnapshots": [],
+        "recordedTokens": 377159,
+        "estimatedCostUSD": 0.024861240000000003,
+        "allSessionSnapshotsReconciled": true,
+        "allForkOwnershipVerified": true,
+        "allModelAndMaxUnchanged": true,
+        "rootTail": {
+          "firstStoppingResponseAt": "2026-09-13T11:18:58.221Z",
+          "laterAssistantResponses": 0,
+          "laterDurationMs": 0,
+          "laterEstimatedCostUSD": 0
+        },
+        "rootAgentStartCount": 1,
+        "rootRetryStartEvents": 0,
+        "rootRetryEndEvents": 0,
+        "rootInterruptCalls": [],
+        "rootFollowupCalls": 0,
+        "sessions": [
+          {
+            "taskPath": "/root",
+            "sessionId": "2c3c86d6-9358-439a-8536-d2b7ea193baf",
+            "sessionSha256": "6e0e7b2d8184d714572c3c9ad91b05345d41dc865d7dfdb9138226de0763c964",
+            "status": "completed",
+            "reportedIncomplete": false,
+            "cancellationSource": null,
+            "usage": {
+              "tokens": {
+                "input": 55567,
+                "output": 6200,
+                "cacheRead": 315392,
+                "cacheWrite": 0,
+                "total": 377159
+              },
+              "cost": 0.024861240000000003,
+              "pricedRequests": 20,
+              "unpricedEntries": 0,
+              "issues": [],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 55567,
+                "output": 6200,
+                "cacheRead": 315392,
+                "cacheWrite": 0,
+                "total": 377159
+              },
+              "snapshotCost": 0.024861240000000003
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "2c3c86d6-9358-439a-8536-d2b7ea193baf",
+              "parentSessionId": null,
+              "inheritedContextMessages": 0
+            },
+            "forkProvenance": null,
+            "taskParentSessionId": null,
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 19,
+              "stop": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {
+              "read": 1
+            }
+          }
+        ]
+      },
+      {
+        "id": "gn1-multi",
+        "actualSessionCount": 4,
+        "missingSessionSnapshots": [],
+        "recordedTokens": 2529053,
+        "estimatedCostUSD": 0.12279988000000003,
+        "allSessionSnapshotsReconciled": true,
+        "allForkOwnershipVerified": true,
+        "allModelAndMaxUnchanged": true,
+        "rootTail": {
+          "firstStoppingResponseAt": "2026-09-13T11:20:02.802Z",
+          "laterAssistantResponses": 0,
+          "laterDurationMs": 0,
+          "laterEstimatedCostUSD": 0
+        },
+        "rootAgentStartCount": 1,
+        "rootRetryStartEvents": 0,
+        "rootRetryEndEvents": 0,
+        "rootInterruptCalls": [],
+        "rootFollowupCalls": 0,
+        "multiReportedUsage": {
+          "tokens": 2529053,
+          "cost": 0.12279988000000003,
+          "incomplete": true,
+          "recordedTotalsMatch": true,
+          "incompleteFlagMatchesLatestStatuses": true
+        },
+        "workerTurnStatuses": {
+          "cancelled": 2,
+          "completed": 1
+        },
+        "initialWorkerOverlap": {
+          "peak": 3,
+          "commonMs": 146774,
+          "complete": true
+        },
+        "sessions": [
+          {
+            "taskPath": "/root",
+            "sessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+            "sessionSha256": "f0e51cea282dbec7d169d94eb8dec94e1086f0ee1d1f8cbe64b7e2bc9008bf5d",
+            "status": "completed",
+            "reportedIncomplete": false,
+            "cancellationSource": null,
+            "usage": {
+              "tokens": {
+                "input": 75211,
+                "output": 7584,
+                "cacheRead": 737280,
+                "cacheWrite": 0,
+                "total": 820075
+              },
+              "cost": 0.0388886,
+              "pricedRequests": 28,
+              "unpricedEntries": 0,
+              "issues": [],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 75211,
+                "output": 7584,
+                "cacheRead": 737280,
+                "cacheWrite": 0,
+                "total": 820075
+              },
+              "snapshotCost": 0.0388886
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+              "parentSessionId": null,
+              "inheritedContextMessages": 0
+            },
+            "forkProvenance": null,
+            "taskParentSessionId": null,
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 27,
+              "stop": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {
+              "game_query": 1
+            }
+          },
+          {
+            "taskPath": "/root/collision_investigation",
+            "sessionId": "01a09a7b-ab6b-7609-b9b6-27c1e523cdef",
+            "sessionSha256": "b354941efa10f699ed5a4157836800cfe61229bc1e1ec875d82f2e035850f3da",
+            "status": "cancelled",
+            "reportedIncomplete": true,
+            "cancellationSource": "headless_root_final_shutdown",
+            "usage": {
+              "tokens": {
+                "input": 44987,
+                "output": 4905,
+                "cacheRead": 481792,
+                "cacheWrite": 0,
+                "total": 531684
+              },
+              "cost": 0.02451924,
+              "pricedRequests": 27,
+              "unpricedEntries": 0,
+              "issues": ["provider_aborted"],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 44987,
+                "output": 4905,
+                "cacheRead": 481792,
+                "cacheWrite": 0,
+                "total": 531684
+              },
+              "snapshotCost": 0.02451924
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "01a09a7b-ab6b-7609-b9b6-27c1e523cdef",
+              "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+              "inheritedContextMessages": 1
+            },
+            "forkProvenance": {
+              "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+              "forkTurns": "all",
+              "inheritedContextMessages": 1
+            },
+            "taskParentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 26,
+              "aborted": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [
+              {
+                "tokens": 0,
+                "cost": 0
+              }
+            ],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {
+              "wait_agent": 1
+            }
+          },
+          {
+            "taskPath": "/root/scene_runtime_investigation",
+            "sessionId": "01a09a7b-abbc-79b6-8bfc-9f4319b2de78",
+            "sessionSha256": "41805074f3eb0f84c6a8d653b1d3b276d64c90ac607acba2cebb69a06e4fde0e",
+            "status": "cancelled",
+            "reportedIncomplete": true,
+            "cancellationSource": "headless_root_final_shutdown",
+            "usage": {
+              "tokens": {
+                "input": 78648,
+                "output": 6622,
+                "cacheRead": 579072,
+                "cacheWrite": 0,
+                "total": 664342
+              },
+              "cost": 0.03525744000000001,
+              "pricedRequests": 29,
+              "unpricedEntries": 0,
+              "issues": ["provider_aborted"],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 78648,
+                "output": 6622,
+                "cacheRead": 579072,
+                "cacheWrite": 0,
+                "total": 664342
+              },
+              "snapshotCost": 0.03525744000000001
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "01a09a7b-abbc-79b6-8bfc-9f4319b2de78",
+              "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+              "inheritedContextMessages": 1
+            },
+            "forkProvenance": {
+              "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+              "forkTurns": "all",
+              "inheritedContextMessages": 1
+            },
+            "taskParentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 28,
+              "aborted": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [
+              {
+                "tokens": 0,
+                "cost": 0
+              }
+            ],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {}
+          },
+          {
+            "taskPath": "/root/validation_investigation",
+            "sessionId": "01a09a7b-ab90-7340-9ff7-823410b154a2",
+            "sessionSha256": "8fa7f54997c2178df455f58387d44b7c614072a5aca34c7385213cbc5aa4e6f9",
+            "status": "completed",
+            "reportedIncomplete": false,
+            "cancellationSource": null,
+            "usage": {
+              "tokens": {
+                "input": 44643,
+                "output": 4949,
+                "cacheRead": 463360,
+                "cacheWrite": 0,
+                "total": 512952
+              },
+              "cost": 0.024134600000000006,
+              "pricedRequests": 22,
+              "unpricedEntries": 0,
+              "issues": [],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 44643,
+                "output": 4949,
+                "cacheRead": 463360,
+                "cacheWrite": 0,
+                "total": 512952
+              },
+              "snapshotCost": 0.024134600000000006
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "01a09a7b-ab90-7340-9ff7-823410b154a2",
+              "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+              "inheritedContextMessages": 1
+            },
+            "forkProvenance": {
+              "parentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+              "forkTurns": "all",
+              "inheritedContextMessages": 1
+            },
+            "taskParentSessionId": "5e6b9c7d-535f-4a8f-8e56-589f7625ce0c",
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 21,
+              "stop": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {}
+          }
+        ],
+        "mailbox": {
+          "countsByKind": {
+            "task": 3,
+            "message": 6,
+            "completion": 3
+          },
+          "consumedCount": 10,
+          "pendingCount": 2,
+          "deliveryErrorCount": 0,
+          "consumedNonTaskCount": 7,
+          "consumedOrdinaryMessages": 6,
+          "consumedCompletionMessages": 1,
+          "naturalCompletionNotificationsConsumed": 1,
+          "cancelledCompletionNotificationsConsumed": 0,
+          "nonTaskLedgerMatchesSessionExactlyOnce": true,
+          "duplicateSessionMessageIds": [],
+          "consumedIdsMissingFromSession": [],
+          "sessionIdsMissingFromConsumedLedger": [],
+          "pendingCompletionAfterRootFinal": 2,
+          "peerMessages": 0
+        }
+      },
+      {
+        "id": "city-single",
+        "actualSessionCount": 1,
+        "missingSessionSnapshots": [],
+        "recordedTokens": 818421,
+        "estimatedCostUSD": 0.0333556,
+        "allSessionSnapshotsReconciled": true,
+        "allForkOwnershipVerified": true,
+        "allModelAndMaxUnchanged": true,
+        "rootTail": {
+          "firstStoppingResponseAt": "2026-09-13T11:18:51.097Z",
+          "laterAssistantResponses": 0,
+          "laterDurationMs": 0,
+          "laterEstimatedCostUSD": 0
+        },
+        "rootAgentStartCount": 1,
+        "rootRetryStartEvents": 0,
+        "rootRetryEndEvents": 0,
+        "rootInterruptCalls": [],
+        "rootFollowupCalls": 0,
+        "sessions": [
+          {
+            "taskPath": "/root",
+            "sessionId": "2d1add4f-ef4a-48d8-a78c-200de20b497c",
+            "sessionSha256": "b9cb0e5293543e8a62ccdb24b6f3456c40492cf391c0bcfb25dce2ac6558483b",
+            "status": "completed",
+            "reportedIncomplete": false,
+            "cancellationSource": null,
+            "usage": {
+              "tokens": {
+                "input": 66676,
+                "output": 4225,
+                "cacheRead": 747520,
+                "cacheWrite": 0,
+                "total": 818421
+              },
+              "cost": 0.0333556,
+              "pricedRequests": 29,
+              "unpricedEntries": 0,
+              "issues": [],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 66676,
+                "output": 4225,
+                "cacheRead": 747520,
+                "cacheWrite": 0,
+                "total": 818421
+              },
+              "snapshotCost": 0.0333556
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "2d1add4f-ef4a-48d8-a78c-200de20b497c",
+              "parentSessionId": null,
+              "inheritedContextMessages": 0
+            },
+            "forkProvenance": null,
+            "taskParentSessionId": null,
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 28,
+              "stop": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {
+              "read": 2
+            }
+          }
+        ]
+      },
+      {
+        "id": "city-multi",
+        "actualSessionCount": 4,
+        "missingSessionSnapshots": [],
+        "recordedTokens": 3030077,
+        "estimatedCostUSD": 0.1390708,
+        "allSessionSnapshotsReconciled": true,
+        "allForkOwnershipVerified": true,
+        "allModelAndMaxUnchanged": true,
+        "rootTail": {
+          "firstStoppingResponseAt": "2026-09-13T11:20:28.953Z",
+          "laterAssistantResponses": 0,
+          "laterDurationMs": 0,
+          "laterEstimatedCostUSD": 0
+        },
+        "rootAgentStartCount": 1,
+        "rootRetryStartEvents": 0,
+        "rootRetryEndEvents": 0,
+        "rootInterruptCalls": [
+          {
+            "at": "2026-09-13T11:20:05.570Z",
+            "target": "/root/architecture_review"
+          },
+          {
+            "at": "2026-09-13T11:20:05.570Z",
+            "target": "/root/runtime_probe"
+          }
+        ],
+        "rootFollowupCalls": 0,
+        "multiReportedUsage": {
+          "tokens": 3030077,
+          "cost": 0.1390708,
+          "incomplete": true,
+          "recordedTotalsMatch": true,
+          "incompleteFlagMatchesLatestStatuses": true
+        },
+        "workerTurnStatuses": {
+          "completed": 1,
+          "cancelled": 2
+        },
+        "initialWorkerOverlap": {
+          "peak": 3,
+          "commonMs": 115548,
+          "complete": true
+        },
+        "sessions": [
+          {
+            "taskPath": "/root",
+            "sessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+            "sessionSha256": "53ac01ab955dddcd5dc83e743a8a612b5c98f6368ec95c7047dae6a4f92a9baf",
+            "status": "completed",
+            "reportedIncomplete": false,
+            "cancellationSource": null,
+            "usage": {
+              "tokens": {
+                "input": 110806,
+                "output": 8416,
+                "cacheRead": 951808,
+                "cacheWrite": 0,
+                "total": 1071030
+              },
+              "cost": 0.05129655999999999,
+              "pricedRequests": 33,
+              "unpricedEntries": 0,
+              "issues": [],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 110806,
+                "output": 8416,
+                "cacheRead": 951808,
+                "cacheWrite": 0,
+                "total": 1071030
+              },
+              "snapshotCost": 0.05129655999999999
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+              "parentSessionId": null,
+              "inheritedContextMessages": 0
+            },
+            "forkProvenance": null,
+            "taskParentSessionId": null,
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 32,
+              "stop": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {}
+          },
+          {
+            "taskPath": "/root/locate_preview",
+            "sessionId": "01a09a7b-be3c-7feb-ad7e-d7b9d341c8a0",
+            "sessionSha256": "88705ce6ca4f93a30e7ca4f9ad789b1d27d6fef5d18cdcd72c511f9adde9b7db",
+            "status": "completed",
+            "reportedIncomplete": false,
+            "cancellationSource": null,
+            "usage": {
+              "tokens": {
+                "input": 43486,
+                "output": 2628,
+                "cacheRead": 249856,
+                "cacheWrite": 0,
+                "total": 295970
+              },
+              "cost": 0.01684792,
+              "pricedRequests": 24,
+              "unpricedEntries": 0,
+              "issues": [],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 43486,
+                "output": 2628,
+                "cacheRead": 249856,
+                "cacheWrite": 0,
+                "total": 295970
+              },
+              "snapshotCost": 0.01684792
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "01a09a7b-be3c-7feb-ad7e-d7b9d341c8a0",
+              "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+              "inheritedContextMessages": 1
+            },
+            "forkProvenance": {
+              "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+              "forkTurns": "all",
+              "inheritedContextMessages": 1
+            },
+            "taskParentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 23,
+              "stop": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {}
+          },
+          {
+            "taskPath": "/root/runtime_probe",
+            "sessionId": "01a09a7b-be40-7716-93e2-c01547cb9c3e",
+            "sessionSha256": "cd057a35b0ba177e9407495147f01be98744767420a3753c77b86db59fa576a9",
+            "status": "cancelled",
+            "reportedIncomplete": true,
+            "cancellationSource": "explicit_root_interrupt_agent",
+            "usage": {
+              "tokens": {
+                "input": 69517,
+                "output": 5632,
+                "cacheRead": 873472,
+                "cacheWrite": 0,
+                "total": 948621
+              },
+              "cost": 0.03813124,
+              "pricedRequests": 37,
+              "unpricedEntries": 0,
+              "issues": ["provider_aborted"],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 69517,
+                "output": 5632,
+                "cacheRead": 873472,
+                "cacheWrite": 0,
+                "total": 948621
+              },
+              "snapshotCost": 0.03813124
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "01a09a7b-be40-7716-93e2-c01547cb9c3e",
+              "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+              "inheritedContextMessages": 1
+            },
+            "forkProvenance": {
+              "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+              "forkTurns": "all",
+              "inheritedContextMessages": 1
+            },
+            "taskParentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 36,
+              "aborted": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [
+              {
+                "tokens": 0,
+                "cost": 0
+              }
+            ],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {}
+          },
+          {
+            "taskPath": "/root/architecture_review",
+            "sessionId": "01a09a7b-be19-70f5-b5e0-1dad975f70c6",
+            "sessionSha256": "101f0c428dbc712c7bb6fa8d4215dfbb67852fa0f74b600ec2eab70b36efa2eb",
+            "status": "cancelled",
+            "reportedIncomplete": true,
+            "cancellationSource": "explicit_root_interrupt_agent",
+            "usage": {
+              "tokens": {
+                "input": 65123,
+                "output": 5749,
+                "cacheRead": 643584,
+                "cacheWrite": 0,
+                "total": 714456
+              },
+              "cost": 0.032795080000000004,
+              "pricedRequests": 34,
+              "unpricedEntries": 0,
+              "issues": ["provider_aborted"],
+              "models": ["openai-codex/gpt-5.6-luna"]
+            },
+            "snapshotReconciliation": {
+              "matched": true,
+              "snapshotTokens": {
+                "input": 65123,
+                "output": 5749,
+                "cacheRead": 643584,
+                "cacheWrite": 0,
+                "total": 714456
+              },
+              "snapshotCost": 0.032795080000000004
+            },
+            "independentAssistantUsageSumMatches": true,
+            "usageOwnership": {
+              "scope": "session-owned",
+              "sessionId": "01a09a7b-be19-70f5-b5e0-1dad975f70c6",
+              "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+              "inheritedContextMessages": 1
+            },
+            "forkProvenance": {
+              "parentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+              "forkTurns": "all",
+              "inheritedContextMessages": 1
+            },
+            "taskParentSessionId": "41667c35-7c16-41d0-bc77-45ab140d12b4",
+            "usageOwnershipVerified": true,
+            "forkBackgroundVerified": true,
+            "modelAndMaxUnchangedThroughoutSession": true,
+            "stopReasons": {
+              "toolUse": 33,
+              "aborted": 1
+            },
+            "providerErrorRecords": 0,
+            "abortedRecords": [
+              {
+                "tokens": 0,
+                "cost": 0
+              }
+            ],
+            "compactionRecords": 0,
+            "branchSummaryRecords": 0,
+            "toolErrorCountsByName": {
+              "read": 1,
+              "wait_agent": 1
+            }
+          }
+        ],
+        "mailbox": {
+          "countsByKind": {
+            "task": 3,
+            "message": 15,
+            "completion": 3
+          },
+          "consumedCount": 21,
+          "pendingCount": 0,
+          "deliveryErrorCount": 0,
+          "consumedNonTaskCount": 18,
+          "consumedOrdinaryMessages": 15,
+          "consumedCompletionMessages": 3,
+          "naturalCompletionNotificationsConsumed": 1,
+          "cancelledCompletionNotificationsConsumed": 2,
+          "nonTaskLedgerMatchesSessionExactlyOnce": true,
+          "duplicateSessionMessageIds": [],
+          "consumedIdsMissingFromSession": [],
+          "sessionIdsMissingFromConsumedLedger": [],
+          "pendingCompletionAfterRootFinal": 0,
+          "peerMessages": 0
+        }
+      }
+    ]
+  },
+  "behavior": {
+    "limitations": [
+      "Observed completion of an agent loop or a clean stage integrity check does not establish acceptance of the bug fix.",
+      "No source edit overlapped a live Godot execution in this attempt, so the behavior of an old stage while candidate bytes change was not exercised.",
+      "Only Root edited source; concurrent independent or conflicting source writers were not exercised.",
+      "Recorded Host timestamps order requests and acknowledgements; mailbox consumption does not prove a causal contribution to the chosen edit.",
+      "This audit neither invokes Godot nor creates model requests."
+    ],
+    "pairedComparison": {
+      "gn1": {
+        "finalPatchBytesIdentical": true,
+        "finalSourceFileBytesIdentical": true,
+        "rootFinalRuntimeCapturedSourceIdentical": true
+      },
+      "city": {
+        "finalPatchBytesIdentical": true,
+        "finalSourceFileBytesIdentical": true,
+        "rootFinalRuntimeCapturedSourceIdentical": true
+      }
+    },
+    "arms": {
+      "gn1-single": {
+        "status": "completed",
+        "startedAt": "2026-09-13T11:16:15.814Z",
+        "finishedAt": "2026-09-13T11:18:59.151Z",
+        "sourceCheckoutUnchanged": true,
+        "workspaceMode": "single",
+        "sourceEdits": [
+          {
+            "actor": "/root",
+            "tool": "edit",
+            "path": "components/platform/platform.gd",
+            "startedAt": "2026-09-13T11:17:47.618Z",
+            "finishedAt": "2026-09-13T11:17:47.708Z",
+            "success": true,
+            "beforeSha256": "9dd9033e5b9282d5f3935709ed44bb10425de48f5faffa44ae4f05b2c2edea36",
+            "afterSha256": "d5669d983c8e68b35ed3f736c3dea5a3eefda6c324427f91fe9153400066b743"
+          },
+          {
+            "actor": "/root",
+            "tool": "edit",
+            "path": "components/platform/platform.gd",
+            "startedAt": "2026-09-13T11:18:05.213Z",
+            "finishedAt": "2026-09-13T11:18:05.303Z",
+            "success": true,
+            "beforeSha256": "d5669d983c8e68b35ed3f736c3dea5a3eefda6c324427f91fe9153400066b743",
+            "afterSha256": "831ba54ad89671e65d472671d9592f0b45d34dc1052ba58741bbfbb33a1309ba"
+          }
+        ],
+        "sourceAuthorEvidence": {
+          "observedSourceAuthors": ["/root"],
+          "successfulExactEditReplayEqualsFinalFile": true,
+          "rootSourceWriteToolCount": 2,
+          "rootShellCommandsReviewed": 5,
+          "workerSourceWriteToolCount": 0,
+          "shellSourceWriteObserved": false
+        },
+        "rootFinalVerification": {
+          "executionId": "inspection.a7028ae0-e08b-42cb-bc89-cd5fbce58f1d",
+          "launchRequestedAt": "2026-09-13T11:18:08.802Z",
+          "launchSucceededAt": "2026-09-13T11:18:14.715Z",
+          "lastSourceEditCompletedAt": "2026-09-13T11:18:05.303Z",
+          "launchAfterLastSourceEdit": true,
+          "gapFromEditCompletionToLaunchRequestMs": 3499,
+          "sourceEditsAfterLaunch": 0,
+          "queryRequests": 8,
+          "successfulQueries": 7,
+          "endedAt": "2026-09-13T11:18:36.310Z",
+          "sourceSha256": "43fe5f899036a607dd5374dccd42bbbfa6fa3578b7bb841e0721795c1a790355"
+        },
+        "rootToolCounts": {
+          "ls": 1,
+          "find": 2,
+          "grep": 2,
+          "read": 10,
+          "bash": 5,
+          "game_launch": 2,
+          "game_query": 19,
+          "game_stop": 2,
+          "edit": 2
+        },
+        "finalPatch": {
+          "sha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+          "byteLength": 651,
+          "hostRoundTripVerified": true,
+          "independentInMemoryReplayEqualsFinalFile": true,
+          "changedPaths": ["components/platform/platform.gd"],
+          "gitChangedPathsMatchPatch": true,
+          "beforeFileSha256": "9dd9033e5b9282d5f3935709ed44bb10425de48f5faffa44ae4f05b2c2edea36",
+          "afterFileSha256": "831ba54ad89671e65d472671d9592f0b45d34dc1052ba58741bbfbb33a1309ba",
+          "gitBeforeBlobId": "1f5858466e5f7dfabac5f92c2434d36867c951ce",
+          "gitAfterBlobId": "899d06a2dae7fb1ce15e9becc6c00f4969f6a3df"
+        },
+        "stageAudit": {
+          "executionCount": 2,
+          "allCapturedSourceHashesMatchedOnStop": true,
+          "maximumOverlappingGodotExecutionLifetimes": 1,
+          "sourceEditOverlapWithExecution": [],
+          "oldStageWhileCandidateChangedExercised": false,
+          "beforeSourceHashes": [
+            "3eeb59a160ab68677653c86256395432ba5bb59ad5e768ef1f3fb13c0931f80f"
+          ],
+          "afterSourceHashes": [
+            "43fe5f899036a607dd5374dccd42bbbfa6fa3578b7bb841e0721795c1a790355"
+          ]
+        }
+      },
+      "gn1-multi": {
+        "status": "completed",
+        "startedAt": "2026-09-13T11:16:15.814Z",
+        "finishedAt": "2026-09-13T11:20:03.630Z",
+        "sourceCheckoutUnchanged": true,
+        "workspaceMode": "shared",
+        "sourceEdits": [
+          {
+            "actor": "/root",
+            "tool": "edit",
+            "path": "components/platform/platform.gd",
+            "startedAt": "2026-09-13T11:18:24.542Z",
+            "finishedAt": "2026-09-13T11:18:24.655Z",
+            "success": true,
+            "beforeSha256": "9dd9033e5b9282d5f3935709ed44bb10425de48f5faffa44ae4f05b2c2edea36",
+            "afterSha256": "831ba54ad89671e65d472671d9592f0b45d34dc1052ba58741bbfbb33a1309ba"
+          }
+        ],
+        "sourceAuthorEvidence": {
+          "observedSourceAuthors": ["/root"],
+          "successfulExactEditReplayEqualsFinalFile": true,
+          "rootSourceWriteToolCount": 1,
+          "rootShellCommandsReviewed": 12,
+          "workerSourceWriteToolCount": 0,
+          "shellSourceWriteObserved": false,
+          "workerShellCommandsReviewed": 15
+        },
+        "rootFinalVerification": {
+          "executionId": "inspection.241a3c68-b484-40e3-ba47-3447aa7b8f40",
+          "launchRequestedAt": "2026-09-13T11:18:31.987Z",
+          "launchSucceededAt": "2026-09-13T11:18:36.624Z",
+          "lastSourceEditCompletedAt": "2026-09-13T11:18:24.655Z",
+          "launchAfterLastSourceEdit": true,
+          "gapFromEditCompletionToLaunchRequestMs": 7332,
+          "sourceEditsAfterLaunch": 0,
+          "queryRequests": 9,
+          "successfulQueries": 9,
+          "endedAt": "2026-09-13T11:19:03.240Z",
+          "sourceSha256": "43fe5f899036a607dd5374dccd42bbbfa6fa3578b7bb841e0721795c1a790355"
+        },
+        "rootToolCounts": {
+          "spawn_agent": 3,
+          "ls": 1,
+          "find": 1,
+          "grep": 3,
+          "read": 11,
+          "bash": 12,
+          "game_launch": 2,
+          "game_query": 20,
+          "wait_agent": 4,
+          "list_agents": 2,
+          "game_stop": 2,
+          "edit": 1
+        },
+        "finalPatch": {
+          "sha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+          "byteLength": 651,
+          "hostRoundTripVerified": true,
+          "independentInMemoryReplayEqualsFinalFile": true,
+          "changedPaths": ["components/platform/platform.gd"],
+          "gitChangedPathsMatchPatch": true,
+          "beforeFileSha256": "9dd9033e5b9282d5f3935709ed44bb10425de48f5faffa44ae4f05b2c2edea36",
+          "afterFileSha256": "831ba54ad89671e65d472671d9592f0b45d34dc1052ba58741bbfbb33a1309ba",
+          "gitBeforeBlobId": "1f5858466e5f7dfabac5f92c2434d36867c951ce",
+          "gitAfterBlobId": "899d06a2dae7fb1ce15e9becc6c00f4969f6a3df"
+        },
+        "stageAudit": {
+          "executionCount": 6,
+          "allCapturedSourceHashesMatchedOnStop": true,
+          "maximumOverlappingGodotExecutionLifetimes": 4,
+          "sourceEditOverlapWithExecution": [],
+          "oldStageWhileCandidateChangedExercised": false,
+          "beforeSourceHashes": [
+            "3eeb59a160ab68677653c86256395432ba5bb59ad5e768ef1f3fb13c0931f80f"
+          ],
+          "afterSourceHashes": [
+            "43fe5f899036a607dd5374dccd42bbbfa6fa3578b7bb841e0721795c1a790355"
+          ]
+        },
+        "multiAgent": {
+          "createdWorkerIdentities": 3,
+          "spawnCalls": 3,
+          "followupCalls": 0,
+          "allInitialForkTurns": ["all", "all", "all"],
+          "workerToolCounts": {
+            "ls": 3,
+            "find": 8,
+            "grep": 6,
+            "read": 34,
+            "bash": 15,
+            "game_launch": 4,
+            "game_query": 68,
+            "send_message": 6,
+            "game_stop": 3,
+            "wait_agent": 11,
+            "list_agents": 6
+          },
+          "explicitInterrupts": [],
+          "naturalCompletedWorkers": 1,
+          "cancelledWorkers": 2,
+          "workerTurnsRunningAtRootFinalLaunch": 3,
+          "workerLaunchesAfterRootFinalLaunch": 1,
+          "workerLaunchesAfterRootFinalExecutionEnded": 1,
+          "messageAudit": {
+            "persisted": 12,
+            "consumed": 10,
+            "errored": 0,
+            "uniqueIds": 12,
+            "rootReceivedWorkerMessagesBeforeEdit": 3,
+            "ordinaryMessageDeliveryLatencyMs": {
+              "minimum": 0,
+              "maximum": 1824
+            },
+            "unconsumedKinds": {
+              "completion": 2
+            }
+          },
+          "workers": [
+            {
+              "worker": 1,
+              "path": "/root/validation_investigation",
+              "parentAgentId": "/root",
+              "initialRoleSummary": "Validation methods and runtime checks",
+              "initialAssignmentAllowedEditing": false,
+              "sharedCandidateMatchesRoot": true,
+              "provider": "openai-codex",
+              "model": "gpt-5.6-luna",
+              "thinkingLevel": "max",
+              "turnStatus": "completed",
+              "startedAt": "2026-09-13T11:16:31.255Z",
+              "finishedAt": "2026-09-13T11:18:58.074Z",
+              "naturalCompletion": true,
+              "explicitInterrupt": null,
+              "cancellationClassification": "not_cancelled",
+              "cleanupError": null,
+              "toolCounts": {
+                "ls": 1,
+                "find": 3,
+                "grep": 1,
+                "read": 12,
+                "game_launch": 1,
+                "game_query": 25,
+                "bash": 7,
+                "send_message": 2,
+                "game_stop": 1,
+                "list_agents": 2,
+                "wait_agent": 1
+              }
+            },
+            {
+              "worker": 2,
+              "path": "/root/scene_runtime_investigation",
+              "parentAgentId": "/root",
+              "initialRoleSummary": "Scene geometry and runtime inspection",
+              "initialAssignmentAllowedEditing": false,
+              "sharedCandidateMatchesRoot": true,
+              "provider": "openai-codex",
+              "model": "gpt-5.6-luna",
+              "thinkingLevel": "max",
+              "turnStatus": "cancelled",
+              "startedAt": "2026-09-13T11:16:31.300Z",
+              "finishedAt": "2026-09-13T11:20:02.828Z",
+              "naturalCompletion": false,
+              "explicitInterrupt": null,
+              "cancellationClassification": "root_cleanup_timing_with_no_explicit_interrupt_recorded",
+              "cleanupError": null,
+              "toolCounts": {
+                "ls": 1,
+                "find": 2,
+                "grep": 2,
+                "read": 10,
+                "bash": 5,
+                "game_launch": 2,
+                "game_query": 32,
+                "send_message": 2,
+                "game_stop": 1,
+                "wait_agent": 3,
+                "list_agents": 3
+              }
+            },
+            {
+              "worker": 3,
+              "path": "/root/collision_investigation",
+              "parentAgentId": "/root",
+              "initialRoleSummary": "Activation logic and smallest fix investigation",
+              "initialAssignmentAllowedEditing": false,
+              "sharedCandidateMatchesRoot": true,
+              "provider": "openai-codex",
+              "model": "gpt-5.6-luna",
+              "thinkingLevel": "max",
+              "turnStatus": "cancelled",
+              "startedAt": "2026-09-13T11:16:31.224Z",
+              "finishedAt": "2026-09-13T11:20:02.815Z",
+              "naturalCompletion": false,
+              "explicitInterrupt": null,
+              "cancellationClassification": "root_cleanup_timing_with_no_explicit_interrupt_recorded",
+              "cleanupError": null,
+              "toolCounts": {
+                "ls": 1,
+                "grep": 3,
+                "find": 3,
+                "read": 12,
+                "bash": 3,
+                "game_launch": 1,
+                "game_query": 11,
+                "send_message": 2,
+                "game_stop": 1,
+                "wait_agent": 7,
+                "list_agents": 1
+              }
+            }
+          ]
+        }
+      },
+      "city-single": {
+        "status": "completed",
+        "startedAt": "2026-09-13T11:16:15.814Z",
+        "finishedAt": "2026-09-13T11:18:52.883Z",
+        "sourceCheckoutUnchanged": true,
+        "workspaceMode": "single",
+        "sourceEdits": [
+          {
+            "actor": "/root",
+            "tool": "edit",
+            "path": "scripts/builder.gd",
+            "startedAt": "2026-09-13T11:17:05.672Z",
+            "finishedAt": "2026-09-13T11:17:05.779Z",
+            "success": true,
+            "beforeSha256": "4fdf906ed15124c257a464b955be2d85cc99a7fa24419de094c1c775cc00bdbb",
+            "afterSha256": "8770301fe9610500c224772a4b09d3d29751977d370f73885a7faacdef1f38c6"
+          }
+        ],
+        "sourceAuthorEvidence": {
+          "observedSourceAuthors": ["/root"],
+          "successfulExactEditReplayEqualsFinalFile": true,
+          "rootSourceWriteToolCount": 1,
+          "rootShellCommandsReviewed": 12,
+          "workerSourceWriteToolCount": 0,
+          "shellSourceWriteObserved": false
+        },
+        "rootFinalVerification": {
+          "executionId": "inspection.1f70d88e-35b4-4671-8ee6-31b6fe8656be",
+          "launchRequestedAt": "2026-09-13T11:18:20.979Z",
+          "launchSucceededAt": "2026-09-13T11:18:26.383Z",
+          "lastSourceEditCompletedAt": "2026-09-13T11:17:05.779Z",
+          "launchAfterLastSourceEdit": true,
+          "gapFromEditCompletionToLaunchRequestMs": 75200,
+          "sourceEditsAfterLaunch": 0,
+          "queryRequests": 2,
+          "successfulQueries": 2,
+          "endedAt": "2026-09-13T11:18:39.299Z",
+          "sourceSha256": "014efb2ff6d3381d7866d82a6d5b557e8df31b70c80cc00464f4c4777d48bf3f"
+        },
+        "rootToolCounts": {
+          "ls": 1,
+          "find": 1,
+          "grep": 2,
+          "read": 10,
+          "bash": 12,
+          "game_launch": 3,
+          "game_query": 8,
+          "game_stop": 3,
+          "edit": 1
+        },
+        "finalPatch": {
+          "sha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+          "byteLength": 755,
+          "hostRoundTripVerified": true,
+          "independentInMemoryReplayEqualsFinalFile": true,
+          "changedPaths": ["scripts/builder.gd"],
+          "gitChangedPathsMatchPatch": true,
+          "beforeFileSha256": "4fdf906ed15124c257a464b955be2d85cc99a7fa24419de094c1c775cc00bdbb",
+          "afterFileSha256": "8770301fe9610500c224772a4b09d3d29751977d370f73885a7faacdef1f38c6",
+          "gitBeforeBlobId": "d47a8c6ae85f1772ffa70abc0fc3171403ebb989",
+          "gitAfterBlobId": "0961147125d8b7ef7f249084e85dd2564a9e537a"
+        },
+        "stageAudit": {
+          "executionCount": 3,
+          "allCapturedSourceHashesMatchedOnStop": true,
+          "maximumOverlappingGodotExecutionLifetimes": 1,
+          "sourceEditOverlapWithExecution": [],
+          "oldStageWhileCandidateChangedExercised": false,
+          "beforeSourceHashes": [
+            "8f3f05b8fe3f88c06944abf1e3e2e708b02cc1bf0a6ae971d6573d53b7927777"
+          ],
+          "afterSourceHashes": [
+            "014efb2ff6d3381d7866d82a6d5b557e8df31b70c80cc00464f4c4777d48bf3f"
+          ]
+        }
+      },
+      "city-multi": {
+        "status": "completed",
+        "startedAt": "2026-09-13T11:16:15.814Z",
+        "finishedAt": "2026-09-13T11:20:30.457Z",
+        "sourceCheckoutUnchanged": true,
+        "workspaceMode": "shared",
+        "sourceEdits": [
+          {
+            "actor": "/root",
+            "tool": "edit",
+            "path": "scripts/builder.gd",
+            "startedAt": "2026-09-13T11:18:27.149Z",
+            "finishedAt": "2026-09-13T11:18:27.235Z",
+            "success": true,
+            "beforeSha256": "4fdf906ed15124c257a464b955be2d85cc99a7fa24419de094c1c775cc00bdbb",
+            "afterSha256": "8770301fe9610500c224772a4b09d3d29751977d370f73885a7faacdef1f38c6"
+          }
+        ],
+        "sourceAuthorEvidence": {
+          "observedSourceAuthors": ["/root"],
+          "successfulExactEditReplayEqualsFinalFile": true,
+          "rootSourceWriteToolCount": 1,
+          "rootShellCommandsReviewed": 14,
+          "workerSourceWriteToolCount": 0,
+          "shellSourceWriteObserved": false,
+          "workerShellCommandsReviewed": 17
+        },
+        "rootFinalVerification": {
+          "executionId": "inspection.ff69673d-8d54-4524-9037-0b851f4ed7db",
+          "launchRequestedAt": "2026-09-13T11:18:52.713Z",
+          "launchSucceededAt": "2026-09-13T11:18:58.735Z",
+          "lastSourceEditCompletedAt": "2026-09-13T11:18:27.235Z",
+          "launchAfterLastSourceEdit": true,
+          "gapFromEditCompletionToLaunchRequestMs": 25478,
+          "sourceEditsAfterLaunch": 0,
+          "queryRequests": 3,
+          "successfulQueries": 3,
+          "endedAt": "2026-09-13T11:19:20.442Z",
+          "sourceSha256": "014efb2ff6d3381d7866d82a6d5b557e8df31b70c80cc00464f4c4777d48bf3f"
+        },
+        "rootToolCounts": {
+          "spawn_agent": 3,
+          "ls": 1,
+          "find": 2,
+          "grep": 3,
+          "read": 9,
+          "bash": 14,
+          "wait_agent": 3,
+          "game_launch": 2,
+          "game_query": 6,
+          "game_stop": 2,
+          "edit": 1,
+          "list_agents": 2,
+          "interrupt_agent": 2
+        },
+        "finalPatch": {
+          "sha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+          "byteLength": 755,
+          "hostRoundTripVerified": true,
+          "independentInMemoryReplayEqualsFinalFile": true,
+          "changedPaths": ["scripts/builder.gd"],
+          "gitChangedPathsMatchPatch": true,
+          "beforeFileSha256": "4fdf906ed15124c257a464b955be2d85cc99a7fa24419de094c1c775cc00bdbb",
+          "afterFileSha256": "8770301fe9610500c224772a4b09d3d29751977d370f73885a7faacdef1f38c6",
+          "gitBeforeBlobId": "d47a8c6ae85f1772ffa70abc0fc3171403ebb989",
+          "gitAfterBlobId": "0961147125d8b7ef7f249084e85dd2564a9e537a"
+        },
+        "stageAudit": {
+          "executionCount": 7,
+          "allCapturedSourceHashesMatchedOnStop": true,
+          "maximumOverlappingGodotExecutionLifetimes": 4,
+          "sourceEditOverlapWithExecution": [],
+          "oldStageWhileCandidateChangedExercised": false,
+          "beforeSourceHashes": [
+            "8f3f05b8fe3f88c06944abf1e3e2e708b02cc1bf0a6ae971d6573d53b7927777"
+          ],
+          "afterSourceHashes": [
+            "014efb2ff6d3381d7866d82a6d5b557e8df31b70c80cc00464f4c4777d48bf3f"
+          ]
+        },
+        "multiAgent": {
+          "createdWorkerIdentities": 3,
+          "spawnCalls": 3,
+          "followupCalls": 0,
+          "allInitialForkTurns": ["all", "all", "all"],
+          "workerToolCounts": {
+            "ls": 4,
+            "grep": 8,
+            "find": 9,
+            "read": 26,
+            "game_launch": 5,
+            "bash": 17,
+            "game_query": 21,
+            "send_message": 15,
+            "game_stop": 5,
+            "wait_agent": 9,
+            "list_agents": 6
+          },
+          "explicitInterrupts": [
+            {
+              "target": "/root/architecture_review",
+              "requestedAt": "2026-09-13T11:20:05.570Z",
+              "completedAt": "2026-09-13T11:20:05.582Z",
+              "isError": false
+            },
+            {
+              "target": "/root/runtime_probe",
+              "requestedAt": "2026-09-13T11:20:05.570Z",
+              "completedAt": "2026-09-13T11:20:05.581Z",
+              "isError": false
+            }
+          ],
+          "naturalCompletedWorkers": 1,
+          "cancelledWorkers": 2,
+          "workerTurnsRunningAtRootFinalLaunch": 2,
+          "workerLaunchesAfterRootFinalLaunch": 1,
+          "workerLaunchesAfterRootFinalExecutionEnded": 0,
+          "messageAudit": {
+            "persisted": 21,
+            "consumed": 21,
+            "errored": 0,
+            "uniqueIds": 21,
+            "rootReceivedWorkerMessagesBeforeEdit": 8,
+            "ordinaryMessageDeliveryLatencyMs": {
+              "minimum": 1,
+              "maximum": 17112
+            },
+            "unconsumedKinds": {}
+          },
+          "workers": [
+            {
+              "worker": 1,
+              "path": "/root/runtime_probe",
+              "parentAgentId": "/root",
+              "initialRoleSummary": "Runtime behavior and boundary checks",
+              "initialAssignmentAllowedEditing": false,
+              "sharedCandidateMatchesRoot": true,
+              "provider": "openai-codex",
+              "model": "gpt-5.6-luna",
+              "thinkingLevel": "max",
+              "turnStatus": "cancelled",
+              "startedAt": "2026-09-13T11:16:36.039Z",
+              "finishedAt": "2026-09-13T11:20:05.581Z",
+              "naturalCompletion": false,
+              "explicitInterrupt": {
+                "target": "/root/runtime_probe",
+                "requestedAt": "2026-09-13T11:20:05.570Z",
+                "completedAt": "2026-09-13T11:20:05.581Z",
+                "isError": false
+              },
+              "cancellationClassification": "explicit_root_interrupt",
+              "cleanupError": null,
+              "toolCounts": {
+                "ls": 2,
+                "find": 3,
+                "read": 12,
+                "game_launch": 2,
+                "game_query": 15,
+                "bash": 11,
+                "grep": 2,
+                "send_message": 6,
+                "game_stop": 2,
+                "wait_agent": 3,
+                "list_agents": 2
+              }
+            },
+            {
+              "worker": 2,
+              "path": "/root/locate_preview",
+              "parentAgentId": "/root",
+              "initialRoleSummary": "Preview update call-chain investigation",
+              "initialAssignmentAllowedEditing": false,
+              "sharedCandidateMatchesRoot": true,
+              "provider": "openai-codex",
+              "model": "gpt-5.6-luna",
+              "thinkingLevel": "max",
+              "turnStatus": "completed",
+              "startedAt": "2026-09-13T11:16:36.035Z",
+              "finishedAt": "2026-09-13T11:18:31.587Z",
+              "naturalCompletion": true,
+              "explicitInterrupt": null,
+              "cancellationClassification": "not_cancelled",
+              "cleanupError": null,
+              "toolCounts": {
+                "ls": 1,
+                "grep": 2,
+                "read": 5,
+                "find": 3,
+                "bash": 2,
+                "send_message": 3,
+                "game_launch": 1,
+                "game_query": 2,
+                "game_stop": 1,
+                "wait_agent": 2,
+                "list_agents": 1
+              }
+            },
+            {
+              "worker": 3,
+              "path": "/root/architecture_review",
+              "parentAgentId": "/root",
+              "initialRoleSummary": "Architecture and GDScript condition review",
+              "initialAssignmentAllowedEditing": false,
+              "sharedCandidateMatchesRoot": true,
+              "provider": "openai-codex",
+              "model": "gpt-5.6-luna",
+              "thinkingLevel": "max",
+              "turnStatus": "cancelled",
+              "startedAt": "2026-09-13T11:16:36.002Z",
+              "finishedAt": "2026-09-13T11:20:05.582Z",
+              "naturalCompletion": false,
+              "explicitInterrupt": {
+                "target": "/root/architecture_review",
+                "requestedAt": "2026-09-13T11:20:05.570Z",
+                "completedAt": "2026-09-13T11:20:05.582Z",
+                "isError": false
+              },
+              "cancellationClassification": "explicit_root_interrupt",
+              "cleanupError": null,
+              "toolCounts": {
+                "ls": 1,
+                "grep": 4,
+                "find": 3,
+                "read": 9,
+                "bash": 4,
+                "send_message": 6,
+                "game_launch": 2,
+                "game_query": 4,
+                "game_stop": 2,
+                "list_agents": 3,
+                "wait_agent": 4
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "controls": {
+    "passed": true,
+    "results": [
+      {
+        "kind": "gn1",
+        "variant": "baseline",
+        "repeat": 1,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "city",
+        "variant": "baseline",
+        "repeat": 1,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "gn1",
+        "variant": "reference",
+        "repeat": 1,
+        "exitCode": 0,
+        "outcome": "passed"
+      },
+      {
+        "kind": "city",
+        "variant": "reference",
+        "repeat": 1,
+        "exitCode": 0,
+        "outcome": "passed"
+      },
+      {
+        "kind": "gn1",
+        "variant": "baseline",
+        "repeat": 2,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "city",
+        "variant": "baseline",
+        "repeat": 2,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "gn1",
+        "variant": "reference",
+        "repeat": 2,
+        "exitCode": 0,
+        "outcome": "passed"
+      },
+      {
+        "kind": "city",
+        "variant": "reference",
+        "repeat": 2,
+        "exitCode": 0,
+        "outcome": "passed"
+      },
+      {
+        "kind": "gn1",
+        "variant": "baseline",
+        "repeat": 3,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "city",
+        "variant": "baseline",
+        "repeat": 3,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "gn1",
+        "variant": "reference",
+        "repeat": 3,
+        "exitCode": 0,
+        "outcome": "passed"
+      },
+      {
+        "kind": "city",
+        "variant": "reference",
+        "repeat": 3,
+        "exitCode": 0,
+        "outcome": "passed"
+      },
+      {
+        "kind": "gn1",
+        "variant": "wrong-width",
+        "repeat": 1,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "city",
+        "variant": "missing-initialization",
+        "repeat": 1,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      },
+      {
+        "kind": "city",
+        "variant": "missing-switch",
+        "repeat": 1,
+        "exitCode": 1,
+        "outcome": "assertions_failed"
+      }
+    ]
+  },
+  "acceptance": [
+    {
+      "id": "gn1-single",
+      "repeat": 1,
+      "patchSha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+      "exitCode": 0,
+      "outcome": "passed"
+    },
+    {
+      "id": "gn1-multi",
+      "repeat": 1,
+      "patchSha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+      "exitCode": 0,
+      "outcome": "passed"
+    },
+    {
+      "id": "city-single",
+      "repeat": 1,
+      "patchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+      "exitCode": 0,
+      "outcome": "passed"
+    },
+    {
+      "id": "city-multi",
+      "repeat": 1,
+      "patchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+      "exitCode": 0,
+      "outcome": "passed"
+    },
+    {
+      "id": "gn1-single",
+      "repeat": 2,
+      "patchSha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+      "exitCode": 0,
+      "outcome": "passed"
+    },
+    {
+      "id": "gn1-multi",
+      "repeat": 2,
+      "patchSha256": "81f3453f808b7623989e8a8f28e788e0bca3383861a37d0a4659d7d574b57120",
+      "exitCode": 0,
+      "outcome": "passed"
+    },
+    {
+      "id": "city-single",
+      "repeat": 2,
+      "patchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+      "exitCode": 0,
+      "outcome": "passed"
+    },
+    {
+      "id": "city-multi",
+      "repeat": 2,
+      "patchSha256": "32607e10885fc318425a21d07b8d43974d2e7b787c1b838504b2bf6411ce9c23",
+      "exitCode": 0,
+      "outcome": "passed"
+    }
+  ],
+  "comparison": {
+    "gn1": {
+      "hostDurationRatioMultiOverSingle": 1.3947605257841151,
+      "hostDurationIncreasePercent": 39.47605257841151,
+      "hostDurationIncreaseMs": 64479,
+      "reportedEstimatedCostRatioMultiOverSingle": 4.939410906294296,
+      "patchesIdentical": true,
+      "acceptanceGainObserved": false
+    },
+    "city": {
+      "hostDurationRatioMultiOverSingle": 1.6212174267360204,
+      "hostDurationIncreasePercent": 62.12174267360204,
+      "hostDurationIncreaseMs": 97574,
+      "reportedEstimatedCostRatioMultiOverSingle": 4.169338881627073,
+      "patchesIdentical": true,
+      "acceptanceGainObserved": false
+    }
+  }
+}

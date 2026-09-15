@@ -115,23 +115,59 @@ describe("Project Environment candidate collection", () => {
     expect(files.map((file) => file.relativePath)).toEqual(["project.godot"]);
   });
 
-  it.each(["native.so", "Logic.cs", "override.cfg"])(
-    "rejects unsupported PE-A game path %s",
-    async (relativePath) => {
-      const workspace = await mkdtemp(
-        join(tmpdir(), "chronorift-project-environment-candidate-"),
-      );
-      roots.push(workspace);
-      await writeFile(join(workspace, "project.godot"), "[application]\n");
-      const target = join(workspace, relativePath);
-      await mkdir(join(target, ".."), { recursive: true });
-      await writeFile(target, "unsupported\n");
+  it.each([
+    "native.so",
+    "Logic.csproj",
+    "Game.sln",
+    "library.dll",
+    "project.binary",
+  ])("rejects unsupported PE-A game path %s", async (relativePath) => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-candidate-"),
+    );
+    roots.push(workspace);
+    await writeFile(join(workspace, "project.godot"), "[application]\n");
+    const target = join(workspace, relativePath);
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, "unsupported\n");
 
-      await expect(
-        collectCandidateGodotSourceV1(workspace, "project-environment"),
-      ).rejects.toBeInstanceOf(Error);
-    },
-  );
+    await expect(
+      collectCandidateGodotSourceV1(workspace, "project-environment"),
+    ).rejects.toBeInstanceOf(Error);
+  });
+
+  it("preserves optional C# helper bytes and rejects a later active script reference", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "chronorift-project-environment-optional-csharp-"),
+    );
+    roots.push(workspace);
+    await writeFile(
+      join(workspace, "project.godot"),
+      '[application]\nconfig/features=PackedStringArray("4.2")\n',
+    );
+    await mkdir(join(workspace, "addons", "vendor"), { recursive: true });
+    const helper = "// Optional C# implementation, retained byte for byte\n";
+    await writeFile(join(workspace, "addons/vendor/Optional.cs"), helper);
+    await writeFile(
+      join(workspace, "addons/vendor/loader.gd"),
+      'extends RefCounted\nfunc optional_api():\n\tif not ClassDB.class_exists("CSharpScript"):\n\t\treturn null\n\treturn load("res://addons/vendor/Optional.cs").new()\n',
+    );
+    const files = await collectCandidateGodotSourceV1(
+      workspace,
+      "project-environment",
+    );
+    expect(
+      files.find((file) => file.relativePath === "addons/vendor/Optional.cs")
+        ?.content,
+    ).toEqual(Buffer.from(helper));
+    await writeFile(
+      join(workspace, "main.tscn"),
+      '[gd_scene load_steps=2 format=3]\n[ext_resource type="Script" path="res://addons/vendor/Optional.cs" id="1"]\n[node name="Main" type="Node"]\nscript=ExtResource("1")\n',
+    );
+    await expect(
+      collectCandidateGodotSourceV1(workspace, "project-environment"),
+    ).rejects.toThrow(/explicit C#\/\.NET/u);
+  });
 
   it.each([
     ["credential path", ".env.production", "SECRET=value\n"],

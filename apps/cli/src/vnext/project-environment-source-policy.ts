@@ -1,3 +1,16 @@
+import { isExternalGodotNativeSourcePathV1 } from "./external-godot-source-policy.js";
+
+export { projectEnvironmentCSharpRequirementV1 } from "./godot-script-requirements.js";
+
+// A .cs text file can be an unused optional plugin helper in a GDScript
+// project. Build manifests and native libraries still require unsupported
+// runtimes; later import/run failures never count as successful validation.
+export const isProjectEnvironmentNativeSourcePathV1 = (
+  relativePath: string,
+): boolean =>
+  !relativePath.toLowerCase().endsWith(".cs") &&
+  isExternalGodotNativeSourcePathV1(relativePath);
+
 /**
  * Pure PE-A source-admission rules shared by the immutable Git source closure
  * and every later Task-workspace Build snapshot. Keeping these rules in one

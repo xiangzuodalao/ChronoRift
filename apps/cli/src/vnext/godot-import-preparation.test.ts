@@ -28,6 +28,7 @@ describe("disposable Godot import preparation", () => {
   let root: string;
   let candidate: string;
   let lastRequest: SrtGodotRequest | undefined;
+  let requests: SrtGodotRequest[];
   const result: SrtCommandResult = {
     status: "exited",
     exitCode: 0,
@@ -41,6 +42,7 @@ describe("disposable Godot import preparation", () => {
     durationMs: 1,
   };
   beforeEach(async () => {
+    requests = [];
     root = await mkdtemp(join(tmpdir(), "chronorift-import-test-"));
     candidate = join(root, "candidate");
     await mkdir(candidate);
@@ -54,7 +56,7 @@ describe("disposable Godot import preparation", () => {
   });
   const prepare = async (
     mutate: (path: string) => Promise<void> = async () => {},
-    processResult = result,
+    processResult: SrtCommandResult | (() => SrtCommandResult) = result,
     signal?: AbortSignal,
   ) =>
     prepareGodotImport(
@@ -63,14 +65,21 @@ describe("disposable Godot import preparation", () => {
         validationRoot: join(root, "stages"),
         openImport: async (request) => {
           lastRequest = request;
+          requests.push(request);
           await mutate(request.projectStagePath);
           return {
             pid: 1,
             stdin: new PassThrough(),
             stdout: new PassThrough(),
             stderr: new PassThrough(),
-            wait: async () => processResult,
-            stop: async () => processResult,
+            wait: async () =>
+              typeof processResult === "function"
+                ? processResult()
+                : processResult,
+            stop: async () =>
+              typeof processResult === "function"
+                ? processResult()
+                : processResult,
           };
         },
       },
@@ -263,5 +272,69 @@ describe("disposable Godot import preparation", () => {
       prepare(async () => abort.abort(), result, abort.signal),
     ).rejects.toMatchObject({ process: result });
     expect(await readdir(join(root, "stages"))).toEqual([]);
+  });
+  const coldMetadata = {
+    ...result,
+    stderr:
+      "ERROR: Missing required editor-specific import metadata for a texture (please reimport it using the 'Import' tab): 'res://.godot/imported/icon.svg-123.editor.meta'\n   at: _load_editor_meta (editor/import/resource_importer_texture.cpp:413)\n",
+  };
+
+  it("isolates editor-only settings and scene, then returns exact runtime settings", async () => {
+    const prepared = await prepare(async (path) => {
+      const override = await readFile(join(path, "override.cfg"), "utf8");
+      expect(override).toContain("enabled=PackedStringArray()");
+      expect(override).toContain("locale/translations=PackedStringArray()");
+      expect(lastRequest?.argv.at(-1)).toBe(
+        "res://addons/chronorift_project_environment/import.tscn",
+      );
+    });
+    expect(
+      prepared.sourceFiles
+        .find((file) => file.relativePath === "override.cfg")
+        ?.bytes.toString(),
+    ).toBe("[autoload]\n");
+    expect(
+      prepared.sourceFiles.some((file) =>
+        file.relativePath.endsWith("/import.tscn"),
+      ),
+    ).toBe(false);
+    expect(prepared.bootstrapProcess).toBeNull();
+    expect(requests).toHaveLength(1);
+  });
+
+  it("verifies only cold editor metadata once within the remaining budget and retains both processes", async () => {
+    const prepared = await prepare(undefined, () =>
+      requests.length === 1 ? coldMetadata : result,
+    );
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.projectStagePath).toBe(requests[0]?.projectStagePath);
+    expect(requests[1]!.timeoutMs).toBeLessThanOrEqual(requests[0]!.timeoutMs!);
+    expect(prepared.bootstrapProcess).toEqual(coldMetadata);
+    expect(prepared.process).toEqual(result);
+  });
+
+  it("does not retry ordinary errors mixed with a cold-cache diagnostic", async () => {
+    await expect(
+      prepare(undefined, {
+        ...coldMetadata,
+        stderr: coldMetadata.stderr + "SCRIPT ERROR: invalid source\n",
+      }),
+    ).rejects.toMatchObject({ bootstrapProcess: null });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("does not retry cold metadata when source integrity fails", async () => {
+    await expect(
+      prepare(async (path) => put(path, "main.gd", "tampered"), coldMetadata),
+    ).rejects.toMatchObject({ bootstrapProcess: null, process: coldMetadata });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("rejects persistent cold-cache errors after exactly one verification pass", async () => {
+    await expect(prepare(undefined, coldMetadata)).rejects.toMatchObject({
+      bootstrapProcess: coldMetadata,
+      process: coldMetadata,
+    });
+    expect(requests).toHaveLength(2);
   });
 });

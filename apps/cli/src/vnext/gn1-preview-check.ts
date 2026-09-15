@@ -545,28 +545,47 @@ export async function checkGn1Preview(
     await materialize(baselineWorkspace, sourceFiles);
     await materialize(candidateWorkspace, sourceFiles);
     if (patch.byteLength !== 0) {
-      const git = new NodeHostGitPort();
-      await git.initializeRepository({
-        directory: candidateWorkspace,
-        bare: false,
-      });
-      const handle = await open(
-        join(directory, "candidate.patch"),
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      );
+      const patchName = "__gn1_candidate.patch";
+      if (sourceFiles.some((file) => file.relativePath === patchName))
+        throw new Error("Reserved candidate patch path is occupied");
+      const patchFile = join(candidateWorkspace, patchName);
+      await writeFile(patchFile, patch, { flag: "wx", mode: 0o600 });
+      const paths = {
+        homePath: join(privateRoot, "patch-home"),
+        tempPath: join(privateRoot, "patch-temp"),
+        artifactsPath: join(privateRoot, "patch-artifacts"),
+      };
+      for (const path of Object.values(paths))
+        await mkdir(path, { mode: 0o700 });
       try {
-        await git.applyPatch({
-          context: { cwd: candidateWorkspace },
-          patch: handle,
-          checkOnly: true,
-        });
-        await git.applyPatch({
-          context: { cwd: candidateWorkspace },
-          patch: handle,
-          checkOnly: false,
-        });
+        for (const checkOnly of [true, false]) {
+          const result = await controller.runCoding({
+            ...paths,
+            workspacePath: candidateWorkspace,
+            cwd: candidateWorkspace,
+            argv: [
+              "/usr/bin/git",
+              "-c",
+              "core.hooksPath=/dev/null",
+              "apply",
+              "--no-index",
+              ...(checkOnly ? ["--check"] : []),
+              "--",
+              patchName,
+            ],
+            timeoutMs: 30_000,
+            signal: dependencies.signal,
+          });
+          await saveProcess(
+            directory,
+            checkOnly ? "patch-check" : "patch-apply",
+            result,
+          );
+          if (!completeProcess(result) || result.exitCode !== 0)
+            throw new Error("Sandboxed candidate patch application failed");
+        }
       } finally {
-        await handle.close();
+        await rm(patchFile, { force: true });
       }
     }
     const candidate = await prepareGodotInspectionCandidate(candidateWorkspace);

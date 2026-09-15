@@ -29,7 +29,17 @@ import {
   isExternalGodotNativeSourcePathV1,
   isExternalGodotReservedSourcePathV1,
 } from "./external-godot-source-policy.js";
-import { isProjectEnvironmentSensitivePathV1 } from "./project-environment-source-policy.js";
+import {
+  isProjectEnvironmentNativeSourcePathV1,
+  isProjectEnvironmentSensitivePathV1,
+  projectEnvironmentCSharpRequirementV1,
+} from "./project-environment-source-policy.js";
+import {
+  assertInspectionSettingsSafe,
+  godotSettingString,
+  readGodotTextSettings,
+} from "./godot-settings-overlay.js";
+import type { SrtGodotVersion } from "./srt-runtime-config.js";
 import {
   loadTrustedFixtureCatalog,
   resolveTaskFixtureCapability,
@@ -74,6 +84,8 @@ export interface CleanProjectEnvironmentPreflightRequestV1 {
   readonly projectRoot?: string | undefined;
   /** Exact untracked files relative to the selected project; never remembered. */
   readonly includeUntrackedPaths?: readonly string[] | undefined;
+  /** The already verified runtime choice; omitted callers retain the original 4.7.1 pin. */
+  readonly godotVersion?: SrtGodotVersion | undefined;
   readonly sourceRepositoryExclusionRoots: readonly string[];
 }
 
@@ -111,7 +123,7 @@ export interface ProjectSourceClosureV1 {
   readonly entries: readonly ProjectSourceClosureEntryV1[];
   readonly selectedTreeSha256: Sha256DigestV1;
   readonly mainScene: string;
-  readonly requestedGodotVersion: "4.7.1";
+  readonly requestedGodotVersion: SrtGodotVersion;
   readonly sourceId: SourceId;
 }
 
@@ -168,7 +180,7 @@ export const ProjectSourceClosureV1Schema: z.ZodType<ProjectSourceClosureV1> = z
     ),
     selectedTreeSha256: Sha256DigestV1Schema,
     mainScene: z.string().min(1).max(2_048),
-    requestedGodotVersion: z.literal("4.7.1"),
+    requestedGodotVersion: z.enum(["4.2.2", "4.3", "4.7.1"]),
     sourceId: SourceIdSchema,
   })
   .strict()
@@ -278,7 +290,7 @@ export interface VerifiedProjectEnvironmentSourceV1 {
   readonly projectSourceIdentity: Sha256DigestV1;
   readonly entries: readonly VerifiedProjectEnvironmentTreeEntryV1[];
   readonly mainScene: string;
-  readonly requestedGodotVersion: "4.7.1";
+  readonly requestedGodotVersion: SrtGodotVersion;
   /** Present for PE-C freezes; absent only on legacy PE-A test/evidence inputs. */
   readonly sourceClosure?: ProjectSourceClosureV1 | undefined;
 }
@@ -757,30 +769,47 @@ const normalizeSourcePreflightError = (error: unknown): never => {
 
 const PROJECT_ENVIRONMENT_RESERVED_AUTOLOAD = "ChronoRiftProjectEnvironment";
 
-const projectEnvironmentMainScene = (input: Uint8Array): string => {
-  let text: string;
+const projectEnvironmentMainScene = (
+  input: Uint8Array,
+  override: Uint8Array | undefined,
+): string => {
+  let settings: ReturnType<typeof readGodotTextSettings>;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(input);
+    settings = [
+      ...readGodotTextSettings(input),
+      ...(override === undefined ? [] : readGodotTextSettings(override)),
+    ];
+    assertInspectionSettingsSafe(settings);
   } catch (error) {
-    return sourceFeatureUnsupported("project.godot must be valid UTF-8", error);
+    return sourceFeatureUnsupported(
+      error instanceof Error ? error.message : "Invalid Godot project settings",
+      error,
+    );
   }
   if (
-    text.includes("\0") ||
-    new RegExp(`^\\s*${PROJECT_ENVIRONMENT_RESERVED_AUTOLOAD}\\s*=`, "mu").test(
-      text,
+    settings.some(({ name }) =>
+      [
+        `autoload/${PROJECT_ENVIRONMENT_RESERVED_AUTOLOAD}`,
+        `autoload_prepend/${PROJECT_ENVIRONMENT_RESERVED_AUTOLOAD}`,
+      ].includes(name.split(".")[0] ?? ""),
     )
   ) {
     return sourceFeatureUnsupported(
-      "project.godot collides with the reserved Project Environment autoload",
+      "project settings collide with the reserved Project Environment autoload",
     );
   }
+  const setting = settings.findLast(
+    ({ name }) => name === "application/run/main_scene",
+  );
   const mainScene =
-    /^\s*run\/main_scene\s*=\s*"((?:res|uid):\/\/[^"\r\n]+)"\s*$/mu.exec(
-      text,
-    )?.[1];
-  if (mainScene === undefined || mainScene.length > 2_048) {
+    setting === undefined ? null : godotSettingString(setting.value);
+  if (
+    mainScene === null ||
+    mainScene.length > 2_048 ||
+    !/^(?:res|uid):\/\/[^\r\n]+$/u.test(mainScene)
+  ) {
     return sourceFeatureUnsupported(
-      "project.godot must configure a bounded res:// or uid:// main scene",
+      "project settings must configure a bounded res:// or uid:// main scene",
     );
   }
   return mainScene;
@@ -954,7 +983,7 @@ const isProjectEnvironmentReservedPathV1 = (relativePath: string): boolean => {
     normalized.startsWith(".chronorift/") ||
     normalized === ".godot" ||
     normalized.startsWith(".godot/") ||
-    normalized === "override.cfg" ||
+    normalized === "project.binary" ||
     normalized === "addons/chronorift_project_environment" ||
     normalized.startsWith("addons/chronorift_project_environment/")
   );
@@ -968,7 +997,7 @@ const assertProjectEnvironmentSourcePathAdmittedV1 = (
       "Project Environment source collides with a reserved managed path",
     );
   }
-  if (isExternalGodotNativeSourcePathV1(relativePath)) {
+  if (isProjectEnvironmentNativeSourcePathV1(relativePath)) {
     return sourceFeatureUnsupported(
       "Project Environment supports GDScript without native or C# extensions",
     );
@@ -1442,11 +1471,12 @@ const freezeProjectEnvironmentWorktree = async (input: {
   readonly selectedEntries: readonly ProjectWorktreeEntryV1[];
   readonly includeUntrackedPaths: readonly string[];
   readonly submodules: readonly ProjectSourceSubmoduleV1[];
+  readonly godotVersion: SrtGodotVersion;
 }): Promise<{
   readonly entries: readonly VerifiedProjectEnvironmentTreeEntryV1[];
   readonly selectedTreeSha256: Sha256DigestV1;
   readonly mainScene: string;
-  readonly requestedGodotVersion: "4.7.1";
+  readonly requestedGodotVersion: SrtGodotVersion;
   readonly projectSourceIdentity: Sha256DigestV1;
   readonly sourceClosure: ProjectSourceClosureV1;
 }> => {
@@ -1458,7 +1488,8 @@ const freezeProjectEnvironmentWorktree = async (input: {
     const sources: SelectedTreeContentSourceV1[] = [];
     let totalBytes = 0;
     let projectFileBytes: Buffer | undefined;
-    let requestedGodotVersion = "4.7.1" as const;
+    let overrideFileBytes: Buffer | undefined;
+    const requestedGodotVersion = input.godotVersion;
     for (const selected of input.selectedEntries) {
       assertProjectEnvironmentSourcePathAdmittedV1(selected.relativePath);
       await assertCanonicalFileParents(
@@ -1490,7 +1521,8 @@ const freezeProjectEnvironmentWorktree = async (input: {
         frozenEntries.length >= EXTERNAL_GODOT_MAX_FILES_V1 ||
         !Number.isSafeInteger(totalBytes) ||
         totalBytes > EXTERNAL_GODOT_MAX_BYTES_V1 ||
-        (selected.relativePath === "project.godot" &&
+        ((selected.relativePath === "project.godot" ||
+          selected.relativePath === "override.cfg") &&
           expected.size > MAX_PROJECT_CONFIGURATION_BYTES)
       ) {
         return sourceFeatureUnsupported(
@@ -1557,8 +1589,17 @@ const freezeProjectEnvironmentWorktree = async (input: {
         await source.close();
         await destination.close();
       }
+      const unsupported = projectEnvironmentCSharpRequirementV1(
+        selected.relativePath,
+        bytes,
+      );
+      if (unsupported !== undefined)
+        return sourceFeatureUnsupported(unsupported);
       if (selected.relativePath === "project.godot") {
         projectFileBytes = bytes;
+      }
+      if (selected.relativePath === "override.cfg") {
+        overrideFileBytes = bytes;
       }
       if (selected.relativePath === ".godot-version") {
         let version: string;
@@ -1570,12 +1611,11 @@ const freezeProjectEnvironmentWorktree = async (input: {
             error,
           );
         }
-        if (version.trim() !== "4.7.1") {
+        if (version.trim() !== requestedGodotVersion) {
           return sourceFeatureUnsupported(
-            "Project Environment requires .godot-version to request exact Godot 4.7.1",
+            `Project Environment requires .godot-version to match selected Godot ${requestedGodotVersion}`,
           );
         }
-        requestedGodotVersion = "4.7.1";
       }
       const mode = (expected.mode & 0o111) === 0 ? "100644" : "100755";
       const contentSha256 = asSha256DigestV1(
@@ -1624,7 +1664,10 @@ const freezeProjectEnvironmentWorktree = async (input: {
       );
     }
     const selectedTreeSha256 = await selectedTreeSha256FromSources(sources);
-    const mainScene = projectEnvironmentMainScene(projectFileBytes);
+    const mainScene = projectEnvironmentMainScene(
+      projectFileBytes,
+      overrideFileBytes,
+    );
     const includedUntrackedPaths = [...input.includeUntrackedPaths].sort(
       (left, right) =>
         Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
@@ -1914,6 +1957,7 @@ export async function preflightCleanProjectEnvironmentV1(
       headCommit,
     });
     const frozen = await freezeProjectEnvironmentWorktree({
+      godotVersion: request.godotVersion ?? "4.7.1",
       repositoryRoot,
       projectRoot,
       projectPrefix,
@@ -1953,6 +1997,7 @@ export async function refreezeProjectEnvironmentSourceV1(
       projectPath: source.repositoryRoot,
       projectRoot:
         source.projectPrefix.length === 0 ? "." : source.projectPrefix,
+      godotVersion: source.requestedGodotVersion,
       includeUntrackedPaths: source.sourceClosure?.includedUntrackedPaths ?? [],
       sourceRepositoryExclusionRoots: [],
     },

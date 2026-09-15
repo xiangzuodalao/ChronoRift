@@ -1,0 +1,338 @@
+{
+  "schemaVersion": 1,
+  "experiment": "adaptive-multi-v1",
+  "phases": [
+    {
+      "phase": "development-v1",
+      "privateDirectory": "development-v1",
+      "preparedAt": "2026-09-13T13:06:48.106Z",
+      "cohort": "development",
+      "protocol": {
+        "attemptsPerArm": 1,
+        "maximumOptimizationRounds": 1,
+        "minimumWorkers": 0,
+        "maximumWorkers": 3,
+        "automaticReruns": false,
+        "optimizationTrigger": {
+          "metric": "hostWallClockMs",
+          "adaptiveToSingleRatioAbove": 1.2,
+          "selection": "largest telemetry-observed bottleneck"
+        },
+        "holdoutAfterDevelopmentDecision": true
+      },
+      "config": {
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "timeoutMs": 1200000,
+        "sharedToolCallLimit": 256,
+        "maxAgents": 3,
+        "dnsOrder": "ipv4first",
+        "collaborationVersion": 2,
+        "workspaceMode": "shared"
+      },
+      "spawnPolicy": {
+        "maxCreatedAgents": 3,
+        "maxDepth": 1,
+        "lockedRuntime": {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-luna",
+          "thinkingLevel": "max"
+        }
+      },
+      "goals": {
+        "gn1": "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy.",
+        "city": "建筑预览在空闲时似乎反复重建。请调查并作最小合理修复：选中建筑不变时避免重复重建，同时保留初始化显示、前后切换及首尾循环时的正确更新。自行选择调查、修改和验证方式，并说明实际验证结果与未覆盖部分。"
+      },
+      "multiAppendix": "本次使用 Adaptive Multi：Root 最多创建三个直接 worker，不强制创建，小任务可以使用零个 worker。只有存在可独立完成、且结果能够替代 Root 后续工作的明确子任务时才委派；不要将同一调查重复交给多个 worker。委派时明确边界、所需证据和交付内容。Worker 完成后用简洁最终答复交付结论、证据和未覆盖项，然后结束当前 turn，不为保持在线而循环 wait_agent；后续工作由 Root 使用 followup_task 启动。Root 利用已有证据整合、修改并在最终共享候选上验证，不完整重复 worker 已完成且有证据的调查。所有代理共享一个私有候选工作区，修改立即可见，需协调同文件修改。",
+      "source": {
+        "gn1": {
+          "commit": "e78b339500dec8e480b33723c4156bf9b74cd25c",
+          "tree": "9941cb045b3cd73c4554ca1de337a341b383590b",
+          "sha256": "e7c86bfb83a0b9ed2bc0beebcd7aa402f8def73ee7c0d2547e3e7c36eb9cdb3f"
+        },
+        "city": {
+          "commit": "4535092b740b378b700efd9df9e27a631815b84a",
+          "tree": "528433a6580c8f48c9a1fcd7ddcae251a6f75c00",
+          "sha256": "5395a3aa8e39d8f888eece93af83b383cd3af57263fc1ef5c92425d14c1b9005"
+        }
+      },
+      "product": {
+        "head": "ebe6715be3101bb5a7e56171242f81a20cb875f5",
+        "sha256": "cbe6adc3494ee777163854a9d12cb25b9771ab5d71740b3676bec8ce2bad7f19",
+        "fileCount": 390
+      },
+      "model": {
+        "metadata": {
+          "id": "gpt-5.6-luna",
+          "provider": "openai-codex",
+          "api": "openai-codex-responses",
+          "cost": {
+            "input": 0.2,
+            "output": 1.2,
+            "cacheRead": 0.02,
+            "cacheWrite": 0.25,
+            "tiers": [
+              {
+                "inputTokensAbove": 272000,
+                "input": 0.4,
+                "output": 1.8,
+                "cacheRead": 0.04,
+                "cacheWrite": 0.5
+              }
+            ]
+          },
+          "contextWindow": 272000,
+          "maxTokens": 128000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh",
+            "max": "max",
+            "minimal": "low"
+          }
+        },
+        "sha256": "d2dbd41a9cb5b5e2039902b448f68b238a7160265cdbcc3ffc748d633f9c2b61",
+        "costMeaning": "SDK estimate; actual provider bill unavailable"
+      },
+      "node": "v22.23.1",
+      "piVersion": "0.83.0",
+      "srtVersion": "0.0.74",
+      "godotSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+      "checkers": {
+        "gn1": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+        "city": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db"
+      },
+      "optimization": null,
+      "orchestrationAmendment": null,
+      "previousComparison": null
+    },
+    {
+      "phase": "development-v2",
+      "privateDirectory": "development-v2",
+      "preparedAt": "2026-09-13T13:18:24.879Z",
+      "cohort": "development-optimized",
+      "protocol": {
+        "attemptsPerArm": 1,
+        "maximumOptimizationRounds": 1,
+        "minimumWorkers": 0,
+        "maximumWorkers": 3,
+        "automaticReruns": false,
+        "optimizationTrigger": {
+          "metric": "hostWallClockMs",
+          "adaptiveToSingleRatioAbove": 1.2,
+          "selection": "largest telemetry-observed bottleneck"
+        },
+        "holdoutAfterDevelopmentDecision": true
+      },
+      "config": {
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "timeoutMs": 1200000,
+        "sharedToolCallLimit": 256,
+        "maxAgents": 3,
+        "dnsOrder": "ipv4first",
+        "collaborationVersion": 2,
+        "workspaceMode": "shared"
+      },
+      "spawnPolicy": {
+        "maxCreatedAgents": 3,
+        "maxDepth": 1,
+        "lockedRuntime": {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-luna",
+          "thinkingLevel": "max"
+        }
+      },
+      "goals": {
+        "gn1": "A falling platform can activate while the player is still outside its visible width. Investigate the project, make the smallest appropriate fix, and validate the candidate. You choose the investigation, edit, and validation strategy.",
+        "city": "建筑预览在空闲时似乎反复重建。请调查并作最小合理修复：选中建筑不变时避免重复重建，同时保留初始化显示、前后切换及首尾循环时的正确更新。自行选择调查、修改和验证方式，并说明实际验证结果与未覆盖部分。"
+      },
+      "multiAppendix": "本次使用 Adaptive Multi：Root 最多创建三个直接 worker，不强制创建，小任务可以使用零个 worker。只有存在可独立完成、且结果能够替代 Root 后续工作的明确子任务时才委派；不要将同一调查重复交给多个 worker。委派时明确边界、所需证据和交付内容。Worker 完成后用简洁最终答复交付结论、证据和未覆盖项，然后结束当前 turn，不为保持在线而循环 wait_agent；后续工作由 Root 使用 followup_task 启动。Root 利用已有证据整合、修改并在最终共享候选上验证，不完整重复 worker 已完成且有证据的调查。最小修复通过相关最终候选检查后应结束并说明剩余限制；只有出现实际失败、明确未覆盖的验收要求、证据冲突或源码变化时，才重开等价修复方案或重复同一验证。Worker 仅提出另一方案不足以重开已验证修复；运行检查通过不等于完整验收。所有代理共享一个私有候选工作区，修改立即可见，需协调同文件修改。",
+      "source": {
+        "gn1": {
+          "commit": "e78b339500dec8e480b33723c4156bf9b74cd25c",
+          "tree": "9941cb045b3cd73c4554ca1de337a341b383590b",
+          "sha256": "e7c86bfb83a0b9ed2bc0beebcd7aa402f8def73ee7c0d2547e3e7c36eb9cdb3f"
+        },
+        "city": {
+          "commit": "4535092b740b378b700efd9df9e27a631815b84a",
+          "tree": "528433a6580c8f48c9a1fcd7ddcae251a6f75c00",
+          "sha256": "5395a3aa8e39d8f888eece93af83b383cd3af57263fc1ef5c92425d14c1b9005"
+        }
+      },
+      "product": {
+        "head": "ebe6715be3101bb5a7e56171242f81a20cb875f5",
+        "sha256": "e3b9e7f4c82206c63ab6c94ea665a0abcb6bb3644bc73d9c888db21bb5ba04f2",
+        "fileCount": 390
+      },
+      "model": {
+        "metadata": {
+          "id": "gpt-5.6-luna",
+          "provider": "openai-codex",
+          "api": "openai-codex-responses",
+          "cost": {
+            "input": 0.2,
+            "output": 1.2,
+            "cacheRead": 0.02,
+            "cacheWrite": 0.25,
+            "tiers": [
+              {
+                "inputTokensAbove": 272000,
+                "input": 0.4,
+                "output": 1.8,
+                "cacheRead": 0.04,
+                "cacheWrite": 0.5
+              }
+            ]
+          },
+          "contextWindow": 272000,
+          "maxTokens": 128000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh",
+            "max": "max",
+            "minimal": "low"
+          }
+        },
+        "sha256": "d2dbd41a9cb5b5e2039902b448f68b238a7160265cdbcc3ffc748d633f9c2b61",
+        "costMeaning": "SDK estimate; actual provider bill unavailable"
+      },
+      "node": "v22.23.1",
+      "piVersion": "0.83.0",
+      "srtVersion": "0.0.74",
+      "godotSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+      "checkers": {
+        "gn1": "3511eeb68c84ed598b0d5dadee70e42157a8c9ec46dba5e1bf7aa68c8a09bcb2",
+        "city": "fe0e8e3bb6edefe6ca147449af015845bf526f471416ebc3a91a3657b744a7db"
+      },
+      "optimization": {
+        "schemaVersion": 1,
+        "round": 1,
+        "bottleneck": "Extra Root model work after the first GN-1 edit; equivalent-fix reconsideration and repeated final-candidate validation.",
+        "telemetryEvidence": "GN-1 Single/Adaptive Host 157168/268429 ms; Root requests 21/36; Root request elapsed sums 139664.022581/244639.2166529999 ms; team lock wait 50.466587000046275 ms. Post-edit phase 52.406/137.541 s. First Multi fix showed four distinct correct-size shapes after correcting a query identifier; Root then switched from script duplication to resource_local_to_scene and validated again. Only final candidates received independent acceptance, all 2/2 passed.",
+        "change": "Add one Root stop/reopen rule: finish a minimally fixed candidate after relevant validation; require an observed failure, concrete uncovered requirement, conflicting evidence or later source change before revisiting an equivalent fix or repeating validation. A worker alternative alone does not reopen the validated candidate. Existing boundaries and validation uncertainty remain.",
+        "hypothesis": "Reduce unnecessary post-edit Root requests; no guaranteed speedup or causal attribution of the first-run delay to the worker.",
+        "reasonForVerification": "One fresh Single/Adaptive attempt per development case to measure this single targeted change. Both original outcomes remain reported. No additional tuning after this phase.",
+        "maximumFurtherOptimizationRounds": 0,
+        "holdout": "Mob Orientation, one Single and one Adaptive only after this verification.",
+        "firstRunReferences": [
+          "development-v1/summary.json",
+          "development-v1/timing-audit.json",
+          "development-v1/phase-behavior-audit.json"
+        ]
+      },
+      "orchestrationAmendment": null,
+      "previousComparison": {
+        "productSha256": "cbe6adc3494ee777163854a9d12cb25b9771ab5d71740b3676bec8ce2bad7f19",
+        "cohort": "development"
+      }
+    },
+    {
+      "phase": "holdout",
+      "privateDirectory": "holdout-ready",
+      "preparedAt": "2026-09-13T13:41:43.829Z",
+      "cohort": "holdout",
+      "protocol": {
+        "attemptsPerArm": 1,
+        "maximumOptimizationRounds": 1,
+        "minimumWorkers": 0,
+        "maximumWorkers": 3,
+        "automaticReruns": false,
+        "optimizationTrigger": {
+          "metric": "hostWallClockMs",
+          "adaptiveToSingleRatioAbove": 1.2,
+          "selection": "largest telemetry-observed bottleneck"
+        },
+        "holdoutAfterDevelopmentDecision": true
+      },
+      "config": {
+        "provider": "openai-codex",
+        "model": "gpt-5.6-luna",
+        "thinkingLevel": "max",
+        "timeoutMs": 1200000,
+        "sharedToolCallLimit": 256,
+        "maxAgents": 3,
+        "dnsOrder": "ipv4first",
+        "collaborationVersion": 2,
+        "workspaceMode": "shared"
+      },
+      "spawnPolicy": {
+        "maxCreatedAgents": 3,
+        "maxDepth": 1,
+        "lockedRuntime": {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-luna",
+          "thinkingLevel": "max"
+        }
+      },
+      "goals": {
+        "mob": "Some newly spawned mobs are unexpectedly tilted, which can lead to inconsistent collision and movement behavior. Investigate the project, make the smallest appropriate fix, and validate the candidate. Preserve the intended randomized horizontal spawn direction and speed."
+      },
+      "multiAppendix": "本次使用 Adaptive Multi：Root 最多创建三个直接 worker，不强制创建，小任务可以使用零个 worker。只有存在可独立完成、且结果能够替代 Root 后续工作的明确子任务时才委派；不要将同一调查重复交给多个 worker。委派时明确边界、所需证据和交付内容。Worker 完成后用简洁最终答复交付结论、证据和未覆盖项，然后结束当前 turn，不为保持在线而循环 wait_agent；后续工作由 Root 使用 followup_task 启动。Root 利用已有证据整合、修改并在最终共享候选上验证，不完整重复 worker 已完成且有证据的调查。最小修复通过相关最终候选检查后应结束并说明剩余限制；只有出现实际失败、明确未覆盖的验收要求、证据冲突或源码变化时，才重开等价修复方案或重复同一验证。Worker 仅提出另一方案不足以重开已验证修复；运行检查通过不等于完整验收。所有代理共享一个私有候选工作区，修改立即可见，需协调同文件修改。",
+      "source": {
+        "mob": {
+          "commit": "711822a319c4333a8740522f3c71e97783199fb0",
+          "tree": "e80cfdab1b1c2b917bd1fe65d5aeaec5cf292539",
+          "sha256": "c093f2f5a8ffebb2a7bee7b9d61e21034edeb4ad375fb41402c498cd41dca9df"
+        }
+      },
+      "product": {
+        "head": "ebe6715be3101bb5a7e56171242f81a20cb875f5",
+        "sha256": "312f96bc9952805568d3aeefc137a774505b413b4f5eeb0929e22d1f2c5d483e",
+        "fileCount": 390
+      },
+      "model": {
+        "metadata": {
+          "id": "gpt-5.6-luna",
+          "provider": "openai-codex",
+          "api": "openai-codex-responses",
+          "cost": {
+            "input": 0.2,
+            "output": 1.2,
+            "cacheRead": 0.02,
+            "cacheWrite": 0.25,
+            "tiers": [
+              {
+                "inputTokensAbove": 272000,
+                "input": 0.4,
+                "output": 1.8,
+                "cacheRead": 0.04,
+                "cacheWrite": 0.5
+              }
+            ]
+          },
+          "contextWindow": 272000,
+          "maxTokens": 128000,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "xhigh": "xhigh",
+            "max": "max",
+            "minimal": "low"
+          }
+        },
+        "sha256": "d2dbd41a9cb5b5e2039902b448f68b238a7160265cdbcc3ffc748d633f9c2b61",
+        "costMeaning": "SDK estimate; actual provider bill unavailable"
+      },
+      "node": "v22.23.1",
+      "piVersion": "0.83.0",
+      "srtVersion": "0.0.74",
+      "godotSha256": "32f8d7596c4b41185512b1c49d69f2da3be018fd784a53e349fa92a98a97bcde",
+      "checkers": {
+        "mob": "6a14b0864245430a1d465932633657778401865ecfe181032b1fe544a2aac4ef"
+      },
+      "optimization": null,
+      "orchestrationAmendment": {
+        "changedPaths": ["scripts/godot-multi-agent-pilot/run.mjs"],
+        "previousRunnerSha256": "f16ac0f4bd6934bc8975184602b05bfbcafa68aa0b6bcd3ca98c17a158e09e2c",
+        "currentRunnerSha256": "991b3c5d0c03f28cc12a8f440059d4f603b45e6c83072bfaeec1079172db5ff8",
+        "reason": "Startup-only repair: pass the existing explicit projectRoot for the nested Mob case after zero-model prerequisite failure. All other product files, model, budgets, goals and collaboration strategy match development.",
+        "projectRoot": "3d/squash_the_creeps"
+      },
+      "previousComparison": {
+        "productSha256": "e3b9e7f4c82206c63ab6c94ea665a0abcb6bb3644bc73d9c888db21bb5ba04f2",
+        "cohort": "development-optimized"
+      }
+    }
+  ]
+}

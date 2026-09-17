@@ -43,3 +43,5 @@ docs/evidence/vnext-project-environment-pe-a-local-r1/validator/validator-result
 # Preserve exact sanitized historical PE-B evidence bytes.
 docs/evidence/vnext-project-environment-pe-b-local-r1/evidence/pe-b-evidence.v2.json
 docs/evidence/vnext-project-environment-pe-b-local-r1/validator/validator-result.v2.json
+
+.tools/

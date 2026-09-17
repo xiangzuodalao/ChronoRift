@@ -38,4 +38,8 @@ default_godot_bin="${repo_root}/.tools/godot/4.7.1/Godot_v4.7.1-stable_linux.x86
 export GODOT_BIN="${GODOT_BIN:-${default_godot_bin}}"
 [[ -x "${GODOT_BIN}" ]] || fail "Godot is not executable at ${GODOT_BIN}"
 
-corepack pnpm test:sandbox
+if command -v corepack >/dev/null 2>&1; then
+  corepack pnpm test:sandbox
+else
+  npm run test:sandbox
+fi

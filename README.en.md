@@ -27,6 +27,12 @@ A default `chronorift [goal]`, arbitrary-project support, and automatic “fixed
 
 _Concept art for the product theme; not a UI screenshot, runtime capture, or piece of experimental evidence. [Open the 2560×1280 master](docs/assets/chronorift-hero-master.jpg)._
 
+Project Preview now defaults to godot-ai MCP for editor operations, gameplay input, state inspection and screenshots.
+The old GameTools are disabled by default; use `--game-backend inspection` for the legacy backend or `none` for a
+coding-only comparison. Root alone gets MCP; workers share the coding workspace. Before bash/edit/write, ChronoRift
+saves scenes and closes the editor. See [setup and boundaries](docs/godot-mcp.md). Integration tests do not establish
+an improvement in bug-fix time or success rate. Historical case-study results below retain their original scope.
+
 ## Architecture in two minutes
 
 ![ChronoRift high-level architecture](docs/assets/chronorift-architecture.png)

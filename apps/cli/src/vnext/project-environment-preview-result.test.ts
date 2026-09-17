@@ -3,6 +3,7 @@ import {
   ProjectEnvironmentPreviewResultV2Schema,
   ProjectEnvironmentPreviewResultV4Schema,
   ProjectEnvironmentPreviewResultV5Schema,
+  ProjectEnvironmentPreviewResultV6Schema,
 } from "./project-environment-preview.js";
 
 const result = (thinkingLevel: unknown) => ({
@@ -94,4 +95,45 @@ describe("inspection Preview result V2", () => {
       ).toBe(false);
     },
   );
+});
+
+it("distinguishes writable MCP and coding-only results without changing historical contracts", () => {
+  const mcp = {
+    ...result("max"),
+    schemaVersion: 6,
+    gameBackend: "godot-ai",
+    workspaceMode: "shared-editor",
+    agents: null,
+    executionLimits: {
+      sharedToolCallLimit: 256,
+      workerTurnTimeoutMs: 600000,
+      workerTurnToolCallLimit: 64,
+    },
+  };
+  expect(ProjectEnvironmentPreviewResultV6Schema.parse(mcp)).toEqual(mcp);
+  expect(
+    ProjectEnvironmentPreviewResultV6Schema.safeParse({
+      ...mcp,
+      gameBackend: "none",
+    }).success,
+  ).toBe(false);
+  expect(
+    ProjectEnvironmentPreviewResultV6Schema.safeParse({
+      ...mcp,
+      gameBackend: "none",
+      workspaceMode: "coding",
+    }).success,
+  ).toBe(true);
+  expect(
+    ProjectEnvironmentPreviewResultV6Schema.safeParse({
+      ...mcp,
+      agents: {
+        recordPath: "/task/agents.json",
+        count: 1,
+        maxAgents: 3,
+        sharedToolCalls: 300,
+        sharedToolCallLimit: 256,
+      },
+    }).success,
+  ).toBe(false);
 });

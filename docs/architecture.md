@@ -29,11 +29,9 @@ flowchart LR
   CLI --> PI[Pi Session]
   PI --> CODE[SRT coding tools]
   CODE <--> WS
-  PI --> GAME[Inspection game tools]
-  WS --> IMPORT[SRT 临时原生导入]
-  IMPORT --> STAGE[独立源码只读 stage]
-  GAME <--> RUNTIME[Godot observer 与 sidecar]
-  STAGE --> RUNTIME
+  PI --> GAME[Pi MCP adapter]
+  GAME <--> RUNTIME[SRT Godot AI / 编辑器 / Xvfb]
+  WS <--> RUNTIME
   PI --> RECORDS[Session / patch / 执行记录]
   RUNTIME --> RECORDS
 ```
@@ -45,8 +43,9 @@ flowchart LR
 文件进入 source closure，ignored 文件和未选中的 untracked 文件不进入。Host 验证路径和文件类型后物化 candidate，
 Pi 的 `cwd` 是其中的 canonical physical workspace。原 checkout 不被运行命令修改。
 
-每次 `game_launch` 从当时的 candidate 捕获源码，完成原生导入和产物准入后创建新的只读运行 stage。
-后续 candidate 修改不会更新已启动的游戏。Agent 自主决定是否启动、查询、停止或再编辑，没有固定调查阶段机。
+默认 `godot-ai` 后端在同一个可写 candidate 中运行编辑器与游戏。Root 使用 Pi MCP 扩展发现与调用上游工具，
+worker 只使用 coding tools。任何 bash/edit/write 前保存场景并关闭编辑器，下次 MCP 调用重新打开。
+`--game-backend inspection` 保留独立只读 stage，`none` 提供 coding-only 入口。详见 [MCP 环境](godot-mcp.md)。
 
 结束时 Host 清理运行资源并保留结果目录。普通完成不自动 commit、merge、push、apply 或删除候选。
 当前没有通用跨命令 Task resume/discard API；`taskId` 是 fresh-run 的记录 identity。
@@ -70,7 +69,13 @@ Agent 通过 SRT-backed port 使用 `read`、`bash`、`edit`、`write`、`grep`�
 用户取消、超时、不可恢复的 provider 或 Host failure 按实际终止原因记录。Provider/model 在命令入口选择，凭据留在 Host。
 已安装 Pi 的 source/types 是集成接口依据；升级 SDK 需要兼容验证。
 
-## 4. 当前游戏工具
+## 4. 游戏工具后端
+
+默认使用 `pi-mcp-adapter@2.34.0` 和 `godot-ai@4.1.0`，Pi SDK 为 `0.84.1`，引擎为 `4.7.1`。上游 MCP 提供
+场景/节点/脚本编辑、运行、输入、状态求值和截图。标准 `mcp` gateway 的 schema 与图片处理属于扩展；
+ChronoRift 只管理服务权限、管道传输和编码/编辑器生命周期，不维护另一套 MCP→GameTools 映射。
+
+以下只描述显式 `inspection` 后端：
 
 | 工具          | 实际行为                                                                                          |
 | ------------- | ------------------------------------------------------------------------------------------------- |
@@ -99,8 +104,9 @@ Host 使用有界 framed stdio 与沙箱内 sidecar 通信，sidecar 再连接 G
 [`srt-sandbox-controller.ts`](../apps/cli/src/vnext/srt-sandbox-controller.ts) 提供。
 
 - Coding process 可以读写自己的 workspace、home、tmp 和 artifact scratch。
-- Godot 不直接运行可写 candidate。Host 复制普通文件到独立 stage，拒绝路径逃逸、危险链接与特殊文件，叠加受管 overlay。
-- Run stage 的项目源码只读，只有 `.godot/`、home、tmp 和 artifacts 可写；mutable candidate 对游戏进程不可见。
+- 默认 MCP 编辑器和游戏可读写 candidate，Host 的配置、模型凭据、socket 与 adapter cache 不进入环境。
+- Inspection Godot 不直接运行可写 candidate。Host 复制普通文件到独立 stage，拒绝路径逃逸、危险链接与特殊文件，叠加受管 overlay。
+- Inspection run stage 的项目源码只读，只有 `.godot/`、home、tmp 和 artifacts 可写；mutable candidate 对游戏进程不可见。
 - 两种 process 都使用 strict empty network allowlist，从空白环境构造最小变量集；Host 模型凭据不进入工具环境。
 - SRT 初始化或 wrap 失败即失败，不回退到无沙箱执行。
 
@@ -112,7 +118,9 @@ Controller 保留 timeout、cancellation、process-group kill、stdout/stderr �
 也不能证明 telemetry 完整；真正的权限边界是 OS sandbox。Host 被 SIGKILL、掉电或内核终止时可能没有 cleanup 结果，
 残留需由 Operator 处理，不能补记为成功清理。
 
-## 6. 原生导入与配置兼容
+## 6. Inspection 原生导入与配置兼容
+
+本节属于 `--game-backend inspection`。默认 MCP 使用真实图形编辑器原生导入，并要求 Godot 4.7.1；不提供源码只读承诺。
 
 [`godot-import-preparation.ts`](../apps/cli/src/vnext/godot-import-preparation.ts) 在独立 SRT process 和一次性可写
 副本中完成 native import。Candidate 始终隐藏、网络始终拒绝；该副本不会直接成为游戏运行目录。
@@ -158,7 +166,8 @@ Fork 只复制允许的背景文本，不复制父请求用量；保留已结束
 闲置且无待处理消息/IPC 的 worker 可以按 LRU 卸载并沿原 Session 重载。受控实验可另外限制创建总数、深度和模型配置。
 默认 worker 每轮 10 分钟/64 次执行，团队 256 次；Host `executionLimits` 可显式调整。协作工具和 `game_stop` 不计执行预算。
 
-Coding 操作与 launch 源码捕获共用 candidate 锁，模型请求和各自固定 stage 的 Godot execution 可并行。
+MCP 后端串行化 coding 与编辑器调用；worker 不注册 MCP。Inspection 的 coding 操作与 launch 源码捕获共用 candidate 锁，
+模型请求和各自固定 stage 的 Godot execution 可并行。
 长 coding 命令仍占锁；锁不提供跨多次 read/edit 的业务事务，也不自动处理覆盖冲突。
 每个代理只能控制自己的 execution、临时目录和取消范围，修改范围仍需代理协调。
 
@@ -179,7 +188,8 @@ ID 不是路径或权限凭据；操作验证 schema、存在性和 fresh-run ow
 [`packages/godot-protocol`](../packages/godot-protocol/src/index.ts)，相关 DTO 在
 [`project-environment.ts`](../packages/domain/src/project-environment.ts)。旧初始化 DTO 的存在不表示其 producer 仍运行。
 
-普通 Preview 输出 V2，多代理输出 V4；显式 `executionLimits` 使用 V5，并记录 limits、workspaceMode 和团队计数。
+默认 MCP 与 coding-only 输出 V6，记录 backend、workspaceMode、limits 和团队计数；MCP 有独立生命周期记录。
+Inspection 普通输出 V2，多代理输出 V4；显式 `executionLimits` 使用 V5。
 旧 Preview V1/V3 和 `agents.v1.json` 保留原义。当前记录包含 Session、候选 patch、执行路径、有界日志和实际失败信息；
 多代理另存 `agents.v2.json`、worker turns、邮箱投递/消费和用量归属。所有 writer 停止后才提取并 round-trip 校验 patch；
 清理或提取失败时 candidate 是否变化可为未知，不能填成“未修改”。
@@ -230,11 +240,11 @@ GN-1 使用 checked-in ProjectAdapter V1 观察固定 Platform geometry/resource
 
 ## 11. 限制、验证与证据
 
-Preview 只查询存活执行的当前可读对象/属性，没有 retained history、checkpoint/restore、fork 或 compare。
+Inspection 只查询存活执行的当前可读对象/属性；MCP 增加输入、编辑、求值和截图。两者都没有通用 retained history、checkpoint/restore、fork 或 compare。
 项目路径与有意义的字段仍需 Agent 调查；观察及序列化可能影响时序，也不能取回对象消失前未采集的状态。
 Process frame、physics tick、simulation time、render completion 与 Host time 必须区分。
 
-Preview 使用 headless backend，不保证 window-system API、visual/audio/GPU、跨平台 Host 或任意 Godot 项目支持。
+默认 MCP 使用 Xvfb 和软件渲染，支持截图但没有实时桌面 UI；Inspection 使用 headless backend。两者都不保证任意项目、音频、硬件 GPU 或跨平台兼容。
 通用 source migration、conflict-safe apply/merge、长期恢复和完整 engine snapshot 都尚未提供。
 共享 candidate 不保证 Root 已审阅所有 worker 修改；并行工作量、worker 完成或成功 launch 都不能替代精确候选的独立验收。
 

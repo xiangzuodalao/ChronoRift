@@ -91,6 +91,11 @@ export interface SrtCodingRequest extends SrtCommonRequest {
   readonly onOutput?: ((chunk: Uint8Array) => void) | undefined;
 }
 
+export interface SrtEditorRequest extends SrtCommonRequest {
+  readonly workspacePath: string;
+  readonly readOnlyPaths: readonly string[];
+}
+
 export interface SrtGodotRequest extends SrtCommonRequest {
   /** Immutable Host-prepared project copy used for this validation run. */
   readonly projectStagePath: string;
@@ -334,6 +339,47 @@ export class SrtSandboxController {
 
   public async openGodot(request: SrtGodotRequest): Promise<SrtDuplexHandle> {
     return this.#openGodot(request, false);
+  }
+
+  /** Managed editor and game share a private writable project, never the checkout. */
+  public async openEditor(request: SrtEditorRequest): Promise<SrtDuplexHandle> {
+    this.#beginStart();
+    try {
+      this.#validateCommonRequest(request);
+      assertAbsolutePath(request.workspacePath, "workspacePath");
+      if (!isWithin(request.workspacePath, request.cwd))
+        throw new TypeError("Editor cwd must be inside its private workspace");
+      const writable = [
+        request.workspacePath,
+        request.homePath,
+        request.tempPath,
+        request.artifactsPath,
+      ];
+      this.#validateAllowedPaths(writable, "editor writable path");
+      this.#validateAllowedPaths(
+        request.readOnlyPaths,
+        "editor dependency path",
+      );
+      return await this.#start({
+        request,
+        filesystem: {
+          denyRead: unique([
+            ...DEFAULT_DENY_READ_PATHS,
+            ...this.#protectedReadPaths,
+            ...(request.isolationReadRoots ?? []),
+          ]),
+          allowRead: unique([
+            SRT_APPLY_SECCOMP_PATH,
+            ...writable,
+            ...request.readOnlyPaths,
+          ]),
+          allowWrite: writable,
+          denyWrite: DEFAULT_DENY_WRITE_PATHS,
+        },
+      });
+    } finally {
+      this.#endStart();
+    }
   }
 
   /** Host-only disposable import copy; never the coding candidate or run stage. */

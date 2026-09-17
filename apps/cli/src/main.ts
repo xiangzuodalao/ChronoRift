@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import {
+  installGodotMcp,
+  doctorGodotMcp,
+} from "./vnext/godot-mcp-installation.js";
 
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -52,7 +56,7 @@ interface Arguments {
   readonly positionals: readonly string[];
 }
 
-const booleanFlags = new Set(["json", "multi-agent"]);
+const booleanFlags = new Set(["json", "multi-agent", "with-mcp"]);
 const repeatableFlags = new Set(["include-untracked"]);
 
 function parseArguments(argv: readonly string[]): Arguments {
@@ -463,6 +467,16 @@ async function replayCommand(args: Arguments, cwd: string): Promise<void> {
 
 async function godotDoctorCommand(args: Arguments, cwd: string): Promise<void> {
   const godotBin = flag(args, "godot-bin", "GODOT_BIN");
+  if (hasFlag(args, "with-mcp")) {
+    const godot = await doctorGodot({
+      cwd,
+      ...(godotBin === undefined ? {} : { godotBin }),
+    });
+    const mcp = await doctorGodotMcp();
+    printJson({ godot, mcp });
+    if (!mcp.available) process.exitCode = 1;
+    return;
+  }
   const artifactRoot = resolve(
     cwd,
     flag(args, "artifacts", "CHRONORIFT_ARTIFACT_ROOT") ?? ".chronorift",
@@ -485,8 +499,14 @@ async function godotDoctorCommand(args: Arguments, cwd: string): Promise<void> {
   });
 }
 
-async function godotInstallCommand(cwd: string): Promise<void> {
-  printJson(await installGodot({ cwd }));
+async function godotInstallCommand(
+  cwd: string,
+  args: Arguments,
+): Promise<void> {
+  const godot = await installGodot({ cwd });
+  printJson(
+    hasFlag(args, "with-mcp") ? { godot, mcp: await installGodotMcp() } : godot,
+  );
 }
 
 async function modelsCommand(args: Arguments): Promise<void> {
@@ -532,6 +552,7 @@ async function projectPreviewCommand(
     "worker-provider",
     "worker-model",
     "worker-thinking",
+    "game-backend",
   ]);
   const multiAgent = hasFlag(args, "multi-agent");
   const workerFlags = [
@@ -552,6 +573,14 @@ async function projectPreviewCommand(
   try {
     result = await runProjectEnvironmentPreviewV2({
       projectPath: cwd,
+      gameBackend: (() => {
+        const value = flag(args, "game-backend") ?? "godot-ai";
+        if (value !== "godot-ai" && value !== "inspection" && value !== "none")
+          throw new Error(
+            "--game-backend must be godot-ai, inspection, or none",
+          );
+        return value;
+      })(),
       provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
       model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
       thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
@@ -648,8 +677,10 @@ async function projectPreviewCommand(
       `selected project root: ${result.projectRoot.length === 0 ? "." : result.projectRoot}`,
       `candidate source: ${result.candidateSourceChanged === null ? "unknown (candidate not frozen)" : result.candidateSourceChanged ? "changed" : "unchanged"}`,
       `candidate patch: ${result.candidatePatch?.path ?? "unavailable"}`,
-      `runtime executions: ${result.executions.length}`,
-      ...(result.schemaVersion === 4
+      `runtime records: ${result.executions.length}`,
+      ...(result.schemaVersion === 4 ||
+      result.schemaVersion === 5 ||
+      result.schemaVersion === 6
         ? [`agent records: ${result.agents?.recordPath ?? "unavailable"}`]
         : []),
       `Pi: ${result.provider}/${result.model} (${result.thinkingLevel})`,
@@ -837,7 +868,7 @@ function printHelp(): void {
     `  Runs one fresh Godot demo Mob-orientation arm through the fixed ProjectAdapter V2 slice. One arm is not a comparative result.\n\n`,
   );
   process.stdout.write(
-    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--thinking LEVEL --state-root PATH --godot-bin PATH] [--multi-agent --max-agents 3 --worker-model MODEL --worker-provider PROVIDER --worker-thinking LEVEL]\n`,
+    `  pnpm project preview -- [GOAL] --provider PROVIDER --model MODEL [--project-root RELATIVE_PATH] [--include-untracked RELATIVE_FILE]... [--thinking LEVEL --state-root PATH --godot-bin PATH] [--game-backend godot-ai|inspection|none] [--multi-agent --max-agents 3 --worker-model MODEL --worker-provider PROVIDER --worker-thinking LEVEL]\n`,
   );
   process.stdout.write(
     `  Project Environment Preview freezes tracked working-tree bytes plus explicitly repeated untracked files for one selected Godot 4.7.1 GDScript project. It remains separate from the default entry point.\n\n`,
@@ -909,7 +940,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       await godotDoctorCommand(args, cwd);
       return;
     case "godot-install":
-      await godotInstallCommand(cwd);
+      await godotInstallCommand(cwd, args);
       return;
     case "help":
     case "--help":

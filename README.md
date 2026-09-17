@@ -19,7 +19,7 @@ Agent 返回 Build-bound runtime state、实际 diff 和 tool result。Agent 自
 > 14 个、修改后 5 个 Mob state，候选通过独立 evaluator 3/3。Coding-only 也通过 3/3，因此本案例证明产品路径复用，
 > 不证明总体修复优势。
 
-**截至 2026-09-15：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
+**截至 2026-09-17：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
 `chronorift [goal]`、任意 Godot 项目支持和自动“修复成功”判定尚未实现。
 
 ![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
@@ -43,8 +43,12 @@ sandbox、Godot execution 和 runtime evidence。
 
 当前实现、模块职责和运行边界见 [架构文档](docs/architecture.md)，使用与验证命令见 [开发指南](docs/development.md)。
 
-Project Preview 可选 `--multi-agent`：Root 和 worker 使用独立 Pi Session，共享一个私有 candidate，各自拥有固定源码的
-Godot execution。所有代理都可继续委派、发消息和等待；默认全树最多 3 个活跃 worker，加上预留的 Root 共 4 个并发名额。
+Project Preview 默认接入 godot-ai MCP，支持编辑器操作、游戏输入、状态读取和截图。旧 GameTools 默认禁用，
+可用 `--game-backend inspection` 回退，`--game-backend none` 提供 coding-only 对照入口。安装与边界见
+[Godot MCP 使用说明](docs/godot-mcp.md)。接通环境不等于已经证明修复速度或成功率提升。
+
+Project Preview 可选 `--multi-agent`：Root 和 worker 使用独立 Pi Session，共享一个私有 candidate；默认只有 Root 使用 MCP，
+worker 写代码前会保存并关闭编辑器。所有代理都可继续委派、发消息和等待；默认全树最多 3 个活跃 worker，加上预留的 Root 共 4 个并发名额。
 采用 Adaptive Multi：只委派能替代 Root 工作的独立子任务，小任务允许零 worker；worker 完成后结束当前 turn，后续通过
 `followup_task` 继续。记录各代理模型请求和共享 workspace 锁等待时间，用于检查协作是否减少 Root 工作和耗时。
 普通消息不自动启动闲置模型轮，Root 完成后 Headless 会停止剩余 writer，再输出最终共享 patch。使用方法、用量归属和

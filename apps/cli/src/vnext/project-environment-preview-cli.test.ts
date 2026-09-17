@@ -139,6 +139,7 @@ describe("inspection Preview CLI", () => {
       "/opt/godot",
     ]);
     expect(runPreview).toHaveBeenCalledWith({
+      gameBackend: "godot-ai",
       projectPath: process.cwd(),
       provider: "provider",
       model: "model",
@@ -152,6 +153,25 @@ describe("inspection Preview CLI", () => {
     });
     expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(result());
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it.each(["godot-ai", "inspection", "none"])(
+    "selects explicit backend %s",
+    async (backend) => {
+      vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      runPreview.mockResolvedValue(result());
+      await main([...args, "--game-backend", backend]);
+      expect(runPreview).toHaveBeenCalledWith(
+        expect.objectContaining({ gameBackend: backend }),
+      );
+    },
+  );
+
+  it("rejects unknown game backends before preparing a workspace", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await main([...args, "--game-backend", "unknown"]);
+    expect(process.exitCode).toBe(1);
+    expect(runPreview).not.toHaveBeenCalled();
   });
 
   it("accepts coding-only completion without a runtime execution", async () => {

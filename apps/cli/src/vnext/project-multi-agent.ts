@@ -63,6 +63,10 @@ export interface ProjectMultiAgentEnvironmentOptions {
   readonly thinkingLevel: PiThinkingLevel;
   readonly agentDir?: string | undefined;
   readonly instructions: string;
+  readonly gameTools?: boolean | undefined;
+  readonly codingEnvironment?: ConstructorParameters<
+    typeof AgentExecutionScope
+  >[0]["codingEnvironment"];
   readonly configuration: ProjectMultiAgentOptions;
   readonly executionLimits?: ProjectExecutionLimits | undefined;
   /** Host-only experiment constraints; never populated from model tool input. */
@@ -98,6 +102,8 @@ export async function createProjectMultiAgentEnvironment(
     godotPath: options.godotPath,
     budget,
     candidateGate,
+    gameTools: options.gameTools,
+    codingEnvironment: options.codingEnvironment,
   });
   await rootScope.initialize();
   const scopes = new Map<string, AgentExecutionScope>();
@@ -134,6 +140,8 @@ export async function createProjectMultiAgentEnvironment(
       godotPath: options.godotPath,
       budget,
       candidateGate,
+      gameTools: options.gameTools,
+      codingEnvironment: options.codingEnvironment,
     });
     scopes.set(agentId, scope);
     await scope.initialize();
@@ -153,7 +161,7 @@ export async function createProjectMultiAgentEnvironment(
           ? {}
           : { agentDir: options.agentDir }),
         environmentProfile: "coding",
-        additionalEnvironmentInstructions: `${options.instructions}\nYou share the private candidate workspace with Root and the other agents. Completed edits are immediately visible to all agents; coordinate overlapping changes and preserve other agents’ work. Your Godot executions and temporary files remain independent. Runtime observations describe the captured source of that execution, not later workspace edits. Report actual observations and uncertainty.`,
+        additionalEnvironmentInstructions: `${options.instructions}\nYou share the private candidate workspace with Root and the other agents. Completed edits are immediately visible to all agents; coordinate overlapping changes and preserve other agents’ work. ${options.gameTools === false ? (options.codingEnvironment === undefined ? "No managed game tools are available in this coding-only task." : "Only Root has MCP tools. Your writes stop and save Root’s editor; notify Root when editing during a game investigation.") : "Your Godot executions and temporary files remain independent. Runtime observations describe captured source, not later edits."} Report actual observations and uncertainty.`,
       },
       invokeTool: async (request, signal, onUpdate) => {
         const tool = tools.get(request.name);
@@ -227,6 +235,7 @@ export async function createProjectMultiAgentEnvironment(
   const recordPath = join(options.layout.taskRecordDirectory, "agents.v2.json");
   return {
     tools,
+    admitMcp: (name: string) => budget.admit(name),
     supervisor,
     rootRecordPaths: () => rootScope.recordPaths(),
     async close() {

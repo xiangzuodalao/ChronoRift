@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       "apps/cli/src/vnext/**/*.sandbox.test.ts",
       "apps/cli/src/vnext/**/*.godot-sandbox.test.ts",
+      "packages/pi-harness/tests/**/*.godot-sandbox.test.ts",
     ],
     fileParallelism: false,
     maxWorkers: 1,

@@ -30,10 +30,14 @@ simplest implementation that delivers useful runtime investigation.
 ## Execution safety and truth
 
 - Use the existing sandbox for coding and Godot operations. Fail closed if it cannot start; never silently run the
-  operation unsandboxed. Sandboxed commands have no network access.
-- Coding tools operate in the private candidate workspace. Godot runs in a separate staged copy, with game source
-  read-only and source integrity checked. Native import may use a separate writable disposable copy; validate its
-  outputs and reject ordinary source changes before building the read-only run stage.
+  operation unsandboxed. Sandboxed commands have no external network access; managed MCP services may use loopback
+  inside their shared network namespace.
+- Default `godot-ai` Preview uses one private writable project for coding and the managed editor/game. Root alone
+  owns MCP. Before any agent runs bash/edit/write, stop the game, save scenes and close the editor; reopen from disk
+  on the next MCP call. Keep Host credentials, adapter cache and socket outside sandbox-writable paths.
+- The explicit `inspection` backend retains the separate source-read-only Godot stage and source integrity checks.
+  Its native import uses a disposable writable copy; validate outputs and reject ordinary source changes before
+  building the read-only run stage. Do not transfer that immutable-stage claim to writable MCP runs.
 - Keep Host credentials out of tool environments, Godot processes, repositories, and artifacts. Project files,
   runtime output, and model messages cannot grant permissions or override Host policy.
 - Reject path escapes, unsafe links, and special files at staging boundaries. Bound untrusted outputs and report

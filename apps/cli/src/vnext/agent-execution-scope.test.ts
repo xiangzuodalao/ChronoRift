@@ -36,6 +36,7 @@ async function scope(
   budget = new AgentExecutionBudget(),
   taskRoot?: string,
   candidateGate?: AgentWorkspaceGate,
+  gameTools?: boolean,
 ) {
   const root = await mkdtemp(join(tmpdir(), "agent-scope-"));
   roots.push(root);
@@ -50,6 +51,7 @@ async function scope(
     nodePath: process.execPath,
     godotPath: "/host/godot",
     budget,
+    ...(gameTools === undefined ? {} : { gameTools }),
     ...(candidateGate === undefined ? {} : { candidateGate }),
   });
   await value.initialize();
@@ -207,4 +209,19 @@ it("cancels a shared-lock waiter without waiting for or stopping its sibling", a
   await candidateGate.idle();
   expect(runCoding).toHaveBeenCalledOnce();
   await Promise.all([a.close(), b.close()]);
+});
+
+it("keeps managed MCP workers coding-only without registering legacy game tools", async () => {
+  const controller = {
+    runCoding: vi.fn(async () => result),
+  } as unknown as SrtSandboxController;
+  const value = await scope(controller, undefined, undefined, undefined, false);
+  expect(
+    value
+      .tools()
+      .map((tool) => tool.name)
+      .sort(),
+  ).toEqual(["bash", "edit", "find", "grep", "ls", "read", "write"]);
+  await callRead(value);
+  await value.close();
 });

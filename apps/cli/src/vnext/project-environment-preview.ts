@@ -1,3 +1,4 @@
+import { GodotMcpEnvironment } from "./godot-mcp-environment.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
 import {
@@ -289,6 +290,7 @@ const materializePreviewTaskWorkspaceV1 = async (input: {
 
 export interface ProjectEnvironmentPreviewRequestV2 {
   readonly projectPath: string;
+  readonly gameBackend?: "godot-ai" | "inspection" | "none" | undefined;
   readonly projectRoot?: string | undefined;
   readonly includeUntrackedPaths?: readonly string[] | undefined;
   readonly provider: string;
@@ -426,10 +428,48 @@ export type ProjectEnvironmentPreviewResultV5 = z.infer<
   typeof ProjectEnvironmentPreviewResultV5Schema
 >;
 
+export const ProjectEnvironmentPreviewResultV6Schema =
+  ProjectEnvironmentPreviewResultV2Schema.extend({
+    schemaVersion: z.literal(6),
+    gameBackend: z.enum(["godot-ai", "none"]),
+    workspaceMode: z.enum(["shared-editor", "coding"]),
+    candidateSourceChanged: z.boolean().nullable(),
+    executions: z.array(pathText).max(2048),
+    executionLimits: ProjectExecutionLimitsSchema,
+    agents: ProjectEnvironmentPreviewResultV5Schema.shape.agents,
+  })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.workspaceMode !==
+        (value.gameBackend === "godot-ai" ? "shared-editor" : "coding")
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["workspaceMode"],
+          message: "Workspace mode must match the game backend",
+        });
+      if (
+        value.agents !== null &&
+        (value.agents.sharedToolCallLimit !==
+          value.executionLimits.sharedToolCallLimit ||
+          value.agents.sharedToolCalls > value.agents.sharedToolCallLimit)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["agents"],
+          message: "Agent budget must match Host limits",
+        });
+    });
+export type ProjectEnvironmentPreviewResultV6 = z.infer<
+  typeof ProjectEnvironmentPreviewResultV6Schema
+>;
+
 export type ProjectEnvironmentPreviewResult =
   | ProjectEnvironmentPreviewResultV2
   | ProjectEnvironmentPreviewResultV4
-  | ProjectEnvironmentPreviewResultV5;
+  | ProjectEnvironmentPreviewResultV5
+  | ProjectEnvironmentPreviewResultV6;
 
 export interface ProjectEnvironmentPreviewDependenciesV2 {
   readonly runPiTurn: typeof runVNextPiTurnWithSdk;
@@ -470,6 +510,14 @@ export async function runProjectEnvironmentPreviewV2(
   request: ProjectEnvironmentPreviewRequestV2,
   dependencies: ProjectEnvironmentPreviewDependenciesV2 = defaultDependencies,
 ): Promise<ProjectEnvironmentPreviewResult> {
+  const gameBackend = z
+    .enum(["godot-ai", "inspection", "none"])
+    .parse(request.gameBackend ?? "godot-ai");
+  // Capture Host auth location before the adapter scopes its private metadata cache.
+  const agentDir =
+    gameBackend === "godot-ai"
+      ? resolvePiHostAgentDirectory(request.agentDir)
+      : request.agentDir;
   const executionLimits = ProjectExecutionLimitsSchema.parse(
     request.executionLimits ?? {},
   );
@@ -487,7 +535,8 @@ export async function runProjectEnvironmentPreviewV2(
       code: "goal_required",
     });
   const runtimeConfig = await resolveSrtRuntimeConfig({
-    godotVersionPolicy: "inspection-verified",
+    godotVersionPolicy:
+      gameBackend === "godot-ai" ? "exact-4.7.1" : "inspection-verified",
     ...(request.stateRoot === undefined
       ? {}
       : { stateRoot: request.stateRoot }),
@@ -527,7 +576,7 @@ export async function runProjectEnvironmentPreviewV2(
     multiAgent === undefined
       ? {}
       : {
-          protectedReadPaths: [resolvePiHostAgentDirectory(request.agentDir)],
+          protectedReadPaths: [resolvePiHostAgentDirectory(agentDir)],
         },
   );
   const runtime = new GodotInspectionRuntime({
@@ -547,6 +596,37 @@ export async function runProjectEnvironmentPreviewV2(
   const admission = createProjectEnvironmentToolCallAdmissionV1(
     executionLimits.sharedToolCallLimit,
   );
+  const mcp =
+    gameBackend === "godot-ai"
+      ? await GodotMcpEnvironment.create({
+          controller,
+          workspace: layout.workspaceDirectory,
+          godot: runtimeConfig.godot.binding.executablePath,
+          recordsDirectory: layout.runtimeRecordDirectory,
+          isolationReadRoots: [layout.taskRootDirectory],
+          admit: (name) => {
+            if (collaboration !== undefined) {
+              collaboration.admitMcp(name);
+              return;
+            }
+            if (!admission.tryAdmit(name))
+              throw new Error("Shared tool budget exhausted");
+          },
+        })
+      : undefined;
+  const instructions =
+    gameBackend === "inspection"
+      ? inspectionInstructions
+      : gameBackend === "none"
+        ? "Coding-only environment: no managed game tools are registered."
+        : [
+            "Godot AI MCP is available through mcp search. Discover and use the upstream tools for editor authoring and game interaction.",
+            "Only Root controls the editor. All agents share this private writable project; preserve other agents' edits.",
+            "Scene edits can remain in editor memory until scene_save. File reads see saved bytes.",
+            "Before any bash/edit/write, the Host stops the game, saves open scenes and closes the editor. The next MCP call reopens it from disk; use project_run to start a new game.",
+            "Worker writes also close the editor. Old running state is invalid after a write. Input sequences use process frames, not deterministic physics replay.",
+            "Use editor_screenshot with source=game for actual gameplay images. Runtime results and test completion are observations, not proof that a bug is fixed.",
+          ].join("\n");
   const telemetry = new ExecutionTelemetry();
   let tools = [
     ...createVNextCodingToolDefinitions(
@@ -558,13 +638,19 @@ export async function runProjectEnvironmentPreviewV2(
       }),
       { toolCallAdmission: admission },
     ),
-    ...createInspectionGameToolDefinitions(runtime, {
-      toolCallAdmission: admission,
-    }),
+    ...(gameBackend === "inspection"
+      ? createInspectionGameToolDefinitions(runtime, {
+          toolCallAdmission: admission,
+        })
+      : []),
   ].map((tool) => ({
     ...tool,
     execute: (...args: Parameters<typeof tool.execute>) =>
-      telemetry.measure(tool.name, args[0], () => tool.execute(...args)),
+      telemetry.measure(tool.name, args[0], () =>
+        mcp === undefined
+          ? tool.execute(...args)
+          : mcp.runCoding(tool.name, () => tool.execute(...args), args[2]),
+      ),
   }));
   let collaboration: ProjectMultiAgentEnvironment | undefined;
   let rootPiResult: VNextPiTurnResult | undefined;
@@ -575,10 +661,17 @@ export async function runProjectEnvironmentPreviewV2(
   let failureMessage: string | null = null;
   let candidatePatch: ProjectEnvironmentPreviewResultV2["candidatePatch"] =
     null;
-  const limitations = [
-    "Inspection reads current runtime values; no custom probes, history, pause, or replay.",
-    "Property getters are project code; observations are neither atomic snapshots nor fix verdicts.",
-  ];
+  const limitations =
+    gameBackend === "inspection"
+      ? [
+          "Inspection reads current runtime values; no custom probes, history, pause, or replay.",
+          "Property getters are project code; observations are neither atomic snapshots nor fix verdicts.",
+        ]
+      : gameBackend === "none"
+        ? ["No managed runtime observations are available in coding-only mode."]
+        : [
+            "The editor and game use a mutable project. Runtime state is not an immutable source snapshot; input sequences are not deterministic physics replay.",
+          ];
   const recordFailure = (error: unknown): void => {
     const detail = failure(error);
     status = "failed";
@@ -600,6 +693,11 @@ export async function runProjectEnvironmentPreviewV2(
         recordFailure(error);
       }
       try {
+        await mcp?.close();
+      } catch (error) {
+        recordFailure(error);
+      }
+      try {
         await runtime.close();
       } catch (error) {
         writersStopped = false;
@@ -616,6 +714,7 @@ export async function runProjectEnvironmentPreviewV2(
           throw new Error(
             "Candidate cannot be frozen: writer cleanup was not confirmed",
           );
+        await mcp?.removeManagedFiles();
         const extracted = await extractTaskPatch({
           taskId,
           sourceKind: "project-environment-v1",
@@ -662,11 +761,13 @@ export async function runProjectEnvironmentPreviewV2(
       }
       const rawResult = {
         schemaVersion:
-          request.executionLimits !== undefined
-            ? 5
-            : multiAgent === undefined
-              ? 2
-              : 4,
+          gameBackend !== "inspection"
+            ? 6
+            : request.executionLimits !== undefined
+              ? 5
+              : multiAgent === undefined
+                ? 2
+                : 4,
         status,
         taskId,
         sessionId,
@@ -674,11 +775,15 @@ export async function runProjectEnvironmentPreviewV2(
         projectRoot: source.projectPrefix,
         sourceSha256: source.selectedTreeSha256,
         candidateSourceChanged:
-          multiAgent !== undefined && candidatePatch === null
+          (multiAgent !== undefined || gameBackend !== "inspection") &&
+          candidatePatch === null
             ? null
             : candidatePatch !== null && candidatePatch.byteLength > 0,
         candidatePatch,
-        executions: collaboration?.rootRecordPaths() ?? runtime.recordPaths(),
+        executions:
+          mcp?.recordPaths() ??
+          collaboration?.rootRecordPaths() ??
+          runtime.recordPaths(),
         goalDelivered,
         failureCode,
         failureMessage,
@@ -700,11 +805,20 @@ export async function runProjectEnvironmentPreviewV2(
             }),
       };
       const result =
-        request.executionLimits !== undefined
-          ? ProjectEnvironmentPreviewResultV5Schema.parse(rawResult)
-          : multiAgent === undefined
-            ? ProjectEnvironmentPreviewResultV2Schema.parse(rawResult)
-            : ProjectEnvironmentPreviewResultV4Schema.parse(rawResult);
+        gameBackend !== "inspection"
+          ? ProjectEnvironmentPreviewResultV6Schema.parse({
+              ...rawResult,
+              gameBackend,
+              workspaceMode:
+                gameBackend === "godot-ai" ? "shared-editor" : "coding",
+              agents,
+              executionLimits,
+            })
+          : request.executionLimits !== undefined
+            ? ProjectEnvironmentPreviewResultV5Schema.parse(rawResult)
+            : multiAgent === undefined
+              ? ProjectEnvironmentPreviewResultV2Schema.parse(rawResult)
+              : ProjectEnvironmentPreviewResultV4Schema.parse(rawResult);
       await writeFile(
         join(
           layout.taskRecordDirectory,
@@ -718,7 +832,9 @@ export async function runProjectEnvironmentPreviewV2(
     return finalization;
   };
   try {
-    await prepareGodotInspectionCandidate(layout.workspaceDirectory);
+    if (gameBackend === "inspection")
+      await prepareGodotInspectionCandidate(layout.workspaceDirectory);
+    await mcp?.prepare();
     if (multiAgent !== undefined) {
       collaboration = await (
         dependencies.createMultiAgentEnvironment ??
@@ -732,8 +848,10 @@ export async function runProjectEnvironmentPreviewV2(
         provider: request.provider,
         model: request.model,
         thinkingLevel: request.thinkingLevel,
-        agentDir: request.agentDir,
-        instructions: inspectionInstructions,
+        agentDir,
+        instructions,
+        gameTools: gameBackend === "inspection",
+        ...(mcp === undefined ? {} : { codingEnvironment: mcp }),
         configuration: multiAgent,
         ...(request.executionLimits === undefined ? {} : { executionLimits }),
       });
@@ -751,13 +869,12 @@ export async function runProjectEnvironmentPreviewV2(
         tools,
         timeoutMs: request.timeoutMs ?? 1_800_000,
         environmentProfile: "coding",
-        additionalEnvironmentInstructions: inspectionInstructions,
+        additionalEnvironmentInstructions: instructions,
+        ...(mcp === undefined ? {} : { mcpEnvironment: mcp }),
         ...(collaboration === undefined
           ? {}
           : { collaboration: collaboration.supervisor }),
-        ...(request.agentDir === undefined
-          ? {}
-          : { agentDir: request.agentDir }),
+        ...(agentDir === undefined ? {} : { agentDir }),
       });
       rootPiResult = result;
       if (result.sessionId !== sessionId)
@@ -806,13 +923,12 @@ export async function runProjectEnvironmentPreviewV2(
         model: request.model,
         thinkingLevel: request.thinkingLevel,
         tools,
-        additionalEnvironmentInstructions: inspectionInstructions,
+        additionalEnvironmentInstructions: instructions,
+        ...(mcp === undefined ? {} : { mcpEnvironment: mcp }),
         ...(collaboration === undefined
           ? {}
           : { collaboration: collaboration.supervisor }),
-        ...(request.agentDir === undefined
-          ? {}
-          : { agentDir: request.agentDir }),
+        ...(agentDir === undefined ? {} : { agentDir }),
       });
       goalDelivered = true;
     }

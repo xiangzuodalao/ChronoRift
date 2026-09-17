@@ -18,6 +18,11 @@ import {
 
 import type { PiThinkingLevel } from "./types.js";
 import {
+  createManagedMcpExtension,
+  MCP_EXTENSION_NAME,
+  type ManagedMcpEnvironment,
+} from "./mcp-extension.js";
+import {
   observePiModelRequests,
   type PiModelRequestTiming,
 } from "./model-request-telemetry.js";
@@ -64,6 +69,7 @@ export interface RunVNextPiTurnOptions {
   readonly thinkingLevel: PiThinkingLevel;
   readonly prompt: string;
   readonly tools: readonly ToolDefinition[];
+  readonly mcpEnvironment?: ManagedMcpEnvironment | undefined;
   readonly timeoutMs?: number | undefined;
   /** Idle timeout for one provider request, independent of the whole Agent turn. */
   readonly providerRequestTimeoutMs?: number | undefined;
@@ -268,6 +274,7 @@ export interface ManagedPiSession {
     status?: VNextPiTurnResult["status"],
     errorMessage?: string | null,
   ): VNextPiTurnResult;
+  shutdownExtensions?(): Promise<void>;
   dispose(): void;
 }
 
@@ -388,6 +395,10 @@ export async function createManagedPiSession(
     agentDir,
     settingsManager,
     noExtensions: true,
+    extensionFactories:
+      options.mcpEnvironment === undefined
+        ? []
+        : [createManagedMcpExtension(options.mcpEnvironment)],
     noThemes: true,
     appendSystemPrompt,
   });
@@ -418,14 +429,21 @@ export async function createManagedPiSession(
     model: options.model,
     thinkingLevel: options.thinkingLevel,
     noTools: "all",
-    tools: toolNames,
+    tools:
+      options.mcpEnvironment === undefined ? toolNames : [...toolNames, "mcp"],
     customTools: [...options.tools],
     resourceLoader,
     sessionManager,
     settingsManager,
   });
   const { session, extensionsResult } = created;
-  if (extensionsResult.extensions.length !== 0) {
+  if (
+    extensionsResult.extensions.length !==
+      (options.mcpEnvironment === undefined ? 0 : 1) ||
+    extensionsResult.extensions.some(
+      (extension) => extension.path !== `<inline:${MCP_EXTENSION_NAME}>`,
+    )
+  ) {
     session.dispose();
     throw new Error("vNext Pi session loaded executable extensions");
   }
@@ -437,9 +455,11 @@ export async function createManagedPiSession(
         .join("; ")}`,
     );
   }
+  if (options.mcpEnvironment !== undefined) await session.bindExtensions({});
   const activeTools = session.getActiveToolNames();
   if (
-    activeTools.length !== toolNames.length ||
+    activeTools.length !==
+      toolNames.length + (options.mcpEnvironment === undefined ? 0 : 1) ||
     toolNames.some((name) => !activeTools.includes(name))
   ) {
     session.dispose();
@@ -536,6 +556,16 @@ export async function createManagedPiSession(
         errorMessage,
       );
     },
+    ...(options.mcpEnvironment === undefined
+      ? {}
+      : {
+          shutdownExtensions: async () => {
+            await session.extensionRunner.emit({
+              type: "session_shutdown",
+              reason: "quit",
+            });
+          },
+        }),
     dispose: () => {
       if (disposed) return;
       disposed = true;
@@ -723,7 +753,11 @@ async function runManagedPiTurn(
   } finally {
     unsubscribeSettled?.();
     unbind?.();
-    session.dispose();
+    try {
+      await session.shutdownExtensions?.();
+    } finally {
+      session.dispose();
+    }
   }
 }
 

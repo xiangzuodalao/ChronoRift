@@ -7,6 +7,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/coverage/**",
       ".chronorift/**",
+      ".tools/**",
       "eslint.config.js",
     ],
   },

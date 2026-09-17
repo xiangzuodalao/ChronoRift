@@ -164,6 +164,7 @@ describe("Candidate Preview cleanup", () => {
         );
       const output = await runProjectEnvironmentPreviewV2(
         {
+          gameBackend: "inspection" as const,
           projectPath: source,
           provider: "offline-fixture",
           model: "offline-fixture",
@@ -235,6 +236,7 @@ describe("Candidate Preview cleanup", () => {
         });
       const output = await runProjectEnvironmentPreviewV2(
         {
+          gameBackend: "inspection" as const,
           projectPath: source,
           provider: "offline-fixture",
           model: "offline-fixture",
@@ -314,6 +316,7 @@ describe("Candidate Preview cleanup", () => {
         ).mockRejectedValueOnce(new Error("runtime cleanup unconfirmed"));
       const output = await runProjectEnvironmentPreviewV2(
         {
+          gameBackend: "inspection" as const,
           projectPath: source,
           provider: "offline-fixture",
           model: "offline-fixture",

@@ -1,7 +1,8 @@
 # Project Preview Multi-Agent V2
 
 Project Preview 可通过 `--multi-agent` 启用协作。Root 和 worker 使用独立 Pi Session，共享一个私有 candidate，
-各自运行固定源码的 Godot execution。所有代理都能继续委派、向同一任务树中的其他代理发消息。Pi 保留模型调用、
+默认只有 Root 使用 Godot AI MCP；worker 使用 coding 工具，任何写入前会保存并关闭编辑器。
+显式 `--game-backend inspection` 才保留各代理的固定源码 Godot execution。所有代理都能继续委派、向同一任务树中的其他代理发消息。Pi 保留模型调用、
 Agent Loop、工具调度、重试和 compaction；Host 管理身份、邮箱、执行名额、沙箱和结果。
 
 这是实验性 Preview。开启协作采用 Adaptive Multi：worker 上限不是创建目标，小任务允许 0 worker。

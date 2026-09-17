@@ -1,3 +1,8 @@
+import {
+  createManagedMcpExtension,
+  MCP_EXTENSION_NAME,
+  type ManagedMcpEnvironment,
+} from "./mcp-extension.js";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -49,6 +54,7 @@ export interface RunProjectEnvironmentInteractivePiSessionV1Options {
   readonly model: string;
   readonly thinkingLevel: PiThinkingLevel;
   readonly tools: readonly ToolDefinition[];
+  readonly mcpEnvironment?: ManagedMcpEnvironment | undefined;
   readonly additionalEnvironmentInstructions: string;
   readonly agentDir?: string | undefined;
   readonly collaboration?: RootCollaborationPort | undefined;
@@ -181,10 +187,15 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     settingsManager,
     noExtensions: true,
     additionalExtensionPaths: [],
-    ...(collaboration === undefined && options.onShutdown === undefined
+    ...(collaboration === undefined &&
+    options.onShutdown === undefined &&
+    options.mcpEnvironment === undefined
       ? {}
       : {
           extensionFactories: [
+            ...(options.mcpEnvironment === undefined
+              ? []
+              : [createManagedMcpExtension(options.mcpEnvironment)]),
             createRootCollaborationExtension(
               collaboration,
               async () => {
@@ -260,13 +271,30 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
       model,
       thinkingLevel: options.thinkingLevel,
       noTools: "all",
-      tools: toolNames,
+      tools:
+        options.mcpEnvironment === undefined
+          ? toolNames
+          : [...toolNames, "mcp"],
       customTools: [...options.tools],
     });
     try {
+      const mcpExtensions = created.extensionsResult.extensions.filter(
+        (extension) => extension.path === `<inline:${MCP_EXTENSION_NAME}>`,
+      );
+      if (
+        mcpExtensions.length !== (options.mcpEnvironment === undefined ? 0 : 1)
+      )
+        throw new Error("Unexpected managed MCP extension set");
       assertRootCollaborationExtensions(
-        created.extensionsResult,
-        collaboration !== undefined || options.onShutdown !== undefined,
+        {
+          ...created.extensionsResult,
+          extensions: created.extensionsResult.extensions.filter(
+            (extension) => extension.path !== `<inline:${MCP_EXTENSION_NAME}>`,
+          ),
+        },
+        collaboration !== undefined ||
+          options.onShutdown !== undefined ||
+          options.mcpEnvironment !== undefined,
       );
     } catch (error) {
       created.session.dispose();
@@ -274,7 +302,8 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     }
     const activeTools = created.session.getActiveToolNames();
     if (
-      activeTools.length !== toolNames.length ||
+      activeTools.length !==
+        toolNames.length + (options.mcpEnvironment === undefined ? 0 : 1) ||
       toolNames.some((name) => !activeTools.includes(name))
     ) {
       created.session.dispose();
@@ -321,6 +350,16 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     await new InteractiveMode(runtime, { verbose: false }).run();
   } finally {
     try {
+      if (
+        shutdownPromise === undefined &&
+        activeSession !== undefined &&
+        options.mcpEnvironment !== undefined
+      ) {
+        await activeSession.extensionRunner.emit({
+          type: "session_shutdown",
+          reason: "quit",
+        });
+      }
       await shutdown();
     } finally {
       await runtime.dispose();

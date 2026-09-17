@@ -162,3 +162,8 @@ export {
   type ManagedPiSession,
   type PiSessionMessageOptions,
 } from "./vnext-session.js";
+
+export {
+  createManagedMcpExtension,
+  type ManagedMcpEnvironment,
+} from "./mcp-extension.js";

@@ -43,15 +43,15 @@ inspection observer/wire integration. It does not exercise the Linux namespace o
 ## Host-bound sandbox gates
 
 Host conformance is explicit and never silently skipped. The Linux SRT gate requires Node `22.23.1`, Godot `4.7.1`,
-Bubblewrap, `socat`, and ripgrep. Unprivileged user namespaces must be enabled; on Ubuntu 24.04 this normally means:
+Bubblewrap, `socat`, ripgrep, Xvfb, Mesa, and the pinned Godot AI installation. Unprivileged user namespaces must be enabled; on Ubuntu 24.04 this normally means:
 
 ```bash
-sudo apt-get install bubblewrap socat ripgrep fontconfig xdg-user-dirs
+sudo apt-get install bubblewrap socat ripgrep fontconfig xdg-user-dirs xvfb libgl1-mesa-dri
 sudo sysctl --write kernel.unprivileged_userns_clone=1
 sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
 ```
 
-Install Godot with `corepack pnpm godot:install`, then run:
+Install Godot and MCP with `corepack pnpm godot:install -- --with-mcp` (requires `uv`), then run:
 
 ```bash
 .github/scripts/run-srt-sandbox-conformance.sh
@@ -63,7 +63,7 @@ single `corepack pnpm test:sandbox` suite for coding and real Godot/Preview inte
 cgroups, a bounded-storage mount, immutable toolchain copies, or a Host-config file. SRT initialization failures are
 test failures; the product must never fall back to an unsandboxed process.
 
-The sandbox deliberately has two modes. Agent coding commands can read and write their private physical candidate
+The inspection sandbox has two modes. Default MCP adds a managed writable editor environment; see [MCP boundaries](godot-mcp.md). Agent coding commands can read and write their private physical candidate
 workspace plus private home/temp/artifact directories. A Godot validation first copies the candidate to a disjoint
 Host stage, adds only managed overlays, and runs with project source read-only; only `.godot/`, home, temp, and
 artifacts are writable. The mutable candidate is denied to that process, and the stage source SHA-256 is compared
@@ -71,6 +71,12 @@ before and after launch. Both modes use SRT's strict empty network allowlist. Th
 boundary, not a claim of cgroup resource quotas, storage accounting, or external attestation.
 
 ## Project Environment Preview
+
+Default backend is now `godot-ai`. First install `uv`, Xvfb and Mesa, then run
+`corepack pnpm godot:install -- --with-mcp` and `corepack pnpm godot:doctor -- --with-mcp`.
+See [Godot MCP setup and lifecycle](godot-mcp.md). Use `--game-backend none` for coding-only.
+The source-read-only stage, headless display and historical engine compatibility described below apply specifically
+to `--game-backend inspection`, which remains an explicit fallback. MCP uses a shared writable editor project and Godot 4.7.1.
 
 The development route is explicit and remains experimental:
 
@@ -81,6 +87,7 @@ corepack pnpm project preview -- [GOAL] \
   [--thinking LEVEL] \
   [--state-root PATH] \
   [--godot-bin PATH] \
+  [--game-backend godot-ai|inspection|none] \
   [--project-root RELATIVE_PATH] \
   [--include-untracked RELATIVE_FILE]... \
   [--timeout-ms MILLISECONDS] \

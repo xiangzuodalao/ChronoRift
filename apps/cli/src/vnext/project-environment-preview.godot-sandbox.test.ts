@@ -85,6 +85,7 @@ const setup = async () => {
     repository,
     oldState,
     request: {
+      gameBackend: "inspection" as const,
       projectPath: repository,
       projectRoot: "game",
       includeUntrackedPaths: ["notes.txt"],
@@ -291,6 +292,55 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
       ),
     ).toBe(true);
   });
+
+  it.each(["godot-ai", "none"] as const)(
+    "hands off a private candidate with backend %s",
+    async (backend) => {
+      const { request, project } = await setup();
+      const original = await readFile(join(project, "project.godot"), "utf8");
+      const result = await runProjectEnvironmentPreviewV2(
+        {
+          ...request,
+          gameBackend: backend === "godot-ai" ? undefined : backend,
+        },
+        {
+          runPiTurn: async (options) => {
+            expect(options.mcpEnvironment !== undefined).toBe(
+              backend === "godot-ai",
+            );
+            expect(
+              options.tools
+                .map((tool) => tool.name)
+                .some((name) => name.startsWith("game_")),
+            ).toBe(false);
+            await toolInvoker(options)("write", {
+              path: "answer.txt",
+              content: "private candidate edit",
+            });
+            return finish(options);
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        schemaVersion: 6,
+        gameBackend: backend,
+        workspaceMode: backend === "godot-ai" ? "shared-editor" : "coding",
+        status: "completed",
+        failureCode: null,
+        candidateSourceChanged: true,
+      });
+      const patch = await readFile(result.candidatePatch!.path, "utf8");
+      expect(patch).toContain("private candidate edit");
+      expect(patch).not.toContain("godot_ai");
+      expect(await readFile(join(project, "project.godot"), "utf8")).toBe(
+        original,
+      );
+      await expect(readFile(join(project, "answer.txt"))).rejects.toMatchObject(
+        { code: "ENOENT" },
+      );
+      expect(result.executions).toHaveLength(backend === "godot-ai" ? 1 : 0);
+    },
+  );
 
   it("completes ordinary coding without requiring any game tool", async () => {
     const { request } = await setup();

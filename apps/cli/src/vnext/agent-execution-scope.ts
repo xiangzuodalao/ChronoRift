@@ -84,6 +84,16 @@ export interface AgentExecutionScopeOptions {
   readonly godotPath: string;
   readonly budget: AgentExecutionBudget;
   readonly candidateGate?: AgentWorkspaceGate;
+  readonly gameTools?: boolean | undefined;
+  readonly codingEnvironment?:
+    | {
+        runCoding<T>(
+          name: string,
+          operation: () => Promise<T>,
+          signal?: AbortSignal,
+        ): Promise<T>;
+      }
+    | undefined;
 }
 
 /** Owns agent resources without owning Pi or resetting the shared SRT singleton. */
@@ -118,9 +128,12 @@ export class AgentExecutionScope {
         },
       ),
     );
-    const game = createInspectionGameToolDefinitions({
-      invoke: (request, signal) => this.runtime().invoke(request, signal),
-    });
+    const game =
+      options.gameTools === false
+        ? []
+        : createInspectionGameToolDefinitions({
+            invoke: (request, signal) => this.runtime().invoke(request, signal),
+          });
     this.#tools = [...coding, ...game].map((tool): AgentBoundTool => ({
       ...tool,
       execute: (id, input, signal, onUpdate, context) => {
@@ -137,7 +150,7 @@ export class AgentExecutionScope {
                 code: "cancelled",
               });
             }
-            if (!tool.name.startsWith("game_")) {
+            if (coding.includes(tool)) {
               const operationSignal = AbortSignal.any([
                 epoch.signal,
                 ...(signal === undefined ? [] : [signal]),
@@ -146,13 +159,15 @@ export class AgentExecutionScope {
               return this.candidateGate.run(() => {
                 lock.acquired();
                 options.budget.admit(tool.name);
-                return tool.execute(
-                  id,
-                  input,
-                  operationSignal,
-                  onUpdate,
-                  context,
-                );
+                const execute = () =>
+                  tool.execute(id, input, operationSignal, onUpdate, context);
+                return options.codingEnvironment === undefined
+                  ? execute()
+                  : options.codingEnvironment.runCoding(
+                      tool.name,
+                      execute,
+                      operationSignal,
+                    );
               }, operationSignal);
             }
             options.budget.admit(tool.name);

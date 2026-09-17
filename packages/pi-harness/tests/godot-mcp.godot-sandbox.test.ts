@@ -27,11 +27,11 @@ import {
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { GodotMcpEnvironment } from "../../../apps/cli/src/vnext/godot-mcp-environment.js";
 import { SrtSandboxController } from "../../../apps/cli/src/vnext/srt-sandbox-controller.js";
 
-it("authors, plays, inspects and saves a real game across a coding/editor switch", async () => {
+it("keeps one MCP backend across cold coding and two clean editor restarts", async () => {
   const root = await mkdtemp(join(tmpdir(), "cr-mcp-test-"));
   const workspace = join(root, "project");
   await mkdir(workspace);
@@ -51,19 +51,59 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
     'extends Node2D\nvar answer := 40\nvar process_nonce = Crypto.new().generate_random_bytes(16).hex_encode()\nfunc _input(event):\n\tif event.is_action_pressed("ui_right"):\n\t\tanswer += 1\nfunc _draw():\n\tdraw_rect(Rect2(20,20,120,120), Color.RED)\nfunc add_late_ui():\n\tawait get_tree().create_timer(0.25).timeout\n\tvar label := Label.new()\n\tlabel.name = "LateUi"\n\tlabel.text = "late-ui"\n\tadd_child(label)\n';
   await writeFile(join(workspace, "main.gd"), script);
   const controller = new SrtSandboxController();
+  const openEditor = vi.spyOn(controller, "openEditor");
+  const godot = resolve(
+    process.env.GODOT_BIN ??
+      ".tools/godot/4.7.1/Godot_v4.7.1-stable_linux.x86_64",
+  );
+  const projectGodotPids = async () => {
+    const candidates = (await readdir("/proc")).filter((name) =>
+      /^\d+$/u.test(name),
+    );
+    const matches = await Promise.all(
+      candidates.map(async (pid) => {
+        try {
+          const argv = (await readFile(`/proc/${pid}/cmdline`, "utf8")).split(
+            "\0",
+          );
+          return argv[0] === godot && argv.includes(workspace) ? pid : null;
+        } catch (error) {
+          if (
+            ["ENOENT", "ESRCH"].includes(
+              (error as NodeJS.ErrnoException).code ?? "",
+            )
+          )
+            return null;
+          throw error;
+        }
+      }),
+    );
+    return matches.filter((pid) => pid !== null);
+  };
   const environment = await GodotMcpEnvironment.create({
     controller,
     workspace,
-    godot: resolve(
-      process.env.GODOT_BIN ??
-        ".tools/godot/4.7.1/Godot_v4.7.1-stable_linux.x86_64",
-    ),
+    godot,
     recordsDirectory: join(root, "records"),
     isolationReadRoots: [root],
     admit: () => undefined,
   });
   let probe: ManagedMcpProbe | undefined;
   let callId = 0;
+  const homePath = join(root, "coding-home");
+  const tempPath = join(root, "coding-tmp");
+  const artifactsPath = join(root, "coding-artifacts");
+  await Promise.all(
+    [homePath, tempPath, artifactsPath].map((path) => mkdir(path)),
+  );
+  const coding = createVNextCodingToolDefinitions(
+    new SandboxPiCodingToolPort(controller, {
+      workspacePath: workspace,
+      homePath,
+      tempPath,
+      artifactsPath,
+    }),
+  );
   const openProbe = async (managed = environment) => {
     const opened = await createManagedMcpProbe({
       resourceWorkspaceDirectory: workspace,
@@ -148,28 +188,62 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
   try {
     await writeFile(join(root, "host-secret"), "host-only fixture");
     await environment.prepare();
+    expect(openEditor).toHaveBeenCalledTimes(1);
     // Preparing the MCP catalog must not import or launch the project.
     expect(await readdir(workspace)).not.toContain(".godot");
     probe = await openProbe();
     expect(await readdir(workspace)).not.toContain(".godot");
+    const bash = coding.find((tool) => tool.name === "bash")!;
+    await environment.runCoding("bash", async () => {
+      const result = await bash.execute(
+        "cold-bash",
+        { command: "cat main.gd" },
+        undefined,
+        undefined,
+        {} as never,
+      );
+      expect(JSON.stringify(result.content)).toContain("var answer := 40");
+    });
+    expect(openEditor).toHaveBeenCalledTimes(1);
+    expect(await readdir(workspace)).not.toContain(".godot");
+    expect(await projectGodotPids()).toEqual([]);
     await writeFile(
       join(environment.agentDirectory, "host-cache"),
       "host-only cache",
     );
     expect(await call("editor_state")).toBeTruthy();
     await call("scene_open", { path: "res://main.tscn" });
+    await rawCall("project_run");
+    await waitForScene();
+    const initial = (await call("editor_manage", {
+      op: "game_eval",
+      params: {
+        code: 'var file = FileAccess.open("user://continuity.txt", FileAccess.WRITE)\nfile.store_string("task save")\nfile.close()\nreturn {"answer": get_tree().current_scene.answer, "nonce": get_tree().current_scene.process_nonce}',
+      },
+    })) as { result: { answer: number; nonce: string } };
+    expect(initial.result.answer).toBe(40);
+    expect(initial.result.nonce).toMatch(/^[0-9a-f]{32}$/u);
+    expect((await projectGodotPids()).length).toBeGreaterThanOrEqual(2);
+    // Upstream rejects editor mutations while playing. The later Pi write
+    // exercises the source barrier with the game still running.
+    await call("project_manage", { op: "stop" });
     await call("node_create", {
       type: "Node2D",
       name: "Added",
       parent_path: "/Main",
     });
+    expect(await readFile(join(workspace, "main.tscn"), "utf8")).not.toContain(
+      'name="Added"',
+    );
     // A source write forces the unsaved editor node to disk before executing.
     await environment.runCoding("write", async () => {
+      expect(await projectGodotPids()).toEqual([]);
       expect(await readFile(join(workspace, "main.tscn"), "utf8")).toContain(
         'name="Added"',
       );
       await writeFile(join(workspace, "main.gd"), script.replace("40", "41"));
     });
+    expect(openEditor).toHaveBeenCalledTimes(1);
     await rawCall("project_run");
     await waitForScene();
     expect(
@@ -248,10 +322,12 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
     const running = (await call("editor_manage", {
       op: "game_eval",
       params: {
-        code: 'var file = FileAccess.open("user://continuity.txt", FileAccess.WRITE)\nfile.store_string("task save")\nfile.close()\nreturn {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce}',
+        code: 'return {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce, "saved": FileAccess.get_file_as_string("user://continuity.txt")}',
       },
-    })) as { result: { pid: number; nonce: string } };
+    })) as { result: { pid: number; nonce: string; saved: string } };
     expect(running.result.nonce).toMatch(/^[0-9a-f]{32}$/u);
+    expect(running.result.nonce).not.toBe(initial.result.nonce);
+    expect(running.result.saved).toBe("task save");
     const waitReceipt = await probe.execute({
       id: "live-wait",
       name: "environment_wait",
@@ -276,7 +352,7 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       await call("editor_manage", {
         op: "game_eval",
         params: {
-          code: 'return {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce}',
+          code: 'return {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce, "saved": FileAccess.get_file_as_string("user://continuity.txt")}',
         },
       }),
     ).toEqual(running);
@@ -301,20 +377,6 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       allowModelNetwork: false,
     });
     modelRuntime.registerNativeProvider(faux.provider);
-    const homePath = join(root, "coding-home");
-    const tempPath = join(root, "coding-tmp");
-    const artifactsPath = join(root, "coding-artifacts");
-    await Promise.all(
-      [homePath, tempPath, artifactsPath].map((path) => mkdir(path)),
-    );
-    const coding = createVNextCodingToolDefinitions(
-      new SandboxPiCodingToolPort(controller, {
-        workspacePath: workspace,
-        homePath,
-        tempPath,
-        artifactsPath,
-      }),
-    );
     let raw: AgentSession | undefined;
     const session = await createManagedPiSession(
       {
@@ -330,7 +392,11 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
           execute: (...args: Parameters<typeof tool.execute>) =>
             environment.runCoding(
               tool.name,
-              () => tool.execute(...args),
+              async () => {
+                if (["bash", "edit", "write"].includes(tool.name))
+                  expect(await projectGodotPids()).toEqual([]);
+                return tool.execute(...args);
+              },
               args[2],
             ),
         })),
@@ -351,8 +417,8 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
         ),
         fauxAssistantMessage(
           fauxToolCall("write", {
-            path: "probe.txt",
-            content: "saved through SRT",
+            path: "main.gd",
+            content: script.replace("40", "43"),
           }),
         ),
         fauxAssistantMessage(
@@ -367,9 +433,7 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
         fauxAssistantMessage(
           fauxToolCall("mcp", { describe: "godot_ai_script_patch" }),
         ),
-        fauxAssistantMessage(
-          fauxToolCall("bash", { command: "cat probe.txt" }),
-        ),
+        fauxAssistantMessage(fauxToolCall("bash", { command: "cat main.gd" })),
         fauxAssistantMessage(
           fauxToolCall("mcp", { tool: "godot_ai_editor_state", args: {} }),
         ),
@@ -391,12 +455,13 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
         expect(JSON.stringify(results[index]!.content)).toContain(
           "already stopped",
         );
-      expect(await readFile(join(workspace, "probe.txt"), "utf8")).toBe(
-        "saved through SRT",
+      expect(await readFile(join(workspace, "main.gd"), "utf8")).toBe(
+        script.replace("40", "43"),
       );
       expect(JSON.stringify(results[2]!.content)).toContain(
         "Previous runtime references are invalid",
       );
+      expect(openEditor).toHaveBeenCalledTimes(1);
     } finally {
       await session.shutdownExtensions?.();
       session.dispose();
@@ -415,12 +480,15 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
     const restarted = (await call("editor_manage", {
       op: "game_eval",
       params: {
-        code: 'return {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce}',
+        code: 'return {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce, "answer": get_tree().current_scene.answer}',
       },
-    })) as { result: { pid: number; nonce: string } };
-    // Fresh SRT PID namespaces can reuse numeric PIDs; compare runtime identity.
+    })) as { result: { pid: number; nonce: string; answer: number } };
+    // Compare game identity, without relying on numeric PID allocation.
     expect(restarted.result.nonce).toMatch(/^[0-9a-f]{32}$/u);
     expect(restarted.result.nonce).not.toBe(running.result.nonce);
+    expect(restarted.result.nonce).not.toBe(initial.result.nonce);
+    expect(restarted.result.answer).toBe(43);
+    expect(openEditor).toHaveBeenCalledTimes(1);
     await probe.close();
     probe = undefined;
     await environment.close();
@@ -432,6 +500,7 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
         id?: string;
         requiresEditor?: boolean;
         editorGeneration?: number;
+        reason?: string;
       }[];
     };
     // Initial actual call, after the source write, and after the Pi write/bash.
@@ -442,6 +511,25 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
     expect(
       lifecycle.events.filter((entry) => entry.event === "backend_stopped"),
     ).toHaveLength(1);
+    expect(
+      lifecycle.events.filter((entry) => entry.event === "backend_ready"),
+    ).toHaveLength(1);
+    expect(
+      lifecycle.events.filter((entry) => entry.event === "process_exit"),
+    ).toHaveLength(1);
+    expect(
+      lifecycle.events
+        .filter((entry) => entry.event === "editor_closed")
+        .map((entry) => ({
+          generation: entry.editorGeneration,
+          reason: entry.reason,
+        })),
+    ).toEqual([
+      { generation: 1, reason: "write" },
+      { generation: 2, reason: "write" },
+      { generation: 3, reason: "close" },
+    ]);
+    expect(await projectGodotPids()).toEqual([]);
     const catalogs = lifecycle.events.filter(
       (entry) => entry.event === "tool" && entry.id?.startsWith("catalog-"),
     );

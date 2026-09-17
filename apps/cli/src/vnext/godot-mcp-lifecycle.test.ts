@@ -65,10 +65,16 @@ async function fixture() {
         },
       };
     });
-  vi.spyOn(GodotMcpTransport.prototype, "bind").mockResolvedValue();
+  const bind = vi
+    .spyOn(GodotMcpTransport.prototype, "bind")
+    .mockResolvedValue();
   const control = vi
     .spyOn(GodotMcpTransport.prototype, "control")
-    .mockResolvedValue({});
+    .mockImplementation(async (command) =>
+      "op" in command && command.op === "save_and_close_editor"
+        ? { activeScene: "res://Main.tscn", editorStopped: true }
+        : {},
+    );
   const admit = vi.fn();
   const environment = await GodotMcpEnvironment.create({
     controller,
@@ -83,6 +89,7 @@ async function fixture() {
     environment,
     open,
     stops,
+    bind,
     control,
     admit,
     async close() {
@@ -205,7 +212,7 @@ it("blocks coding on save failure and preserves tool content when reporting succ
     expect(JSON.stringify(result.content)).toContain(
       "use project_run explicitly",
     );
-    expect(f.stops).toHaveBeenCalledTimes(1);
+    expect(f.stops).not.toHaveBeenCalled();
     // A further coding-only operation has no additional lifecycle notice.
     expect(await f.environment.runCoding("bash", write)).toBe(original);
     await f.environment.close();
@@ -213,12 +220,119 @@ it("blocks coding on save failure and preserves tool content when reporting succ
       await readFile(f.environment.recordPaths()[0]!, "utf8"),
     ) as { events: unknown[] };
     expect(events).toContainEqual(
-      expect.objectContaining({ event: "saved_and_stopped", reason: "write" }),
+      expect.objectContaining({ event: "editor_closed", reason: "write" }),
     );
   } finally {
     await f.close();
   }
 });
+
+it("keeps the sandbox and transport through cold coding, reads, and repeated editor closures", async () => {
+  const f = await fixture();
+  try {
+    await f.environment.runCoding("bash", async () => "cold git status");
+    expect(f.control).not.toHaveBeenCalled();
+    expect(f.stops).not.toHaveBeenCalled();
+    expect(f.open).toHaveBeenCalledTimes(1);
+
+    await f.environment.runTool("editor_state", "start", async () => "ready");
+    for (const name of ["read", "grep", "find", "ls"])
+      await f.environment.runCoding(name, async () => "source contents");
+    expect(f.control).toHaveBeenCalledTimes(1);
+    expect(await f.environment.wait("state", 0)).toMatchObject({
+      editorState: "ready",
+      editorGeneration: 1,
+    });
+
+    for (const [index, name] of ["bash", "write"].entries()) {
+      const activeScene = `res://Scene${index}.tscn`;
+      f.control.mockResolvedValueOnce({ activeScene, editorStopped: true });
+      await f.environment.runCoding(name, async () => {
+        expect(f.control).toHaveBeenLastCalledWith(
+          { op: "save_and_close_editor" },
+          50_000,
+        );
+        expect(f.stops).not.toHaveBeenCalled();
+        return "written after confirmed editor closure";
+      });
+      expect(await f.environment.wait("state", 0)).toMatchObject({
+        editorState: "stopped",
+        editorGeneration: index + 1,
+      });
+      const controlCount = f.control.mock.calls.length;
+      await f.environment.runTool(
+        "mcp",
+        `catalog-${index}`,
+        async () => "same adapter connection",
+        undefined,
+        false,
+      );
+      expect(f.control).toHaveBeenCalledTimes(controlCount);
+      await f.environment.runTool(
+        "editor_state",
+        `restart-${index}`,
+        async () => "fresh editor",
+      );
+      expect(f.control).toHaveBeenLastCalledWith(
+        { op: "start_editor", restoreScene: activeScene },
+        150_000,
+      );
+    }
+    expect(f.open).toHaveBeenCalledTimes(1);
+    expect(f.bind).toHaveBeenCalledTimes(1);
+    expect(f.stops).not.toHaveBeenCalled();
+    await f.environment.close();
+    expect(f.stops).toHaveBeenCalledTimes(1);
+    const { events, unsavedChangesPossible } = JSON.parse(
+      await readFile(f.environment.recordPaths()[0]!, "utf8"),
+    ) as {
+      events: { event: string; runIndex?: number }[];
+      unsavedChangesPossible: boolean;
+    };
+    expect(unsavedChangesPossible).toBe(false);
+    expect(
+      events.filter((entry) => entry.event === "backend_ready"),
+    ).toHaveLength(1);
+    expect(
+      events.filter((entry) => entry.event === "process_exit"),
+    ).toHaveLength(1);
+    expect(
+      events.filter((entry) => entry.event === "backend_stopped"),
+    ).toHaveLength(1);
+    const closed = events.filter((entry) => entry.event === "editor_closed");
+    expect(closed).toHaveLength(3);
+    expect(closed.every((entry) => entry.runIndex === 0)).toBe(true);
+  } finally {
+    await f.close();
+  }
+});
+
+it.each([
+  undefined,
+  {},
+  { activeScene: "res://Main.tscn" },
+  { activeScene: "res://Main.tscn", editorStopped: false },
+])(
+  "blocks source writes when editor closure is not confirmed: %j",
+  async (receipt) => {
+    const f = await fixture();
+    try {
+      await f.environment.runTool("editor_state", "start", async () => "ready");
+      f.control.mockResolvedValueOnce(receipt);
+      const write = vi.fn(async () => "must not run");
+      await expect(f.environment.runCoding("edit", write)).rejects.toThrow(
+        "did not confirm saving and closing",
+      );
+      expect(write).not.toHaveBeenCalled();
+      expect(f.stops).not.toHaveBeenCalled();
+      expect(await f.environment.wait("state", 0)).toMatchObject({
+        editorState: "ready",
+      });
+    } finally {
+      await f.close();
+    }
+  },
+);
 
 it("retains control diagnostics in artifacts and propagates the original error", async () => {
   const f = await fixture();
@@ -237,7 +351,10 @@ it("retains control diagnostics in artifacts and propagates the original error",
     await expect(
       f.environment.runTool("editor_state", "first", async () => "unused"),
     ).rejects.toBe(error);
-    expect(f.control).toHaveBeenCalledWith({ op: "start_editor" }, 150_000);
+    expect(f.control).toHaveBeenCalledWith(
+      { op: "start_editor", restoreScene: "" },
+      150_000,
+    );
     await f.environment.close();
     const record = JSON.parse(
       await readFile(f.environment.recordPaths()[0]!, "utf8"),
@@ -307,7 +424,10 @@ it("preserves thrown coding errors and adds invalidation context after closing t
 it("detaches the startup signal so cancelling a later wait does not cancel the editor process", async () => {
   const f = await fixture();
   try {
-    await f.environment.runCoding("bash", async () => undefined);
+    f.control.mockRejectedValueOnce(new Error("startup failed"));
+    await expect(
+      f.environment.runTool("editor_state", "first", async () => "unused"),
+    ).rejects.toThrow("startup failed");
     const abort = new AbortController();
     await f.environment.runTool(
       "editor_state",

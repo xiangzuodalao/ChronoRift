@@ -240,7 +240,6 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
           GODOT_AI_DISABLE_TELEMETRY: "true",
           GODOT_AI_MODE: "dev",
           GODOT_AI_CAPABILITY_DIR: join(runDirectory, "home/capabilities"),
-          CHRONORIFT_RESTORE_SCENE: this.activeScene,
           CHRONORIFT_GODOT_DATA_HOME: join(this.root, "godot-data"),
         },
         timeoutMs: 5_400_000,
@@ -345,7 +344,10 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
           this.editorState = "starting";
           this.editorGeneration += 1;
           try {
-            await this.control({ op: "start_editor" }, 150_000);
+            await this.control(
+              { op: "start_editor", restoreScene: this.activeScene },
+              150_000,
+            );
             signal?.throwIfAborted();
             if (this.process === undefined)
               throw new Error("Godot MCP exited during editor startup");
@@ -409,7 +411,7 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
         ["bash", "edit", "write"].includes(name) &&
         this.editorState === "ready";
       if (["bash", "edit", "write"].includes(name))
-        await this.saveAndStop(name);
+        await this.saveAndCloseEditor(name);
       signal?.throwIfAborted();
       const noticeText = `[ChronoRift environment] Editor generation ${this.editorGeneration} was saved and closed before ${name}. Previous runtime references are invalid. The next Godot tool reopens the editor from disk; use project_run explicitly to start a new game.`;
       let result: T;
@@ -524,33 +526,49 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
   }
   private async stopProcess(): Promise<void> {
     const process = this.process;
+    if (process === undefined) return;
+    const started = performance.now();
     this.stopping = true;
     try {
-      await process?.stop();
+      await process.stop();
       if (this.process === process) this.process = undefined;
       this.editorState = "stopped";
+      this.records.push({
+        event: "backend_stopped",
+        durationMs: performance.now() - started,
+        editorGeneration: this.editorGeneration,
+        runIndex: this.runs.length - 1,
+      });
     } finally {
       this.stopping = false;
     }
   }
-  private async saveAndStop(reason = "close"): Promise<void> {
-    if (this.process === undefined) return;
+  private async saveAndCloseEditor(reason = "close"): Promise<void> {
+    if (this.process === undefined || this.editorState === "stopped") return;
+    if (this.editorState !== "ready")
+      throw new Error("Cannot confirm that the managed editor is stopped");
     const started = performance.now();
-    const hadEditor = this.editorState === "ready";
-    if (hadEditor) {
-      const saved = (await this.control({ op: "save" })) as {
-        activeScene?: string;
-      };
-      this.activeScene =
-        typeof saved.activeScene === "string" ? saved.activeScene : "";
-    }
-    await this.stopProcess();
+    const saved = await this.control({ op: "save_and_close_editor" });
+    if (
+      saved === null ||
+      typeof saved !== "object" ||
+      !("editorStopped" in saved) ||
+      saved.editorStopped !== true ||
+      !("activeScene" in saved) ||
+      typeof saved.activeScene !== "string"
+    )
+      throw new Error("Managed editor did not confirm saving and closing");
+    if (this.process === undefined)
+      throw new Error("Godot MCP exited while closing the editor");
+    this.activeScene = saved.activeScene;
+    this.editorState = "stopped";
     this.records.push({
-      event: hadEditor ? "saved_and_stopped" : "backend_stopped",
+      event: "editor_closed",
       activeScene: this.activeScene,
       reason,
       durationMs: performance.now() - started,
       editorGeneration: this.editorGeneration,
+      runIndex: this.runs.length - 1,
     });
   }
   recordPaths(): readonly string[] {
@@ -561,7 +579,7 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
     if (this.closed) return;
     let failure: Error | undefined;
     try {
-      await this.saveAndStop();
+      await this.saveAndCloseEditor();
     } catch (error) {
       failure =
         error instanceof Error
@@ -569,7 +587,7 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
           : new Error("Editor save failed", { cause: error });
     } finally {
       this.closed = true;
-      await this.process?.stop();
+      await this.stopProcess();
       await this.transport?.close();
       await mkdir(this.options.recordsDirectory, { recursive: true });
       await writeFile(

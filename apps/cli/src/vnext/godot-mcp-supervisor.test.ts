@@ -31,7 +31,8 @@ tree.body.pop()
 namespace = {}
 exec(compile(tree, "supervisor", "exec"), namespace)
 real_client = namespace["client"]
-calls, replies, spawns = [], [], []
+calls, replies, spawns, signals, groups = [], [], [], [], {}
+client_count = 0
 responses = iter(spec["responses"])
 class FakeSession:
     async def call_tool(self, name, arguments):
@@ -43,23 +44,51 @@ class FakeSession:
         if response.get("group"):
             raise ExceptionGroup("outer", [ValueError("bad value"), ExceptionGroup("inner", [ConnectionError("attach disconnected")])])
         if "editor_exit" in response:
-            namespace["editor"].returncode = response["editor_exit"]
+            namespace["editor"].finish(response["editor_exit"])
         return types.SimpleNamespace(
             isError=response.get("isError", False),
             structuredContent={"data": response["value"]},
             content=[types.SimpleNamespace(type="text", text="upstream refused")])
 @contextlib.asynccontextmanager
 async def client(observations):
+    global client_count
+    client_count += 1
     yield FakeSession()
-    if spec.get("close_error"):
+    if spec.get("close_error") or spec.get("close_error_on") == client_count:
         raise RuntimeError("control connection failed on close")
 class FakeEditor:
-    returncode = None
+    def __init__(self, pid):
+        self.pid = pid
+        self.returncode = None
+        self.exited = asyncio.Event()
+    def finish(self, code=0):
+        self.returncode = code
+        self.exited.set()
     async def wait(self):
-        await asyncio.Future()
+        await self.exited.wait()
+        return self.returncode
 async def spawn(*args, **kwargs):
-    spawns.append({"args": args, "env": kwargs.get("env")})
-    return FakeEditor()
+    spawns.append({"args": args, **kwargs})
+    process = FakeEditor(100 + len(spawns))
+    namespace["children"].add(process)
+    if kwargs.get("new_session"):
+        namespace["process_groups"].add(process)
+        groups[process.pid] = {"process": process, "game": True}
+    return process
+def killpg(pid, sig):
+    signals.append({"pid": pid, "signal": sig})
+    if spec.get("signal_error"):
+        raise PermissionError("editor group signal refused")
+    group = groups[pid]
+    if sig == namespace["signal"].SIGTERM:
+        group["process"].finish()
+        group["game"] = bool(spec.get("residual_game"))
+    elif sig == namespace["signal"].SIGKILL and not spec.get("surviving_game"):
+        group["process"].finish()
+        group["game"] = False
+def group_has_live_processes(pid):
+    group = groups[pid]
+    return group["process"].returncode is None or group["game"]
 async def reject_subprocess(*args, **kwargs):
     raise RuntimeError("Real subprocess creation is disabled in this test")
 @contextlib.asynccontextmanager
@@ -69,11 +98,24 @@ async def timeout(seconds):
     yield
 asyncio.create_subprocess_exec = reject_subprocess
 asyncio.timeout = timeout
-namespace.update(client=client, spawn=spawn, emit=replies.append)
+namespace.update(client=client, spawn=spawn, emit=replies.append, group_has_live_processes=group_has_live_processes)
+os.killpg = killpg
 os.environ["CHRONORIFT_GODOT_DATA_HOME"] = "/fake/task-data"
-os.environ["CHRONORIFT_RESTORE_SCENE"] = spec.get("restore", "")
+# A stale environment value must never override the per-request restore path.
+os.environ["CHRONORIFT_RESTORE_SCENE"] = "res://stale.tscn"
 async def run():
-    if spec.get("shutdown"):
+    if spec.get("lifecycle"):
+        backend, display, relay = (FakeEditor(pid) for pid in (1, 2, 3))
+        namespace["children"].update((backend, display, relay))
+        namespace["relays"]["existing"] = relay
+        for index, command in enumerate(spec["commands"]):
+            if command["op"] == "unexpected_exit":
+                namespace["editor"].finish(17)
+            else:
+                await namespace["control"]({"id": str(index), "command": command})
+            await asyncio.sleep(0)
+        replies.append({"fatal": namespace["editor_exit"].is_set(), "editor": namespace["editor"].pid if namespace["editor"] else None, "children": sorted(process.pid for process in namespace["children"]), "relay": namespace["relays"]["existing"].pid, "services_alive": all(process.returncode is None for process in (backend, display, relay)), "games": {pid: group["game"] for pid, group in groups.items()}, "signals": signals})
+    elif spec.get("shutdown"):
         with tempfile.TemporaryDirectory() as directory:
             task_root = Path(directory)
             capability_dir = task_root / "home/capabilities"
@@ -201,7 +243,7 @@ async def run():
             error = ExceptionGroup("wide", [error] * 30)
         replies.append(namespace["error_diagnostic"](error, "save", "saving scene", namespace["time"].monotonic(), 45000, {}))
     else:
-        await namespace["control"]({"id": "test", "command": {"op": spec["op"]}})
+        await namespace["control"]({"id": "test", "command": {"op": spec["op"], "restoreScene": spec.get("restore", "")}})
 asyncio.run(run())
 print(json.dumps({"calls": calls, "replies": replies, "spawns": spawns}))
 `;
@@ -238,7 +280,11 @@ function run(spec: Record<string, unknown>) {
       error?: string;
       diagnostic?: Record<string, unknown>;
     }[];
-    spawns: { args: string[]; env: Record<string, string> }[];
+    spawns: {
+      args: string[];
+      env: Record<string, string>;
+      new_session?: boolean;
+    }[];
   };
 }
 
@@ -277,6 +323,123 @@ it("saves the active scene without opening it again", () => {
   ]);
   expect(result.spawns).toEqual([]);
 });
+
+const ready = (): Reply => ({
+  name: "editor_state",
+  value: { readiness: "ready" },
+});
+const saved = (): Reply => ({
+  name: "scene_save",
+  value: { path: "res://a.tscn" },
+});
+
+it("keeps the backend, display and existing MCP relay across editor closes and restarts", () => {
+  const result = run({
+    lifecycle: true,
+    residual_game: true,
+    commands: [
+      { op: "start_editor" },
+      { op: "save_and_close_editor" },
+      { op: "start_editor", restoreScene: "res://a.tscn" },
+      { op: "save_and_close_editor" },
+    ],
+    responses: [
+      ready(),
+      ...beforeSave(),
+      saved(),
+      ready(),
+      opened(),
+      ...beforeSave(),
+      saved(),
+    ],
+  });
+  expect(result.replies.slice(0, 4).every((reply) => reply.ok)).toBe(true);
+  expect(result.replies[1]?.value).toEqual({
+    activeScene: "res://a.tscn",
+    editorStopped: true,
+  });
+  expect(result.replies.at(-1)).toMatchObject({
+    fatal: false,
+    editor: null,
+    children: [1, 2, 3],
+    relay: 3,
+    services_alive: true,
+    games: { "101": false, "102": false },
+    signals: [
+      { pid: 101, signal: 15 },
+      { pid: 101, signal: 9 },
+      { pid: 102, signal: 15 },
+      { pid: 102, signal: 9 },
+    ],
+  });
+  expect(result.spawns).toHaveLength(2);
+  expect(result.spawns.every((spawn) => spawn.new_session)).toBe(true);
+  expect(result.calls.filter((call) => call.name === "scene_open")).toEqual([
+    { name: "scene_open", arguments: { path: "res://a.tscn" } },
+  ]);
+});
+
+it("still marks an unexpected editor exit as fatal", () => {
+  const result = run({
+    lifecycle: true,
+    commands: [{ op: "start_editor" }, { op: "unexpected_exit" }],
+    responses: [ready()],
+  });
+  expect(result.replies.at(-1)).toMatchObject({ fatal: true, signals: [] });
+});
+
+it.each([
+  { responses: [...beforeSave(), { ...saved(), isError: true }] },
+  { responses: [...beforeSave(), saved()], close_error_on: 2 },
+])(
+  "does not close the editor after an unconfirmed save or client teardown",
+  (failure) => {
+    const result = run({
+      lifecycle: true,
+      commands: [{ op: "start_editor" }, { op: "save_and_close_editor" }],
+      ...failure,
+      responses: [ready(), ...failure.responses],
+    });
+    expect(result.replies[0]?.ok).toBe(true);
+    expect(result.replies[1]?.ok).toBe(false);
+    expect(result.replies[1]?.value).toBeUndefined();
+    expect(result.replies.at(-1)).toMatchObject({
+      fatal: false,
+      editor: 101,
+      children: [1, 2, 3, 101],
+      signals: [],
+    });
+  },
+);
+
+it.each([
+  { signal_error: true, error: "editor group signal refused" },
+  {
+    residual_game: true,
+    surviving_game: true,
+    error: "Editor process group did not stop",
+  },
+])(
+  "fails closed when the editor group cannot be stopped: $error",
+  (failure) => {
+    const result = run({
+      lifecycle: true,
+      ...failure,
+      commands: [{ op: "start_editor" }, { op: "save_and_close_editor" }],
+      responses: [ready(), ...beforeSave(), saved()],
+    });
+    expect(result.replies[1]).toMatchObject({
+      ok: false,
+      error: failure.error,
+      diagnostic: { step: "closing editor process group" },
+    });
+    expect(result.replies[1]?.value).toBeUndefined();
+    expect(result.replies.at(-1)).toMatchObject({
+      fatal: true,
+      services_alive: true,
+    });
+  },
+);
 
 const beforeSwitch = (): Reply[] => [
   { name: "project_manage", value: { stopped: true } },

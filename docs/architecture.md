@@ -45,6 +45,7 @@ Pi 的 `cwd` 是其中的 canonical physical workspace。原 checkout 不被运�
 
 默认 `godot-ai` 后端在同一个可写 candidate 中运行编辑器与游戏。Root 使用 Pi MCP 扩展发现与调用上游工具，
 worker 只使用 coding tools。任何 bash/edit/write 前保存场景并关闭编辑器，下次实际 Godot 工具调用重新打开；工具目录和参数查询不打开编辑器。
+正常源码切换保留 MCP backend、Xvfb、沙箱与 adapter 连接，只关闭并重建编辑器和游戏；任务结束或环境故障才销毁后台。
 `--game-backend inspection` 保留独立只读 stage，`none` 提供 coding-only 入口。详见 [MCP 环境](godot-mcp.md)。
 
 结束时 Host 清理运行资源并保留结果目录。普通完成不自动 commit、merge、push、apply 或删除候选。

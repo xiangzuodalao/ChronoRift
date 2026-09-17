@@ -8,6 +8,8 @@ from mcp.client.stdio import stdio_client
 root, project, godot, xvfb = sys.argv[1:]
 root = Path(root)
 children = set()
+process_groups = set()
+expected_editor_stops = set()
 logs = []
 captures = set()
 relays = {}
@@ -135,19 +137,58 @@ def error_diagnostic(error, op, step, started, timeout_ms, observations):
             break
     return value
 
-async def spawn(*args, pipes=False, env=None):
+async def spawn(*args, pipes=False, env=None, new_session=False):
     index = log_index()
     process = await asyncio.create_subprocess_exec(*args,
         stdin=asyncio.subprocess.PIPE if pipes else asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env)
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env,
+        start_new_session=new_session)
     if not pipes:
         captures.add(asyncio.create_task(capture_stdout(process.stdout, root / ("process-%d.stdout.log" % index))))
     captures.add(asyncio.create_task(capture(process.stderr, root / ("process-%d.stderr.log" % index))))
     children.add(process)
+    if new_session:
+        process_groups.add(process)
     return process
 
+def group_has_live_processes(group):
+    # A stopped game's orphaned zombies cannot write. killpg(group, 0) alone
+    # would keep reporting them until the sandbox's init reaps them.
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if int(fields[2]) == group and fields[0] not in ("Z", "X"):
+            return True
+    return False
+
+async def stop_process_group(process):
+    # Only editors are session leaders. Their game inherits the same process
+    # group, so a leftover game cannot outlive the source-write barrier.
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        await asyncio.wait_for(process.wait(), 3)
+    except asyncio.TimeoutError:
+        pass
+    if group_has_live_processes(process.pid):
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+    deadline = time.monotonic() + 2
+    while process.returncode is None or group_has_live_processes(process.pid):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Editor process group did not stop")
+        await asyncio.sleep(.025)
+    await process.wait()
+
 async def stop(process):
-    if process.returncode is None:
+    if process in process_groups:
+        await stop_process_group(process)
+        process_groups.discard(process)
+    elif process.returncode is None:
         process.terminate()
         try:
             await asyncio.wait_for(process.wait(), 3)
@@ -200,14 +241,30 @@ async def client(observations):
 
 async def watch_editor(process):
     await process.wait()
-    editor_exit.set()
+    if process not in expected_editor_stops:
+        editor_exit.set()
+    expected_editor_stops.discard(process)
+
+async def close_editor():
+    global editor
+    process = editor
+    if process is None or process.returncode is not None:
+        raise RuntimeError("Godot editor exited before the confirmed close")
+    expected_editor_stops.add(process)
+    try:
+        await stop(process)
+    except BaseException:
+        # A partial close cannot grant source access or resume this editor.
+        editor_exit.set()
+        raise
+    editor = None
 
 async def open_scene_checked(session, path):
     opened = await tool(session, "scene_open", {"path": path})
     if not isinstance(opened, dict) or opened.get("switched") is not True or opened.get("path") != path:
         raise RuntimeError("Editor did not confirm switching to scene: " + path)
 
-async def start_editor(progress, observations):
+async def start_editor(progress, observations, restore):
     global editor
     if editor is not None:
         if editor.returncode is not None:
@@ -216,7 +273,7 @@ async def start_editor(progress, observations):
     editor_env = dict(os.environ)
     editor_env["XDG_DATA_HOME"] = editor_env.pop("CHRONORIFT_GODOT_DATA_HOME")
     progress("launching editor")
-    editor = await spawn(godot, "--editor", "--path", project, "--rendering-method", "gl_compatibility", "--display-driver", "x11", "--audio-driver", "Dummy", env=editor_env)
+    editor = await spawn(godot, "--editor", "--path", project, "--rendering-method", "gl_compatibility", "--display-driver", "x11", "--audio-driver", "Dummy", env=editor_env, new_session=True)
     asyncio.create_task(watch_editor(editor))
     async with asyncio.timeout(120):
         progress("connecting to editor control client")
@@ -237,7 +294,6 @@ async def start_editor(progress, observations):
                     if state["readiness"] in ("ready", "no_scene"):
                         break
                 await asyncio.sleep(.25)
-            restore = os.environ.get("CHRONORIFT_RESTORE_SCENE", "")
             if restore:
                 progress("restoring scene " + restore)
                 await open_scene_checked(session, restore)
@@ -258,13 +314,18 @@ async def control(message):
         op = command.get("op", "unknown")
         if op == "start_editor":
             timeout_ms = 120000
-            await start_editor(progress, observations)
+            restore = command.get("restoreScene", "")
+            if not isinstance(restore, str):
+                raise RuntimeError("Invalid editor restore scene")
+            await start_editor(progress, observations, restore)
             emit({"id": message["id"], "ok": True, "value": {"started": True}})
             return
         async with asyncio.timeout(45):
             progress("connecting to MCP control client")
             async with client(observations) as session:
-                if command.get("op") == "save":
+                if op in ("save", "save_and_close_editor"):
+                    if op == "save_and_close_editor" and (editor is None or editor.returncode is not None):
+                        raise RuntimeError("Godot editor is not running")
                     progress("stopping game")
                     stopped = await tool(session, "project_manage", {"op": "stop"})
                     if not isinstance(stopped, dict) or stopped.get("stopped") is not True:
@@ -301,6 +362,10 @@ async def control(message):
                 else:
                     raise RuntimeError("Unknown lifecycle operation")
                 progress("closing MCP control client")
+            if op == "save_and_close_editor":
+                progress("closing editor process group")
+                await close_editor()
+                value["editorStopped"] = True
         emit({"id": message["id"], "ok": True, "value": value})
     except Exception as error:
         diagnostic = error_diagnostic(error, op, step, started, timeout_ms, observations)

@@ -62,11 +62,13 @@ Root 独占 MCP；worker 只有 coding 与协作工具。任何代理执行 `bas
 
 1. 停止正在运行的游戏。
 2. 保存所有有路径的打开场景；无法保存时阻止这次代码操作。
-3. 关闭编辑器，然后执行 coding 操作。
+3. 确认编辑器及其游戏进程已经关闭，然后执行 coding 操作；保留同一沙箱内的 MCP backend、Xvfb 和 adapter 连接。
 4. 下次实际 Godot 工具调用时重新从磁盘打开编辑器并恢复活动场景；搜索、列目录、describe 不触发编辑器重启。游戏需重新 `project_run`，此前的 session ID 不能复用。
 
 保存时先直接保存已经活动的场景，再打开并保存其余场景；每次都核对实际保存路径。
 场景清单不一致、无路径场景或保存失败仍会阻断 coding 操作。
+编辑器尚未打开或已经关闭时，coding 操作不销毁后台环境。正常源码切换只重建编辑器和游戏；
+任务结束、取消实际 MCP 调用或环境故障时才关闭整个环境。编辑器意外退出仍按故障处理，不能将其当作保存成功。
 
 `read`、`grep`、`find` 和 `ls` 不关闭编辑器，但只看到磁盘内容。调查期间优先用这些工具读取源码；
 任意 `bash`（包括只读 shell 命令）仍会关闭游戏和编辑器，不通过猜测命令是否只读来放宽安全边界。代码读写与 MCP 调用串行化；这不提供跨多次调用的事务，
@@ -84,7 +86,8 @@ Root 可用 Host 工具 `environment_wait({duration_ms: 0..10000})` 等待而不
 ## 证据与限制
 
 新后端和 `none` 输出 Preview V6，包含 `gameBackend`、`workspaceMode`、执行预算、Session、候选 patch 与实际结束状态。
-MCP 环境另外写入 `godot-mcp.v1.json` 生命周期记录（区分 backend_ready 与 editor_ready，工具记录 requiresEditor）、各次编辑器启动的有界日志；原始工具返回和图片进入 Pi Session。
+MCP 环境另外写入 `godot-mcp.v1.json` 生命周期记录（区分 backend_ready、editor_ready、editor_closed 与 backend_stopped，工具记录 requiresEditor）、各次编辑器启动的有界日志；原始工具返回和图片进入 Pi Session。
+正常源码切换记录 editor_closed，不再记录整环境退出；历史 saved_and_stopped 记录保持原有含义。
 任务 records 中的 `preview-phases.v1.json` 分别记录 preflight、materialize、环境准备、Pi 调用、清理和补丁导出。
 Pi 调用包含 Session 初始化和关闭，不能直接等同于纯模型时间；工具总耗时包含其触发的启动等待，不要与启动耗时重复相加。
 `inspection` 和历史案例保留旧格式与语义。

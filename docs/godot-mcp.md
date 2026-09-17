@@ -38,6 +38,9 @@ corepack pnpm project preview -- "复现角色移动异常，修复后再次运�
 在模型轮次开始前以原生 schema 直接注册；可直接调用，无需先搜索或逐个 describe。其余工具仍通过 gateway 发现和调用。
 这些 schema 来自当前固定的上游服务，不在 ChronoRift 中复制维护。ChronoRift 不替模型编排调查步骤。MCP 服务安装、认证和任意新增服务属于 Host 管理，模型无法通过 gateway 改变它们。
 
+常用工具的 Pi 提示补充固定上游版本的作用域、输入和求值限制；参数与原始返回仍由 adapter 和 godot-ai 提供。
+Pi 自主选择是否使用运行时工具，这些说明不要求固定的调查步骤。
+
 ## 环境与写入衔接
 
 每次 Preview 从已准入源码建立新的私有 candidate。编辑器与 coding 工具读写这一个副本，原 checkout 不变。
@@ -47,6 +50,8 @@ corepack pnpm project preview -- "复现角色移动异常，修复后再次运�
 
 Host 已确认编辑器关闭时，参数校验通过的单独 `project_manage(op=stop)` 返回明确标记的 Host「已停止」结果，
 不为了停止而打开编辑器。其他请求仍使用上游工具；启动失败不会被记作就绪，后续显式调用可以重试，修改操作不会自动重放。
+编辑器启动等待 `readiness=ready` 或 `no_scene`，导入中继续等待；空编辑场景是合法状态。
+这项判断只确认编辑器可用，游戏 helper、当前游戏场景和目标节点需要另行观察。
 
 MCP 后端、Godot 编辑器、游戏和 Xvfb 在同一个 SRT 隔离环境内，通过隔离网络命名空间的 loopback 通信。
 Host 提供 mode 0700 目录中的 Unix socket；有界管道帧只转发原始 MCP 字节，沙箱仍禁止创建 Unix socket。
@@ -59,6 +64,9 @@ Root 独占 MCP；worker 只有 coding 与协作工具。任何代理执行 `bas
 2. 保存所有有路径的打开场景；无法保存时阻止这次代码操作。
 3. 关闭编辑器，然后执行 coding 操作。
 4. 下次实际 Godot 工具调用时重新从磁盘打开编辑器并恢复活动场景；搜索、列目录、describe 不触发编辑器重启。游戏需重新 `project_run`，此前的 session ID 不能复用。
+
+保存时先直接保存已经活动的场景，再打开并保存其余场景；每次都核对实际保存路径。
+场景清单不一致、无路径场景或保存失败仍会阻断 coding 操作。
 
 `read`、`grep`、`find` 和 `ls` 不关闭编辑器，但只看到磁盘内容。调查期间优先用这些工具读取源码；
 任意 `bash`（包括只读 shell 命令）仍会关闭游戏和编辑器，不通过猜测命令是否只读来放宽安全边界。代码读写与 MCP 调用串行化；这不提供跨多次调用的事务，
@@ -81,12 +89,35 @@ MCP 环境另外写入 `godot-mcp.v1.json` 生命周期记录（区分 backend_r
 Pi 调用包含 Session 初始化和关闭，不能直接等同于纯模型时间；工具总耗时包含其触发的启动等待，不要与启动耗时重复相加。
 `inspection` 和历史案例保留旧格式与语义。
 
+控制失败记录可附带有界诊断：操作、阶段、实际耗时与超时预算、展开后的异常类型和消息，以及临时 attach 的 stderr 摘要。
+stderr 持续排空，完整行脱敏后立即保存，每进程最多 1 MiB；单行超过 16 KiB 时整行丢弃。超限和未完整收集均有标记。
+异常组不会仅剩一个 TaskGroup 摘要，普通连接错误也不会被自动归类为超时。
+
+Host 预检可使用 `@chronorift/pi-harness` 的 `createManagedMcpProbe`：与正式 Session 共用初始化、已注册 adapter 工具、参数验证和扩展 hooks，
+提供 `tools()`、`execute({id, name, args, signal?})` 和 `close()`。它使用内存 Session 和空凭据，不发模型请求。
+新缓存下先通过 `mcp` 查询目录等待工具注册；目录查询不开编辑器。调用者负责准备及关闭沙箱环境，先关闭 probe 再关闭环境。
+该接口执行正式工具路径，不运行 Agent Loop；预检仍须检查实际状态和后置条件，不能只看工具是否返回错误。
+
 图形测试验证一个真实 fixture 的节点创建、场景保存、代码修改后重启、游戏输入、状态读取和 PNG 截图；
 离线 Pi 测试验证扩展发现、调用和图片内容传递。它们不证明任意 Godot 项目都兼容，也不证明总体修复率或耗时提升。
 上游 game sequence 的 process frames 不等于确定性的 physics ticks；截图只证明相应时刻的画面。
 GUI 键盘交互使用 `game_manage input_key`；`input_action` 修改 Input action state，并不等价于 GUI 按键事件。
 图片是否过期、游戏是否就绪须依据实际返回判断。本轮未修改上游鼠标移动的拖拽事件语义，不能据此宣称修复了拖拽能力。
 当前没有通用 checkpoint/restore、确定性 replay、实时视频或自动修复 verdict。
+
+运行时查询的 `root_path` 为空或 `/` 时，`get_scene_tree` 和 `get_ui_elements` 从当前场景开始，通常不包含 autoload。
+autoload 使用显式 `/root/<名称>` 路径。需要发现这些节点时，短 `game_eval` 可以从 `get_tree().root.get_children()`
+收集节点的 `get_path()`；不要把编辑器场景路径和运行时绝对路径混用。
+
+相关状态可以通过一次短 `game_eval` 一起返回。多档采样要用多行循环收集结果，并在循环结束后返回数组；以实际返回的样本数量和值判断覆盖范围。
+修改窗口尺寸后，应分别读取 `DisplayServer.window_get_size()` 和 `get_viewport().get_visible_rect().size`，不能将请求尺寸当作实测 viewport。
+固定上游对求值中的等待设有 8 秒超时；它无法抢占不让出主线程的死循环，Host 的调用超时也不代表该循环已经结束。
+较长过程可以分为触发操作和后续短查询；返回成功并不保证请求中的所有观察都已执行。
+
+`input_sequence` 按 process frames 安排 `Input` action，不发送物理按键、手柄或触摸事件，也不提供确定性的 physics ticks。
+涉及 GUI 输入或输入来源冲突时，动作时间线不能替代相应的真实事件路径。`batch_execute` 供适用的编辑器命令使用，不能嵌套运行时 game operations。
+`project_run` 返回启动尝试的回执；`game_status`、`helper_live` 和后续 `editor_state` 提供不同时刻的就绪观察。
+helper 上线仍不能证明目标场景、控件或所需业务状态已经就绪。
 
 比较优势需要另外进行受控实验：相同源码、任务、模型、thinking、执行预算和独立验收，分别运行 `godot-ai` 与 `none`，
 记录环境冷启动和总耗时、到首次复现的时间、最终独立验收、模型用量及失败/超时。不得只比较成功样本，

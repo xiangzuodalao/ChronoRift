@@ -3,7 +3,6 @@ import { join, resolve } from "node:path";
 import type { Api, Model, Transport } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
-  DefaultResourceLoader,
   getAgentDir,
   SessionManager,
   SettingsManager,
@@ -17,12 +16,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiThinkingLevel } from "./types.js";
-import {
-  createManagedMcpExtension,
-  MCP_EXTENSION_NAME,
-  MANAGED_MCP_TOOL_NAMES,
-  type ManagedMcpEnvironment,
-} from "./mcp-extension.js";
+import type { ManagedMcpEnvironment } from "./mcp-extension.js";
+import { createManagedSessionBootstrap } from "./managed-session-bootstrap.js";
 import {
   observePiModelRequests,
   type PiModelRequestTiming,
@@ -391,19 +386,6 @@ export async function createManagedPiSession(
       ? []
       : [options.additionalEnvironmentInstructions]),
   ];
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: resourceWorkspaceDirectory,
-    agentDir,
-    settingsManager,
-    noExtensions: true,
-    extensionFactories:
-      options.mcpEnvironment === undefined
-        ? []
-        : [createManagedMcpExtension(options.mcpEnvironment)],
-    noThemes: true,
-    appendSystemPrompt,
-  });
-  await resourceLoader.reload();
   const sessionManager =
     options.resumeSessionFile === undefined
       ? SessionManager.create(resourceWorkspaceDirectory, sessionDirectory, {
@@ -423,62 +405,25 @@ export async function createManagedPiSession(
     throw new Error("newSessionId cannot be supplied when resuming a Session");
   }
   const dependencies = { ...DEFAULT_DEPENDENCIES, ...overrides };
-  const created = await dependencies.createSession({
-    cwd: resourceWorkspaceDirectory,
-    agentDir,
-    modelRuntime: options.modelRuntime,
-    model: options.model,
-    thinkingLevel: options.thinkingLevel,
-    noTools: "all",
-    tools:
-      options.mcpEnvironment === undefined
-        ? toolNames
-        : [...toolNames, ...MANAGED_MCP_TOOL_NAMES],
-    customTools: [...options.tools],
-    resourceLoader,
-    sessionManager,
-    settingsManager,
-  });
-  const { session, extensionsResult } = created;
-  if (
-    extensionsResult.extensions.length !==
-      (options.mcpEnvironment === undefined ? 0 : 1) ||
-    extensionsResult.extensions.some(
-      (extension) => extension.path !== `<inline:${MCP_EXTENSION_NAME}>`,
-    )
-  ) {
-    session.dispose();
-    throw new Error("vNext Pi session loaded executable extensions");
-  }
-  if (extensionsResult.errors.length !== 0) {
-    session.dispose();
-    throw new Error(
-      `vNext Pi extension loading failed: ${extensionsResult.errors
-        .map((entry) => `${entry.path}: ${entry.error}`)
-        .join("; ")}`,
-    );
-  }
-  if (options.mcpEnvironment !== undefined) await session.bindExtensions({});
+  const { session, shutdownExtensions } = await createManagedSessionBootstrap(
+    {
+      sdk: {
+        cwd: resourceWorkspaceDirectory,
+        agentDir,
+        modelRuntime: options.modelRuntime,
+        model: options.model,
+        thinkingLevel: options.thinkingLevel,
+        customTools: [...options.tools],
+        sessionManager,
+        settingsManager,
+      },
+      toolNames,
+      mcpEnvironment: options.mcpEnvironment,
+      appendSystemPrompt,
+    },
+    dependencies.createSession,
+  );
   const activeTools = session.getActiveToolNames();
-  if (
-    activeTools.some(
-      (name) =>
-        !toolNames.includes(name) &&
-        !(
-          options.mcpEnvironment !== undefined &&
-          MANAGED_MCP_TOOL_NAMES.includes(name)
-        ),
-    ) ||
-    toolNames.some((name) => !activeTools.includes(name)) ||
-    (options.mcpEnvironment !== undefined &&
-      (!activeTools.includes("mcp") ||
-        !activeTools.includes("environment_wait")))
-  ) {
-    session.dispose();
-    throw new Error(
-      `Pi activated an unexpected tool set: ${activeTools.join(", ")}`,
-    );
-  }
 
   let eventsObserved = 0;
   let disposed = false;
@@ -488,7 +433,11 @@ export async function createManagedPiSession(
       await importPiSessionForkContext(session, options.forkContext);
     } catch (error) {
       inbox.dispose();
-      session.dispose();
+      try {
+        await shutdownExtensions();
+      } finally {
+        session.dispose();
+      }
       throw error;
     }
   }
@@ -571,12 +520,7 @@ export async function createManagedPiSession(
     ...(options.mcpEnvironment === undefined
       ? {}
       : {
-          shutdownExtensions: async () => {
-            await session.extensionRunner.emit({
-              type: "session_shutdown",
-              reason: "quit",
-            });
-          },
+          shutdownExtensions,
         }),
     dispose: () => {
       if (disposed) return;

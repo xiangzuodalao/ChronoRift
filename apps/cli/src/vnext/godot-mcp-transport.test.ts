@@ -4,7 +4,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it, vi } from "vitest";
-import { GodotMcpTransport } from "./godot-mcp-transport.js";
+import {
+  GodotMcpControlError,
+  GodotMcpTransport,
+  type GodotMcpDiagnostic,
+} from "./godot-mcp-transport.js";
 import type {
   SrtCommandResult,
   SrtDuplexHandle,
@@ -107,6 +111,115 @@ it("fails closed on an oversized unterminated pipe frame", async () => {
     f.stdout.write("x".repeat(2 * 1024 * 1024 + 1));
     await rejected;
     expect(f.stop).toHaveBeenCalled();
+  } finally {
+    await f.close();
+  }
+});
+
+const diagnostic: GodotMcpDiagnostic = {
+  operation: "save",
+  step: "closing MCP control client",
+  elapsedMs: 32,
+  timeoutMs: 45_000,
+  leaves: [{ type: "ConnectionError", message: "attach disconnected" }],
+  truncated: false,
+  stderr: {
+    log: "process-5.stderr.log",
+    truncated: false,
+    incomplete: false,
+    tail: "connection closed",
+  },
+};
+
+it.each([diagnostic, undefined])(
+  "preserves optional validated control diagnostics: %j",
+  async (value) => {
+    const f = await fixture();
+    try {
+      f.stdout.write('{"ready":true}\n');
+      await f.ready;
+      const pending = f.transport.control({ op: "save" });
+      const rejected = expect(pending).rejects.toMatchObject({
+        name: "GodotMcpControlError",
+        message: "save failed",
+        diagnostic: value,
+      });
+      f.stdout.write(
+        JSON.stringify({
+          id: f.frames[0]!.id,
+          ok: false,
+          error: "save failed",
+          ...(value === undefined ? {} : { diagnostic: value }),
+        }) + "\n",
+      );
+      await rejected;
+      expect(f.stop).not.toHaveBeenCalled();
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+it.each([
+  {
+    ...diagnostic,
+    leaves: Array.from({ length: 17 }, () => diagnostic.leaves[0]),
+  },
+  { ...diagnostic, leaves: [{ type: "Error", message: "x".repeat(513) }] },
+  { ...diagnostic, stderr: { ...diagnostic.stderr, log: "../host-secret" } },
+  { ...diagnostic, elapsedMs: -1 },
+  { ...diagnostic, unknown: true },
+  {
+    ...diagnostic,
+    leaves: Array.from({ length: 16 }, () => ({
+      type: "Error",
+      message: "界".repeat(512),
+    })),
+  },
+])(
+  "fails closed on invalid or oversized diagnostic metadata: %#",
+  async (value) => {
+    const f = await fixture();
+    try {
+      f.stdout.write('{"ready":true}\n');
+      await f.ready;
+      const pending = f.transport.control({ op: "save" });
+      const rejected = expect(pending).rejects.toThrow(
+        "Invalid MCP transport frame",
+      );
+      f.stdout.write(
+        JSON.stringify({
+          id: f.frames[0]!.id,
+          ok: false,
+          error: "save failed",
+          diagnostic: value,
+        }) + "\n",
+      );
+      await rejected;
+      expect(f.stop).toHaveBeenCalled();
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+it("records the actual Host deadline when no supervisor response arrives", async () => {
+  const f = await fixture();
+  try {
+    f.stdout.write('{"ready":true}\n');
+    await f.ready;
+    const error = await f.transport
+      .control({ op: "save" }, 10)
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(GodotMcpControlError);
+    expect(error).toMatchObject({
+      diagnostic: {
+        operation: "save",
+        step: "waiting for supervisor response",
+        timeoutMs: 10,
+        leaves: [{ type: "TimeoutError" }],
+      },
+    });
   } finally {
     await f.close();
   }

@@ -1,8 +1,52 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
+import { z } from "zod";
 import type { SrtDuplexHandle } from "./srt-sandbox-controller.js";
 
 const MAX_FRAME = 2 * 1024 * 1024;
+const diagnosticSchema = z
+  .object({
+    operation: z.string().max(128),
+    step: z.string().max(1024),
+    elapsedMs: z.number().int().nonnegative(),
+    timeoutMs: z.number().int().positive(),
+    leaves: z
+      .array(
+        z
+          .object({ type: z.string().max(128), message: z.string().max(512) })
+          .strict(),
+      )
+      .max(16),
+    truncated: z.boolean(),
+    lastReadiness: z
+      .enum(["ready", "no_scene", "importing", "playing"])
+      .optional(),
+    pollErrors: z.number().int().nonnegative().optional(),
+    lastPollError: z.string().max(512).optional(),
+    stderr: z
+      .object({
+        log: z.string().regex(/^process-\d+\.stderr\.log$/u),
+        truncated: z.boolean(),
+        incomplete: z.boolean(),
+        tail: z.string().max(4096),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((value) => Buffer.byteLength(JSON.stringify(value)) <= 16 * 1024);
+
+export type GodotMcpDiagnostic = z.infer<typeof diagnosticSchema>;
+
+export class GodotMcpControlError extends Error {
+  constructor(
+    message: string,
+    readonly diagnostic?: GodotMcpDiagnostic,
+  ) {
+    super(message);
+    this.name = "GodotMcpControlError";
+  }
+}
 
 /** Opaque byte relay only. MCP negotiation, schemas and content belong to Pi's adapter. */
 export class GodotMcpTransport {
@@ -53,7 +97,7 @@ export class GodotMcpTransport {
       let buffer = "";
       const fail = (error: Error) => {
         reject(error);
-        this.disconnect();
+        this.disconnect(error);
         void process.stop();
       };
       process.stdout.on("data", (chunk: Buffer) => {
@@ -76,6 +120,7 @@ export class GodotMcpTransport {
               ok?: boolean;
               value?: unknown;
               error?: string;
+              diagnostic?: unknown;
             };
             if (message.ready === true) resolve();
             else if (typeof message.channel === "string") {
@@ -91,11 +136,20 @@ export class GodotMcpTransport {
             } else if (typeof message.id === "string") {
               const pending = this.pending.get(message.id);
               if (pending) {
+                const diagnostic =
+                  message.diagnostic === undefined
+                    ? undefined
+                    : diagnosticSchema.parse(message.diagnostic);
                 this.pending.delete(message.id);
                 if (message.ok === true) pending.resolve(message.value);
                 else
                   pending.reject(
-                    new Error(message.error ?? "Editor control failed"),
+                    new GodotMcpControlError(
+                      typeof message.error === "string"
+                        ? message.error.slice(0, 4096)
+                        : "Editor control failed",
+                      diagnostic,
+                    ),
                   );
               }
             }
@@ -125,10 +179,28 @@ export class GodotMcpTransport {
   async control(command: object, timeoutMs = 50_000): Promise<unknown> {
     if (!this.process) throw new Error("Godot MCP is not running");
     const id = randomUUID();
+    const started = performance.now();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error("Editor control timed out"));
+        reject(
+          new GodotMcpControlError("Editor control timed out", {
+            operation:
+              "op" in command && typeof command.op === "string"
+                ? command.op.slice(0, 128)
+                : "unknown",
+            step: "waiting for supervisor response",
+            elapsedMs: Math.floor(performance.now() - started),
+            timeoutMs,
+            leaves: [
+              {
+                type: "TimeoutError",
+                message: "Host control deadline elapsed",
+              },
+            ],
+            truncated: false,
+          }),
+        );
       }, timeoutMs);
       this.pending.set(id, {
         resolve: (value) => {
@@ -144,12 +216,13 @@ export class GodotMcpTransport {
     });
   }
 
-  private disconnect(): void {
+  private disconnect(
+    error = new Error("Godot MCP process disconnected"),
+  ): void {
     this.process = undefined;
     for (const socket of this.sockets.values()) socket.destroy();
     this.sockets.clear();
-    for (const pending of this.pending.values())
-      pending.reject(new Error("Godot MCP process disconnected"));
+    for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
   }
 

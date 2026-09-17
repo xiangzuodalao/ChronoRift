@@ -15,8 +15,12 @@ import {
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { expect, it } from "vitest";
-import { createManagedPiSession } from "../src/index.js";
+import { expect, it, vi } from "vitest";
+import {
+  createManagedMcpProbe,
+  createManagedPiSession,
+  type ManagedMcpEnvironment,
+} from "../src/index.js";
 
 it("loads native MCP schemas, validates cold stops and exposes Host waits before the first turn offline", async () => {
   const root = await mkdtemp(join(tmpdir(), "cr-pi-mcp-"));
@@ -49,6 +53,19 @@ it("loads native MCP schemas, validates cold stops and exposes Host waits before
         if (request.method === "tools/list")
           result = {
             tools: [
+              ...["game_manage", "editor_manage", "project_run"].map(
+                (name) => ({
+                  name,
+                  description: `Native ${name}`,
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      op: { type: "string" },
+                      params: { type: "object" },
+                    },
+                  },
+                }),
+              ),
               {
                 name: "editor_screenshot",
                 description: "Capture game pixels",
@@ -130,6 +147,44 @@ it("loads native MCP schemas, validates cold stops and exposes Host waits before
   const requests: unknown[] = [];
   const waits: number[] = [];
   let coldStops = 0;
+  const environment: ManagedMcpEnvironment = {
+    socketPath,
+    agentDirectory: join(root, "agent"),
+    runTool: async (name, _id, operation, _signal, requiresEditor, request) => {
+      admitted.push(name);
+      editorRequirements.push(requiresEditor ?? true);
+      requests.push(
+        request === undefined
+          ? null
+          : { tool: request.tool, operation: request.operation },
+      );
+      if (request?.whenEditorStopped !== undefined) {
+        coldStops++;
+        return request.whenEditorStopped();
+      }
+      return operation();
+    },
+    wait: async (_id, durationMs, signal) => {
+      if (durationMs === 777) {
+        await new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(new Error("Fixture wait cancelled")),
+            {
+              once: true,
+            },
+          );
+          if (signal?.aborted) reject(new Error("Fixture wait cancelled"));
+        });
+      }
+      waits.push(durationMs);
+      return {
+        elapsedMs: durationMs,
+        editorState: "stopped",
+        editorGeneration: 0,
+      };
+    },
+  };
   const previous = process.env.PI_CODING_AGENT_DIR;
   try {
     const session = await createManagedPiSession(
@@ -152,39 +207,7 @@ it("loads native MCP schemas, validates cold stops and exposes Host waits before
             }),
           }),
         ],
-        mcpEnvironment: {
-          socketPath,
-          agentDirectory: join(root, "agent"),
-          runTool: async (
-            name,
-            _id,
-            operation,
-            _signal,
-            requiresEditor,
-            request,
-          ) => {
-            admitted.push(name);
-            editorRequirements.push(requiresEditor ?? true);
-            requests.push(
-              request === undefined
-                ? null
-                : { tool: request.tool, operation: request.operation },
-            );
-            if (request?.whenEditorStopped !== undefined) {
-              coldStops++;
-              return request.whenEditorStopped();
-            }
-            return operation();
-          },
-          wait: async (_id, durationMs) => {
-            waits.push(durationMs);
-            return {
-              elapsedMs: durationMs,
-              editorState: "stopped",
-              editorGeneration: 0,
-            };
-          },
-        },
+        mcpEnvironment: environment,
       },
       {
         createSession: async (options) => {
@@ -197,7 +220,7 @@ it("loads native MCP schemas, validates cold stops and exposes Host waits before
     expect(raw!.getActiveToolNames()).toEqual(
       expect.arrayContaining(["mcp", "read", "environment_wait"]),
     );
-    faux.setResponses([
+    const turns = [
       fauxAssistantMessage(
         fauxToolCall("godot-ai_editor_screenshot", { source: 123 }),
       ),
@@ -276,8 +299,39 @@ it("loads native MCP schemas, validates cold stops and exposes Host waits before
         }),
       ),
       fauxAssistantMessage("Done."),
+    ];
+    let firstSystemPrompt: string | undefined;
+    let firstRequestTools: string[] = [];
+    faux.setResponses([
+      (context) => {
+        firstSystemPrompt = context.systemPrompt;
+        firstRequestTools = context.tools?.map((tool) => tool.name) ?? [];
+        return turns[0]!;
+      },
+      ...turns.slice(1),
     ]);
     await session.prompt("Capture game screenshot.");
+    expect(firstRequestTools).toEqual(
+      expect.arrayContaining([
+        "mcp",
+        "environment_wait",
+        "godot-ai_editor_screenshot",
+        "godot-ai_project_manage",
+        "godot-ai_game_manage",
+        "godot-ai_editor_manage",
+        "godot-ai_project_run",
+      ]),
+    );
+    // Verify that native tool metadata reaches the first actual SDK model turn.
+    for (const note of [
+      "autoloads need explicit '/root/<name>' paths",
+      "input_sequence schedules Input actions on process frames, not physics ticks",
+      "8-second timeout for awaited work",
+      "check the actual sample count and values",
+      "get_viewport().get_visible_rect().size",
+      "A live helper does not prove the target scene or controls are ready",
+    ])
+      expect(firstSystemPrompt).toContain(note);
     expect(calls, JSON.stringify(raw!.state.messages)).toHaveLength(3);
     expect(admitted).toEqual([
       "godot-ai_editor_screenshot",
@@ -341,6 +395,139 @@ it("loads native MCP schemas, validates cold stops and exposes Host waits before
     await session.shutdownExtensions?.();
     expect(process.env.PI_CODING_AGENT_DIR).toBe(previous);
     session.dispose();
+    const expectedCalls = [...calls];
+    const expectedAdmissions = [...admitted];
+    const expectedEditorRequirements = [...editorRequirements];
+    const probeAgentDir = join(root, "probe-agent");
+    await mkdir(probeAgentDir);
+    // The probe must use its in-memory credentials/model configuration.
+    await writeFile(
+      join(probeAgentDir, "auth.json"),
+      "not a credential document",
+    );
+    await writeFile(join(probeAgentDir, "models.json"), "not a model document");
+    const stream = vi.spyOn(ModelRuntime.prototype, "streamSimple");
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Probe network is forbidden"));
+    const probe = await createManagedMcpProbe({
+      resourceWorkspaceDirectory: root,
+      mcpEnvironment: { ...environment, agentDirectory: probeAgentDir },
+    });
+    try {
+      const catalog = await probe.execute({
+        id: "catalog",
+        name: "mcp",
+        args: { search: "screenshot" },
+      });
+      expect(catalog.isError).toBe(false);
+      const probeAdmissionStart = admitted.length;
+      const probeEditorRequirementStart = editorRequirements.length;
+      expect(probe.tools().map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(["mcp", "environment_wait"]),
+      );
+      expect(probe.tools().some((tool) => tool.name === "bash")).toBe(false);
+      const probeResults = [];
+      for (const turn of turns) {
+        for (const block of turn.content) {
+          if (block.type !== "toolCall") continue;
+          probeResults.push(
+            await probe.execute({
+              id: block.id,
+              name: block.name,
+              args: block.arguments,
+            }),
+          );
+        }
+      }
+      expect(calls.slice(expectedCalls.length)).toEqual(expectedCalls);
+      expect(admitted.slice(probeAdmissionStart)).toEqual(expectedAdmissions);
+      expect(editorRequirements.slice(probeEditorRequirementStart)).toEqual(
+        expectedEditorRequirements,
+      );
+      expect(probeResults.map((result) => result.isError)).toEqual(
+        results.map((result) => result.isError),
+      );
+      expect(probeResults[1]?.content).toEqual(results[1]?.content);
+      expect(JSON.stringify(probeResults)).toContain('"alreadyStopped":true');
+      expect(JSON.stringify(probeResults)).toContain('"error":"tool_error"');
+      const abort = new AbortController();
+      abort.abort();
+      const beforeAbort = admitted.length;
+      expect(
+        (
+          await probe.execute({
+            id: "aborted",
+            name: "godot-ai_project_run",
+            args: {},
+            signal: abort.signal,
+          })
+        ).isError,
+      ).toBe(true);
+      expect(admitted).toHaveLength(beforeAbort);
+      const pending = probe.execute({
+        id: "pending-wait",
+        name: "environment_wait",
+        args: { duration_ms: 777 },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await probe.close();
+      expect((await pending).isError).toBe(true);
+      await probe.close();
+      await expect(
+        probe.execute({ id: "closed", name: "mcp", args: {} }),
+      ).rejects.toThrow("closed");
+      expect(stream).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(process.env.PI_CODING_AGENT_DIR).toBe(previous);
+    } finally {
+      await probe.close();
+      stream.mockRestore();
+      fetch.mockRestore();
+    }
+    // A loaded extension factory must release its directory if the SDK fails
+    // before it returns a Session/ExtensionRunner.
+    await expect(
+      createManagedPiSession(
+        {
+          resourceWorkspaceDirectory: root,
+          sessionDirectory: join(root, "failed-sessions"),
+          agentDir: join(root, "failed-agent"),
+          modelRuntime,
+          model: modelRuntime.getModel("cr-mcp-test", "offline")!,
+          thinkingLevel: "off",
+          tools: [
+            defineTool({
+              name: "fixture",
+              label: "fixture",
+              description: "fixture",
+              parameters: Type.Object({}),
+              execute: async () => ({ content: [], details: {} }),
+            }),
+          ],
+          mcpEnvironment: {
+            ...environment,
+            agentDirectory: join(root, "failed-agent"),
+          },
+        },
+        {
+          createSession: async () => {
+            throw new Error("SDK construction failed");
+          },
+        },
+      ),
+    ).rejects.toThrow("SDK construction failed");
+    // Give the adapter's load-time setImmediate a chance to run after failure.
+    // Shutdown must invalidate that work before it can connect.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect([...sockets].filter((socket) => !socket.destroyed)).toHaveLength(0);
+    expect(process.env.PI_CODING_AGENT_DIR).toBe(previous);
+    const next = await createManagedMcpProbe({
+      resourceWorkspaceDirectory: root,
+      mcpEnvironment: environment,
+    });
+    await next.close();
+    expect(process.env.PI_CODING_AGENT_DIR).toBe(previous);
   } finally {
     raw?.dispose();
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;

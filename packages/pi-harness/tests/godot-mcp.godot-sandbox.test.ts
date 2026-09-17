@@ -11,6 +11,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
   createManagedPiSession,
+  createManagedMcpProbe,
+  type ManagedMcpProbe,
+  type ManagedMcpProbeResult,
   createVNextCodingToolDefinitions,
 } from "../src/index.js";
 import { SandboxPiCodingToolPort } from "../../../apps/cli/src/vnext/pi-coding-tool-port.js";
@@ -34,14 +37,18 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
   await mkdir(workspace);
   await writeFile(
     join(workspace, "project.godot"),
-    'config_version=5\n[application]\nconfig/name="MCP integration"\nrun/main_scene="res://main.tscn"\n[rendering]\nrenderer/rendering_method="gl_compatibility"\n',
+    'config_version=5\n[application]\nconfig/name="MCP integration"\nrun/main_scene="res://main.tscn"\n[autoload]\nFixtureOverlay="*res://overlay.tscn"\n[display/window]\nsize/viewport_width=640\nsize/viewport_height=480\nsize/window_width_override=640\nsize/window_height_override=480\n[rendering]\nrenderer/rendering_method="gl_compatibility"\n',
   );
   await writeFile(
     join(workspace, "main.tscn"),
-    '[gd_scene load_steps=2 format=3]\n[ext_resource type="Script" path="res://main.gd" id="1"]\n[node name="Main" type="Node2D"]\nscript=ExtResource("1")\n',
+    '[gd_scene load_steps=2 format=3]\n[ext_resource type="Script" path="res://main.gd" id="1"]\n[node name="Main" type="Node2D"]\nscript=ExtResource("1")\n[node name="MainLabel" type="Label" parent="."]\ntext="scene-ui"\noffset_top=160.0\n',
+  );
+  await writeFile(
+    join(workspace, "overlay.tscn"),
+    '[gd_scene format=3]\n[node name="FixtureOverlay" type="CanvasLayer"]\n[node name="AutoloadLabel" type="Label" parent="."]\ntext="autoload-ui"\noffset_top=180.0\n',
   );
   const script =
-    'extends Node2D\nvar answer := 40\nfunc _input(event):\n\tif event.is_action_pressed("ui_right"):\n\t\tanswer += 1\nfunc _draw():\n\tdraw_rect(Rect2(20,20,120,120), Color.RED)\n';
+    'extends Node2D\nvar answer := 40\nvar process_nonce = Crypto.new().generate_random_bytes(16).hex_encode()\nfunc _input(event):\n\tif event.is_action_pressed("ui_right"):\n\t\tanswer += 1\nfunc _draw():\n\tdraw_rect(Rect2(20,20,120,120), Color.RED)\nfunc add_late_ui():\n\tawait get_tree().create_timer(0.25).timeout\n\tvar label := Label.new()\n\tlabel.name = "LateUi"\n\tlabel.text = "late-ui"\n\tadd_child(label)\n';
   await writeFile(join(workspace, "main.gd"), script);
   const controller = new SrtSandboxController();
   const environment = await GodotMcpEnvironment.create({
@@ -55,14 +62,95 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
     isolationReadRoots: [root],
     admit: () => undefined,
   });
-  const call = (name: string, args: object = {}) =>
-    environment.runTool(name, "test", () =>
-      environment.control({ op: "call", name, arguments: args }),
+  let probe: ManagedMcpProbe | undefined;
+  let callId = 0;
+  const openProbe = async (managed = environment) => {
+    const opened = await createManagedMcpProbe({
+      resourceWorkspaceDirectory: workspace,
+      mcpEnvironment: managed,
+    });
+    try {
+      const catalog = await opened.execute({
+        id: `catalog-${++callId}`,
+        name: "mcp",
+        args: { search: "game" },
+      });
+      expect(catalog.isError, JSON.stringify(catalog)).toBe(false);
+      return opened;
+    } catch (error) {
+      await opened.close();
+      throw error;
+    }
+  };
+  const rawCall = async (
+    name: string,
+    args: Record<string, unknown> = {},
+    target = probe!,
+  ) => {
+    const native = `godot-ai_${name}`;
+    return target.execute(
+      target.tools().some((tool) => tool.name === native)
+        ? { id: `probe-${++callId}`, name: native, args }
+        : {
+            id: `probe-${++callId}`,
+            name: "mcp",
+            args: { tool: native, args },
+          },
     );
+  };
+  const parseResult = (result: ManagedMcpProbeResult): unknown => {
+    const parsed = result.content.flatMap((part) => {
+      if (part.type !== "text") return [];
+      try {
+        return [JSON.parse(part.text) as unknown];
+      } catch {
+        return [];
+      }
+    });
+    expect(parsed, JSON.stringify(result)).toHaveLength(1);
+    return parsed[0];
+  };
+  const call = async (
+    name: string,
+    args: Record<string, unknown> = {},
+    target = probe!,
+  ) => {
+    const result = await rawCall(name, args, target);
+    expect(result.isError, JSON.stringify(result)).toBe(false);
+    return parseResult(result);
+  };
+  const waitForScene = async (target = probe!) => {
+    const until = Date.now() + 60_000;
+    while (Date.now() < until) {
+      const observed = await rawCall(
+        "editor_manage",
+        {
+          op: "game_eval",
+          params: { code: "return get_tree().current_scene != null" },
+        },
+        target,
+      );
+      if (!observed.isError) {
+        const parsed = parseResult(observed) as { result?: unknown };
+        if (parsed.result === true) return;
+      }
+      const waited = await target.execute({
+        id: `wait-${++callId}`,
+        name: "environment_wait",
+        args: { duration_ms: 250 },
+      });
+      expect(waited.isError, JSON.stringify(waited)).toBe(false);
+    }
+    throw new Error(
+      "Runtime scene did not become observable within 60 seconds",
+    );
+  };
   try {
     await writeFile(join(root, "host-secret"), "host-only fixture");
     await environment.prepare();
     // Preparing the MCP catalog must not import or launch the project.
+    expect(await readdir(workspace)).not.toContain(".godot");
+    probe = await openProbe();
     expect(await readdir(workspace)).not.toContain(".godot");
     await writeFile(
       join(environment.agentDirectory, "host-cache"),
@@ -82,13 +170,63 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       );
       await writeFile(join(workspace, "main.gd"), script.replace("40", "41"));
     });
-    await call("project_run");
+    await rawCall("project_run");
+    await waitForScene();
     expect(
       await call("editor_manage", {
         op: "game_eval",
         params: { code: "return get_tree().current_scene.answer" },
       }),
     ).toMatchObject({ result: 41 });
+    const sceneUi = await call("game_manage", {
+      op: "get_ui_elements",
+    });
+    expect(JSON.stringify(sceneUi)).toContain("scene-ui");
+    expect(JSON.stringify(sceneUi)).not.toContain("autoload-ui");
+    const autoloadUi = (await call("game_manage", {
+      op: "get_ui_elements",
+      params: { root_path: "/root/FixtureOverlay" },
+    })) as { elements: { text?: string }[] };
+    expect(autoloadUi.elements.map((element) => element.text)).toContain(
+      "autoload-ui",
+    );
+    expect(await call("editor_state")).toMatchObject({ helper_live: true });
+    expect(
+      await call("editor_manage", {
+        op: "game_eval",
+        params: {
+          code: 'var main = get_tree().current_scene\nmain.add_late_ui()\nreturn {"target_ready": main.has_node("LateUi")}',
+        },
+      }),
+    ).toMatchObject({ result: { target_ready: false } });
+    // Helper readiness precedes this explicitly delayed target; observe both.
+    expect(
+      await call("editor_manage", {
+        op: "game_eval",
+        params: {
+          code: 'await get_tree().create_timer(0.4).timeout\nreturn {"target_ready": get_tree().current_scene.has_node("LateUi")}',
+        },
+      }),
+    ).toMatchObject({ result: { target_ready: true } });
+    const sampled = (await call("editor_manage", {
+      op: "game_eval",
+      params: {
+        code: 'var samples = []\nfor index in range(3):\n\tawait get_tree().process_frame\n\tvar viewport_size = get_viewport().get_visible_rect().size\n\tvar window_size = DisplayServer.window_get_size()\n\tsamples.append({"index": index, "viewport": [viewport_size.x, viewport_size.y], "window": [window_size.x, window_size.y]})\nreturn {"samples": samples, "count": samples.size()}',
+      },
+    })) as {
+      result: {
+        count: number;
+        samples: { index: number; viewport: number[]; window: number[] }[];
+      };
+    };
+    expect(sampled.result.count).toBe(3);
+    expect(sampled.result.samples).toEqual(
+      [0, 1, 2].map((index) => ({
+        index,
+        viewport: [640, 480],
+        window: [640, 480],
+      })),
+    );
     const visibility = await call("editor_manage", {
       op: "game_eval",
       params: {
@@ -107,13 +245,28 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       params: { code: "return get_tree().current_scene.answer" },
     });
     expect(observed).toMatchObject({ result: 42 });
-    const running = await call("editor_manage", {
+    const running = (await call("editor_manage", {
       op: "game_eval",
       params: {
-        code: 'var file = FileAccess.open("user://continuity.txt", FileAccess.WRITE)\nfile.store_string("task save")\nfile.close()\nreturn OS.get_process_id()',
+        code: 'var file = FileAccess.open("user://continuity.txt", FileAccess.WRITE)\nfile.store_string("task save")\nfile.close()\nreturn {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce}',
       },
+    })) as { result: { pid: number; nonce: string } };
+    expect(running.result.nonce).toMatch(/^[0-9a-f]{32}$/u);
+    const waitReceipt = await probe.execute({
+      id: "live-wait",
+      name: "environment_wait",
+      args: { duration_ms: 100 },
     });
-    const waitResult = await environment.wait("live-wait", 100);
+    expect(waitReceipt.isError).toBe(false);
+    const waitResult = (
+      waitReceipt.details as {
+        chronorift: {
+          elapsedMs: number;
+          editorState: string;
+          editorGeneration: number;
+        };
+      }
+    ).chronorift;
     expect(waitResult).toMatchObject({
       editorState: "ready",
       editorGeneration: 2,
@@ -122,28 +275,20 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
     expect(
       await call("editor_manage", {
         op: "game_eval",
-        params: { code: "return OS.get_process_id()" },
+        params: {
+          code: 'return {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce}',
+        },
       }),
     ).toEqual(running);
-    const screenshot = (await environment.runTool(
-      "editor_screenshot",
-      "screenshot",
-      () =>
-        environment.control({
-          op: "call_raw",
-          name: "editor_screenshot",
-          arguments: { source: "game" },
-        }),
-    )) as {
-      content: { type: string; data?: string; mimeType?: string }[];
-      isError?: boolean;
-    };
+    const screenshot = await rawCall("editor_screenshot", { source: "game" });
     expect(screenshot.isError).not.toBe(true);
     const image = screenshot.content.find((part) => part.type === "image");
     expect(image?.mimeType).toBe("image/png");
     expect(
       Buffer.from(image!.data!, "base64").subarray(0, 8).toString("hex"),
     ).toBe("89504e470d0a1a0a");
+    await probe.close();
+    probe = undefined;
     // Exercise the installed Pi adapter against the real server, including reconnection.
     const faux = fauxProvider({
       api: "cr-real-mcp",
@@ -256,7 +401,9 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       await session.shutdownExtensions?.();
       session.dispose();
     }
-    await call("project_run");
+    probe = await openProbe();
+    await rawCall("project_run");
+    await waitForScene();
     expect(
       await call("editor_manage", {
         op: "game_eval",
@@ -265,10 +412,28 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
         },
       }),
     ).toMatchObject({ result: "task save" });
+    const restarted = (await call("editor_manage", {
+      op: "game_eval",
+      params: {
+        code: 'return {"pid": OS.get_process_id(), "nonce": get_tree().current_scene.process_nonce}',
+      },
+    })) as { result: { pid: number; nonce: string } };
+    // Fresh SRT PID namespaces can reuse numeric PIDs; compare runtime identity.
+    expect(restarted.result.nonce).toMatch(/^[0-9a-f]{32}$/u);
+    expect(restarted.result.nonce).not.toBe(running.result.nonce);
+    await probe.close();
+    probe = undefined;
     await environment.close();
     const lifecycle = JSON.parse(
       await readFile(environment.recordPaths()[0]!, "utf8"),
-    ) as { events: { event: string; requiresEditor?: boolean }[] };
+    ) as {
+      events: {
+        event: string;
+        id?: string;
+        requiresEditor?: boolean;
+        editorGeneration?: number;
+      }[];
+    };
     // Initial actual call, after the source write, and after the Pi write/bash.
     // The intervening describe + bash must not add an editor startup.
     expect(
@@ -277,11 +442,14 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
     expect(
       lifecycle.events.filter((entry) => entry.event === "backend_stopped"),
     ).toHaveLength(1);
-    expect(
-      lifecycle.events.filter(
-        (entry) => entry.event === "tool" && entry.requiresEditor === false,
-      ),
-    ).toHaveLength(3);
+    const catalogs = lifecycle.events.filter(
+      (entry) => entry.event === "tool" && entry.id?.startsWith("catalog-"),
+    );
+    expect(catalogs).toHaveLength(2);
+    expect(catalogs.every((entry) => entry.requiresEditor === false)).toBe(
+      true,
+    );
+    expect(catalogs.map((entry) => entry.editorGeneration)).toEqual([0, 3]);
     await environment.removeManagedFiles();
     expect(
       await readFile(join(workspace, "project.godot"), "utf8"),
@@ -297,30 +465,32 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       isolationReadRoots: [root],
       admit: () => undefined,
     });
+    let freshProbe: ManagedMcpProbe | undefined;
     try {
       await fresh.prepare();
-      await fresh.runTool("project_run", "fresh-run", () =>
-        fresh.control({ op: "call", name: "project_run" }),
-      );
+      freshProbe = await openProbe(fresh);
+      await rawCall("project_run", {}, freshProbe);
+      await waitForScene(freshProbe);
       expect(
-        await fresh.runTool("editor_manage", "fresh-save", () =>
-          fresh.control({
-            op: "call",
-            name: "editor_manage",
-            arguments: {
-              op: "game_eval",
-              params: {
-                code: 'return FileAccess.file_exists("user://continuity.txt")',
-              },
+        await call(
+          "editor_manage",
+          {
+            op: "game_eval",
+            params: {
+              code: 'return FileAccess.file_exists("user://continuity.txt")',
             },
-          }),
+          },
+          freshProbe,
         ),
       ).toMatchObject({ result: false });
     } finally {
+      await freshProbe?.close();
       await fresh.close();
       await fresh.removeManagedFiles();
     }
   } finally {
+    await probe?.close();
+    await environment.close();
     await controller.close();
     // Retain failed runtime logs in the task directory for diagnosis.
     if (process.env.CHRONORIFT_KEEP_TEST_ARTIFACTS !== "1") {

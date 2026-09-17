@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, expect, it, vi } from "vitest";
 import { GodotMcpEnvironment } from "./godot-mcp-environment.js";
-import { GodotMcpTransport } from "./godot-mcp-transport.js";
+import {
+  GodotMcpControlError,
+  GodotMcpTransport,
+  type GodotMcpDiagnostic,
+} from "./godot-mcp-transport.js";
 import {
   SrtSandboxController,
   type SrtCommandResult,
@@ -211,6 +215,68 @@ it("blocks coding on save failure and preserves tool content when reporting succ
     expect(events).toContainEqual(
       expect.objectContaining({ event: "saved_and_stopped", reason: "write" }),
     );
+  } finally {
+    await f.close();
+  }
+});
+
+it("retains control diagnostics in artifacts and propagates the original error", async () => {
+  const f = await fixture();
+  try {
+    const diagnostic: GodotMcpDiagnostic = {
+      operation: "start_editor",
+      step: "waiting for editor readiness",
+      elapsedMs: 120_000,
+      timeoutMs: 120_000,
+      leaves: [{ type: "TimeoutError", message: "" }],
+      truncated: false,
+      lastReadiness: "importing",
+    };
+    const error = new GodotMcpControlError("startup failed", diagnostic);
+    f.control.mockRejectedValueOnce(error);
+    await expect(
+      f.environment.runTool("editor_state", "first", async () => "unused"),
+    ).rejects.toBe(error);
+    expect(f.control).toHaveBeenCalledWith({ op: "start_editor" }, 150_000);
+    await f.environment.close();
+    const record = JSON.parse(
+      await readFile(f.environment.recordPaths()[0]!, "utf8"),
+    ) as { events: unknown[] };
+    expect(record.events).toContainEqual({
+      event: "control_failed",
+      editorGeneration: 1,
+      runIndex: 0,
+      error: "startup failed",
+      diagnostic,
+    });
+  } finally {
+    await f.close();
+  }
+});
+
+it("exports stderr incomplete markers left by forced process termination", async () => {
+  const f = await fixture();
+  try {
+    const directory = f.open.mock.calls[0]![0].artifactsPath;
+    await writeFile(
+      join(directory, "process-99.stderr.log"),
+      "persisted before termination\n",
+    );
+    await writeFile(
+      join(directory, "process-99.stderr.log.incomplete"),
+      "true\n",
+    );
+    await f.environment.close();
+    const records = join(f.environment.recordPaths()[0]!, "..");
+    expect(
+      await readFile(join(records, "run-0-process-99.stderr.log"), "utf8"),
+    ).toBe("persisted before termination\n");
+    expect(
+      await readFile(
+        join(records, "run-0-process-99.stderr.log.incomplete"),
+        "utf8",
+      ),
+    ).toBe("true\n");
   } finally {
     await f.close();
   }

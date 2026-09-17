@@ -21,6 +21,21 @@ const DIRECT_TOOLS = [
   "logs_read",
   "scene_open",
 ];
+// Describe fixed upstream semantics without replacing its schemas or results.
+// Pi includes these notes for active tools in its normal system prompt.
+const TOOL_GUIDELINES: Readonly<Record<string, readonly string[]>> = {
+  "godot-ai_game_manage": [
+    "Runtime get_scene_tree/get_ui_elements use the current scene for an empty root_path or '/'; autoloads need explicit '/root/<name>' paths. game_eval can discover absolute paths by reading get_path() from get_tree().root.get_children().",
+    "input_sequence schedules Input actions on process frames, not physics ticks. It does not dispatch physical-key, joypad or touch events. Runtime game operations cannot run inside batch_execute.",
+  ],
+  "godot-ai_editor_manage": [
+    "game_eval has an 8-second timeout for awaited work; it cannot interrupt a non-yielding loop. Short evals can return related observations together. For multiple samples, use a multiline loop and return the collected array after the loop; check the actual sample count and values.",
+    "Changing window size does not prove the viewport changed. When resolution matters, read actual get_viewport().get_visible_rect().size and DisplayServer.window_get_size(); a returned eval does not prove every requested step ran.",
+  ],
+  "godot-ai_project_run": [
+    "project_run reports a launch attempt. Read game_status/helper_live and later editor_state observations to distinguish launching, live, stopped or a debugger break. A live helper does not prove the target scene or controls are ready.",
+  ],
+};
 export const MANAGED_MCP_TOOL_NAMES = [
   "mcp",
   "environment_wait",
@@ -66,6 +81,7 @@ export interface ManagedMcpEnvironment {
 
 export function createManagedMcpExtension(
   environment: ManagedMcpEnvironment,
+  options: { readonly onFactoryCleanup?: (cleanup: () => void) => void } = {},
 ): InlineExtension {
   return {
     name: MCP_EXTENSION_NAME,
@@ -98,6 +114,9 @@ export function createManagedMcpExtension(
         }
       };
       activateDirectory();
+      // Loading the factory precedes SDK Session creation. The Host must also
+      // release this environment override if Session construction fails.
+      options.onFactoryCleanup?.(restoreDirectory);
       // Pi reuses extension instances across /new and Session replacement.
       pi.on("session_start", activateDirectory);
       const adapter = createMcpAdapter({
@@ -126,6 +145,7 @@ export function createManagedMcpExtension(
         // Adapter results are opaque here. Widen only its details type at this
         // registration boundary so a Host receipt can use its own namespace.
         const tool = registeredTool as ToolDefinition;
+        const guidelines = TOOL_GUIDELINES[tool.name];
         if (tool.name.startsWith("godot-ai_"))
           nativeSchemas.set(
             tool.name.slice("godot-ai_".length),
@@ -133,6 +153,14 @@ export function createManagedMcpExtension(
           );
         pi.registerTool({
           ...tool,
+          ...(guidelines === undefined
+            ? {}
+            : {
+                promptGuidelines: [
+                  ...(tool.promptGuidelines ?? []),
+                  ...guidelines,
+                ],
+              }),
           executionMode: "sequential",
           execute: (id, input, signal, onUpdate, context) => {
             const params = input as Record<string, unknown>;

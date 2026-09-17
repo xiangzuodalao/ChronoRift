@@ -169,3 +169,10 @@ export {
   type ManagedMcpToolRequest,
   type ManagedMcpWaitResult,
 } from "./mcp-extension.js";
+export {
+  createManagedMcpProbe,
+  type ManagedMcpProbe,
+  type ManagedMcpProbeOptions,
+  type ManagedMcpProbeRequest,
+  type ManagedMcpProbeResult,
+} from "./mcp-probe.js";

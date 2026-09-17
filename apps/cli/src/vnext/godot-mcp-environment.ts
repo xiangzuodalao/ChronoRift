@@ -25,7 +25,10 @@ import type {
   SrtSandboxController,
 } from "./srt-sandbox-controller.js";
 import { resolveGodotMcpInstallation } from "./godot-mcp-installation.js";
-import { GodotMcpTransport } from "./godot-mcp-transport.js";
+import {
+  GodotMcpControlError,
+  GodotMcpTransport,
+} from "./godot-mcp-transport.js";
 import { GODOT_MCP_SUPERVISOR } from "./godot-mcp-supervisor.js";
 
 const PLUGIN = '"res://addons/godot_ai/plugin.cfg"';
@@ -342,7 +345,7 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
           this.editorState = "starting";
           this.editorGeneration += 1;
           try {
-            await this.transport!.control({ op: "start_editor" }, 150_000);
+            await this.control({ op: "start_editor" }, 150_000);
             signal?.throwIfAborted();
             if (this.process === undefined)
               throw new Error("Godot MCP exited during editor startup");
@@ -498,9 +501,26 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
       }
     }, signal);
   }
-  async control(command: object): Promise<unknown> {
+  async control(command: object, timeoutMs = 50_000): Promise<unknown> {
     if (!this.transport) throw new Error("Godot MCP transport is not prepared");
-    return this.transport.control(command);
+    try {
+      return await this.transport.control(command, timeoutMs);
+    } catch (error) {
+      this.records.push({
+        event: "control_failed",
+        editorGeneration: this.editorGeneration,
+        runIndex: this.runs.length - 1,
+        error:
+          error instanceof Error
+            ? error.message.slice(0, 4096)
+            : "Editor control failed",
+        ...(error instanceof GodotMcpControlError &&
+        error.diagnostic !== undefined
+          ? { diagnostic: error.diagnostic }
+          : {}),
+      });
+      throw error;
+    }
   }
   private async stopProcess(): Promise<void> {
     const process = this.process;
@@ -569,7 +589,9 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
       for (const [index, directory] of this.runs.entries()) {
         for (const name of await readdir(directory)) {
           if (
-            !/^process-\d+\.(?:stdout|stderr)\.log(?:\.truncated)?$/u.test(name)
+            !/^process-\d+\.(?:stdout|stderr)\.log(?:\.(?:truncated|incomplete))?$/u.test(
+              name,
+            )
           )
             continue;
           const value = await readRegularFile(

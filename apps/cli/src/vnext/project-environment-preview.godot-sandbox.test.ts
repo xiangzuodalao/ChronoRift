@@ -259,6 +259,7 @@ describe("adapter-free Preview in the real SRT sandbox", () => {
     expect(await readdir(join(result.taskDirectory, "records"))).toEqual([
       "candidate.patch",
       "performance.v1.json",
+      "preview-phases.v1.json",
       "preview.v2.json",
     ]);
     const timing = JSON.parse(

@@ -20,6 +20,7 @@ import type { PiThinkingLevel } from "./types.js";
 import {
   createManagedMcpExtension,
   MCP_EXTENSION_NAME,
+  MANAGED_MCP_TOOL_NAMES,
   type ManagedMcpEnvironment,
 } from "./mcp-extension.js";
 import {
@@ -430,7 +431,9 @@ export async function createManagedPiSession(
     thinkingLevel: options.thinkingLevel,
     noTools: "all",
     tools:
-      options.mcpEnvironment === undefined ? toolNames : [...toolNames, "mcp"],
+      options.mcpEnvironment === undefined
+        ? toolNames
+        : [...toolNames, ...MANAGED_MCP_TOOL_NAMES],
     customTools: [...options.tools],
     resourceLoader,
     sessionManager,
@@ -458,9 +461,18 @@ export async function createManagedPiSession(
   if (options.mcpEnvironment !== undefined) await session.bindExtensions({});
   const activeTools = session.getActiveToolNames();
   if (
-    activeTools.length !==
-      toolNames.length + (options.mcpEnvironment === undefined ? 0 : 1) ||
-    toolNames.some((name) => !activeTools.includes(name))
+    activeTools.some(
+      (name) =>
+        !toolNames.includes(name) &&
+        !(
+          options.mcpEnvironment !== undefined &&
+          MANAGED_MCP_TOOL_NAMES.includes(name)
+        ),
+    ) ||
+    toolNames.some((name) => !activeTools.includes(name)) ||
+    (options.mcpEnvironment !== undefined &&
+      (!activeTools.includes("mcp") ||
+        !activeTools.includes("environment_wait")))
   ) {
     session.dispose();
     throw new Error(

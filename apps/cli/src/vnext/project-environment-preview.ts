@@ -510,6 +510,7 @@ export async function runProjectEnvironmentPreviewV2(
   request: ProjectEnvironmentPreviewRequestV2,
   dependencies: ProjectEnvironmentPreviewDependenciesV2 = defaultDependencies,
 ): Promise<ProjectEnvironmentPreviewResult> {
+  const phases = new ExecutionTelemetry();
   const gameBackend = z
     .enum(["godot-ai", "inspection", "none"])
     .parse(request.gameBackend ?? "godot-ai");
@@ -542,17 +543,19 @@ export async function runProjectEnvironmentPreviewV2(
       : { stateRoot: request.stateRoot }),
     ...(request.godotBin === undefined ? {} : { godotBin: request.godotBin }),
   });
-  const source = await preflightCleanProjectEnvironmentV1({
-    godotVersion: runtimeConfig.godot.receipt.realizedVersion,
-    projectPath: request.projectPath,
-    ...(request.projectRoot === undefined
-      ? {}
-      : { projectRoot: request.projectRoot }),
-    ...(request.includeUntrackedPaths === undefined
-      ? {}
-      : { includeUntrackedPaths: request.includeUntrackedPaths }),
-    sourceRepositoryExclusionRoots: [runtimeConfig.stateRoot],
-  });
+  const source = await phases.measure("preflight", "preflight", () =>
+    preflightCleanProjectEnvironmentV1({
+      godotVersion: runtimeConfig.godot.receipt.realizedVersion,
+      projectPath: request.projectPath,
+      ...(request.projectRoot === undefined
+        ? {}
+        : { projectRoot: request.projectRoot }),
+      ...(request.includeUntrackedPaths === undefined
+        ? {}
+        : { includeUntrackedPaths: request.includeUntrackedPaths }),
+      sourceRepositoryExclusionRoots: [runtimeConfig.stateRoot],
+    }),
+  );
   const taskId = asProjectEnvironmentTaskId(randomUUID());
   const sessionId = randomUUID();
   const layout = await createProjectEnvironmentTaskDirectoryLayout({
@@ -560,11 +563,13 @@ export async function runProjectEnvironmentPreviewV2(
     sourceRepositoryRoot: source.repositoryRoot,
     taskId,
   });
-  const materialized = await materializePreviewTaskWorkspaceV1({
-    taskId,
-    source,
-    layout,
-  });
+  const materialized = await phases.measure("materialize", "materialize", () =>
+    materializePreviewTaskWorkspaceV1({
+      taskId,
+      source,
+      layout,
+    }),
+  );
   const codingHome = join(layout.sandboxTemporaryDirectory, "coding-home");
   const codingTemp = join(layout.sandboxTemporaryDirectory, "coding-tmp");
   await Promise.all(
@@ -620,10 +625,13 @@ export async function runProjectEnvironmentPreviewV2(
       : gameBackend === "none"
         ? "Coding-only environment: no managed game tools are registered."
         : [
-            "Godot AI MCP is available through mcp search. Discover and use the upstream tools for editor authoring and game interaction.",
+            "Common Godot AI MCP tools are registered directly with their upstream parameter schemas; call them directly without search/describe. Use mcp search/describe/call for other upstream tools.",
             "Only Root controls the editor. All agents share this private writable project; preserve other agents' edits.",
             "Scene edits can remain in editor memory until scene_save. File reads see saved bytes.",
-            "Before any bash/edit/write, the Host stops the game, saves open scenes and closes the editor. The next MCP call reopens it from disk; use project_run to start a new game.",
+            "The editor starts lazily for an actual Godot tool call; MCP search/describe/list do not open it. Before any bash/edit/write, the Host stops the game, saves open scenes and closes the editor. The next Godot tool call reopens it from disk; use project_run to start a new game and omit stale session IDs.",
+            "Use read/grep/find/ls for file inspection while playing: bash closes the game even for read-only shell commands. To author scenes while playing, first stop the game with project_manage(op=stop).",
+            "Use environment_wait(duration_ms=0..10000) to wait without closing the editor/game; zero reports Host-known editor state only. It does not prove game readiness or count simulation frames. Disk user:// data persists across editor restarts within this task; in-memory game state does not.",
+            "For GUI keyboard interaction use game_manage input_key. input_action changes Input action state and is not equivalent to dispatching GUI key events. Respect upstream stale-frame and readiness indicators; a returned call is not evidence that the requested behavior happened.",
             "Worker writes also close the editor. Old running state is invalid after a write. Input sequences use process frames, not deterministic physics replay.",
             "Use editor_screenshot with source=game for actual gameplay images. Runtime results and test completion are observations, not proof that a bug is fixed.",
           ].join("\n");
@@ -686,62 +694,66 @@ export async function runProjectEnvironmentPreviewV2(
   const finalize = (): Promise<ProjectEnvironmentPreviewResult> => {
     finalization ??= (async () => {
       let writersStopped = true;
-      try {
-        await collaboration?.close();
-      } catch (error) {
-        writersStopped = false;
-        recordFailure(error);
-      }
-      try {
-        await mcp?.close();
-      } catch (error) {
-        recordFailure(error);
-      }
-      try {
-        await runtime.close();
-      } catch (error) {
-        writersStopped = false;
-        recordFailure(error);
-      }
-      try {
-        await controller.close();
-      } catch (error) {
-        writersStopped = false;
-        recordFailure(error);
-      }
-      try {
-        if (!writersStopped)
-          throw new Error(
-            "Candidate cannot be frozen: writer cleanup was not confirmed",
-          );
-        await mcp?.removeManagedFiles();
-        const extracted = await extractTaskPatch({
-          taskId,
-          sourceKind: "project-environment-v1",
-          workspaceDirectory: layout.workspaceDirectory,
-          hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
-          hostBaselineCommit: materialized.hostBaselineCommit,
-          baselineSourceHash: source.selectedTreeSha256,
-          ignoredCachePaths: [".chronorift", ".godot"],
-          hostOperationTemporaryDirectory:
-            layout.hostOperationTemporaryDirectory,
-        });
-        const path = join(layout.taskRecordDirectory, "candidate.patch");
-        await writeFile(path, extracted.patchBytes, {
-          flag: "wx",
-          mode: 0o600,
-        });
-        candidatePatch = {
-          path,
-          sha256: createHash("sha256")
-            .update(extracted.patchBytes)
-            .digest("hex"),
-          byteLength: extracted.patchBytes.byteLength,
-          roundTripVerified: true,
-        };
-      } catch (error) {
-        recordFailure(error);
-      }
+      await phases.measure("cleanup", "cleanup", async () => {
+        try {
+          await collaboration?.close();
+        } catch (error) {
+          writersStopped = false;
+          recordFailure(error);
+        }
+        try {
+          await mcp?.close();
+        } catch (error) {
+          recordFailure(error);
+        }
+        try {
+          await runtime.close();
+        } catch (error) {
+          writersStopped = false;
+          recordFailure(error);
+        }
+        try {
+          await controller.close();
+        } catch (error) {
+          writersStopped = false;
+          recordFailure(error);
+        }
+      });
+      await phases.measure("export", "export", async () => {
+        try {
+          if (!writersStopped)
+            throw new Error(
+              "Candidate cannot be frozen: writer cleanup was not confirmed",
+            );
+          await mcp?.removeManagedFiles();
+          const extracted = await extractTaskPatch({
+            taskId,
+            sourceKind: "project-environment-v1",
+            workspaceDirectory: layout.workspaceDirectory,
+            hostBaselineGitDirectory: layout.hostBaselineGitDirectory,
+            hostBaselineCommit: materialized.hostBaselineCommit,
+            baselineSourceHash: source.selectedTreeSha256,
+            ignoredCachePaths: [".chronorift", ".godot"],
+            hostOperationTemporaryDirectory:
+              layout.hostOperationTemporaryDirectory,
+          });
+          const path = join(layout.taskRecordDirectory, "candidate.patch");
+          await writeFile(path, extracted.patchBytes, {
+            flag: "wx",
+            mode: 0o600,
+          });
+          candidatePatch = {
+            path,
+            sha256: createHash("sha256")
+              .update(extracted.patchBytes)
+              .digest("hex"),
+            byteLength: extracted.patchBytes.byteLength,
+            roundTripVerified: true,
+          };
+        } catch (error) {
+          recordFailure(error);
+        }
+      });
       let agents: ProjectEnvironmentPreviewResultV5["agents"] = null;
       if (collaboration === undefined) {
         try {
@@ -804,6 +816,9 @@ export async function runProjectEnvironmentPreviewV2(
               workspaceMode: multiAgent === undefined ? "single" : "shared",
             }),
       };
+      await phases.save(
+        join(layout.taskRecordDirectory, "preview-phases.v1.json"),
+      );
       const result =
         gameBackend !== "inspection"
           ? ProjectEnvironmentPreviewResultV6Schema.parse({
@@ -832,9 +847,15 @@ export async function runProjectEnvironmentPreviewV2(
     return finalization;
   };
   try {
-    if (gameBackend === "inspection")
-      await prepareGodotInspectionCandidate(layout.workspaceDirectory);
-    await mcp?.prepare();
+    await phases.measure(
+      "environment_prepare",
+      "environment_prepare",
+      async () => {
+        if (gameBackend === "inspection")
+          await prepareGodotInspectionCandidate(layout.workspaceDirectory);
+        await mcp?.prepare();
+      },
+    );
     if (multiAgent !== undefined) {
       collaboration = await (
         dependencies.createMultiAgentEnvironment ??
@@ -858,24 +879,27 @@ export async function runProjectEnvironmentPreviewV2(
       tools = [...collaboration.tools];
     }
     if (request.goal !== null) {
-      const result = await dependencies.runPiTurn({
-        resourceWorkspaceDirectory: layout.workspaceDirectory,
-        sessionDirectory: layout.piSessionDirectory,
-        newSessionId: sessionId,
-        provider: request.provider,
-        model: request.model,
-        thinkingLevel: request.thinkingLevel,
-        prompt: request.goal,
-        tools,
-        timeoutMs: request.timeoutMs ?? 1_800_000,
-        environmentProfile: "coding",
-        additionalEnvironmentInstructions: instructions,
-        ...(mcp === undefined ? {} : { mcpEnvironment: mcp }),
-        ...(collaboration === undefined
-          ? {}
-          : { collaboration: collaboration.supervisor }),
-        ...(agentDir === undefined ? {} : { agentDir }),
-      });
+      const prompt = request.goal;
+      const result = await phases.measure("pi_turn", "pi_turn", () =>
+        dependencies.runPiTurn({
+          resourceWorkspaceDirectory: layout.workspaceDirectory,
+          sessionDirectory: layout.piSessionDirectory,
+          newSessionId: sessionId,
+          provider: request.provider,
+          model: request.model,
+          thinkingLevel: request.thinkingLevel,
+          prompt,
+          tools,
+          timeoutMs: request.timeoutMs ?? 1_800_000,
+          environmentProfile: "coding",
+          additionalEnvironmentInstructions: instructions,
+          ...(mcp === undefined ? {} : { mcpEnvironment: mcp }),
+          ...(collaboration === undefined
+            ? {}
+            : { collaboration: collaboration.supervisor }),
+          ...(agentDir === undefined ? {} : { agentDir }),
+        }),
+      );
       rootPiResult = result;
       if (result.sessionId !== sessionId)
         throw new Error("Pi returned a different Session identity");

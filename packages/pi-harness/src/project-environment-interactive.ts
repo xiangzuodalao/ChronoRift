@@ -1,6 +1,7 @@
 import {
   createManagedMcpExtension,
   MCP_EXTENSION_NAME,
+  MANAGED_MCP_TOOL_NAMES,
   type ManagedMcpEnvironment,
 } from "./mcp-extension.js";
 import { existsSync } from "node:fs";
@@ -274,7 +275,7 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
       tools:
         options.mcpEnvironment === undefined
           ? toolNames
-          : [...toolNames, "mcp"],
+          : [...toolNames, ...MANAGED_MCP_TOOL_NAMES],
       customTools: [...options.tools],
     });
     try {
@@ -302,9 +303,18 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     }
     const activeTools = created.session.getActiveToolNames();
     if (
-      activeTools.length !==
-        toolNames.length + (options.mcpEnvironment === undefined ? 0 : 1) ||
-      toolNames.some((name) => !activeTools.includes(name))
+      activeTools.some(
+        (name) =>
+          !toolNames.includes(name) &&
+          !(
+            options.mcpEnvironment !== undefined &&
+            MANAGED_MCP_TOOL_NAMES.includes(name)
+          ),
+      ) ||
+      toolNames.some((name) => !activeTools.includes(name)) ||
+      (options.mcpEnvironment !== undefined &&
+        (!activeTools.includes("mcp") ||
+          !activeTools.includes("environment_wait")))
     ) {
       created.session.dispose();
       throw new Error(

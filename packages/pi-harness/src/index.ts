@@ -166,4 +166,6 @@ export {
 export {
   createManagedMcpExtension,
   type ManagedMcpEnvironment,
+  type ManagedMcpToolRequest,
+  type ManagedMcpWaitResult,
 } from "./mcp-extension.js";

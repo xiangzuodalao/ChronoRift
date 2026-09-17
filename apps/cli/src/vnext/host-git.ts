@@ -666,7 +666,6 @@ export class NodeHostGitPort implements HostGitPort {
       ["core.untrackedCache", "false"],
       ["commit.gpgSign", "false"],
       ["tag.gpgSign", "false"],
-      ["diff.external", ""],
       ["protocol.allow", "never"],
       ["submodule.recurse", "false"],
     ] as const) {

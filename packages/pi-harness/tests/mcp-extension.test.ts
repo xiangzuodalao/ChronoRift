@@ -18,7 +18,7 @@ import { Type } from "typebox";
 import { expect, it } from "vitest";
 import { createManagedPiSession } from "../src/index.js";
 
-it("loads the pinned Pi MCP extension, discovers tools and preserves image content offline", async () => {
+it("loads native MCP schemas, validates cold stops and exposes Host waits before the first turn offline", async () => {
   const root = await mkdtemp(join(tmpdir(), "cr-pi-mcp-"));
   const sockets = new Set<Socket>();
   const calls: unknown[] = [];
@@ -54,7 +54,21 @@ it("loads the pinned Pi MCP extension, discovers tools and preserves image conte
                 description: "Capture game pixels",
                 inputSchema: {
                   type: "object",
-                  properties: {},
+                  properties: { source: { type: "string", enum: ["game"] } },
+                  required: ["source"],
+                  additionalProperties: false,
+                },
+              },
+              {
+                name: "project_manage",
+                description: "Manage the project",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    op: { type: "string", enum: ["stop", "pause"] },
+                    params: { type: "object" },
+                  },
+                  required: ["op"],
                   additionalProperties: false,
                 },
               },
@@ -62,12 +76,24 @@ it("loads the pinned Pi MCP extension, discovers tools and preserves image conte
           };
         if (request.method === "tools/call") {
           calls.push(request.params);
-          result = {
-            content: [
-              { type: "text", text: "Captured real fixture image" },
-              { type: "image", data: pixel, mimeType: "image/png" },
-            ],
+          const call = request.params as {
+            name: string;
+            arguments?: { op?: unknown; params?: unknown };
           };
+          result =
+            call.name === "project_manage"
+              ? {
+                  isError: true,
+                  content: [
+                    { type: "text", text: "Upstream rejected fixture request" },
+                  ],
+                }
+              : {
+                  content: [
+                    { type: "text", text: "Captured real fixture image" },
+                    { type: "image", data: pixel, mimeType: "image/png" },
+                  ],
+                };
         }
         socket.write(
           JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\n",
@@ -100,6 +126,10 @@ it("loads the pinned Pi MCP extension, discovers tools and preserves image conte
   modelRuntime.registerNativeProvider(faux.provider);
   let raw: AgentSession | undefined;
   const admitted: string[] = [];
+  const editorRequirements: boolean[] = [];
+  const requests: unknown[] = [];
+  const waits: number[] = [];
+  let coldStops = 0;
   const previous = process.env.PI_CODING_AGENT_DIR;
   try {
     const session = await createManagedPiSession(
@@ -125,9 +155,34 @@ it("loads the pinned Pi MCP extension, discovers tools and preserves image conte
         mcpEnvironment: {
           socketPath,
           agentDirectory: join(root, "agent"),
-          runTool: (name, _id, operation) => {
+          runTool: async (
+            name,
+            _id,
+            operation,
+            _signal,
+            requiresEditor,
+            request,
+          ) => {
             admitted.push(name);
+            editorRequirements.push(requiresEditor ?? true);
+            requests.push(
+              request === undefined
+                ? null
+                : { tool: request.tool, operation: request.operation },
+            );
+            if (request?.whenEditorStopped !== undefined) {
+              coldStops++;
+              return request.whenEditorStopped();
+            }
             return operation();
+          },
+          wait: async (_id, durationMs) => {
+            waits.push(durationMs);
+            return {
+              elapsedMs: durationMs,
+              editorState: "stopped",
+              editorGeneration: 0,
+            };
           },
         },
       },
@@ -139,11 +194,80 @@ it("loads the pinned Pi MCP extension, discovers tools and preserves image conte
         },
       },
     );
-    expect(raw!.getActiveToolNames().sort()).toEqual(["mcp", "read"]);
+    expect(raw!.getActiveToolNames()).toEqual(
+      expect.arrayContaining(["mcp", "read", "environment_wait"]),
+    );
     faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("godot-ai_editor_screenshot", { source: 123 }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("godot-ai_editor_screenshot", { source: "game" }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("godot-ai_project_manage", { op: "stop" }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("mcp", {
+          tool: "project_manage",
+          server: "godot-ai",
+          args: { op: "stop" },
+        }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("mcp", {
+          tool: "godot-ai_project_manage",
+          args: '{"op":"stop"}',
+        }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("mcp", {
+          tool: "godot_ai_project_manage",
+          args: { op: "stop" },
+        }),
+      ),
+      // Mixed gateway modes retain the adapter's own operation selection.
+      fauxAssistantMessage(
+        fauxToolCall("mcp", {
+          tool: "godot-ai_project_manage",
+          args: { op: "stop" },
+          search: "screenshot",
+        }),
+      ),
+      // Unqualified names without a server are not valid adapter targets.
+      fauxAssistantMessage(
+        fauxToolCall("mcp", {
+          tool: "project_manage",
+          args: { op: "stop" },
+        }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("godot-ai_project_manage", { op: "invalid" }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("mcp", {
+          tool: "godot-ai_project_manage",
+          args: { op: "stop", params: "invalid" },
+        }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("mcp", {
+          tool: "project_manage",
+          args: "{invalid",
+        }),
+      ),
       fauxAssistantMessage(fauxToolCall("mcp", { search: "screenshot" })),
       fauxAssistantMessage(
-        fauxToolCall("mcp", { tool: "godot_ai_editor_screenshot", args: {} }),
+        fauxToolCall("environment_wait", { duration_ms: 10_001 }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("environment_wait", { duration_ms: 1.5 }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("environment_wait", { duration_ms: 0 }),
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("environment_wait", { duration_ms: 13 }),
       ),
       fauxAssistantMessage(
         fauxToolCall("mcp", {
@@ -154,12 +278,58 @@ it("loads the pinned Pi MCP extension, discovers tools and preserves image conte
       fauxAssistantMessage("Done."),
     ]);
     await session.prompt("Capture game screenshot.");
-    expect(calls).toHaveLength(1);
-    expect(admitted).toEqual(["mcp", "mcp"]);
+    expect(calls, JSON.stringify(raw!.state.messages)).toHaveLength(3);
+    expect(admitted).toEqual([
+      "godot-ai_editor_screenshot",
+      "godot-ai_project_manage",
+      "mcp",
+      "mcp",
+      "mcp",
+      "mcp",
+      "mcp",
+      "mcp",
+      "mcp",
+      "mcp",
+    ]);
+    expect(editorRequirements).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+    ]);
+    expect(requests).toEqual([
+      { tool: "editor_screenshot", operation: undefined },
+      { tool: "project_manage", operation: "stop" },
+      { tool: "project_manage", operation: "stop" },
+      { tool: "project_manage", operation: "stop" },
+      { tool: "project_manage", operation: "stop" },
+      { tool: "project_manage", operation: "stop" },
+      { tool: "project_manage", operation: "stop" },
+      { tool: "project_manage", operation: "stop" },
+      { tool: "project_manage", operation: undefined },
+      null,
+    ]);
+    expect(coldStops).toBe(4);
+    expect(waits).toEqual([0, 13]);
+    expect(raw!.getActiveToolNames()).toContain("godot-ai_editor_screenshot");
     expect(JSON.stringify(raw!.state.messages)).toContain(pixel);
     const results = raw!.state.messages.filter(
       (message) => message.role === "toolResult",
     );
+    // Bad native arguments are rejected before lifecycle admission/editor startup.
+    expect(results[0]?.isError).toBe(true);
+    expect(JSON.stringify(results)).toContain('"alreadyStopped":true');
+    expect(JSON.stringify(results)).toContain(
+      "Upstream rejected fixture request",
+    );
+    expect(JSON.stringify(results)).toContain("Invalid args JSON");
+    expect(JSON.stringify(results)).toContain('"error":"tool_not_found"');
     expect(results.at(-1)?.isError).toBe(true);
     expect(JSON.stringify(results.at(-1))).toContain(
       "install/auth actions are unavailable",

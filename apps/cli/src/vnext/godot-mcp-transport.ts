@@ -122,14 +122,14 @@ export class GodotMcpTransport {
     return this.process?.stdin.write(JSON.stringify(value) + "\n") ?? false;
   }
 
-  async control(command: object): Promise<unknown> {
+  async control(command: object, timeoutMs = 50_000): Promise<unknown> {
     if (!this.process) throw new Error("Godot MCP is not running");
     const id = randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error("Editor control timed out"));
-      }, 50_000);
+      }, timeoutMs);
       this.pending.set(id, {
         resolve: (value) => {
           clearTimeout(timer);

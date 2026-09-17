@@ -34,7 +34,8 @@ simplest implementation that delivers useful runtime investigation.
   inside their shared network namespace.
 - Default `godot-ai` Preview uses one private writable project for coding and the managed editor/game. Root alone
   owns MCP. Before any agent runs bash/edit/write, stop the game, save scenes and close the editor; reopen from disk
-  on the next MCP call. Keep Host credentials, adapter cache and socket outside sandbox-writable paths.
+  on the next actual Godot tool call. MCP catalog discovery must not open the editor. Keep Host credentials,
+  adapter cache and socket outside sandbox-writable paths.
 - The explicit `inspection` backend retains the separate source-read-only Godot stage and source integrity checks.
   Its native import uses a disposable writable copy; validate outputs and reject ordinary source changes before
   building the read-only run stage. Do not transfer that immutable-stage claim to writable MCP runs.

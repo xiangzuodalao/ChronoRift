@@ -15,6 +15,8 @@ relays = {}
 def emit(message):
     print(json.dumps(message), flush=True)
 active_scene = ""
+editor = None
+editor_exit = asyncio.Event()
 
 async def capture(stream, filename):
     kept = 0
@@ -28,12 +30,12 @@ async def capture(stream, filename):
     if truncated:
         Path(str(filename) + ".truncated").write_text("true\n")
 
-async def spawn(*args, pipes=False):
+async def spawn(*args, pipes=False, env=None):
     index = len(logs)
     logs.append(index)
     process = await asyncio.create_subprocess_exec(*args,
         stdin=asyncio.subprocess.PIPE if pipes else asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env)
     if not pipes:
         captures.add(asyncio.create_task(capture(process.stdout, root / ("process-%d.stdout.log" % index))))
     captures.add(asyncio.create_task(capture(process.stderr, root / ("process-%d.stderr.log" % index))))
@@ -71,31 +73,100 @@ async def client():
                 await session.initialize()
                 yield session
 
+async def watch_editor(process):
+    await process.wait()
+    editor_exit.set()
+
+async def open_scene_checked(session, path):
+    opened = await tool(session, "scene_open", {"path": path})
+    if not isinstance(opened, dict) or opened.get("switched") is not True or opened.get("path") != path:
+        raise RuntimeError("Editor did not confirm switching to scene: " + path)
+
+async def start_editor(progress):
+    global editor
+    if editor is not None:
+        if editor.returncode is not None:
+            raise RuntimeError("Godot editor exited unexpectedly")
+        return
+    editor_env = dict(os.environ)
+    editor_env["XDG_DATA_HOME"] = editor_env.pop("CHRONORIFT_GODOT_DATA_HOME")
+    progress("launching editor")
+    editor = await spawn(godot, "--editor", "--path", project, "--rendering-method", "gl_compatibility", "--display-driver", "x11", "--audio-driver", "Dummy", env=editor_env)
+    asyncio.create_task(watch_editor(editor))
+    async with asyncio.timeout(120):
+        progress("connecting to editor control client")
+        async with client() as session:
+            progress("waiting for editor readiness")
+            while True:
+                if editor.returncode is not None:
+                    raise RuntimeError("Godot editor exited during startup")
+                try:
+                    state = await tool(session, "editor_state")
+                    if state:
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(.25)
+            restore = os.environ.get("CHRONORIFT_RESTORE_SCENE", "")
+            if restore:
+                progress("restoring scene " + restore)
+                await open_scene_checked(session, restore)
+            progress("closing editor control client")
+
 async def control(message):
     global active_scene
+    op = "unknown"
+    step = "reading lifecycle request"
+    def progress(value):
+        nonlocal step
+        step = value
     try:
         command = message["command"]
+        op = command.get("op", "unknown")
+        if op == "start_editor":
+            await start_editor(progress)
+            emit({"id": message["id"], "ok": True, "value": {"started": True}})
+            return
         async with asyncio.timeout(45):
+            progress("connecting to MCP control client")
             async with client() as session:
                 if command.get("op") == "save":
-                    await tool(session, "project_manage", {"op": "stop"})
+                    progress("stopping game")
+                    stopped = await tool(session, "project_manage", {"op": "stop"})
+                    if not isinstance(stopped, dict) or stopped.get("stopped") is not True:
+                        raise RuntimeError("Editor did not confirm stopping the game")
+                    progress("reading open-scene inventory")
                     scenes = await tool(session, "scene_manage", {"op": "get_roots"})
-                    active_scene = scenes.get("current_scene", "")
-                    for scene in scenes.get("scenes", []):
-                        if not scene:
+                    if not isinstance(scenes, dict) or not isinstance(scenes.get("scenes"), list) or not isinstance(scenes.get("current_scene"), str):
+                        raise RuntimeError("Editor returned an invalid open-scene inventory")
+                    active_scene = scenes["current_scene"]
+                    for scene in scenes["scenes"]:
+                        if not isinstance(scene, str) or not scene:
                             raise RuntimeError("Unnamed editor scene cannot be saved automatically")
-                        await tool(session, "scene_open", {"path": scene})
-                        await tool(session, "scene_save")
+                        progress("opening scene " + scene)
+                        await open_scene_checked(session, scene)
+                        progress("saving scene " + scene)
+                        saved = await tool(session, "scene_save")
+                        if not isinstance(saved, dict) or saved.get("path") != scene:
+                            raise RuntimeError("Editor did not confirm saving scene: " + scene)
                     value = {"activeScene": active_scene}
                 elif command.get("op") == "call_raw":
+                    progress("calling " + str(command["name"]))
                     value = (await session.call_tool(command["name"], command.get("arguments", {}))).model_dump(mode="json")
                 elif command.get("op") == "call":
+                    progress("calling " + str(command["name"]))
                     value = await tool(session, command["name"], command.get("arguments", {}))
                 else:
                     raise RuntimeError("Unknown lifecycle operation")
+                progress("closing MCP control client")
         emit({"id": message["id"], "ok": True, "value": value})
     except Exception as error:
-        emit({"id": message["id"], "ok": False, "error": str(error)[:4096]})
+        detail = str(error)
+        if isinstance(error, TimeoutError):
+            detail = "Lifecycle %s timed out while %s%s" % (op, step, (": " + detail) if detail else "")
+        elif not detail:
+            detail = "Lifecycle %s failed while %s (%s)" % (op, step, type(error).__name__)
+        emit({"id": message["id"], "ok": False, "error": detail[:4096]})
 
 async def relay_output(channel, process):
     try:
@@ -149,30 +220,18 @@ async def main():
         if list((root / "home/capabilities").glob("*.json")):
             break
         await asyncio.sleep(.1)
-    editor = await spawn(godot, "--editor", "--path", project, "--rendering-method", "gl_compatibility", "--display-driver", "x11", "--audio-driver", "Dummy")
-    async with asyncio.timeout(120):
-        async with client() as session:
-            while True:
-                if editor.returncode is not None:
-                    raise RuntimeError("Godot editor exited during startup")
-                try:
-                    state = await tool(session, "editor_state")
-                    if state:
-                        break
-                except Exception:
-                    pass
-                await asyncio.sleep(.25)
-            restore = os.environ.get("CHRONORIFT_RESTORE_SCENE", "")
-            if restore:
-                await tool(session, "scene_open", {"path": restore})
+    else:
+        raise RuntimeError("Godot AI backend did not become ready")
+    # MCP schemas and discovery do not require a project editor. The Host asks
+    # for start_editor only before executing an actual upstream tool.
     emit({"ready": True})
     done = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, done.set)
-    watchers = [asyncio.create_task(process.wait()) for process in (editor, backend, display)]
+    watchers = [asyncio.create_task(process.wait()) for process in (backend, display)]
     input_task = asyncio.create_task(pipe_input())
-    await asyncio.wait([*watchers, asyncio.create_task(done.wait()), input_task], return_when=asyncio.FIRST_COMPLETED)
+    await asyncio.wait([*watchers, asyncio.create_task(editor_exit.wait()), asyncio.create_task(done.wait()), input_task], return_when=asyncio.FIRST_COMPLETED)
     if not done.is_set():
         if input_task.done():
             await input_task

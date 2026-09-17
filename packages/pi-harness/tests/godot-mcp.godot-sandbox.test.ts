@@ -14,7 +14,14 @@ import {
   createVNextCodingToolDefinitions,
 } from "../src/index.js";
 import { SandboxPiCodingToolPort } from "../../../apps/cli/src/vnext/pi-coding-tool-port.js";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
@@ -55,6 +62,8 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
   try {
     await writeFile(join(root, "host-secret"), "host-only fixture");
     await environment.prepare();
+    // Preparing the MCP catalog must not import or launch the project.
+    expect(await readdir(workspace)).not.toContain(".godot");
     await writeFile(
       join(environment.agentDirectory, "host-cache"),
       "host-only cache",
@@ -98,6 +107,24 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       params: { code: "return get_tree().current_scene.answer" },
     });
     expect(observed).toMatchObject({ result: 42 });
+    const running = await call("editor_manage", {
+      op: "game_eval",
+      params: {
+        code: 'var file = FileAccess.open("user://continuity.txt", FileAccess.WRITE)\nfile.store_string("task save")\nfile.close()\nreturn OS.get_process_id()',
+      },
+    });
+    const waitResult = await environment.wait("live-wait", 100);
+    expect(waitResult).toMatchObject({
+      editorState: "ready",
+      editorGeneration: 2,
+    });
+    expect(waitResult.elapsedMs).toBeGreaterThanOrEqual(90);
+    expect(
+      await call("editor_manage", {
+        op: "game_eval",
+        params: { code: "return OS.get_process_id()" },
+      }),
+    ).toEqual(running);
     const screenshot = (await environment.runTool(
       "editor_screenshot",
       "screenshot",
@@ -175,16 +202,28 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("mcp", { search: "screenshot" })),
         fauxAssistantMessage(
-          fauxToolCall("mcp", {
-            tool: "godot_ai_editor_screenshot",
-            args: { source: "game" },
-          }),
+          fauxToolCall("godot-ai_editor_screenshot", { source: "game" }),
         ),
         fauxAssistantMessage(
           fauxToolCall("write", {
             path: "probe.txt",
             content: "saved through SRT",
           }),
+        ),
+        fauxAssistantMessage(
+          fauxToolCall("godot-ai_project_manage", { op: "stop" }),
+        ),
+        fauxAssistantMessage(
+          fauxToolCall("mcp", {
+            tool: "godot_ai_project_manage",
+            args: { op: "stop" },
+          }),
+        ),
+        fauxAssistantMessage(
+          fauxToolCall("mcp", { describe: "godot_ai_script_patch" }),
+        ),
+        fauxAssistantMessage(
+          fauxToolCall("bash", { command: "cat probe.txt" }),
         ),
         fauxAssistantMessage(
           fauxToolCall("mcp", { tool: "godot_ai_editor_state", args: {} }),
@@ -197,24 +236,90 @@ it("authors, plays, inspects and saves a real game across a coding/editor switch
       const results = raw!.state.messages.filter(
         (message) => message.role === "toolResult",
       );
-      expect(results).toHaveLength(4);
+      expect(results).toHaveLength(8);
       for (const result of results)
         expect(result.isError, JSON.stringify(result.content)).toBe(false);
       expect(results[1]!.content.some((part) => part.type === "image")).toBe(
         true,
       );
+      for (const index of [3, 4])
+        expect(JSON.stringify(results[index]!.content)).toContain(
+          "already stopped",
+        );
       expect(await readFile(join(workspace, "probe.txt"), "utf8")).toBe(
         "saved through SRT",
+      );
+      expect(JSON.stringify(results[2]!.content)).toContain(
+        "Previous runtime references are invalid",
       );
     } finally {
       await session.shutdownExtensions?.();
       session.dispose();
     }
+    await call("project_run");
+    expect(
+      await call("editor_manage", {
+        op: "game_eval",
+        params: {
+          code: 'return FileAccess.get_file_as_string("user://continuity.txt")',
+        },
+      }),
+    ).toMatchObject({ result: "task save" });
     await environment.close();
+    const lifecycle = JSON.parse(
+      await readFile(environment.recordPaths()[0]!, "utf8"),
+    ) as { events: { event: string; requiresEditor?: boolean }[] };
+    // Initial actual call, after the source write, and after the Pi write/bash.
+    // The intervening describe + bash must not add an editor startup.
+    expect(
+      lifecycle.events.filter((entry) => entry.event === "editor_ready"),
+    ).toHaveLength(3);
+    expect(
+      lifecycle.events.filter((entry) => entry.event === "backend_stopped"),
+    ).toHaveLength(1);
+    expect(
+      lifecycle.events.filter(
+        (entry) => entry.event === "tool" && entry.requiresEditor === false,
+      ),
+    ).toHaveLength(3);
     await environment.removeManagedFiles();
     expect(
       await readFile(join(workspace, "project.godot"), "utf8"),
     ).not.toContain("godot_ai");
+    const fresh = await GodotMcpEnvironment.create({
+      controller,
+      workspace,
+      godot: resolve(
+        process.env.GODOT_BIN ??
+          ".tools/godot/4.7.1/Godot_v4.7.1-stable_linux.x86_64",
+      ),
+      recordsDirectory: join(root, "fresh-records"),
+      isolationReadRoots: [root],
+      admit: () => undefined,
+    });
+    try {
+      await fresh.prepare();
+      await fresh.runTool("project_run", "fresh-run", () =>
+        fresh.control({ op: "call", name: "project_run" }),
+      );
+      expect(
+        await fresh.runTool("editor_manage", "fresh-save", () =>
+          fresh.control({
+            op: "call",
+            name: "editor_manage",
+            arguments: {
+              op: "game_eval",
+              params: {
+                code: 'return FileAccess.file_exists("user://continuity.txt")',
+              },
+            },
+          }),
+        ),
+      ).toMatchObject({ result: false });
+    } finally {
+      await fresh.close();
+      await fresh.removeManagedFiles();
+    }
   } finally {
     await controller.close();
     // Retain failed runtime logs in the task directory for diagnosis.

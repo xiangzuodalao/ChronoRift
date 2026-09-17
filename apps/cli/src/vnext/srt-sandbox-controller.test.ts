@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   SrtSandboxController,
   type SrtCodingRequest,
+  type SrtEditorRequest,
   type SrtFacade,
   type SrtGodotRequest,
 } from "./srt-sandbox-controller.js";
@@ -112,6 +113,14 @@ describe("SrtSandboxController", () => {
     ...overrides,
   });
 
+  const editorRequest = (
+    overrides: Partial<SrtEditorRequest> = {},
+  ): SrtEditorRequest => ({
+    ...codingRequest(["/bin/true"]),
+    readOnlyPaths: [],
+    ...overrides,
+  });
+
   const setup = (
     facade: FakeSrtFacade,
     options: Omit<
@@ -152,6 +161,91 @@ describe("SrtSandboxController", () => {
         godotRequest(["/bin/true"], { readOnlyPaths: [workspacePath] }),
       ),
     ).rejects.toThrow("separate");
+  });
+
+  it("mounts Task Godot data only for the editor without exposing its parent", async () => {
+    const facade = new FakeSrtFacade();
+    const controller = setup(facade);
+    const godotDataPath = join(root, "godot-data");
+    await mkdir(godotDataPath);
+
+    const editor = await controller.openEditor(
+      editorRequest({ godotDataPath, isolationReadRoots: [root] }),
+    );
+    await editor.wait();
+    await controller.runCoding(codingRequest(["/bin/true"]));
+
+    const editorFilesystem = facade.wrapCalls[0]?.[2]?.filesystem;
+    expect(editorFilesystem?.allowRead).toContain(godotDataPath);
+    expect(editorFilesystem?.allowWrite).toEqual([
+      workspacePath,
+      homePath,
+      tempPath,
+      artifactsPath,
+      godotDataPath,
+    ]);
+    expect(editorFilesystem?.denyRead).toContain(root);
+    expect(editorFilesystem?.allowRead).not.toContain(root);
+    expect(facade.wrapCalls[1]?.[2]?.filesystem?.allowRead).not.toContain(
+      godotDataPath,
+    );
+    expect(facade.wrapCalls[1]?.[2]?.filesystem?.allowWrite).not.toContain(
+      godotDataPath,
+    );
+  });
+
+  it("rejects broad, protected, or overlapping Godot data mounts before starting SRT", async () => {
+    const facade = new FakeSrtFacade();
+    const protectedPath = join(root, "credentials");
+    const dependencyPath = join(root, "tools");
+    const controller = setup(facade, {
+      protectedReadPaths: [protectedPath],
+    });
+
+    for (const godotDataPath of [
+      "relative-data",
+      "/tmp",
+      protectedPath,
+      join(protectedPath, "child"),
+      root,
+      workspacePath,
+      join(homePath, "data"),
+      tempPath,
+      artifactsPath,
+      dependencyPath,
+      join(dependencyPath, "data"),
+    ]) {
+      await expect(
+        controller.openEditor(
+          editorRequest({ godotDataPath, readOnlyPaths: [dependencyPath] }),
+        ),
+      ).rejects.toThrow();
+    }
+    expect(facade.initializeCalls).toHaveLength(0);
+  });
+
+  it("rejects Godot data symlinks, linked parents, and ordinary files", async () => {
+    const facade = new FakeSrtFacade();
+    const controller = setup(facade);
+    const dataParent = join(root, "data-parent");
+    await mkdir(join(dataParent, "data"), { recursive: true });
+    const linkedData = join(root, "linked-data");
+    const linkedParent = join(root, "linked-parent");
+    const dataFile = join(root, "data-file");
+    await symlink(join(dataParent, "data"), linkedData);
+    await symlink(dataParent, linkedParent);
+    await writeFile(dataFile, "not a directory");
+
+    for (const godotDataPath of [
+      linkedData,
+      join(linkedParent, "data"),
+      dataFile,
+    ]) {
+      await expect(
+        controller.openEditor(editorRequest({ godotDataPath })),
+      ).rejects.toThrow(/directory without symlink components/u);
+    }
+    expect(facade.initializeCalls).toHaveLength(0);
   });
 
   it("initializes once and applies distinct per-call coding and Godot policies", async () => {

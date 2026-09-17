@@ -44,7 +44,7 @@ flowchart LR
 Pi 的 `cwd` 是其中的 canonical physical workspace。原 checkout 不被运行命令修改。
 
 默认 `godot-ai` 后端在同一个可写 candidate 中运行编辑器与游戏。Root 使用 Pi MCP 扩展发现与调用上游工具，
-worker 只使用 coding tools。任何 bash/edit/write 前保存场景并关闭编辑器，下次 MCP 调用重新打开。
+worker 只使用 coding tools。任何 bash/edit/write 前保存场景并关闭编辑器，下次实际 Godot 工具调用重新打开；工具目录和参数查询不打开编辑器。
 `--game-backend inspection` 保留独立只读 stage，`none` 提供 coding-only 入口。详见 [MCP 环境](godot-mcp.md)。
 
 结束时 Host 清理运行资源并保留结果目录。普通完成不自动 commit、merge、push、apply 或删除候选。
@@ -72,8 +72,10 @@ Agent 通过 SRT-backed port 使用 `read`、`bash`、`edit`、`write`、`grep`�
 ## 4. 游戏工具后端
 
 默认使用 `pi-mcp-adapter@2.34.0` 和 `godot-ai@4.1.0`，Pi SDK 为 `0.84.1`，引擎为 `4.7.1`。上游 MCP 提供
-场景/节点/脚本编辑、运行、输入、状态求值和截图。标准 `mcp` gateway 的 schema 与图片处理属于扩展；
+场景/节点/脚本编辑、运行、输入、状态求值和截图。常用工具在轮次开始前注册原生 schema，其余使用标准 `mcp` gateway；schema 与图片处理属于扩展；
 ChronoRift 只管理服务权限、管道传输和编码/编辑器生命周期，不维护另一套 MCP→GameTools 映射。
+Host 的 `environment_wait` 提供可取消等待和已知编辑器状态，不推进或观测模拟帧。代码操作关闭编辑器后返回引用失效提示；
+任务独立的 Godot 用户数据挂载保留重启间的磁盘存档，不恢复游戏内存。保存失败时继续阻止 coding 写入。
 
 以下只描述显式 `inspection` 后端：
 

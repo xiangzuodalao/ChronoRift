@@ -14,7 +14,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ManagedMcpEnvironment } from "@chronorift/pi-harness";
+import { performance } from "node:perf_hooks";
+import { setTimeout as delay } from "node:timers/promises";
+import type {
+  ManagedMcpEnvironment,
+  ManagedMcpToolRequest,
+} from "@chronorift/pi-harness";
 import type {
   SrtDuplexHandle,
   SrtSandboxController,
@@ -89,6 +94,8 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
   private originalConfig = "";
   private injectedAddon = false;
   private activeScene = "";
+  private editorState: "stopped" | "starting" | "ready" | "failed" = "stopped";
+  private editorGeneration = 0;
   private closed = false;
   private stopping = false;
   private unsavedChangesPossible = false;
@@ -120,7 +127,7 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
       options,
     );
     await Promise.all(
-      ["runtime", "pi"].map((part) =>
+      ["runtime", "pi", "godot-data"].map((part) =>
         mkdir(join(instance.root, part), { mode: 0o700 }),
       ),
     );
@@ -188,58 +195,80 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
       ),
     );
     const started = Date.now();
-    const process = await this.options.controller.openEditor({
-      workspacePath: this.options.workspace,
-      cwd: this.options.workspace,
-      homePath: join(runDirectory, "home"),
-      tempPath: join(runDirectory, "tmp"),
-      artifactsPath: runDirectory,
-      readOnlyPaths: [
-        join(this.root, "supervisor.py"),
-        installation.directory,
-        this.options.godot,
-        dirname(dirname(installation.xvfb)),
-      ],
-      isolationReadRoots: [...this.options.isolationReadRoots, this.root],
-      argv: [
-        installation.python,
-        join(this.root, "supervisor.py"),
-        runDirectory,
-        this.options.workspace,
-        this.options.godot,
-        installation.xvfb,
-      ],
-      environment: {
-        DISPLAY: "127.0.0.1:99",
-        LD_LIBRARY_PATH: join(
+    // A tool/turn signal must not remain attached to a long-lived editor after
+    // the initiating call ends (e.g. cancelling a later Host wait).
+    const startupAbort = new AbortController();
+    const abortStartup = () => startupAbort.abort(signal?.reason);
+    signal?.addEventListener("abort", abortStartup, { once: true });
+    if (signal?.aborted) abortStartup();
+    let process: SrtDuplexHandle;
+    try {
+      process = await this.options.controller.openEditor({
+        workspacePath: this.options.workspace,
+        cwd: this.options.workspace,
+        homePath: join(runDirectory, "home"),
+        tempPath: join(runDirectory, "tmp"),
+        artifactsPath: runDirectory,
+        godotDataPath: join(this.root, "godot-data"),
+        readOnlyPaths: [
+          join(this.root, "supervisor.py"),
+          installation.directory,
+          this.options.godot,
           dirname(dirname(installation.xvfb)),
-          "lib/x86_64-linux-gnu",
-        ),
-        LIBGL_ALWAYS_SOFTWARE: "1",
-        PYTHONNOUSERSITE: "1",
-        PYTHONUNBUFFERED: "1",
-        GODOT_AI_DISABLE_TELEMETRY: "true",
-        GODOT_AI_MODE: "dev",
-        GODOT_AI_CAPABILITY_DIR: join(runDirectory, "home/capabilities"),
-        CHRONORIFT_RESTORE_SCENE: this.activeScene,
-      },
-      timeoutMs: 5_400_000,
-      ...(signal === undefined ? {} : { signal }),
-    });
+        ],
+        isolationReadRoots: [...this.options.isolationReadRoots, this.root],
+        argv: [
+          installation.python,
+          join(this.root, "supervisor.py"),
+          runDirectory,
+          this.options.workspace,
+          this.options.godot,
+          installation.xvfb,
+        ],
+        environment: {
+          DISPLAY: "127.0.0.1:99",
+          LD_LIBRARY_PATH: join(
+            dirname(dirname(installation.xvfb)),
+            "lib/x86_64-linux-gnu",
+          ),
+          LIBGL_ALWAYS_SOFTWARE: "1",
+          PYTHONNOUSERSITE: "1",
+          PYTHONUNBUFFERED: "1",
+          GODOT_AI_DISABLE_TELEMETRY: "true",
+          GODOT_AI_MODE: "dev",
+          GODOT_AI_CAPABILITY_DIR: join(runDirectory, "home/capabilities"),
+          CHRONORIFT_RESTORE_SCENE: this.activeScene,
+          CHRONORIFT_GODOT_DATA_HOME: join(this.root, "godot-data"),
+        },
+        timeoutMs: 5_400_000,
+        ...(signal === undefined ? {} : { signal: startupAbort.signal }),
+      });
+    } finally {
+      signal?.removeEventListener("abort", abortStartup);
+    }
     this.process = process;
     const ready = this.transport!.bind(process);
     void process.wait().then((result) => {
-      if (!this.stopping) this.unsavedChangesPossible = true;
+      if (
+        this.process === process &&
+        !this.stopping &&
+        this.editorState === "ready"
+      )
+        this.unsavedChangesPossible = true;
       this.records.push({
         event: "process_exit",
         ...result,
         stdout: result.stdout.slice(0, 4096),
         stdoutTruncated: result.stdoutTruncated || result.stdout.length > 4096,
       });
-      if (this.process === process) this.process = undefined;
+      if (this.process === process) {
+        this.process = undefined;
+        this.editorState = this.stopping ? "stopped" : "failed";
+      }
       return result;
     });
     try {
+      signal?.throwIfAborted();
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([
@@ -256,7 +285,7 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
       }
       await access(this.socketPath);
       this.records.push({
-        event: "editor_ready",
+        event: "backend_ready",
         durationMs: Date.now() - started,
         activeScene: this.activeScene,
       });
@@ -281,26 +310,73 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
     id: string,
     operation: () => Promise<T>,
     signal?: AbortSignal,
+    requiresEditor = true,
+    request?: ManagedMcpToolRequest<T>,
   ): Promise<T> {
     const requestedAt = Date.now();
     return this.serial(async () => {
       this.options.admit(name);
       const started = Date.now();
+      let cancellation: Promise<void> | undefined;
       const cancel = () => {
-        void this.process?.stop();
+        if (this.editorState === "ready") this.unsavedChangesPossible = true;
+        cancellation ??= this.stopProcess();
+        void cancellation.catch(() => undefined);
       };
       signal?.addEventListener("abort", cancel, { once: true });
       let outcome = "returned";
       try {
         signal?.throwIfAborted();
+        if (this.closed) throw new Error("Godot MCP environment is closed");
+        if (
+          this.editorState === "stopped" &&
+          request?.whenEditorStopped !== undefined
+        ) {
+          outcome = "host_noop";
+          return request.whenEditorStopped();
+        }
         await this.start(signal);
         signal?.throwIfAborted();
-        return await operation();
+        if (requiresEditor && this.editorState !== "ready") {
+          const editorStarted = Date.now();
+          this.editorState = "starting";
+          this.editorGeneration += 1;
+          try {
+            await this.transport!.control({ op: "start_editor" }, 150_000);
+            signal?.throwIfAborted();
+            if (this.process === undefined)
+              throw new Error("Godot MCP exited during editor startup");
+            this.editorState = "ready";
+          } catch (error) {
+            await this.stopProcess();
+            this.editorState = "failed";
+            this.records.push({
+              event: "editor_start_failed",
+              durationMs: Date.now() - editorStarted,
+              editorGeneration: this.editorGeneration,
+            });
+            throw error;
+          }
+          this.records.push({
+            event: "editor_ready",
+            durationMs: Date.now() - editorStarted,
+            activeScene: this.activeScene,
+            editorGeneration: this.editorGeneration,
+          });
+        }
+        signal?.throwIfAborted();
+        const result = await operation();
+        signal?.throwIfAborted();
+        return result;
       } catch (error) {
         outcome = signal?.aborted ? "cancelled" : "failed";
         throw error;
       } finally {
         signal?.removeEventListener("abort", cancel);
+        if (cancellation !== undefined) {
+          await cancellation;
+          this.editorState = "failed";
+        }
         this.records.push({
           event: "tool",
           name,
@@ -310,6 +386,12 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
           waitMs: started - requestedAt,
           durationMs: Date.now() - started,
           outcome,
+          requiresEditor,
+          ...(request === undefined
+            ? {}
+            : { tool: request.tool, operation: request.operation }),
+          editorState: this.editorState,
+          editorGeneration: this.editorGeneration,
         });
       }
     }, signal);
@@ -320,30 +402,135 @@ export class GodotMcpEnvironment implements ManagedMcpEnvironment {
     signal?: AbortSignal,
   ): Promise<T> {
     return this.serial(async () => {
-      if (["bash", "edit", "write"].includes(name)) await this.saveAndStop();
-      return operation();
+      const invalidated =
+        ["bash", "edit", "write"].includes(name) &&
+        this.editorState === "ready";
+      if (["bash", "edit", "write"].includes(name))
+        await this.saveAndStop(name);
+      signal?.throwIfAborted();
+      const noticeText = `[ChronoRift environment] Editor generation ${this.editorGeneration} was saved and closed before ${name}. Previous runtime references are invalid. The next Godot tool reopens the editor from disk; use project_run explicitly to start a new game.`;
+      let result: T;
+      try {
+        result = await operation();
+      } catch (error) {
+        if (!invalidated) throw error;
+        if (error instanceof Error) {
+          // Preserve error identity, cause, code and original message.
+          error.message += `\n\n${noticeText}`;
+          throw error;
+        }
+        throw new Error(`${String(error)}\n\n${noticeText}`, { cause: error });
+      }
+      if (
+        !invalidated ||
+        result === null ||
+        typeof result !== "object" ||
+        !("content" in result) ||
+        !Array.isArray(result.content)
+      )
+        return result;
+      const notice = {
+        editorState: this.editorState,
+        editorGeneration: this.editorGeneration,
+        runtimeReferencesInvalidated: true,
+      };
+      return {
+        ...result,
+        content: [
+          ...(result.content as unknown[]),
+          {
+            type: "text",
+            text: noticeText,
+          },
+        ],
+        details: {
+          ...("details" in result &&
+          typeof result.details === "object" &&
+          result.details !== null
+            ? result.details
+            : {}),
+          chronoriftEnvironment: notice,
+        },
+      };
+    }, signal);
+  }
+  async wait(
+    id: string,
+    durationMs: number,
+    signal?: AbortSignal,
+  ): Promise<{
+    elapsedMs: number;
+    editorState: "stopped" | "starting" | "ready" | "failed";
+    editorGeneration: number;
+  }> {
+    if (!Number.isInteger(durationMs) || durationMs < 0 || durationMs > 10_000)
+      throw new TypeError("duration_ms must be an integer between 0 and 10000");
+    const requestedAt = Date.now();
+    return this.serial(async () => {
+      if (this.closed) throw new Error("Godot MCP environment is closed");
+      this.options.admit("environment_wait");
+      const startedAt = Date.now();
+      const started = performance.now();
+      let outcome = "returned";
+      try {
+        if (durationMs > 0) await delay(durationMs, undefined, { signal });
+        signal?.throwIfAborted();
+        return {
+          elapsedMs: performance.now() - started,
+          editorState: this.editorState,
+          editorGeneration: this.editorGeneration,
+        };
+      } catch (error) {
+        outcome = signal?.aborted ? "cancelled" : "failed";
+        throw error;
+      } finally {
+        this.records.push({
+          event: "tool",
+          name: "environment_wait",
+          id,
+          requestedAt,
+          startedAt,
+          waitMs: startedAt - requestedAt,
+          durationMs: performance.now() - started,
+          outcome,
+          requiresEditor: false,
+        });
+      }
     }, signal);
   }
   async control(command: object): Promise<unknown> {
     if (!this.transport) throw new Error("Godot MCP transport is not prepared");
     return this.transport.control(command);
   }
-  private async saveAndStop(): Promise<void> {
-    if (this.process === undefined) return;
-    const saved = (await this.control({ op: "save" })) as {
-      activeScene?: string;
-    };
-    this.activeScene =
-      typeof saved.activeScene === "string" ? saved.activeScene : "";
+  private async stopProcess(): Promise<void> {
+    const process = this.process;
     this.stopping = true;
     try {
-      await this.process?.stop();
+      await process?.stop();
+      if (this.process === process) this.process = undefined;
+      this.editorState = "stopped";
     } finally {
       this.stopping = false;
     }
+  }
+  private async saveAndStop(reason = "close"): Promise<void> {
+    if (this.process === undefined) return;
+    const started = performance.now();
+    const hadEditor = this.editorState === "ready";
+    if (hadEditor) {
+      const saved = (await this.control({ op: "save" })) as {
+        activeScene?: string;
+      };
+      this.activeScene =
+        typeof saved.activeScene === "string" ? saved.activeScene : "";
+    }
+    await this.stopProcess();
     this.records.push({
-      event: "saved_and_stopped",
+      event: hadEditor ? "saved_and_stopped" : "backend_stopped",
       activeScene: this.activeScene,
+      reason,
+      durationMs: performance.now() - started,
+      editorGeneration: this.editorGeneration,
     });
   }
   recordPaths(): readonly string[] {

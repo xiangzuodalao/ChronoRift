@@ -31,6 +31,7 @@ it("enforces the small coding and Godot SRT policies on Linux", async () => {
   const homePath = join(root, "run-home");
   const tempPath = join(root, "run-tmp");
   const artifactsPath = join(root, "artifacts");
+  const godotDataPath = join(root, "godot-data");
   const hostOnlyPath = join(root, "host-only.txt");
   await Promise.all(
     [
@@ -39,10 +40,12 @@ it("enforces the small coding and Godot SRT policies on Linux", async () => {
       homePath,
       tempPath,
       artifactsPath,
+      godotDataPath,
     ].map(async (path) => mkdir(path, { recursive: true, mode: 0o700 })),
   );
   await writeFile(join(projectStagePath, "project.godot"), "[application]\n");
   await writeFile(hostOnlyPath, "host-only\n");
+  await writeFile(join(godotDataPath, "seed.txt"), "task-data\n");
 
   const server = createServer((_request, response) => {
     response.end("host-network");
@@ -51,7 +54,10 @@ it("enforces the small coding and Godot SRT policies on Linux", async () => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
-  const controller = new SrtSandboxController({ defaultTimeoutMs: 10_000 });
+  const controller = new SrtSandboxController({
+    defaultTimeoutMs: 10_000,
+    protectedReadPaths: [hostOnlyPath],
+  });
   try {
     const address = server.address();
     if (address === null || typeof address === "string") {
@@ -63,10 +69,11 @@ it("enforces the small coding and Godot SRT policies on Linux", async () => {
       argv: [
         "/bin/bash",
         "-c",
-        'set -eu; if /usr/bin/cat -- "$2" >/dev/null 2>&1; then exit 40; fi; /usr/bin/printf coding-ok >"$1/coding.txt"',
+        'set -eu; if /usr/bin/cat -- "$2" >/dev/null 2>&1; then exit 40; fi; if /usr/bin/cat -- "$3/seed.txt" >/dev/null 2>&1; then exit 44; fi; /usr/bin/printf coding-ok >"$1/coding.txt"',
         "chronorift-coding",
         workspacePath,
         hostOnlyPath,
+        godotDataPath,
       ],
       cwd: workspacePath,
       workspacePath,
@@ -78,6 +85,57 @@ it("enforces the small coding and Godot SRT policies on Linux", async () => {
     await expect(
       readFile(join(workspacePath, "coding.txt"), "utf8"),
     ).resolves.toBe("coding-ok");
+
+    const editor = await controller.openEditor({
+      argv: [
+        "/bin/bash",
+        "-c",
+        'set -eu; /usr/bin/printf saved >"$1/save.txt"; /usr/bin/ln -s -- "$2" "$1/host-link"; if /usr/bin/cat -- "$1/host-link" >/dev/null 2>&1; then exit 40; fi; /usr/bin/printf escape >"$1/../escape.txt" 2>/dev/null || true; if exec 9<>"/dev/tcp/127.0.0.1/$3" 2>/dev/null; then exit 43; fi',
+        "chronorift-editor",
+        godotDataPath,
+        hostOnlyPath,
+        String(address.port),
+      ],
+      cwd: workspacePath,
+      workspacePath,
+      homePath,
+      tempPath,
+      artifactsPath,
+      godotDataPath,
+      readOnlyPaths: [],
+      isolationReadRoots: [root],
+    });
+    const editorResult = await editor.wait();
+    expect(editorResult, JSON.stringify(editorResult)).toMatchObject({
+      status: "exited",
+      exitCode: 0,
+    });
+    expect(await readFile(join(godotDataPath, "save.txt"), "utf8")).toBe(
+      "saved",
+    );
+    // A hidden parent can be writable namespace scaffolding. It must never
+    // become a writable bind of the Host parent containing other Task state.
+    await expect(readFile(join(root, "escape.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(await readFile(hostOnlyPath, "utf8")).toBe("host-only\n");
+    const nextHomePath = join(root, "next-home");
+    await mkdir(nextHomePath);
+    const restartedEditor = await controller.openEditor({
+      argv: ["/usr/bin/cat", join(godotDataPath, "save.txt")],
+      cwd: workspacePath,
+      workspacePath,
+      homePath: nextHomePath,
+      tempPath,
+      artifactsPath,
+      godotDataPath,
+      readOnlyPaths: [],
+    });
+    expect(await restartedEditor.wait()).toMatchObject({
+      status: "exited",
+      exitCode: 0,
+      stdout: "saved",
+    });
 
     const imported = await controller.openGodotImport({
       argv: [

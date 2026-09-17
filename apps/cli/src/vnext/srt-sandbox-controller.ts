@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { lstat, readdir, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -94,6 +94,8 @@ export interface SrtCodingRequest extends SrtCommonRequest {
 export interface SrtEditorRequest extends SrtCommonRequest {
   readonly workspacePath: string;
   readonly readOnlyPaths: readonly string[];
+  /** Host-created Task data directory, retained across editor restarts. */
+  readonly godotDataPath?: string | undefined;
 }
 
 export interface SrtGodotRequest extends SrtCommonRequest {
@@ -360,6 +362,29 @@ export class SrtSandboxController {
         request.readOnlyPaths,
         "editor dependency path",
       );
+      if (request.godotDataPath !== undefined) {
+        const dataPath = request.godotDataPath;
+        assertAbsolutePath(dataPath, "godotDataPath");
+        this.#validateAllowedPaths([dataPath], "godotDataPath");
+        if (
+          [...writable, ...request.readOnlyPaths].some((path) =>
+            pathsOverlap(path, dataPath),
+          )
+        ) {
+          throw new TypeError(
+            "godotDataPath must be separate from editor runtime and dependency paths",
+          );
+        }
+        if (
+          !(await lstat(dataPath)).isDirectory() ||
+          (await realpath(dataPath)) !== resolve(dataPath)
+        ) {
+          throw new TypeError(
+            "godotDataPath must be an existing directory without symlink components",
+          );
+        }
+        writable.push(dataPath);
+      }
       return await this.#start({
         request,
         filesystem: {

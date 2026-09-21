@@ -20,8 +20,8 @@ its investigation and edit strategy; project CI, an independent Eval, or human r
 > evaluator 3/3. Coding-only also passed 3/3, so this case supports product-path reuse rather than a general efficacy
 > claim.
 
-**Status on 2026-09-15:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
-A default `chronorift [goal]`, arbitrary-project support, and automatic “fixed” verdicts do not exist yet.
+**Current status:** `v0.4.0` is the current legacy release and Project Environment is an experimental Preview.
+The installed `crf [goal]` command opens Preview. Arbitrary-project compatibility and automatic “fixed” verdicts are not provided.
 
 ![ChronoRift concept art showing an isolated Godot runtime, baseline and candidate executions, and runtime records](docs/assets/chronorift-hero.jpg)
 
@@ -48,16 +48,16 @@ boundaries, and the [development guide](docs/development.md) for usage and valid
 
 ## What exists today
 
-| Surface                     | Current implementation                                                                                                                        | Boundary                                                                                                |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                                   | Not the vNext free Loop and not an arbitrary-project runner                                             |
-| Project Environment Preview | Explicit `project preview`; private candidate, sandboxed coding, adapter-free Godot object inspection, and optional Multi-Agent collaboration | Current-state inspection; no retained history, automatic acceptance, or arbitrary-project compatibility |
-| GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary       | One project, prompt, revision, and pair; raw live outputs remain local-only                             |
-| Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                          | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim                        |
-| Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                             | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer                       |
-| M3/M4/E2                    | Implementations and commands are removed from current HEAD; frozen historical archives remain                                                 | Not templates for new slices and not restored to reproduce old producers or Gates                       |
+| Surface                     | Current implementation                                                                                                                                            | Boundary                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| v0.4 legacy                 | Four calibrated fixtures, a real Pi Session, and a fixed diagnosis workflow                                                                                       | Not the vNext free Loop and not an arbitrary-project runner                                             |
+| Project Environment Preview | Installed `crf` or developer `project preview`; private candidate, sandboxed coding, adapter-free Godot object inspection, and optional Multi-Agent collaboration | Current-state inspection; no retained history, automatic acceptance, or arbitrary-project compatibility |
+| GN-1                        | One exact third-party revision, one project-specific adapter, two matched arms, public candidate patches, and a Host postflight summary                           | One project, prompt, revision, and pair; raw live outputs remain local-only                             |
+| Godot Demo Mob V2           | A second external project, state-only Adapter V2, completed fresh pair, public patches, and an independent evaluator                                              | Both arms passed 3/3; not a Hero, comparative win, or automatic-onboarding claim                        |
+| Host sandbox                | SRT `0.0.74` exactly on Linux x86_64; writable coding workspaces and Host-staged Godot validation                                                                 | Network denied by default; no custom cgroup, storage-ledger, or Host-config layer                       |
+| M3/M4/E2                    | Implementations and commands are removed from current HEAD; frozen historical archives remain                                                                     | Not templates for new slices and not restored to reproduce old producers or Gates                       |
 
-Not yet available: a default `chronorift [goal]`, arbitrary Godot projects, general adapter authoring/migration,
+Not yet available: arbitrary Godot projects, general adapter authoring/migration,
 cross-platform Hosts, automatic acceptance, or generally available checkpoint/fork/replay on the current product
 path. The retired M3 implementation exists only in historical tags and archives.
 
@@ -102,6 +102,21 @@ advantage claim. The detailed page retains both original candidate patches and e
 cost, failed tool responses retained in local raw records, and runtime limitations.
 
 [Review the Godot Demo Mob Orientation case study →](docs/case-studies/godot-demo-mob-orientation.md)
+
+## Install and run
+
+Install a built npm package, then open ChronoRift in your Git-managed Godot project:
+
+```bash
+npm install -g /path/to/chronorift-0.4.0.tgz
+cd /path/to/my-godot-project
+crf
+```
+
+First interactive startup offers Godot installation when needed. Use `/login` and `/model` in the UI; subsequent runs
+reuse your Pi Host settings. `crf "Investigate the collision problem"` runs a task directly; add `--multi-agent`
+to allow optional workers. Linux x86_64 and a working sandbox are required. See the [installation guide](docs/installation.md)
+for package builds, Host prerequisites and patch review. Package generation does not imply publication to npm.
 
 ## Review paths
 

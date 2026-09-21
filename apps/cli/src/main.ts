@@ -17,7 +17,6 @@ import {
   persistPiApiKey,
   runDeterministicPiDiagnosis,
   runPiDiagnosis,
-  type PiThinkingLevel,
   type PiDiagnosisRunResult,
 } from "@chronorift/pi-harness";
 
@@ -42,130 +41,17 @@ import {
 } from "./vnext/platform-alias-demo.js";
 import { runMobOrientationAblationV1 } from "./vnext/mob-orientation-ablation.js";
 import {
-  ProjectEnvironmentPreviewStartupFailureV2Schema,
-  runProjectEnvironmentPreviewV2,
-} from "./vnext/project-environment-preview.js";
-
-interface Arguments {
-  readonly command: string;
-  readonly flags: ReadonlyMap<string, string | true | readonly string[]>;
-  readonly positionals: readonly string[];
-}
-
-const booleanFlags = new Set(["json", "multi-agent"]);
-const repeatableFlags = new Set(["include-untracked"]);
-
-function parseArguments(argv: readonly string[]): Arguments {
-  const [rootCommand = "help", ...rootRest] = argv;
-  const projectSubcommand = rootCommand === "project" ? rootRest[0] : undefined;
-  const command =
-    rootCommand === "project" && projectSubcommand !== undefined
-      ? `project-${projectSubcommand}`
-      : rootCommand;
-  const rest = rootCommand === "project" ? rootRest.slice(1) : rootRest;
-  const flags = new Map<string, string | true | readonly string[]>();
-  const positionals: string[] = [];
-  const putFlag = (name: string, value: string | true): void => {
-    const existing = flags.get(name);
-    if (repeatableFlags.has(name)) {
-      if (value === true) {
-        throw new Error(`Repeatable flag --${name} requires a value`);
-      }
-      const existingValues =
-        existing !== undefined && typeof existing === "object" ? existing : [];
-      flags.set(name, Object.freeze([...existingValues, value]));
-      return;
-    }
-    if (
-      existing !== undefined &&
-      (command === "project-preview" ||
-        command === "demo-platform-alias-ablation" ||
-        command === "demo-mob-orientation-ablation")
-    ) {
-      throw new Error(`Duplicate --${name}`);
-    }
-    flags.set(name, value);
-  };
-  for (let index = 0; index < rest.length; index += 1) {
-    const token = rest[index];
-    if (token === "--") continue;
-    if (token === undefined || !token.startsWith("--")) {
-      positionals.push(String(token));
-      continue;
-    }
-    const equals = token.indexOf("=");
-    if (equals > 2) {
-      const name = token.slice(2, equals);
-      if (booleanFlags.has(name)) {
-        throw new Error(`Boolean flag --${name} does not accept a value`);
-      }
-      putFlag(name, token.slice(equals + 1));
-      continue;
-    }
-    const name = token.slice(2);
-    if (booleanFlags.has(name)) {
-      putFlag(name, true);
-      continue;
-    }
-    const value = rest[index + 1];
-    if (value === undefined || value.startsWith("--")) {
-      throw new Error(`Missing value for ${token}`);
-    }
-    putFlag(name, value);
-    index += 1;
-  }
-  if (positionals.length > 0 && command !== "project-preview") {
-    throw new Error(`Unexpected argument: ${positionals[0]}`);
-  }
-  if (positionals.length > 1) {
-    throw new Error("Project Environment preview accepts at most one goal");
-  }
-  return { command, flags, positionals: Object.freeze(positionals) };
-}
-
-function flag(
-  args: Arguments,
-  name: string,
-  environmentName?: string,
-): string | undefined {
-  const value = args.flags.get(name);
-  return (
-    (typeof value === "string" ? value : undefined) ??
-    (environmentName === undefined ? undefined : process.env[environmentName])
-  );
-}
-
-function hasFlag(args: Arguments, name: string): boolean {
-  return args.flags.get(name) === true;
-}
-
-function repeatableFlag(args: Arguments, name: string): readonly string[] {
-  const value = args.flags.get(name);
-  return value !== undefined && typeof value === "object" ? value : [];
-}
-
-function assertOnlyFlags(args: Arguments, allowed: readonly string[]): void {
-  const permitted = new Set(allowed);
-  for (const name of args.flags.keys()) {
-    if (!permitted.has(name)) {
-      throw new Error(`Unsupported --${name} for ${args.command}`);
-    }
-  }
-}
-
-function requiredFlag(
-  args: Arguments,
-  name: string,
-  environmentName?: string,
-): string {
-  const value = flag(args, name, environmentName);
-  if (value === undefined || value.trim() === "") {
-    throw new Error(
-      `Missing --${name}${environmentName === undefined ? "" : ` or ${environmentName}`}`,
-    );
-  }
-  return value;
-}
+  assertOnlyFlags,
+  flag,
+  hasFlag,
+  parseArguments,
+  positiveIntegerFlag,
+  printJson,
+  requiredFlag,
+  thinkingLevelFlag,
+  type Arguments,
+} from "./cli-arguments.js";
+import { projectPreviewCommand } from "./project-preview-command.js";
 
 function environmentKind(args: Arguments): "mock" | "godot" {
   const value = flag(args, "environment") ?? "mock";
@@ -173,44 +59,6 @@ function environmentKind(args: Arguments): "mock" | "godot" {
     throw new Error(
       `Unsupported --environment ${value}; expected mock or godot`,
     );
-  }
-  return value;
-}
-
-function printJson(value: unknown): void {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
-}
-
-function positiveIntegerFlag(
-  args: Arguments,
-  name: string,
-  fallback: number,
-): number {
-  const raw = flag(args, name);
-  if (raw === undefined) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`--${name} must be a positive integer`);
-  }
-  return value;
-}
-
-function thinkingLevelFlag(
-  args: Arguments,
-  fallback: PiThinkingLevel,
-  name = "thinking",
-): PiThinkingLevel {
-  const value = flag(args, name) ?? fallback;
-  if (
-    value !== "off" &&
-    value !== "minimal" &&
-    value !== "low" &&
-    value !== "medium" &&
-    value !== "high" &&
-    value !== "xhigh" &&
-    value !== "max"
-  ) {
-    throw new Error(`Unsupported --${name} ${value}`);
   }
   return value;
 }
@@ -510,159 +358,6 @@ async function persistVolcengineAuthCommand(): Promise<void> {
       apiKey,
     }),
   );
-}
-
-async function projectPreviewCommand(
-  args: Arguments,
-  cwd: string,
-): Promise<void> {
-  assertOnlyFlags(args, [
-    "provider",
-    "model",
-    "thinking",
-    "state-root",
-    "godot-bin",
-    "timeout-ms",
-    "agent-dir",
-    "project-root",
-    "include-untracked",
-    "json",
-    "multi-agent",
-    "max-agents",
-    "worker-provider",
-    "worker-model",
-    "worker-thinking",
-  ]);
-  const multiAgent = hasFlag(args, "multi-agent");
-  const workerFlags = [
-    "max-agents",
-    "worker-provider",
-    "worker-model",
-    "worker-thinking",
-  ];
-  if (!multiAgent && workerFlags.some((name) => args.flags.has(name))) {
-    throw new Error("Worker configuration requires --multi-agent");
-  }
-  const maxAgents = positiveIntegerFlag(args, "max-agents", 3);
-  if (maxAgents > 4) throw new Error("--max-agents must be between 1 and 4");
-  if (args.flags.has("worker-provider") && !args.flags.has("worker-model")) {
-    throw new Error("--worker-provider requires --worker-model");
-  }
-  let result: Awaited<ReturnType<typeof runProjectEnvironmentPreviewV2>>;
-  try {
-    result = await runProjectEnvironmentPreviewV2({
-      projectPath: cwd,
-      provider: requiredFlag(args, "provider", "CHRONORIFT_PI_PROVIDER"),
-      model: requiredFlag(args, "model", "CHRONORIFT_PI_MODEL"),
-      thinkingLevel: thinkingLevelFlag(args, DEFAULT_PI_THINKING_LEVEL),
-      goal: args.positionals[0] ?? null,
-      ...(multiAgent
-        ? {
-            multiAgent: {
-              maxAgents,
-              ...(flag(args, "worker-provider") === undefined
-                ? {}
-                : { workerProvider: flag(args, "worker-provider")! }),
-              ...(flag(args, "worker-model") === undefined
-                ? {}
-                : { workerModel: flag(args, "worker-model")! }),
-              ...(flag(args, "worker-thinking") === undefined
-                ? {}
-                : {
-                    workerThinking: thinkingLevelFlag(
-                      args,
-                      DEFAULT_PI_THINKING_LEVEL,
-                      "worker-thinking",
-                    ),
-                  }),
-            },
-          }
-        : {}),
-      ...(flag(args, "project-root") === undefined
-        ? {}
-        : { projectRoot: flag(args, "project-root")! }),
-      includeUntrackedPaths: repeatableFlag(args, "include-untracked"),
-      interactive:
-        !hasFlag(args, "json") &&
-        process.stdin.isTTY === true &&
-        process.stdout.isTTY === true,
-      ...(flag(args, "state-root") === undefined
-        ? {}
-        : { stateRoot: resolve(flag(args, "state-root")!) }),
-      ...(flag(args, "godot-bin", "GODOT_BIN") === undefined
-        ? {}
-        : { godotBin: resolve(flag(args, "godot-bin", "GODOT_BIN")!) }),
-      ...(flag(args, "agent-dir") === undefined
-        ? {}
-        : { agentDir: resolve(flag(args, "agent-dir")!) }),
-      ...(flag(args, "timeout-ms") === undefined
-        ? {}
-        : { timeoutMs: positiveIntegerFlag(args, "timeout-ms", 1_800_000) }),
-    });
-  } catch (error) {
-    const rawMessage = error instanceof Error ? error.message : String(error);
-    const rawCode =
-      error !== null && typeof error === "object" && "code" in error
-        ? (error as { readonly code?: unknown }).code
-        : null;
-    const failureCode =
-      typeof rawCode === "string" && /^[a-z][a-z0-9_]{0,63}$/u.test(rawCode)
-        ? rawCode
-        : "project_preview_failed";
-    const failureMessage =
-      rawMessage
-        .replace(/[\r\n\0]/gu, " ")
-        .trim()
-        .slice(0, 4_096) || "Project Environment Preview failed";
-    const failure = ProjectEnvironmentPreviewStartupFailureV2Schema.parse({
-      schemaVersion: 2 as const,
-      status: "failed" as const,
-      goalDelivered: false as const,
-      failureCode,
-      failureMessage,
-    });
-    if (hasFlag(args, "json")) {
-      printJson(multiAgent ? { ...failure, schemaVersion: 4 } : failure);
-    } else {
-      process.stderr.write(
-        `ChronoRift Project Environment Preview — failed\nfailure: ${failure.failureCode}: ${failure.failureMessage}\n`,
-      );
-    }
-    process.exitCode = 1;
-    return;
-  }
-  const unsuccessful =
-    result.status !== "completed" ||
-    !result.goalDelivered ||
-    result.failureCode !== null;
-  if (hasFlag(args, "json")) {
-    printJson(result);
-    if (unsuccessful) process.exitCode = 1;
-    return;
-  }
-  process.stdout.write(
-    [
-      `ChronoRift Project Environment Preview — ${result.status}`,
-      `task: ${result.taskId}`,
-      `source: ${result.sourceSha256}`,
-      `selected project root: ${result.projectRoot.length === 0 ? "." : result.projectRoot}`,
-      `candidate source: ${result.candidateSourceChanged === null ? "unknown (candidate not frozen)" : result.candidateSourceChanged ? "changed" : "unchanged"}`,
-      `candidate patch: ${result.candidatePatch?.path ?? "unavailable"}`,
-      `runtime executions: ${result.executions.length}`,
-      ...(result.schemaVersion === 4
-        ? [`agent records: ${result.agents?.recordPath ?? "unavailable"}`]
-        : []),
-      `Pi: ${result.provider}/${result.model} (${result.thinkingLevel})`,
-      `session: ${result.sessionFile ?? "not persisted"}`,
-      `queued goal: ${result.goalDelivered ? "delivered" : "not delivered"}`,
-      ...(result.failureMessage === null
-        ? []
-        : [`failure: ${result.failureCode}: ${result.failureMessage}`]),
-      `task records: ${result.taskDirectory}`,
-      ...result.limitations.map((limitation) => `limitation: ${limitation}`),
-    ].join("\n") + "\n",
-  );
-  if (unsuccessful) process.exitCode = 1;
 }
 
 async function platformAliasAblationCommand(args: Arguments) {

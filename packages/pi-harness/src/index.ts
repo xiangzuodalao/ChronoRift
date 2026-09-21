@@ -162,3 +162,4 @@ export {
   type ManagedPiSession,
   type PiSessionMessageOptions,
 } from "./vnext-session.js";
+export { resolvePiHostModel } from "./host-model-selection.js";

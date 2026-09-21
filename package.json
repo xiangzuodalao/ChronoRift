@@ -54,15 +54,28 @@
     "auth:volcengine": "tsx apps/cli/src/main.ts auth-volcengine",
     "pi:smoke": "tsx apps/cli/src/main.ts pi-smoke",
     "godot:doctor": "tsx apps/cli/src/main.ts godot-doctor",
-    "godot:install": "tsx apps/cli/src/main.ts godot-install"
+    "godot:install": "tsx apps/cli/src/main.ts godot-install",
+    "build:cli": "node scripts/build-cli.mjs",
+    "pack:cli": "npm run build:cli && node scripts/pack-cli.mjs"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
+    "esbuild": "0.28.1",
     "eslint": "10.8.0",
     "prettier": "3.9.6",
     "tsx": "4.23.5",
     "typescript": "5.9.3",
     "typescript-eslint": "8.66.0",
     "vitest": "4.1.10"
+  },
+  "bin": {
+    "crf": "bin/chronorift.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.74",
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "typebox": "1.3.7",
+    "undici": "8.5.0",
+    "zod": "4.4.3"
   }
 }

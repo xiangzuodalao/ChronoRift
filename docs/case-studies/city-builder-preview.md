@@ -131,5 +131,3 @@ node --import tsx docs/case-studies/city-builder-preview/run.mjs \
 本次工程验证：lint、类型检查、911 项离线测试、20 项 Godot 测试、7 项沙箱测试和 8 项案例脚本测试通过。
 `corepack pnpm check` 在格式检查阶段被三个任务开始前已有的未跟踪架构图文件阻断；这些文件保持原样，
 其后的类型检查与离线测试已单独执行。本次改动单独检查格式，具体记录见[验证摘要](city-builder-preview/validation.json)。
-
-[简历要点、三分钟讲稿与面试追问 →](city-builder-preview/interview.md)

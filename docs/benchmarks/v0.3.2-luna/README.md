@@ -72,7 +72,7 @@ canary 前置，但不等于 formal Gate 通过。
   失败记录。
 - [reproduction.md](reproduction.md)：已执行 canary/freeze、旧 execution 边界与 r1 负结果。
 - [r1 evidence workspace](../v0.3.2-luna-r1/README.md)：已发布报告、hash 与失败分类。
-- [中文作品集](../../portfolio-v0.3.2.md)：面向简历和面试的 evidence-backed 项目摘要。
+- [工程设计导览](../../portfolio.md)：当前实现的设计决定、代码入口与已知限制。
 
 目录中的 `benchmark-spec.v3.json` 已由 `v0.3.2-luna-benchmark-freeze` 固定；该身份的唯一
 selection 没有通过终态封存，不能发布 formal report。当前尚不存在 `benchmark-report.v3.json`、V3

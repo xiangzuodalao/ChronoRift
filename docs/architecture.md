@@ -212,7 +212,10 @@ SDK 请求耗时不是纯模型计算时间，也不逐次拆解 HTTP 重试。
 
 ## 10. 固定案例与 legacy
 
-当前 CLI 同时保留实验性 Preview、固定项目案例和 v0.4 legacy diagnosis 入口，尚无统一 `chronorift [goal]` 默认入口。
+安装后的 `crf [goal]` 默认进入实验性 Preview；省略 goal 时打开 Pi TUI。模型默认值只读取 Pi Host 用户配置，
+交互界面允许先 `/login`，通过 `/model` 保存选择；项目配置不能覆盖 Host 默认模型。发行包包含 CLI 和独立 worker，
+Godot 可在首次交互启动时下载到用户缓存，沙箱仍按原边界 fail closed。安装方式见[安装指南](installation.md)。
+仓库内的开发 CLI 继续保留显式 Preview、固定项目案例和 v0.4 legacy diagnosis 入口。
 Legacy `demo`、`diagnose` 和 replay 使用自己的固定 workflow、Proposal/Verdict 与记录格式，不具备当前 Preview 的 SRT 保证。
 这些词不能套用到 Preview 的普通 assistant output。[Protocol v2](godot-protocol-v2.md) 仍说明被维护的旧 wire 合同。
 

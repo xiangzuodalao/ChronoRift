@@ -11,9 +11,7 @@ Pi 负责 Agent Loop；ChronoRift 使用固定版本的 Anthropic Sandbox Runtim
 Agent 返回 Build-bound runtime state、实际 diff 和 tool result。Agent 自由选择调查和修改策略，最终 acceptance 仍属于
 项目 CI、独立 Eval 或人工 review。
 
-
 ![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
-
 
 ## 使用
 
@@ -72,8 +70,6 @@ oracle 为 `true`。
 | ------------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------- |
 | `coding-only` | 无                                                            | 四个 area width 均为 682 px，resource identity 仍共享               | `false`           |
 | `chronorift`  | `game_capabilities`、`game_launch`、`game_stop`、`game_query` | area width 与 128/256/384/768 px 的 solid width 对齐，identity 分离 | `true`            |
-
-
 
 ## License
 

@@ -142,8 +142,9 @@ CSV 翻译是受限例外：原始 CSV 表头 locale、导入声明、路径与 
 
 `project preview --multi-agent` 将现有 Session 作为 Root。
 [`agent-supervisor.ts`](../apps/cli/src/vnext/agent-supervisor.ts) 管理任务树、worker 进程、邮箱、执行名额与取消；
-[`project-multi-agent.ts`](../apps/cli/src/vnext/project-multi-agent.ts) 组合共享 workspace、工具与结果。
-每个代理使用独立 Pi Session，Root 和 worker 共享同一个私有 candidate，没有 worker patch 导入步骤。
+[`project-multi-agent.ts`](../apps/cli/src/vnext/project-multi-agent.ts) 组合独立 worktree、工具与结果。
+每个代理使用独立 Pi Session。Worker 从父代理创建时的当前源码生成独立 detached Git worktree；follow-up 和驻留重载继续使用原 worktree。
+父代理使用 `read_agent_patch` 审阅冻结 diff，再用 `apply_agent_patch` 显式接收最新已结束轮的修改。同一文件有冲突时不写入任何修改。
 
 Root 与 worker 都可使用 `spawn_agent`、`list_agents`、`send_message`、`followup_task`、`wait_agent` 和
 `interrupt_agent`。Adaptive 策略允许 0 worker；只有可独立完成、能替代 Root 后续工作的具体子任务才委派。
@@ -156,13 +157,13 @@ Fork 只复制允许的背景文本，不复制父请求用量；保留已结束
 
 默认预留 Root 名额，最多 3 个活跃 worker；CLI `--max-agents` 允许 1–4。等待也占名额，满额直接返回资源不足。
 闲置且无待处理消息/IPC 的 worker 可以按 LRU 卸载并沿原 Session 重载。受控实验可另外限制创建总数、深度和模型配置。
-默认 worker 每轮 10 分钟/64 次执行，团队 256 次；Host `executionLimits` 可显式调整。协作工具和 `game_stop` 不计执行预算。
+默认 worker 每轮 10 分钟/64 次执行，团队 256 次；Host `executionLimits` 可显式调整。协作控制和 `game_stop` 不计执行预算；`apply_agent_patch` 消耗团队执行预算。
 
-Coding 操作与 launch 源码捕获共用 candidate 锁，模型请求和各自固定 stage 的 Godot execution 可并行。
-长 coding 命令仍占锁；锁不提供跨多次 read/edit 的业务事务，也不自动处理覆盖冲突。
-每个代理只能控制自己的 execution、临时目录和取消范围，修改范围仍需代理协调。
+每个 worktree 的 coding 操作、子代理源码快照、patch 接收与 launch 源码捕获使用自己的锁，不同代理的 coding 可并行。
+Git 元数据存放在各自 sandbox scratch，Host baseline、冻结结果和其他代理的目录不可见；用户 checkout 不变。
+每个代理只能控制自己的 execution、临时目录和取消范围。
 
-Headless 在 Root 完成后停止其他 writer，等待清理后提取最终共享 patch，不因迟到消息自动续跑 Root。
+Headless 在 Root 完成后停止其他 writer，等待清理后提取 Root 最终 patch，不因迟到消息自动续跑 Root。
 TUI 中后台 worker 可继续运行，Root 下次用户轮消费邮件；正常退出通过 Pi `session_shutdown` 清理并保存结果。
 策略、上下文继承、名额和 telemetry 的完整语义见 [Multi-Agent](multi-agent.md)。
 
@@ -179,9 +180,9 @@ ID 不是路径或权限凭据；操作验证 schema、存在性和 fresh-run ow
 [`packages/godot-protocol`](../packages/godot-protocol/src/index.ts)，相关 DTO 在
 [`project-environment.ts`](../packages/domain/src/project-environment.ts)。旧初始化 DTO 的存在不表示其 producer 仍运行。
 
-普通 Preview 输出 V2，多代理输出 V4；显式 `executionLimits` 使用 V5，并记录 limits、workspaceMode 和团队计数。
+普通 Preview 输出 V2，显式单代理预算使用 V5；多代理输出 V6，记录 `workspaceMode: "worktree"`、实际 limits 和团队计数。旧 V4/V5 共享 workspace schema 保留用于历史记录。
 旧 Preview V1/V3 和 `agents.v1.json` 保留原义。当前记录包含 Session、候选 patch、执行路径、有界日志和实际失败信息；
-多代理另存 `agents.v2.json`、worker turns、邮箱投递/消费和用量归属。所有 writer 停止后才提取并 round-trip 校验 patch；
+多代理另存 `agents.v3.json`、worker turns、邮箱投递/消费和用量归属。所有 writer 停止后才提取并 round-trip 校验 patch；
 清理或提取失败时 candidate 是否变化可为未知，不能填成“未修改”。
 
 Import/run 分别保留退出、超时、取消、日志截断与源码完整性。模型请求记录 SDK stream 边界起止和状态；
@@ -238,8 +239,8 @@ Preview 只查询存活执行的当前可读对象/属性，没有 retained hist
 Process frame、physics tick、simulation time、render completion 与 Host time 必须区分。
 
 Preview 使用 headless backend，不保证 window-system API、visual/audio/GPU、跨平台 Host 或任意 Godot 项目支持。
-通用 source migration、conflict-safe apply/merge、长期恢复和完整 engine snapshot 都尚未提供。
-共享 candidate 不保证 Root 已审阅所有 worker 修改；并行工作量、worker 完成或成功 launch 都不能替代精确候选的独立验收。
+通用 source migration、向用户 checkout 安全处理冲突的 apply/merge、长期恢复和完整 engine snapshot 都尚未提供。
+显式接收 patch 不证明 Root 已充分审阅 worker 修改；并行工作量、worker 完成或成功 launch 都不能替代精确候选的独立验收。
 
 验证入口为 `corepack pnpm check`、`corepack pnpm test:godot` 和
 `.github/scripts/run-srt-sandbox-conformance.sh`。默认检查离线、无凭据；真实 provider 调用是单独授权入口。

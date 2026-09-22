@@ -252,17 +252,30 @@ export function executionTimingMetrics(performanceRecord) {
   };
 }
 
-function gameOperationEnvelopes(event) {
-  const envelopes = [event.result?.details];
+function toolResultValues(event) {
+  const values = [event.result?.details];
   for (const part of event.result?.content ?? []) {
     if (part.type !== "text") continue;
     try {
-      envelopes.push(JSON.parse(part.text));
+      values.push(JSON.parse(part.text));
     } catch {
-      /* Not a game envelope. */
+      /* Not a structured result. */
     }
   }
-  return envelopes.filter((value) => value?.schemaVersion === 1);
+  return values;
+}
+
+function gameOperationEnvelopes(event) {
+  return toolResultValues(event).filter((value) => value?.schemaVersion === 1);
+}
+
+function agentPatchApplied(event) {
+  const statuses = toolResultValues(event)
+    .map((value) => value?.status)
+    .filter((status) => typeof status === "string");
+  return (
+    statuses.length > 0 && statuses.every((status) => status === "applied")
+  );
 }
 
 /** SDK tool completion and a successful game operation are separate boundaries. */
@@ -292,8 +305,11 @@ export function lifecycleMetrics(rootEvents, workerRecords) {
         entry.event?.type === "tool_execution_start" &&
         entry.event.toolCallId === end.event.toolCallId,
     )?.receivedAt ?? null;
-  const edits = ends.filter((entry) =>
-    ["edit", "write"].includes(entry.event.toolName),
+  const edits = ends.filter(
+    (entry) =>
+      ["edit", "write"].includes(entry.event.toolName) ||
+      (entry.event.toolName === "apply_agent_patch" &&
+        agentPatchApplied(entry.event)),
   );
   const launches = ends.filter(
     (entry) => entry.event.toolName === "game_launch",
@@ -402,8 +418,8 @@ export function lifecycleMetrics(rootEvents, workerRecords) {
     }),
     limitations: [
       "First parent message is a timing proxy, not evidence that the assigned result was complete or used by Root.",
-      "Final validation requires an observed successful Root game_launch after the last edit/write; queries and stop must succeed for that execution. The last successful launch is recorded separately when it predates edits. SDK tool completion alone is insufficient; acceptance is evaluated separately.",
-      "Observed edit milestones include successful edit/write tools; shell-based source writes require separate review.",
+      "Final validation requires an observed successful Root game_launch after the last successful edit/write or applied agent patch; queries and stop must succeed for that execution. The last successful launch is recorded separately when it predates edits. SDK tool completion alone is insufficient; acceptance is evaluated separately.",
+      "Observed edit milestones include successful edit/write tools and apply_agent_patch results with status applied; no_op, conflict, stale, and failed patch calls do not count as edits. Shell-based source writes require separate review.",
       "Worker settledAt is when Host received a Pi terminal result, before resource cleanup; it is not the provider request end.",
     ],
   };
@@ -575,6 +591,9 @@ export async function summarize(root, outputDirectory = root) {
   root = resolve(root);
   outputDirectory = resolve(outputDirectory);
   const manifest = await json(join(root, "manifest.json"));
+  const verifiesUsageOwnership = [2, 3].includes(
+    manifest.config.collaborationVersion,
+  );
   const checks = await json(join(root, "evaluation/results.json"));
   const rows = [],
     accounting = [],
@@ -738,15 +757,14 @@ export async function summarize(root, outputDirectory = root) {
                 ?.sessionId;
       // A task parent does not imply inherited context when fork_turns is none.
       const parentSessionId = provenance === null ? null : taskParentSessionId;
-      const usageOwnershipVerified =
-        manifest.config.collaborationVersion === 2
-          ? ownershipMatches(
-              session.usageOwnership,
-              provenance,
-              header?.id,
-              parentSessionId,
-            )
-          : null;
+      const usageOwnershipVerified = verifiesUsageOwnership
+        ? ownershipMatches(
+            session.usageOwnership,
+            provenance,
+            header?.id,
+            parentSessionId,
+          )
+        : null;
       if (!header || header.id !== session.stats.sessionId)
         recomputed.issues.push("session_identity_mismatch");
       if (usageOwnershipVerified === false)
@@ -991,13 +1009,12 @@ export async function summarize(root, outputDirectory = root) {
         lifecycle.rootLastSuccessfulGameLaunchRequestedAt,
       rootFinalResponseAt: lifecycle.rootFinalResponseAt,
       usageReconciled: reconciled,
-      usageOwnershipReconciled:
-        manifest.config.collaborationVersion === 2
-          ? sessionChecks.length > 0 &&
-            sessionChecks.every(
-              (session) => session.usageOwnershipVerified === true,
-            )
-          : null,
+      usageOwnershipReconciled: verifiesUsageOwnership
+        ? sessionChecks.length > 0 &&
+          sessionChecks.every(
+            (session) => session.usageOwnershipVerified === true,
+          )
+        : null,
       multiSummaryMatches: summaryMatches,
       usageIncomplete: !!usageIncomplete,
       allUsageEntriesPriced:

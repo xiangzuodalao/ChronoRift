@@ -1,6 +1,6 @@
-# Project Preview Multi-Agent V2
+# Project Preview Multi-Agent
 
-Project Preview 可通过 `--multi-agent` 启用协作。Root 和 worker 使用独立 Pi Session，共享一个私有 candidate，
+Project Preview 可通过 `--multi-agent` 启用协作。Root 和 worker 使用独立 Pi Session；每个 worker 拥有独立的 detached Git worktree，
 各自运行固定源码的 Godot execution。所有代理都能继续委派、向同一任务树中的其他代理发消息。Pi 保留模型调用、
 Agent Loop、工具调度、重试和 compaction；Host 管理身份、邮箱、执行名额、沙箱和结果。
 
@@ -42,7 +42,7 @@ effort 选择。当前 Pi SDK 没有供本适配层读取的目标模型默认�
 
 受控 pilot 通过 Host 私有 `spawnPolicy` 固定 worker 的 provider、model 和 thinking，同时从协作工具 schema 移除
 `model`、`reasoning_effort`，Host 也拒绝显式覆盖。该 pilot 最多创建 3 个历史 worker 身份，失败、关闭或卸载的身份仍计数；
-深度限制为 1，只允许 Root 创建直接子代理。这些限制不改变普通 V2 的默认能力，也不会自动创建 worker。
+深度限制为 1，只允许 Root 创建直接子代理。这些限制不改变普通协作的默认能力，也不会自动创建 worker。
 Adaptive 对照允许 0–3 个 worker；旧 Forced-M3 实验要求恰好 3 个，其负结果和原始输入单独保留。
 `fork_turns` 仍可选择，不能将模型配置锁定当作已覆盖上下文继承。
 
@@ -59,7 +59,7 @@ Root 路径是 `/root`。`task_name` 是由小写字母、数字和下划线组�
 目标可使用 agent ID、完整路径或相对调用者的后代路径。`/root/physics` 发给 `tests` 表示自己的孩子；发给兄弟代理
 必须使用 `/root/rendering` 这样的完整路径。Host 根据实际调用者绑定身份，消息不能伪造发送者或访问另一任务树。
 
-Root 与 worker 具有相同的六个协作工具：
+Root 与 worker 具有相同的协作工具和 patch 工具：
 
 | 工具                                                                      | 语义                                                                            |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -69,6 +69,8 @@ Root 与 worker 具有相同的六个协作工具：
 | `followup_task(target, message)`                                          | 给非 Root 代理追加任务；忙碌时尝试合入当前轮，闲置时由 Host 分配新轮            |
 | `wait_agent(timeout_ms?)`                                                 | 等待邮箱活动或 Root 用户输入；只返回摘要，正文经统一邮箱投递；超时不取消 worker |
 | `interrupt_agent(target)`                                                 | 中断另一个非 Root 代理的当前轮；保留 Session 与已完成修改，不递归中断其后代     |
+| `read_agent_patch(target, turn_id, offset?, limit?)`                      | 仅父代理可分页审阅子代理已冻结轮的 diff；默认 16 KiB，最大 64 KiB               |
+| `apply_agent_patch(target, turn_id)`                                      | 仅父代理可接收闲置子代理最新已冻结轮的修改；文件冲突时不写入                    |
 
 `wait_agent` 默认 30 秒，最短 10 秒，最长 1 小时。它不等待指定代理全部完成，也不释放调用者的执行名额。
 只在当前任务确实需要待到结果、且没有独立工作可做时使用；不要为了保持在线而循环等待。
@@ -112,56 +114,67 @@ Worker 驻留进程也受 N 限制。需要加载新代理时，Host 可按 LRU 
 生命周期内的恢复，不是通用跨命令 Task resume 或 Host 崩溃恢复。
 
 每个 worker 轮默认最多 10 分钟、64 次执行工具调用；Root 与全树共享 256 次执行工具调用上限。协作控制和 `game_stop`
-不消耗执行预算。Token/cost 是记录值，不是硬 token、费用、CPU、内存或磁盘配额。
+不消耗执行预算；`apply_agent_patch` 消耗团队执行预算。Token/cost 是记录值，不是硬 token、费用、CPU、内存或磁盘配额。
 Single Preview 的 256 次执行预算同样豁免 `game_stop`，耗尽执行预算后仍可请求清理。
 
 受控实验的 Host 调用可通过 `executionLimits` 配置团队执行上限、worker 每轮时长和执行次数；这些值不进入模型工具
-参数，普通调用的默认值不变。显式预算使用 Preview V5，记录实际 `executionLimits`、`workspaceMode` 和团队计数；
-旧调用继续输出 V2/V4。`scripts/godot-capacity-multi-pilot/run.mjs` 提供独立的 90 分钟、团队 2048 次执行、worker
+参数，普通调用的默认值不变。多代理使用 Preview V6，记录实际 `executionLimits`、`workspaceMode: "worktree"` 和团队计数；
+单代理默认使用 V2，显式预算使用 V5。`scripts/godot-capacity-multi-pilot/run.mjs` 提供独立的 90 分钟、团队 2048 次执行、worker
 每轮 45 分钟/512 次配置，Single 与 Adaptive 使用同一份预算，最多创建 3 个 worker，允许 0 个。
 
 Headless 在 Root 完成后关闭新任务入口、中断剩余 worker，并等待资源清理，再冻结最终 candidate；不会等所有 worker
-自然完成后自动续跑 Root。未完成 worker 如实标记中断，其已写入共享 candidate 的修改不会自动回滚。
+自然完成后自动续跑 Root。未完成 worker 如实标记中断；其修改保留在自身 worktree，不自动进入父代理。
 
 TUI 中 Root 闲置后，worker 可继续运行，普通邮件留到后续用户轮。`/agents` 查看状态，`/agents stop` 停止全团队当前工作。
 Esc 保留 Pi 编辑器自身中断行为，后台 worker 结果仍保留。正常退出通过 Pi `session_shutdown` 等待清理与结果保存。
 Root 的答复不证明它已检查后台 worker 此后完成的修改。
 
-## 共享 candidate 与 Godot 证据
+## 独立 worktree 与 Godot 证据
 
 ```text
 ChronoRift Host
 ├── AgentSupervisor：任务树、邮箱、执行名额、驻留与独立用量
-├── Root Pi Session + worker Pi Sessions / processes
-│   └── 相同 coding / game / collaboration tools
-├── 一个私有 candidate：全体代理共享，用户 checkout 不变
-│   └── coding 操作与 launch 源码捕获共用 Host 锁
-└── 每代理独立执行范围
-    ├── IPC tools → Host broker → 现有 SRT controller
-    ├── 临时目录、执行记录、取消范围
-    └── 启动时固定源码的 Godot stage
+├── Root Pi Session → 私有 Root candidate
+├── Worker Pi Sessions → 每个身份独立的 detached Git worktree
+│   ├── 从父代理 spawn 时的源码快照开始（包含未提交修改和已准入的新文件）
+│   ├── 自己的 Git 元数据、coding 锁、临时目录和 Godot execution
+│   └── 冻结 turn patch → 父代理审阅 → 显式接收或报告冲突
+└── Host baseline 与历史快照：对 coding/Godot 沙箱不可见
 ```
 
-所有代理完成的修改立即对其他代理可见，没有 agent-owned candidate 或显式 patch 导入步骤。Coding 工具在共享 candidate
-锁下串行执行，launch 源码捕获使用同一把锁，避免边复制边被其他工具修改。模型请求和各自 Godot execution 可并行；
-长 coding 命令也占用共享锁。锁不保证多次 read/edit 间的业务事务，也不自动解决覆盖冲突，仍须协调写入范围。
+创建孙代理时复制直接父代理当前的源码；`fork_turns` 只控制对话背景，不改变源码快照。
+Follow-up、取消后继续和 worker LRU 卸载/重载沿用同一个 worktree，不自动同步父代理的新修改。
+每个 worktree 使用自己的 sanitized Git 仓库，Git 元数据放在该代理可写的 sandbox scratch；它不共享用户仓库的配置、凭据、hooks 或对象库。
+`.git`、`.godot`、`.chronorift` 不进入源码快照，准入继续拒绝敏感路径、链接和特殊文件。
+
+子代理修改不会立即对其他代理可见。完成通知包含 turn ID 与冻结 patch 元数据；父代理可先调用
+`read_agent_patch` 查看 diff，再调用 `apply_agent_patch` 接收。只有直接父代理能使用这两个工具。
+接收比较 spawn/上次成功接收时的基线、worker 冻结源码和父代理当前源码；同文件不同修改按冲突处理，不做逐行自动合并。
+冲突时所有文件保持原样，重复接收同轮是 no-op，旧轮返回 stale。成功接收后，后续轮只交付上次接收以来的增量。
+父代理可通过 follow-up 发送冲突背景让 worker 修正，或自行编辑整合。接收 patch 不会修改用户 checkout。
+Esc 或工具取消会撤销尚未开始写入的 patch 接收；事务一旦开始写入，就必须完成或回滚后才释放 workspace。
+失败回滚无法验证时关闭所有 candidate 操作并拒绝最终冻结，不把不确定状态报告为成功。
+
+Coding、launch 源码捕获、创建子代理快照和接收 patch 共用各自 worktree 的锁，不同 worktree 的 coding 可并行。
+Host 的快照/patch 元数据操作仍串行；长 coding 命令只占本 worktree 的锁。
+Worktree 与历史结果保留在私有 Task 目录；结束轮、取消和退出不会删除已产生的代码或改写旧记录。
 
 每次 `game_launch` 固定当时源码并使用独立 stage。Native import 可在另一个一次性可写副本中进行；输出校验后才构建
 源码只读的运行 stage。源码完整性、路径/链接检查、禁网与 Host 凭据隔离保持生效，沙箱失败不会降级为非沙箱执行。
 每个代理只能控制自己绑定的 execution 与临时资源。
 
-已启动游戏不会随共享 candidate 后续修改而更新。Observation 只属于记录的 source/build/execution；验证新修改需要
+已启动游戏不会随各自 worktree 后续修改而更新。Observation 只属于记录的 source/build/execution；验证新修改需要
 新建 execution。每代理同时最多一个存活 Godot execution，团队可同时运行多个。`completed` 仅表示 Pi Loop 结束，
-共享修改和成功测试都不自动构成最终修复结论。
+代码修改和成功测试都不自动构成最终修复结论。
 
 ## 结果与验证边界
 
-普通 Preview 输出 `preview.v2.json`；当前多代理输出 `preview.v4.json`，包含 `workspaceMode: "shared"` 与 `agents`
+普通 Preview 输出 `preview.v2.json`；当前多代理输出 `preview.v6.json`，包含 `workspaceMode: "worktree"`、`executionLimits` 与 `agents`
 摘要。私有 Task 目录保留：
 
-- `records/agents.v2.json`：任务树、各轮结果、邮箱投递/消费记录、最后可用 Session 统计、用量归属与共享工具调用量。
+- `records/agents.v3.json`：任务树、各轮结果、邮箱投递/消费记录、最后可用 Session 统计、用量归属与共享工具调用量。
 - `records/agents/<agentId>/`：worker Pi Session、各轮 `result-<turnId>.json` 与自身 runtime records。
-- `records/candidate.patch`：全体 writer 停止后提取的最终共享 patch，经过 round-trip 校验。
+- `records/candidate.patch`：全体 writer 停止后提取的 Root 最终 patch（不含未接收的 worker 修改），经过 round-trip 校验。
 
 最小性能记录不包含工具参数或模型正文。每个代理的 Pi model request 在 SDK stream function 边界记录
 `startedAt`、`finishedAt`、单调时钟耗时和结束状态，保存在 Session 的 `chronorift.model-request.v1` 条目及结果
@@ -171,16 +184,18 @@ Worker turn 的 `settledAt` 是 Host 收到 Pi 结束结果的时间，`finished
 Coding 工具记录 `requestedAt`、`lockRequestedAt`、`lockAcquiredAt`、`finishedAt` 和单调时钟
 `workspaceLockWaitMs`；未拿到锁的失败或取消仍保留实际等待。Single 的文件位于 Task 的
 `records/performance.v1.json`，Multi Root 位于 `runtime-records/performance.v1.json`，worker 位于
-`records/agents/<agentId>/runtime/performance.v1.json`。这些记录用于量化锁等待，共享 candidate 锁继续保留。
+`records/agents/<agentId>/runtime/performance.v1.json`。这些记录用于量化各自 worktree 的锁等待。
 不同代理的等待或请求时间可能重叠，不能把累计耗时直接当作关键路径耗时。
 
 实验汇总器 `scripts/godot-multi-agent-pilot/summarize.mjs` 派生 worker spawn、首次父消息、settled，以及 Root
-首次 edit/write、最终运行验证和 final response 的时间。首次消息不保证已交付完整结果；最终运行验证要求最后一次
-edit/write 后的成功 `game_launch`，后续 query/stop 必须属于同一 execution 并成功，业务错误不能仅凭 SDK 工具完成
-当作成功。Shell 写入需要单独审阅。可传入新的输出目录保存修正汇总，已有文件不会覆盖；原始记录继续保留。
+首次源码修改、最终运行验证和 final response 的时间。源码修改包含成功 edit/write，以及结果为 `applied` 的
+`apply_agent_patch`；`no_op`、冲突、过期或失败不计为修改。首次消息不保证已交付完整结果；最终运行验证要求最后一次
+源码修改之后成功 `game_launch`，后续 query/stop 必须属于同一 execution 并成功。业务错误不能仅凭 SDK 工具完成
+当作成功，Shell 写入仍需单独审阅。汇总器对 collaboration V2/V3 都核对 Session 用量归属；缺失或错误归属会标记用量不完整。
+可传入新的输出目录保存修正汇总，已有文件不会覆盖；原始记录继续保留。
 
-Worker 轮结果不声称拥有独立 patch。最终共享 patch 可能包含 Root 未单独审阅的修改，仍需在精确候选上独立验收。
-无法完成清理或提取最终 patch 时，V4 的 `candidateSourceChanged` 为 `null`，CLI 明确显示 candidate 未冻结，不能当作
+Worker 每轮保留独立、经过 round-trip 校验的 patch；Root 最终 patch 只含 Root 编辑和显式接收的修改，仍需在精确候选上独立验收。
+无法完成清理或提取最终 patch 时，V6 的 `candidateSourceChanged` 为 `null`，CLI 明确显示 candidate 未冻结，不能当作
 “源码未变化”。Preview 自身不持有隐藏验收 oracle。
 
 Pi 用量是累计值，汇总只计每个 Session 最后可用快照，卸载/重载不重复相加。继承背景不复制父请求费用；新 Session
@@ -189,11 +204,11 @@ Pi 用量是累计值，汇总只计每个 Session 最后可用快照，卸载/�
 内部对账，但不能据此认定取消中的 provider 用量已经收齐。SDK cost 是模型价格表估算，不能替代 provider 账单。
 
 离线测试以真实 Pi 与 faux provider 验证批量邮件、迟到 final、busy followup、取消重送、重试/压缩与用量归属；Host
-测试覆盖任务树、名额、等待、驻留和 IPC。共享 candidate/Godot 验证覆盖修改可见性、固定 stage、独立执行与取消。
-这些测试不证明在线模型会合理分工，也不证明 V2 更快或更便宜。
+测试覆盖任务树、名额、等待、驻留和 IPC。Worktree/Godot 验证覆盖源码隔离、嵌套快照、显式接收与冲突、固定 stage、独立执行与取消。
+这些测试不证明在线模型会合理分工，也不证明当前协作更快或更便宜。
 
 [Adaptive Multi 实验](case-studies/adaptive-multi-v1.md)保留两轮开发对照和一次 holdout：部分 Root 工作可被替代，
-但 holdout 仍出现重复调查、延迟交付和更高耗时/费用。共享锁等待很小，没有据此移除锁。
+但 holdout 仍出现重复调查、延迟交付和更高耗时/费用。该历史共享 candidate 实验的锁等待很小，当时没有据此移除锁。
 
 [真实 Godot 功能任务预检](case-studies/godot-feature-multi-v1.md)随后准备了三个既有 PR。完整源码均被当前准入或
 导入要求阻塞，冻结名单为空，未调用受测模型；组件诊断与完整验收分开记录，没有新的 Single/Adaptive 性能结论。
@@ -206,7 +221,7 @@ PR180 通过完整资格检查；Single 与 Adaptive 各一次均自然完成、
 本批没有新的 holdout，也未根据结果追加重跑或修改策略。旧失败与限制继续保留。
 
 旧 `agents.v1.json`、Preview V3 与 [Single/Multi Pilot](case-studies/single-multi-pilot.md) 属于当时的独立 candidate
-实现，保留历史原记录；其耗时、费用和结论不能归到当前 V2。
+实现，保留历史原记录；其耗时、费用和结论不能归到当前实现。共享 candidate 的 `agents.v2.json` 和 Preview V4/V5 也继续保留。
 
 ## 设计来源
 
@@ -217,3 +232,6 @@ PR180 通过完整资格检查；Single 与 Adaptive 各一次均自然完成、
 ChronoRift 用 TypeScript 与 Pi SDK 适配这些设计，未逐行复制 Rust Agent Loop，不声称与 Codex 产品内部实现完全等价。
 Pi 完整响应/工具批次投递边界、文本 fork 限制、现有 CLI 名额参数、SRT 与 Godot staging 都是这里实际实现的边界。
 显式换模型时的默认 thinking 继承也与该 Codex 提交的目标模型默认 effort 选择不同。
+
+独立工作目录参考 [Codex worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees) 的 detached HEAD 与保留工作目录语义。
+ChronoRift 的每代理 backing repository、Host 冻结 patch 和显式接收是适配现有沙箱边界的实现，不声称 Codex 的 subagent 默认使用相同隔离方式。

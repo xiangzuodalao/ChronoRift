@@ -21,6 +21,10 @@ import {
   type AgentResource,
   type AgentSpawnPolicy,
 } from "./agent-supervisor.js";
+import {
+  AgentWorkspaceManager,
+  type AgentWorkspaceTurnResult,
+} from "./agent-workspace.js";
 import type { SrtSandboxController } from "./srt-sandbox-controller.js";
 import type { ProjectEnvironmentTaskDirectoryLayout } from "./task-paths.js";
 import {
@@ -83,6 +87,19 @@ export async function createProjectMultiAgentEnvironment(
   );
   const budget = new AgentExecutionBudget(executionLimits.sharedToolCallLimit);
   const candidateGate = new AgentWorkspaceGate();
+  const manager = new AgentWorkspaceManager({
+    rootWorkspaceDirectory: options.layout.workspaceDirectory,
+    resourceRootDirectory: join(
+      options.layout.hostOperationTemporaryDirectory,
+      "agents",
+    ),
+    recordsDirectory: join(options.layout.taskRecordDirectory, "agents"),
+    taskId: options.taskId,
+  });
+  const assertUsable = () => {
+    if (manager.poisoned)
+      throw new Error("Workspace unavailable after failed patch rollback");
+  };
   const rootScope = new AgentExecutionScope({
     controller: options.controller,
     taskRootDirectory: options.layout.taskRootDirectory,
@@ -97,28 +114,23 @@ export async function createProjectMultiAgentEnvironment(
     nodePath: options.nodePath,
     godotPath: options.godotPath,
     budget,
+    assertUsable,
     candidateGate,
   });
   await rootScope.initialize();
   const scopes = new Map<string, AgentExecutionScope>();
-  const createResource = async (agentId: string): Promise<AgentResource> => {
+  const createResource = async (
+    agentId: string,
+    parentAgentId: string,
+  ): Promise<AgentResource> => {
     z.uuid().parse(agentId);
-    const resourceDirectory = join(
-      options.layout.hostOperationTemporaryDirectory,
-      "agents",
-      agentId,
+    const parentScope =
+      parentAgentId === "/root" ? rootScope : scopes.get(parentAgentId);
+    if (parentScope === undefined)
+      throw new Error("Parent workspace unavailable");
+    const binding = await parentScope.runWorkspaceOperation(() =>
+      manager.create(agentId, parentAgentId),
     );
-    const recordsDirectory = join(
-      options.layout.taskRecordDirectory,
-      "agents",
-      agentId,
-    );
-    const binding = {
-      workspaceDirectory: options.layout.workspaceDirectory,
-      resourceDirectory,
-      recordsDirectory,
-      hostOperationTemporaryDirectory: join(resourceDirectory, "host-tmp"),
-    };
     const scope = new AgentExecutionScope({
       controller: options.controller,
       taskRootDirectory: options.layout.taskRootDirectory,
@@ -133,7 +145,7 @@ export async function createProjectMultiAgentEnvironment(
       nodePath: options.nodePath,
       godotPath: options.godotPath,
       budget,
-      candidateGate,
+      assertUsable,
     });
     scopes.set(agentId, scope);
     await scope.initialize();
@@ -153,7 +165,7 @@ export async function createProjectMultiAgentEnvironment(
           ? {}
           : { agentDir: options.agentDir }),
         environmentProfile: "coding",
-        additionalEnvironmentInstructions: `${options.instructions}\nYou share the private candidate workspace with Root and the other agents. Completed edits are immediately visible to all agents; coordinate overlapping changes and preserve other agents’ work. Your Godot executions and temporary files remain independent. Runtime observations describe the captured source of that execution, not later workspace edits. Report actual observations and uncertainty.`,
+        additionalEnvironmentInstructions: `${options.instructions}\nYou have an independent detached Git worktree copied from your parent at spawn time, including its current source edits. Your changes remain local. After you finish, your parent can read_agent_patch and apply_agent_patch for your recorded turn. Follow-up tasks retain this worktree; they do not resync parent edits. Your Godot executions and temporary files remain independent. Runtime observations describe the captured source of that execution, not later workspace edits. Report actual observations and uncertainty.`,
       },
       invokeTool: async (request, signal, onUpdate) => {
         const tool = tools.get(request.name);
@@ -172,11 +184,13 @@ export async function createProjectMultiAgentEnvironment(
         );
       },
       finishTurn: async (turnId, completion) => {
-        // Stop only this actor's executions. Other actors may continue editing
-        // the shared candidate, so no per-worker patch or candidate is claimed.
+        let patch: AgentWorkspaceTurnResult | null = null;
         let cleanupError: string | null = null;
         try {
           await scope.cancel();
+          patch = await scope.candidateGate.run(() =>
+            manager.finishTurn(agentId, turnId),
+          );
         } catch (error) {
           cleanupError = String(
             error instanceof Error ? error.message : error,
@@ -189,8 +203,9 @@ export async function createProjectMultiAgentEnvironment(
           join(binding.recordsDirectory, `result-${turnId}.json`),
           JSON.stringify(
             {
-              schemaVersion: 2,
-              workspaceMode: "shared",
+              schemaVersion: 3,
+              workspaceMode: "worktree",
+              patch,
               completion,
               cleanupError,
               executions,
@@ -201,8 +216,19 @@ export async function createProjectMultiAgentEnvironment(
           { flag: "wx", mode: 0o600 },
         );
         if (cleanupError !== null) throw new Error(cleanupError);
-        return { executions: executions.map((record) => record.executionId) };
+        return {
+          patch,
+          executions: executions.map((record) => record.executionId),
+        };
       },
+      readPatch: (turnId, offset, limit) =>
+        manager.readPatch(agentId, turnId, offset, limit),
+      applyPatch: (turnId, signal) =>
+        parentScope.runWorkspaceOperation((operationSignal) => {
+          assertUsable();
+          budget.admit("apply_agent_patch");
+          return manager.applyTurn(agentId, turnId, operationSignal);
+        }, signal),
       cancel: () => scope.cancel(),
       close: () => scope.close(),
     };
@@ -224,7 +250,7 @@ export async function createProjectMultiAgentEnvironment(
     ...rootScope.tools(),
     ...createAgentSupervisorTools(supervisor),
   ];
-  const recordPath = join(options.layout.taskRecordDirectory, "agents.v2.json");
+  const recordPath = join(options.layout.taskRecordDirectory, "agents.v3.json");
   return {
     tools,
     supervisor,
@@ -241,6 +267,10 @@ export async function createProjectMultiAgentEnvironment(
       const errors = [...cleanup, ...remaining].filter(
         (result) => result.status === "rejected",
       );
+      if (manager.poisoned)
+        throw new Error(
+          "Candidate cannot be frozen after failed patch rollback",
+        );
       if (errors.length > 0)
         throw new AggregateError(
           errors.map((result) => result.reason as unknown),
@@ -276,8 +306,8 @@ export async function createProjectMultiAgentEnvironment(
         recordPath,
         JSON.stringify(
           {
-            schemaVersion: 2,
-            workspaceMode: "shared",
+            schemaVersion: 3,
+            workspaceMode: "worktree",
             spawnPolicy: supervisor.effectiveSpawnPolicy,
             agents,
             messages: supervisor.messages,
@@ -309,7 +339,7 @@ export async function createProjectMultiAgentEnvironment(
             limitations: [
               "Session statistics are cumulative; reportedUsage counts each session's latest available snapshot once. Interrupted provider work may be unreported.",
               "Token usage is reported, not a hard token or cost cap.",
-              "All agents edit one shared candidate; completed turns do not identify an agent-owned patch or acceptance verdict.",
+              "Each worker edits an independent worktree. Only explicitly applied worker patches enter its parent candidate; completed turns are not acceptance verdicts.",
             ],
           },
           null,

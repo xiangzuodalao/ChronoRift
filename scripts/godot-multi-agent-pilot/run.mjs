@@ -53,8 +53,8 @@ export const CONFIG = Object.freeze({
   sharedToolCallLimit: 256,
   maxAgents: 3,
   dnsOrder: "ipv4first",
-  collaborationVersion: 2,
-  workspaceMode: "shared",
+  collaborationVersion: 3,
+  workspaceMode: "worktree",
 });
 export const PILOT_SPAWN_POLICY = Object.freeze({
   maxCreatedAgents: 3,

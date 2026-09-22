@@ -267,12 +267,12 @@ describe("Candidate Preview cleanup", () => {
       );
       expect(coding).toHaveBeenCalledTimes(2);
       expect(output).toMatchObject({
-        schemaVersion: 5,
+        schemaVersion: arm === "multi" ? 6 : 5,
         status: "completed",
         executionLimits,
-        workspaceMode: arm === "multi" ? "shared" : "single",
+        workspaceMode: arm === "multi" ? "worktree" : "single",
       });
-      if (output.schemaVersion !== 5)
+      if (output.schemaVersion !== 5 && output.schemaVersion !== 6)
         throw new Error("Expected explicit Host limits record");
       if (arm === "multi")
         expect(output.agents).toMatchObject({
@@ -282,7 +282,10 @@ describe("Candidate Preview cleanup", () => {
       else expect(output.agents).toBeNull();
       const persisted: unknown = JSON.parse(
         await readFile(
-          join(output.taskDirectory, "records/preview.v5.json"),
+          join(
+            output.taskDirectory,
+            `records/preview.v${output.schemaVersion}.json`,
+          ),
           "utf8",
         ),
       );
@@ -347,11 +350,11 @@ describe("Candidate Preview cleanup", () => {
       expect(game).not.toHaveBeenCalled();
       expect(importing).not.toHaveBeenCalled();
       expect(output).toMatchObject({
-        schemaVersion: 4,
+        schemaVersion: 6,
         goalDelivered: true,
-        workspaceMode: "shared",
+        workspaceMode: "worktree",
       });
-      if (output.schemaVersion !== 4)
+      if (output.schemaVersion !== 6)
         throw new Error("Expected shared candidate Preview");
       expect(await readFile(join(source, "note.txt"), "utf8")).toBe(
         "original source\n",
@@ -389,7 +392,7 @@ describe("Candidate Preview cleanup", () => {
       }
       const published = JSON.parse(
         await readFile(
-          join(output.taskDirectory, "records", "preview.v4.json"),
+          join(output.taskDirectory, "records", "preview.v6.json"),
           "utf8",
         ),
       ) as unknown;

@@ -507,11 +507,13 @@ describe("MultiAgentV2 supervisor", () => {
     }
   });
 
-  it("exposes exactly six collaboration tools to Root and workers", async () => {
+  it("exposes collaboration and patch tools to Root and workers", async () => {
     const f = fixture();
     try {
       await f.spawn("inspect");
       const expected = [
+        "read_agent_patch",
+        "apply_agent_patch",
         "spawn_agent",
         "list_agents",
         "send_message",

@@ -139,8 +139,8 @@ area 和共享 identity。
   可选 C# 源码可以保留为数据，显式 .NET/native 依赖仍拒绝；其他 Host 与 visual/audio/GPU 未覆盖。
 - **时间调查尚未实现。** Preview 只能读取存活执行的当前状态；没有 probe、采集窗口或历史回看，查询不是原子快照且
   getter 可能有副作用。也没有完整 engine snapshot、bit-exact replay 或第三方 telemetry attestation。
-- **协作仍需验证收益。** [Adaptive Multi](multi-agent.md) 已支持共享 candidate 与独立 worker Session，但不保证
-  减少 Root 工作或总耗时。通用 source migration、自动 apply/merge 和长期 retention 尚未实现。
+- **协作仍需验证收益。** [Adaptive Multi](multi-agent.md) 已支持独立 worker Session、Git worktree 和显式接收 worker patch，但不保证
+  减少 Root 工作或总耗时。通用 source migration、用户 checkout 的自动 apply/merge 和长期 retention 尚未实现。
 
 这些缺口限定当前实现的适用范围；模块映射和运行边界统一见[架构文档](architecture.md)。
 

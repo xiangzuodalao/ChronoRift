@@ -10,10 +10,12 @@ import { z } from "zod";
 import { AgentExecutionScope } from "./agent-execution-scope.js";
 import type { AgentSpawnPolicy } from "./agent-supervisor.js";
 import { AGENT_IPC_VERSION, type AgentHostMessage } from "./agent-ipc.js";
+import { AgentWorkspaceManager } from "./agent-workspace.js";
 import type {
   AgentWorkerClient,
   AgentWorkerClientOptions,
 } from "./agent-worker-client.js";
+import { NodeHostGitPort } from "./host-git.js";
 import {
   createProjectMultiAgentEnvironment,
   type ProjectMultiAgentEnvironment,
@@ -284,12 +286,12 @@ describe("Project multi-agent evidence and summaries", () => {
     expect(
       JSON.parse(await readFile(summary.recordPath, "utf8")),
     ).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       spawnPolicy,
     });
   });
 
-  it("shares one candidate and freezes execution evidence without claiming a worker patch", async () => {
+  it("isolates worktrees and explicitly integrates frozen patches while retaining execution evidence", async () => {
     const recordedExecution = InspectionRunRecordV1Schema.parse({
       schemaVersion: 1,
       executionId: "inspection.recorded-before-shared-edit",
@@ -333,13 +335,28 @@ describe("Project multi-agent evidence and summaries", () => {
       workers.map(
         (worker) => worker.options.configuration.resourceWorkspaceDirectory,
       ),
-    ).toEqual([layout.workspaceDirectory, layout.workspaceDirectory]);
+    ).not.toContain(layout.workspaceDirectory);
+    const firstWorkspace =
+      workers[0]!.options.configuration.resourceWorkspaceDirectory;
+    const secondWorkspace =
+      workers[1]!.options.configuration.resourceWorkspaceDirectory;
+    expect(firstWorkspace).not.toBe(secondWorkspace);
+    await writeFile(join(firstWorkspace, "worker.gd"), "extends Node\n");
+    await expect(
+      readFile(join(secondWorkspace, "worker.gd")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      environment.supervisor.invokeCollaboration("apply_agent_patch", {
+        target: target.agentId,
+        turn_id: 1,
+      }),
+    ).rejects.toThrow("frozen");
     expect(workers[0]!.options.configuration.sessionDirectory).not.toBe(
       workers[1]!.options.configuration.sessionDirectory,
     );
     expect(
       environment.tools.some((tool) => tool.name === "apply_agent_patch"),
-    ).toBe(false);
+    ).toBe(true);
     workers[0]!.complete(10, 0.1);
     const finished = await environment.supervisor.waitForTurns(
       [target],
@@ -358,11 +375,38 @@ describe("Project multi-agent evidence and summaries", () => {
     );
     const firstRecord = await readFile(path, "utf8");
     expect(JSON.parse(firstRecord)).toMatchObject({
-      schemaVersion: 2,
-      workspaceMode: "shared",
+      schemaVersion: 3,
+      workspaceMode: "worktree",
       executions: [recordedExecution],
     });
-    expect(JSON.parse(firstRecord)).not.toHaveProperty("patch");
+    expect(JSON.parse(firstRecord)).toHaveProperty(
+      "patch.roundTripVerified",
+      true,
+    );
+    const diff = await environment.supervisor.invokeCollaboration(
+      "read_agent_patch",
+      { target: "first", turn_id: 1 },
+    );
+    expect(JSON.stringify(diff)).toContain("worker.gd");
+    await expect(
+      environment.supervisor.invokeCollaboration(
+        "apply_agent_patch",
+        { target: target.agentId, turn_id: 1 },
+        undefined,
+        second.agentId,
+      ),
+    ).rejects.toThrow("parent");
+    await expect(
+      readFile(join(layout.workspaceDirectory, "worker.gd")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    const applied = await environment.supervisor.invokeCollaboration(
+      "apply_agent_patch",
+      { target: "first", turn_id: 1 },
+    );
+    expect(applied.details).toMatchObject({ status: "applied" });
+    expect(
+      await readFile(join(layout.workspaceDirectory, "worker.gd"), "utf8"),
+    ).toBe("extends Node\n");
     await writeFile(
       join(layout.workspaceDirectory, "main.tscn"),
       "another agent has started a new edit",
@@ -370,6 +414,88 @@ describe("Project multi-agent evidence and summaries", () => {
     workers[1]!.complete(20, 0.2);
     await environment.supervisor.waitForTurns([second], "all", 10_000);
     expect(await readFile(path, "utf8")).toBe(firstRecord);
+  });
+
+  it("cancels patch application queued behind another worker's result without changing Root", async () => {
+    const { environment, layout, workers } = await setup();
+    const first = await environment.supervisor.spawnAgent("Prepare a patch", {
+      taskName: "first",
+      forkTurns: "none",
+    });
+    await writeFile(
+      join(
+        workers[0]!.options.configuration.resourceWorkspaceDirectory,
+        "worker.gd",
+      ),
+      "extends Node\n# frozen patch\n",
+    );
+    workers[0]!.complete(1, 0);
+    await environment.supervisor.waitForTurns([first], "all", 10_000);
+    const second = await environment.supervisor.spawnAgent(
+      "Hold the workspace queue while freezing a result",
+      { taskName: "second", forkTurns: "none" },
+    );
+    let releaseFinish!: () => void;
+    const finishReleased = new Promise<void>((resolve) => {
+      releaseFinish = resolve;
+    });
+    let notifyFinish!: () => void;
+    const finishStarted = new Promise<void>((resolve) => {
+      notifyFinish = resolve;
+    });
+    const git = new NodeHostGitPort();
+    const originalDiff = git.streamCachedBinaryDiff.bind(git);
+    vi.spyOn(
+      NodeHostGitPort.prototype,
+      "streamCachedBinaryDiff",
+    ).mockImplementationOnce(async (input) => {
+      notifyFinish();
+      await finishReleased;
+      return originalDiff(input);
+    });
+    const applyTurn = vi.spyOn(AgentWorkspaceManager.prototype, "applyTurn");
+    const tool = environment.tools.find(
+      (candidate) => candidate.name === "apply_agent_patch",
+    )!;
+    const abort = new AbortController();
+    const reason = new Error("Root cancelled queued patch application");
+    workers[1]!.complete(1, 0);
+    try {
+      await finishStarted;
+      const pending = tool.execute(
+        "cancelled-apply",
+        { target: first.agentId, turn_id: first.turnId },
+        abort.signal,
+        undefined,
+        {} as never,
+      );
+      const rejected = expect(pending).rejects.toMatchObject({
+        code: "cancelled",
+      });
+      await vi.waitFor(() => {
+        expect(applyTurn).toHaveBeenCalled();
+      });
+      abort.abort(reason);
+      await rejected;
+      releaseFinish();
+      await environment.supervisor.waitForTurns([second], "all", 10_000);
+      await expect(
+        readFile(join(layout.workspaceDirectory, "worker.gd")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      const applied = await tool.execute(
+        "retry-apply",
+        { target: first.agentId, turn_id: first.turnId },
+        undefined,
+        undefined,
+        {} as never,
+      );
+      expect(applied.details).toMatchObject({ status: "applied" });
+      expect(
+        await readFile(join(layout.workspaceDirectory, "worker.gd"), "utf8"),
+      ).toBe("extends Node\n# frozen patch\n");
+    } finally {
+      releaseFinish();
+    }
   });
 
   it("counts the latest owned cumulative usage once, including evicted workers", async () => {
@@ -380,6 +506,13 @@ describe("Project multi-agent evidence and summaries", () => {
     });
     workers[0]!.complete(100, 1);
     await environment.supervisor.waitForTurns([first], "all", 10_000);
+    await writeFile(
+      join(
+        workers[0]!.options.configuration.resourceWorkspaceDirectory,
+        "retained.gd",
+      ),
+      "extends Node\n",
+    );
     const firstFollowup = await environment.supervisor.followupTask(
       first.agentId,
       "Second turn in the same Session",
@@ -403,8 +536,8 @@ describe("Project multi-agent evidence and summaries", () => {
     );
     const parsed = z
       .object({
-        schemaVersion: z.literal(2),
-        workspaceMode: z.literal("shared"),
+        schemaVersion: z.literal(3),
+        workspaceMode: z.literal("worktree"),
         reportedUsage: z.object({
           tokens: z.number(),
           cost: z.number(),
@@ -454,6 +587,43 @@ describe("Project multi-agent evidence and summaries", () => {
     expect(
       raw.workerUsage.every((worker) => worker.usageOwnership !== null),
     ).toBe(true);
+  });
+
+  it("retains the same worktree and uncommitted edits after idle worker eviction", async () => {
+    const { environment, workers } = await setup();
+    const first = await environment.supervisor.spawnAgent("Keep changes", {
+      taskName: "first",
+      forkTurns: "none",
+    });
+    const workspace =
+      workers[0]!.options.configuration.resourceWorkspaceDirectory;
+    await writeFile(
+      join(workspace, "retained.gd"),
+      "extends Node\n# retained\n",
+    );
+    workers[0]!.complete(1, 0);
+    await environment.supervisor.waitForTurns([first], "all", 10000);
+    for (const name of ["second", "third"]) {
+      const turn = await environment.supervisor.spawnAgent("Finish", {
+        taskName: name,
+        forkTurns: "none",
+      });
+      workers.at(-1)!.complete(1, 0);
+      await environment.supervisor.waitForTurns([turn], "all", 10000);
+    }
+    const resumed = await environment.supervisor.followupTask(
+      first.agentId,
+      "Continue retained changes",
+    );
+    expect(workers).toHaveLength(4);
+    expect(workers[3]!.options.configuration.resourceWorkspaceDirectory).toBe(
+      workspace,
+    );
+    expect(await readFile(join(workspace, "retained.gd"), "utf8")).toContain(
+      "retained",
+    );
+    workers[3]!.complete(2, 0);
+    await environment.supervisor.waitForTurns([resumed], "all", 10000);
   });
 
   it("retains a cancelled worker's latest snapshot while flagging incomplete provider usage", async () => {

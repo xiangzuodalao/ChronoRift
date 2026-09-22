@@ -719,6 +719,47 @@ test("summarizes a two-arm zero-worker holdout with actual Single and Multi tele
       .rows.length,
     2,
   );
+  const manifestPath = join(root, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const resultPath = join(root, "mob-multi", "root-result.json");
+  const result = JSON.parse(await readFile(resultPath, "utf8"));
+  for (const collaborationVersion of [2, 3]) {
+    manifest.config.collaborationVersion = collaborationVersion;
+    await save(manifestPath, manifest);
+    for (const [scenario, usageOwnership] of [
+      ["valid", result.usageOwnership],
+      ["wrong-session", { ...result.usageOwnership, sessionId: "different" }],
+      ["missing", undefined],
+    ]) {
+      await save(resultPath, { ...result, usageOwnership });
+      const output = join(
+        root,
+        `ownership-v${collaborationVersion}-${scenario}`,
+      );
+      let checked;
+      try {
+        console.log = () => undefined;
+        checked = await summarize(root, output);
+      } finally {
+        console.log = log;
+      }
+      const multi = checked.rows.find((row) => row.id === "mob-multi");
+      assert.equal(multi.usageOwnershipReconciled, scenario === "valid");
+      assert.equal(multi.usageIncomplete, scenario !== "valid");
+      // Numerical accounting can reconcile even when ownership is invalid.
+      assert.equal(multi.usageReconciled, true);
+      const accounting = JSON.parse(
+        await readFile(join(output, "accounting.json"), "utf8"),
+      );
+      const session = accounting.find((run) => run.id === "mob-multi")
+        .sessionChecks[0];
+      assert.equal(session.usageOwnershipVerified, scenario === "valid");
+      assert.deepEqual(
+        session.recomputed.issues,
+        scenario === "valid" ? [] : ["usage_ownership_mismatch"],
+      );
+    }
+  }
 });
 
 test("game success requires an observed successful envelope, including when SDK isError is false", () => {
@@ -841,6 +882,95 @@ test("failed or unobserved launches after an edit cannot become final-candidate 
   );
   assert.equal(withOther.rootFinalValidationExecutionId, "final");
   assert.equal(withOther.rootFinalValidationLastQueryAt, null);
+});
+
+test("only applied agent patches invalidate a preceding final-candidate validation", () => {
+  const at = (value) => new Date(value).toISOString();
+  const tool = (id, name, time, result, isError = false) => [
+    {
+      receivedAt: at(time),
+      event: { type: "tool_execution_start", toolCallId: id, toolName: name },
+    },
+    {
+      receivedAt: at(time + 1),
+      event: {
+        type: "tool_execution_end",
+        toolCallId: id,
+        toolName: name,
+        isError,
+        result,
+      },
+    },
+  ];
+  const launch = (time, executionId) =>
+    tool(executionId, "game_launch", time, {
+      details: {
+        schemaVersion: 1,
+        outcome: "success",
+        output: { executionId },
+      },
+    });
+  const beforePatch = [
+    ...tool("edit", "edit", 1),
+    ...launch(3, "before-patch"),
+  ];
+  for (const transport of ["details", "content", "both"]) {
+    for (const status of ["applied", "no_op", "conflict", "stale"]) {
+      const value = {
+        status,
+        conflicts: status === "conflict" ? ["file"] : [],
+      };
+      const result = {
+        ...(transport === "content" ? {} : { details: value }),
+        ...(transport === "details"
+          ? {}
+          : { content: [{ type: "text", text: JSON.stringify(value) }] }),
+      };
+      const patch = tool("patch", "apply_agent_patch", 5, result);
+      const lifecycle = lifecycleMetrics([...beforePatch, ...patch], null);
+      const applied = status === "applied";
+      assert.equal(lifecycle.rootLastEditFinishedAt, at(applied ? 6 : 2));
+      assert.equal(
+        lifecycle.rootFinalValidationExecutionId,
+        applied ? null : "before-patch",
+      );
+      assert.equal(
+        lifecycle.rootFinalValidationRequestedAt,
+        applied ? null : at(3),
+      );
+      assert.equal(
+        lifecycle.finalValidationLaunchAfterLastObservedEdit,
+        !applied,
+      );
+      const after = lifecycleMetrics(
+        [...beforePatch, ...patch, ...launch(7, "after-patch")],
+        null,
+      );
+      assert.equal(after.rootFinalValidationExecutionId, "after-patch");
+      assert.equal(after.rootFinalValidationRequestedAt, at(7));
+      assert.equal(after.finalValidationLaunchAfterLastObservedEdit, true);
+      const patchOnly = lifecycleMetrics(patch, null);
+      assert.equal(patchOnly.rootFirstEditRequestedAt, applied ? at(5) : null);
+      assert.equal(patchOnly.rootFirstEditFinishedAt, applied ? at(6) : null);
+    }
+  }
+  for (const patch of [
+    tool(
+      "patch",
+      "apply_agent_patch",
+      5,
+      { details: { status: "applied" } },
+      true,
+    ),
+    tool("patch", "apply_agent_patch", 5),
+    tool("patch", "apply_agent_patch", 5, {
+      content: [{ type: "text", text: "not JSON" }],
+    }),
+  ]) {
+    const lifecycle = lifecycleMetrics([...beforePatch, ...patch], null);
+    assert.equal(lifecycle.rootLastEditFinishedAt, at(2));
+    assert.equal(lifecycle.rootFinalValidationExecutionId, "before-patch");
+  }
 });
 
 test("a stopped serial batch retains an unstarted arm without inventing usage or acceptance", async (context) => {

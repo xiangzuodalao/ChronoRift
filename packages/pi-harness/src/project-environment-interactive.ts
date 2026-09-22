@@ -9,13 +9,13 @@ import {
   InteractiveMode,
   ModelRuntime,
   SessionManager,
-  SettingsManager,
   type AgentSessionServices,
   type AgentSession,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiThinkingLevel } from "./types.js";
+import { createPiHostSettings } from "./host-model-selection.js";
 import {
   observePiModelRequests,
   type PiModelRequestTiming,
@@ -88,12 +88,6 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
       `Pi model ${options.provider}/${options.model} is not registered`,
     );
   }
-  const available = await modelRuntime.getAvailable(options.provider);
-  if (!available.some((candidate) => candidate.id === options.model)) {
-    throw new Error(
-      `Pi model ${options.provider}/${options.model} has no usable Host authentication`,
-    );
-  }
 
   const resourceWorkspaceDirectory = resolve(
     options.resourceWorkspaceDirectory,
@@ -103,7 +97,8 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     options.sessionFile === undefined
       ? undefined
       : resolve(options.sessionFile);
-  const settingsManager = SettingsManager.inMemory({
+  const settingsManager = createPiHostSettings(agentDir);
+  settingsManager.applyOverrides({
     compaction: { enabled: true },
     retry: { enabled: true, maxRetries: 2 },
   });
@@ -170,7 +165,11 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
         if (errors.length !== 0)
           throw new AggregateError(errors, "Pi collaboration cleanup failed");
       } finally {
-        releaseRoot();
+        try {
+          await settingsManager.flush();
+        } finally {
+          releaseRoot();
+        }
       }
     })();
     return shutdownPromise;
@@ -323,7 +322,11 @@ export async function runProjectEnvironmentInteractivePiSessionV1(
     try {
       await shutdown();
     } finally {
-      await runtime.dispose();
+      try {
+        await runtime.dispose();
+      } finally {
+        await settingsManager.flush();
+      }
     }
   }
   if (sessionFile === undefined) {

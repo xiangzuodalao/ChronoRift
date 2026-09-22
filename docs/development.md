@@ -1,8 +1,9 @@
 # Development and conformance
 
 This guide contains developer commands and Host-bound conformance setup. It is operational documentation, not a
-claim that a Gate has run or passed. Product boundaries live in [architecture.md](architecture.md), current status
-lives in the [README](../README.md) and Architecture Section 21, and frozen results live under `docs/evidence/` and
+claim that a Gate has run or passed. For the installable `crf` command, see [installation](installation.md).
+Product boundaries live in [architecture.md](architecture.md), current status
+lives in the [README](../README.md) and Architecture, and frozen results live under `docs/evidence/` and
 `docs/benchmarks/`.
 
 ## Toolchain
@@ -12,8 +13,9 @@ lives in the [README](../README.md) and Architecture Section 21, and frozen resu
 - The managed installer pins official Godot `4.7.1` for Linux x86_64.
 - `apps/cli` pins `@anthropic-ai/sandbox-runtime` to exactly `0.0.74`; upgrades require an explicit compatibility
   change and Host conformance run.
-- Live Pi paths use the repository-pinned Pi packages. Provider/model must be supplied at the command boundary;
-  `--thinking` currently defaults to `max` when omitted.
+- Live Pi paths use the repository-pinned Pi packages. The developer commands below require provider/model at the
+  command boundary. The installed `crf` entry also accepts saved Pi Host defaults or an available model;
+  its thinking level uses the saved preference, then `max` when absent.
 
 ```bash
 nvm use

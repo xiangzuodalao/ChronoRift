@@ -11,27 +11,29 @@ Pi 负责 Agent Loop；ChronoRift 使用固定版本的 Anthropic Sandbox Runtim
 Agent 返回 Build-bound runtime state、实际 diff 和 tool result。Agent 自由选择调查和修改策略，最终 acceptance 仍属于
 项目 CI、独立 Eval 或人工 review。
 
-> **结果优势 — GN-1：** 在相同源码、prompt、model、thinking、timeout 和共享工具下，coding-only candidate 的
-> geometry oracle 为 `false`；ChronoRift Agent 查询真实 platform geometry 和 Shape identity 后产生不同候选，oracle
-> 为 `true`。
->
-> **跨项目验证 — Godot Demo V2：** 在第二个真实上游项目中，ChronoRift Agent 调用 13 次 V2 game tools，查询修改前
-> 14 个、修改后 5 个 Mob state，候选通过独立 evaluator 3/3。Coding-only 也通过 3/3，因此本案例证明产品路径复用，
-> 不证明总体修复优势。
-
-**截至 2026-09-15：** `v0.4.0` 是当前 legacy release，Project Environment 是实验性 Preview。默认
-`chronorift [goal]`、任意 Godot 项目支持和自动“修复成功”判定尚未实现。
-
 ![ChronoRift 技术概念图：隔离的 Godot runtime、baseline/candidate 执行与运行记录](docs/assets/chronorift-hero.jpg)
 
-_概念插图，用于表达产品母题；不是产品界面、运行截图或实验凭据。[查看 2560×1280 master](docs/assets/chronorift-hero-master.jpg)。_
+## 使用
+
+安装构建好的 npm 包后，在 Git 管理的 Godot 项目目录中直接打开：
+
+```bash
+npm install -g /path/to/chronorift-0.4.0.tgz
+cd /path/to/my-godot-project
+crf
+```
+
+首次启动可下载 Godot，在界面内使用 `/login` 登录、`/model` 选择模型；以后复用用户配置。
+也可以运行 `crf "调查并修复平台碰撞问题"`，或添加 `--multi-agent` 允许协作。
+当前支持 Linux x86_64，需要可用的沙箱环境；安装包构建、系统前提和结果使用见[安装指南](docs/installation.md)。
+仓库已提供打包命令，尚未据此宣称已发布到 npm。
 
 ## 两分钟看懂
 
 ![ChronoRift high-level 架构](docs/assets/chronorift-architecture.png)
 
-ChronoRift 不重做 Coding Agent：Pi SDK 负责模型、session 和工具调度；ChronoRift 提供 Loop 外的 workspace、
-sandbox、Godot execution 和 runtime evidence。
+ChronoRift：Pi SDK 负责模型、session 和工具调度；ChronoRift 提供 Loop 外的 workspace、
+sandbox、Godot execution、multiagent runtime 和 runtime evidence。
 
 - **A · 调试回路：** Agent 修改可写 candidate、执行 Godot，并根据 runtime observation 继续迭代；observation 是
   调试信号，不是 verdict。
@@ -68,24 +70,6 @@ oracle 为 `true`。
 | ------------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------- |
 | `coding-only` | 无                                                            | 四个 area width 均为 682 px，resource identity 仍共享               | `false`           |
 | `chronorift`  | `game_capabilities`、`game_launch`、`game_stop`、`game_query` | area width 与 128/256/384/768 px 的 solid width 对齐，identity 分离 | `true`            |
-
-## 第二项目复用：Godot Demo V2
-
-在固定的 `godot-demo-projects/3d/squash_the_creeps` revision 上，公共 V2 loader、managed runtime、sandbox、lineage
-和 game tools 完成了第二项目的端到端运行。
-
-| 产品事实                   | 正式结果                                                     |
-| -------------------------- | ------------------------------------------------------------ |
-| Agent-visible runtime 使用 | 13 次 V2 game-tool call；initial 14 条、candidate 5 条 state |
-| ChronoRift candidate       | 独立 Godot evaluator 3/3                                     |
-| 第二项目 runtime 路径      | source、Build、Execution、patch、cleanup 均有绑定记录        |
-| 比较性 Hero gate           | 未晋级；coding-only 也产生同义修复并通过 3/3                 |
-
-Treatment 的完整增量包含四个 game-tool definitions 及其 metadata，以及两行中性的 discoverability appendix；这不是
-tool-only comparison，结果不能归因于单独的 game tools。
-
-本轮的价值是证明 ChronoRift 的 runtime 产品边界不只存在于 GN-1；它不承担比较优势结论。详细页完整保留两个原始
-candidate patch 与 evaluator stdout，并汇总耗时、成本、本地 raw records 中的失败 tool response 和运行限制。
 
 ## License
 

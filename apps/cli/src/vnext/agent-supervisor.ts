@@ -67,11 +67,25 @@ export interface AgentResource {
     turnId: number,
     result: AgentTurnCompletion,
   ): Promise<unknown>;
+  readPatch?(
+    this: void,
+    turnId: number,
+    offset: number,
+    limit: number,
+  ): Promise<unknown>;
+  applyPatch?(
+    this: void,
+    turnId: number,
+    signal?: AbortSignal,
+  ): Promise<unknown>;
   cancel(this: void): Promise<void>;
   close(this: void): Promise<void>;
 }
 
-export type AgentResourceFactory = (agentId: string) => Promise<AgentResource>;
+export type AgentResourceFactory = (
+  agentId: string,
+  parentAgentId: string,
+) => Promise<AgentResource>;
 
 /** Optional Host constraints for controlled runs; ordinary collaboration has no spawn policy. */
 export interface AgentSpawnPolicy {
@@ -181,6 +195,8 @@ const MAX_MAILBOX = 512;
 const TURN_TOOL_BUDGET = 64;
 const IPC_RESPONSE_TIMEOUT_MS = 30_000;
 const CONTROL_NAMES = new Set([
+  "read_agent_patch",
+  "apply_agent_patch",
   "spawn_agent",
   "list_agents",
   "followup_task",
@@ -403,7 +419,10 @@ export class AgentSupervisor implements RootCollaborationPort {
     entry.next = turn;
     // The entry reserves active capacity synchronously, before any asynchronous preparation.
     const startup = (async () => {
-      entry.resource = await this.options.createResource(entry.agentId);
+      entry.resource = await this.options.createResource(
+        entry.agentId,
+        parentId,
+      );
       this.assertEntryStarting(entry);
       const base = entry.resource.workerConfiguration;
       if (base.tools.some((tool) => CONTROL_NAMES.has(tool.name)))
@@ -435,7 +454,7 @@ export class AgentSupervisor implements RootCollaborationPort {
         tools: [...base.tools, ...collaborationDescriptors(this.spawnPolicy)],
         additionalEnvironmentInstructions: [
           base.additionalEnvironmentInstructions,
-          `You are ${taskName}, a member of the team rooted at /root. Your parent is ${parentPath}. All agents share the same private candidate directory; edits are immediately visible. Coordinate overlapping edits and preserve other agents' changes. Stay within your assigned task and use supported findings already supplied by other agents. There are ${this.maxAgents + 1} concurrency slots including Root; waiting keeps your slot. When your task is finished, give a concise final answer with your conclusion, concrete evidence references, and uncovered items, then end the current turn. Your final answer is automatically sent to your parent; do not also send the same result as a separate message or loop on wait_agent to remain available. The parent can resume you with followup_task when further work is needed. A completed turn is not acceptance of a fix.`,
+          `You are ${taskName}, a member of the team rooted at /root. Your parent is ${parentPath}. You have an independent worktree forked from your parent at spawn time. Edits stay local until your parent explicitly applies a recorded turn using apply_agent_patch. Follow-up tasks reuse your worktree. Report changed files and validation evidence. Stay within your assigned task and use supported findings already supplied by other agents. There are ${this.maxAgents + 1} concurrency slots including Root; waiting keeps your slot. When your task is finished, give a concise final answer with your conclusion, concrete evidence references, and uncovered items, then end the current turn. Your final answer is automatically sent to your parent; do not also send the same result as a separate message or loop on wait_agent to remain available. The parent can resume you with followup_task when further work is needed. A completed turn is not acceptance of a fix.`,
           spawnPolicyDescription(this.spawnPolicy),
         ]
           .filter(Boolean)
@@ -803,6 +822,50 @@ export class AgentSupervisor implements RootCollaborationPort {
     const callerId = this.resolveTarget(caller, ROOT);
     let result: unknown;
     switch (name) {
+      case "read_agent_patch":
+      case "apply_agent_patch": {
+        const args = z
+          .object({
+            target: z.string().min(1),
+            turn_id: z.number().int().positive(),
+            ...(name === "read_agent_patch"
+              ? {
+                  offset: z.number().int().nonnegative().default(0),
+                  limit: z.number().int().min(1).max(65536).default(16384),
+                }
+              : {}),
+          })
+          .strict()
+          .parse(input);
+        const entry = this.requireAgent(
+          this.resolveTarget(args.target, callerId),
+        );
+        if (entry.parentAgentId !== callerId)
+          throw new Error("Only an agent's parent can read or apply its patch");
+        const turn = this.requireTurn(entry.agentId, args.turn_id);
+        if (turn.result === undefined)
+          throw new Error("Agent turn has no frozen result");
+        if (name === "read_agent_patch") {
+          if (entry.resource?.readPatch === undefined)
+            throw new Error("Agent patch unavailable");
+          result = await entry.resource.readPatch(
+            args.turn_id,
+            Number(args.offset),
+            Number(args.limit),
+          );
+        } else {
+          if (
+            entry.current !== undefined ||
+            entry.next !== undefined ||
+            entry.cleanupBlocked
+          )
+            throw new Error("Stop the agent before applying its patch");
+          if (entry.resource?.applyPatch === undefined)
+            throw new Error("Agent patch unavailable");
+          result = await entry.resource.applyPatch(args.turn_id, signal);
+        }
+        break;
+      }
       case "spawn_agent": {
         // Omitted tool fields are also rejected at the Host boundary, including
         // callers that bypass the model-facing JSON schema.
@@ -1659,7 +1722,7 @@ export class AgentSupervisor implements RootCollaborationPort {
       if (entry.state === "running") entry.state = "idle";
       entry.lastUsed = ++this.clock;
       turn.resolve(record);
-      const fullSummary = `${record.status}. Completed means the loop finished, not acceptance.\n${record.assistantText}${record.errorMessage === null ? "" : `\nError: ${record.errorMessage}`}`;
+      const fullSummary = `${record.status}. Completed means the loop finished, not acceptance.\nRecorded turn ${turn.turnId}${evidence === undefined ? "" : `: ${JSON.stringify(evidence)}`}\n${record.assistantText}${record.errorMessage === null ? "" : `\nError: ${record.errorMessage}`}`;
       const summary =
         Buffer.byteLength(fullSummary) > 60 * 1024
           ? `${Buffer.from(fullSummary)
@@ -1902,9 +1965,27 @@ function collaborationDescriptors(
 ): PiProxyToolDescriptor[] {
   return [
     descriptor(
+      "read_agent_patch",
+      "Read a bounded page of a child agent's frozen turn diff before integration.",
+      {
+        target: Type.String(),
+        turn_id: Type.Integer({ minimum: 1 }),
+        offset: Type.Optional(Type.Integer({ minimum: 0 })),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 65536 })),
+      },
+    ),
+    descriptor(
+      "apply_agent_patch",
+      "Explicitly apply an idle child agent's latest frozen turn to your own worktree. Conflicting files are reported without modification. Revalidate the integrated candidate; worker completion is not acceptance.",
+      {
+        target: Type.String(),
+        turn_id: Type.Integer({ minimum: 1 }),
+      },
+    ),
+    descriptor(
       "spawn_agent",
       [
-        "Optionally spawn an agent for a bounded independent task that replaces work you would otherwise do. Zero workers is valid. Do not duplicate an investigation assigned to another agent. All agents share the candidate. task_name is relative to you; use canonical paths to address siblings. fork_turns defaults to all and inherits filtered conversation context; none starts from the task alone.",
+        "Optionally spawn an agent for a bounded independent task that replaces work you would otherwise do. Zero workers is valid. Do not duplicate an investigation assigned to another agent. Each child gets an independent worktree snapshot of its parent. Read its recorded diff with read_agent_patch and explicitly integrate it with apply_agent_patch; edits are never automatically shared. task_name is relative to you; use canonical paths to address siblings. fork_turns defaults to all and inherits filtered conversation context; none starts from the task alone.",
         spawnPolicyDescription(policy),
       ]
         .filter(Boolean)

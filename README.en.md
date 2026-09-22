@@ -155,11 +155,11 @@ workspace. Godot validation instead runs against a Host-copied stage whose proje
 `.godot/`, home, temp, and artifacts are writable, and source SHA-256 is checked before and after execution. The
 commands do not automatically commit, merge, push, or declare a fix.
 
-Optional `--multi-agent` adds persistent Pi workers sharing one private candidate. Each agent has independent Godot
+Optional `--multi-agent` adds persistent Pi workers with independent detached Git worktrees forked from their parent’s current source. Each agent has independent Godot
 executions and temporary resources. The Host brokers sandboxed tools, asynchronous messages, followups, cancellation,
-and shared execution budgets; coding operations and launch source capture use a shared lock. Adaptive delegation
+and shared execution budgets; each workspace has its own coding/source-capture lock. Parents review and explicitly apply worker patches; conflicts leave their source unchanged. Adaptive delegation
 allows zero workers and defaults to at most three active workers plus one Root. TUI commands `/agents` and
-`/agents stop` inspect or stop the team. See [Multi-Agent V2](docs/multi-agent.md) for configuration and lifecycle limits.
+`/agents stop` inspect or stop the team. See [Multi-Agent](docs/multi-agent.md) for configuration and lifecycle limits.
 
 The [capacity comparison](docs/case-studies/godot-capacity-multi-v1.md) gave both arms enough budget to finish PR180
 and pass independent acceptance. It did not establish a collaboration speedup; the report preserves actual worker
@@ -183,7 +183,7 @@ delivery, duplicated work, and the incomplete Single SDK usage. Earlier negative
 - [GN-1 case study](docs/case-studies/gn1-platform-alias.md): a checkable but non-generalizable runtime-observation pair.
 - [Godot Demo Mob orientation](docs/case-studies/godot-demo-mob-orientation.md): a completed second-project V2 slice that did not promote to Hero.
 - [Architecture](docs/architecture.md): current Preview flow, workspace and sandbox boundaries, module ownership, and maintained legacy paths.
-- [Multi-Agent Runtime](docs/multi-agent.md): task trees, shared candidate, asynchronous coordination, execution budgets, and telemetry.
+- [Multi-Agent Runtime](docs/multi-agent.md): task trees, independent worktrees, asynchronous coordination, execution budgets, and telemetry.
 - [Development and conformance](docs/development.md): local, Godot, Host sandbox, and live-provider prerequisites.
 - [`docs/evidence/`](docs/evidence/) and [`docs/benchmarks/`](docs/benchmarks/): immutable historical archives whose
   conclusions do not automatically apply to current HEAD.

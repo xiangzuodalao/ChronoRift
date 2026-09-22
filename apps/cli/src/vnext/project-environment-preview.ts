@@ -426,10 +426,39 @@ export type ProjectEnvironmentPreviewResultV5 = z.infer<
   typeof ProjectEnvironmentPreviewResultV5Schema
 >;
 
+/** Independent agent worktrees, with explicit integration and Host limits. */
+export const ProjectEnvironmentPreviewResultV6Schema =
+  ProjectEnvironmentPreviewResultV2Schema.extend({
+    schemaVersion: z.literal(6),
+    workspaceMode: z.literal("worktree"),
+    candidateSourceChanged: z.boolean().nullable(),
+    executions: z.array(pathText).max(2048),
+    executionLimits: ProjectExecutionLimitsSchema,
+    agents: ProjectEnvironmentPreviewResultV5Schema.shape.agents,
+  })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.agents !== null &&
+        (value.agents.sharedToolCallLimit !==
+          value.executionLimits.sharedToolCallLimit ||
+          value.agents.sharedToolCalls > value.agents.sharedToolCallLimit)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["agents"],
+          message: "Agent budget record must match the Host execution limits",
+        });
+    });
+export type ProjectEnvironmentPreviewResultV6 = z.infer<
+  typeof ProjectEnvironmentPreviewResultV6Schema
+>;
+
 export type ProjectEnvironmentPreviewResult =
   | ProjectEnvironmentPreviewResultV2
   | ProjectEnvironmentPreviewResultV4
-  | ProjectEnvironmentPreviewResultV5;
+  | ProjectEnvironmentPreviewResultV5
+  | ProjectEnvironmentPreviewResultV6;
 
 export interface ProjectEnvironmentPreviewDependenciesV2 {
   readonly runPiTurn: typeof runVNextPiTurnWithSdk;
@@ -662,11 +691,11 @@ export async function runProjectEnvironmentPreviewV2(
       }
       const rawResult = {
         schemaVersion:
-          request.executionLimits !== undefined
-            ? 5
-            : multiAgent === undefined
-              ? 2
-              : 4,
+          multiAgent !== undefined
+            ? 6
+            : request.executionLimits !== undefined
+              ? 5
+              : 2,
         status,
         taskId,
         sessionId,
@@ -690,21 +719,21 @@ export async function runProjectEnvironmentPreviewV2(
         limitations,
         ...(multiAgent === undefined
           ? {}
-          : { agents, workspaceMode: "shared" }),
+          : { agents, workspaceMode: "worktree", executionLimits }),
         ...(request.executionLimits === undefined
           ? {}
           : {
               agents,
               executionLimits,
-              workspaceMode: multiAgent === undefined ? "single" : "shared",
+              workspaceMode: multiAgent === undefined ? "single" : "worktree",
             }),
       };
       const result =
-        request.executionLimits !== undefined
-          ? ProjectEnvironmentPreviewResultV5Schema.parse(rawResult)
-          : multiAgent === undefined
-            ? ProjectEnvironmentPreviewResultV2Schema.parse(rawResult)
-            : ProjectEnvironmentPreviewResultV4Schema.parse(rawResult);
+        multiAgent !== undefined
+          ? ProjectEnvironmentPreviewResultV6Schema.parse(rawResult)
+          : request.executionLimits !== undefined
+            ? ProjectEnvironmentPreviewResultV5Schema.parse(rawResult)
+            : ProjectEnvironmentPreviewResultV2Schema.parse(rawResult);
       await writeFile(
         join(
           layout.taskRecordDirectory,

@@ -135,7 +135,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   } catch (error) {
     if (!hasFlag(args, "json")) throw error;
     printJson({
-      schemaVersion: hasFlag(args, "multi-agent") ? 4 : 2,
+      schemaVersion: hasFlag(args, "multi-agent") ? 6 : 2,
       status: "failed",
       goalDelivered: false,
       failureCode:

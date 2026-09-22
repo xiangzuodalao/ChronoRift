@@ -138,7 +138,7 @@ export async function projectPreviewCommand(
       failureMessage,
     });
     if (hasFlag(args, "json")) {
-      printJson(multiAgent ? { ...failure, schemaVersion: 4 } : failure);
+      printJson(multiAgent ? { ...failure, schemaVersion: 6 } : failure);
     } else {
       process.stderr.write(
         `ChronoRift Project Environment Preview — failed\nfailure: ${failure.failureCode}: ${failure.failureMessage}\n`,
@@ -165,7 +165,7 @@ export async function projectPreviewCommand(
       `candidate source: ${result.candidateSourceChanged === null ? "unknown (candidate not frozen)" : result.candidateSourceChanged ? "changed" : "unchanged"}`,
       `candidate patch: ${result.candidatePatch?.path ?? "unavailable"}`,
       `runtime executions: ${result.executions.length}`,
-      ...(result.schemaVersion === 4
+      ...(result.schemaVersion === 6
         ? [`agent records: ${result.agents?.recordPath ?? "unavailable"}`]
         : []),
       `Pi: ${result.provider}/${result.model} (${result.thinkingLevel})`,

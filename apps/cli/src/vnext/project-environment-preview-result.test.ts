@@ -3,6 +3,7 @@ import {
   ProjectEnvironmentPreviewResultV2Schema,
   ProjectEnvironmentPreviewResultV4Schema,
   ProjectEnvironmentPreviewResultV5Schema,
+  ProjectEnvironmentPreviewResultV6Schema,
 } from "./project-environment-preview.js";
 
 const result = (thinkingLevel: unknown) => ({
@@ -76,6 +77,46 @@ describe("inspection Preview result V2", () => {
           ...raised.executionLimits,
           sharedToolCallLimit: 2049,
         },
+      }).success,
+    ).toBe(false);
+  });
+  it("versions independent worktrees without relabeling shared historical results", () => {
+    const worktree = {
+      ...result("off"),
+      schemaVersion: 6,
+      workspaceMode: "worktree",
+      executionLimits: {
+        sharedToolCallLimit: 256,
+        workerTurnTimeoutMs: 600000,
+        workerTurnToolCallLimit: 64,
+      },
+      agents: {
+        recordPath: "/task/agents.v3.json",
+        count: 1,
+        maxAgents: 3,
+        sharedToolCalls: 12,
+        sharedToolCallLimit: 256,
+      },
+    };
+    expect(ProjectEnvironmentPreviewResultV6Schema.parse(worktree)).toEqual(
+      worktree,
+    );
+    expect(
+      ProjectEnvironmentPreviewResultV6Schema.safeParse({
+        ...worktree,
+        workspaceMode: "shared",
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectEnvironmentPreviewResultV6Schema.safeParse({
+        ...worktree,
+        agents: { ...worktree.agents, sharedToolCalls: 257 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectEnvironmentPreviewResultV5Schema.safeParse({
+        ...worktree,
+        schemaVersion: 5,
       }).success,
     ).toBe(false);
   });

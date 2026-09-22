@@ -55,7 +55,7 @@ describe("inspection Preview CLI", () => {
     async ({ limitFlags, maxAgents }) => {
       const output = {
         ...result(),
-        schemaVersion: 4,
+        schemaVersion: 6,
         agents: {
           recordPath: "/task/records/agents.v2.json",
           count: 2,
@@ -106,14 +106,14 @@ describe("inspection Preview CLI", () => {
     },
   );
 
-  it("reports multi-agent startup failures with the V4 version", async () => {
+  it("reports multi-agent startup failures with the V6 version", async () => {
     runPreview.mockRejectedValueOnce(new Error("worker startup failed"));
     const write = vi
       .spyOn(process.stdout, "write")
       .mockImplementation(() => true);
     await main([...args, "--multi-agent"]);
     expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 6,
       status: "failed",
       goalDelivered: false,
     });

@@ -153,7 +153,7 @@ const assertAnswer = (result: PiProxyToolResult, answer: number): void => {
   ]);
 };
 
-it("shares candidate edits while pinning independent Godot executions and scoped cancellation", async () => {
+it("isolates agent worktrees, explicitly integrates patches, and pins independent Godot executions", async () => {
   if (process.env.GODOT_BIN === undefined)
     throw new Error(
       "GODOT_BIN is required for the multi-agent sandbox integration test",
@@ -232,6 +232,25 @@ it("shares candidate edits while pinning independent Godot executions and scoped
     );
     const first = workers[0]!;
     const second = workers[1]!;
+    const gitStatus = await first.request("bash", {
+      command: "git status --porcelain && git rev-parse --abbrev-ref HEAD",
+      timeout: 5,
+    });
+    expect(gitStatus.isError).not.toBe(true);
+    expect(JSON.stringify(gitStatus.content)).toContain("HEAD");
+    for (const otherWorkspace of [
+      layout.workspaceDirectory,
+      second.options.configuration.resourceWorkspaceDirectory,
+    ]) {
+      const denied = await first.request("bash", {
+        command: `/usr/bin/cat -- ${quotePosixShellArg(join(otherWorkspace, "main.gd"))}`,
+        timeout: 5,
+      });
+      expect(JSON.stringify(denied.content)).toMatch(
+        /Permission denied|No such file or directory/u,
+      );
+      expect(JSON.stringify(denied.content)).not.toContain("extends Node");
+    }
     const malformed = await first.request("write", {
       path: "main.gd",
       content: 123,
@@ -247,13 +266,19 @@ it("shares candidate edits while pinning independent Godot executions and scoped
       (await first.request("write", { path: "main.gd", content: script(11) }))
         .isError,
     ).not.toBe(true);
+    const committed = await first.request("bash", {
+      command:
+        "git -c user.name=Fixture -c user.email=fixture@example.invalid commit -am 'worker source'",
+      timeout: 5,
+    });
+    expect(committed.isError).not.toBe(true);
     const firstLaunch = InspectionLaunchOutputV1Schema.parse(
       gameOutput(await first.request("game_launch", { schemaVersion: 1 })),
     );
-    expect(first.options.configuration.resourceWorkspaceDirectory).toBe(
+    expect(first.options.configuration.resourceWorkspaceDirectory).not.toBe(
       layout.workspaceDirectory,
     );
-    expect(second.options.configuration.resourceWorkspaceDirectory).toBe(
+    expect(second.options.configuration.resourceWorkspaceDirectory).not.toBe(
       layout.workspaceDirectory,
     );
     expect(
@@ -323,7 +348,7 @@ it("shares candidate edits while pinning independent Godot executions and scoped
     expect(deniedText).not.toContain("private session data");
     expect(
       await readFile(join(layout.workspaceDirectory, "main.gd"), "utf8"),
-    ).toBe(script(22));
+    ).toBe(script(0));
 
     await environment.supervisor.interruptAgent(secondTarget.agentId);
     const cancelled = await environment.supervisor.waitForTurns(
@@ -369,7 +394,7 @@ it("shares candidate edits while pinning independent Godot executions and scoped
     );
     expect(
       await readFile(join(layout.workspaceDirectory, "main.gd"), "utf8"),
-    ).toBe(script(22));
+    ).toBe(script(0));
 
     first.complete("The actual property query returned answer 11.");
     const finished = await environment.supervisor.waitForTurns(
@@ -383,10 +408,23 @@ it("shares candidate edits while pinning independent Godot executions and scoped
     });
     expect(
       await readFile(join(layout.workspaceDirectory, "main.gd"), "utf8"),
-    ).toBe(script(22));
+    ).toBe(script(0));
+    const integrated = await rootTool("apply_agent_patch", {
+      target: "first",
+      turn_id: firstTarget.turnId,
+    });
+    expect(integrated.details).toMatchObject({ status: "applied" });
     expect(
-      environment.tools.some((tool) => tool.name === "apply_agent_patch"),
-    ).toBe(false);
+      await readFile(join(layout.workspaceDirectory, "main.gd"), "utf8"),
+    ).toBe(script(11));
+    const conflict = await rootTool("apply_agent_patch", {
+      target: "second",
+      turn_id: secondTarget.turnId,
+    });
+    expect(conflict.details).toMatchObject({
+      status: "conflict",
+      conflicts: ["main.gd"],
+    });
     // A previous execution still describes its own staged source after shared edits.
     assertAnswer(
       await rootTool("game_query", queryArguments(rootLaunch.executionId)),
@@ -415,12 +453,21 @@ it("shares candidate edits while pinning independent Godot executions and scoped
         "game_query",
         queryArguments(integratedLaunch.executionId),
       ),
-      22,
+      11,
     );
     const resumed = await environment.supervisor.followupTask(
       secondTarget.agentId,
       "Continue the existing worker Session",
     );
+    expect(
+      await readFile(
+        join(
+          second.options.configuration.resourceWorkspaceDirectory,
+          "main.gd",
+        ),
+        "utf8",
+      ),
+    ).toBe(script(22));
     await environment.supervisor.stopAgents();
     const stoppedTurns = await environment.supervisor.waitForTurns(
       [resumed],

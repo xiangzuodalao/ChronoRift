@@ -208,3 +208,60 @@ it("cancels a shared-lock waiter without waiting for or stopping its sibling", a
   expect(runCoding).toHaveBeenCalledOnce();
   await Promise.all([a.close(), b.close()]);
 });
+
+it("drains Host patch writes on close and rejects queued workspace operations", async () => {
+  const value = await scope({
+    runCoding: vi.fn(async () => result),
+  } as unknown as SrtSandboxController);
+  let release!: () => void;
+  const active = value.runWorkspaceOperation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  const queuedOperation = vi.fn(async () => undefined);
+  const queued = value.runWorkspaceOperation(queuedOperation);
+  const rejected = expect(queued).rejects.toThrow("cancelled");
+  let closed = false;
+  const closing = value.close().then(() => {
+    closed = true;
+  });
+  await Promise.resolve();
+  expect(closed).toBe(false);
+  release();
+  await Promise.all([active, rejected, closing]);
+  expect(queuedOperation).not.toHaveBeenCalled();
+  expect(closed).toBe(true);
+});
+
+it("cancels a queued Host operation through its tool signal without cancelling the active operation", async () => {
+  const value = await scope({
+    runCoding: vi.fn(async () => result),
+  } as unknown as SrtSandboxController);
+  let release!: () => void;
+  let activeSignal: AbortSignal | undefined;
+  const active = value.runWorkspaceOperation((signal) => {
+    activeSignal = signal;
+    return new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  });
+  await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+  const abort = new AbortController();
+  const queuedOperation = vi.fn(async () => undefined);
+  const queued = value.runWorkspaceOperation(queuedOperation, abort.signal);
+  const cancelled = expect(queued).rejects.toMatchObject({ code: "cancelled" });
+  try {
+    abort.abort();
+    await cancelled;
+    expect(activeSignal?.aborted).toBe(false);
+    expect(queuedOperation).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await active;
+    await value.close();
+  }
+  expect(queuedOperation).not.toHaveBeenCalled();
+});

@@ -6,12 +6,15 @@ import {
   createVNextCodingToolDefinitions,
 } from "@chronorift/pi-harness";
 
+import { AgentWorkspaceGate } from "./agent-workspace-gate.js";
 import { GodotInspectionRuntime } from "./godot-inspection-runtime.js";
 import { ExecutionTelemetry } from "./execution-telemetry.js";
 import { prepareGodotInspectionCandidate } from "./godot-inspection-source.js";
 import { SandboxPiCodingToolPort } from "./pi-coding-tool-port.js";
 import { SrtGodotRunner } from "./srt-godot-runner.js";
 import type { SrtSandboxController } from "./srt-sandbox-controller.js";
+
+export { AgentWorkspaceGate } from "./agent-workspace-gate.js";
 
 export type AgentBoundTool = ReturnType<
   typeof createVNextCodingToolDefinitions
@@ -38,40 +41,6 @@ export class AgentExecutionBudget {
   }
 }
 
-/** Includes reads and bash: a bash command can mutate any file in its candidate. */
-export class AgentWorkspaceGate {
-  #tail: Promise<unknown> = Promise.resolve();
-  public run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    let started = false;
-    const cancelled = () =>
-      Object.assign(new Error("Agent execution was cancelled"), {
-        code: "cancelled",
-      });
-    const result = this.#tail.then(async () => {
-      if (signal?.aborted) throw cancelled();
-      started = true;
-      return operation();
-    });
-    this.#tail = result.catch(() => undefined);
-    if (signal === undefined) return result;
-    // A cancelled waiter must not keep its owning scope alive behind another
-    // agent's command. The queued slot still drains in order and skips execution.
-    return new Promise<T>((resolve, reject) => {
-      const abort = () => {
-        if (!started) reject(cancelled());
-      };
-      signal.addEventListener("abort", abort, { once: true });
-      if (signal.aborted) abort();
-      void result.then(resolve, reject).finally(() => {
-        signal.removeEventListener("abort", abort);
-      });
-    });
-  }
-  public async idle(): Promise<void> {
-    await this.#tail;
-  }
-}
-
 export interface AgentExecutionScopeOptions {
   readonly controller: SrtSandboxController;
   readonly taskRootDirectory: string;
@@ -84,6 +53,7 @@ export interface AgentExecutionScopeOptions {
   readonly godotPath: string;
   readonly budget: AgentExecutionBudget;
   readonly candidateGate?: AgentWorkspaceGate;
+  readonly assertUsable?: () => void;
 }
 
 /** Owns agent resources without owning Pi or resetting the shared SRT singleton. */
@@ -137,6 +107,7 @@ export class AgentExecutionScope {
                 code: "cancelled",
               });
             }
+            if (tool.name !== "game_stop") options.assertUsable?.();
             if (!tool.name.startsWith("game_")) {
               const operationSignal = AbortSignal.any([
                 epoch.signal,
@@ -188,6 +159,28 @@ export class AgentExecutionScope {
         this.options.recordsDirectory,
       ].map((path) => mkdir(path, { recursive: true, mode: 0o700 })),
     );
+  }
+
+  /** Track Host workspace operations too, so cancel/close drains every writer. */
+  public runWorkspaceOperation<T>(
+    operation: (signal: AbortSignal) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const operationSignal = AbortSignal.any([
+      this.#abort.signal,
+      ...(signal === undefined ? [] : [signal]),
+    ]);
+    return this.#scopeGate.run(() => {
+      if (this.#closed || this.#stopping || operationSignal.aborted)
+        throw Object.assign(new Error("Agent execution was cancelled"), {
+          code: "cancelled",
+        });
+      this.options.assertUsable?.();
+      return this.candidateGate.run(
+        () => operation(operationSignal),
+        operationSignal,
+      );
+    }, operationSignal);
   }
 
   public tools(): readonly AgentBoundTool[] {

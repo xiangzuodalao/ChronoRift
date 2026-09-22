@@ -15,6 +15,8 @@ import {
 test("adaptive pilot preserves budgets while allowing zero through three same-model workers", () => {
   assert.equal(CONFIG.timeoutMs, 1_200_000);
   assert.equal(CONFIG.maxAgents, 3);
+  assert.equal(CONFIG.collaborationVersion, 3);
+  assert.equal(CONFIG.workspaceMode, "worktree");
   assert.equal(CONFIG.dnsOrder, "ipv4first");
   assert.equal(CONFIG.sharedToolCallLimit, 256);
   assert.equal(CONFIG.provider, "openai-codex");
